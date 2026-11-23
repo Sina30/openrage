@@ -136,6 +136,12 @@ pub fn is_encodable(format: GrcTextureFormat) -> bool {
     ) || (cfg!(feature = "bc7-encode") && format == GrcTextureFormat::BC7)
 }
 
+// `intel_tex_2` ships a prebuilt C++ object and names no C++ runtime for it, so a link that loads
+// that object fails on `__gxx_personality_v0`.
+#[cfg(all(feature = "bc7-encode", target_os = "linux"))]
+#[link(name = "stdc++")]
+extern "C" {}
+
 #[cfg(feature = "bc7-encode")]
 fn encode_bc7(width: u32, height: u32, rgba: &[u8], quality: EncodeQuality) -> Result<Vec<u8>> {
     use intel_tex_2::{bc7, RgbaSurface};

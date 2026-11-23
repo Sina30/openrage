@@ -1,6 +1,6 @@
 //! The Settings window: reached from the rail and the menus, each page used for what it is for.
 
-use super::{run, Flow, Step};
+use super::{run, skip, Flow, Step};
 use crate::state::ThemeChoice;
 
 fn settings(at: &mut Flow, page: &str) -> Step {
@@ -69,8 +69,11 @@ fn f93_a_shortcut_is_bound_to_a_key_and_reset() {
 #[test]
 fn f94_a_game_is_made_the_active_one() {
     run("f94_set_active_game", |at| {
-        at.wait_for("GTA V (Legacy)")?;
+        at.wait_for_the_installs();
         settings(at, "Games")?;
+        if !at.shows("Set active") {
+            return Err(skip("no second install to make active on this machine"));
+        }
         at.click_beside("Set active", "GTA V (Legacy)")?;
         at.settle();
         at.look("after Set active");
@@ -108,7 +111,8 @@ fn f97_a_folder_that_is_no_gta_vi_install_is_refused_in_plain_words() {
         let empty = at.scratch.path().join("not_a_game");
         std::fs::create_dir_all(&empty).unwrap();
         at.pick(&empty);
-        at.click("Select folder…")?;
+        // Every game with no folder has this button: the one meant is GTA VI's.
+        at.click_beside("Select folder…", "GTA VI")?;
         at.settle();
         let said = at.toasts.last().cloned().unwrap_or_default();
         if !said.contains("does not look like a GTA VI folder") {
