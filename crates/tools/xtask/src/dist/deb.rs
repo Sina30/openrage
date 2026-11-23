@@ -28,7 +28,7 @@ fn control(version: &str, architecture: &str, installed_kib: u64) -> String {
          Architecture: {architecture}\n\
          Maintainer: OpenRage <noreply@openrage.invalid>\n\
          Installed-Size: {installed_kib}\n\
-         Depends: libc6, libasound2t64 | libasound2, libvulkan1\n\
+         Depends: libc6, libstdc++6, libasound2t64 | libasound2, libvulkan1\n\
          Section: graphics\n\
          Priority: optional\n\
          Description: Asset editor for Rockstar's RAGE engine\n \

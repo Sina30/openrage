@@ -326,7 +326,10 @@ fn helper_or_none(built: Result<PathBuf>, require: bool) -> Result<Option<PathBu
 
 /// The 256 px icon the build script renders from the brand symbol.
 fn find_icon(root: &Path) -> Result<PathBuf> {
-    let target = target_directory().unwrap_or_else(|_| root.join("target"));
+    icon_under(target_directory().unwrap_or_else(|_| root.join("target")))
+}
+
+fn icon_under(target: PathBuf) -> Result<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
     let mut stack = vec![target];
     while let Some(dir) = stack.pop() {
@@ -339,12 +342,15 @@ fn find_icon(root: &Path) -> Result<PathBuf> {
             let name = name.to_string_lossy();
             if path.is_dir() {
                 // Only the build scripts' output folders: `target` holds hundreds of thousands of files.
+                // Cargo names one `build/openrage-<hash>/out`, or `build/openrage/<hash>/out`.
                 let wanted = name == "release"
                     || name == "debug"
                     || name == "build"
+                    || name == "openrage"
                     || name.starts_with("openrage-")
                     || name == "out"
-                    || name.ends_with("-apple-darwin");
+                    || name.ends_with("-apple-darwin")
+                    || dir.file_name().is_some_and(|d| d == "openrage");
                 if wanted {
                     stack.push(path);
                 }
@@ -857,6 +863,22 @@ mod tests {
                 {"ext":"xml","noun":"XML","suggested":false}]"#,
         )
         .expect("a list of file types")
+    }
+
+    #[test]
+    fn the_icon_is_found_in_either_layout_of_a_build_scripts_output() {
+        for out in [
+            "release/build/openrage-0123abcd/out",
+            "release/build/openrage/0123abcd/out",
+            "x86_64-apple-darwin/release/build/openrage/0123abcd/out",
+        ] {
+            let scratch = tempfile::tempdir().unwrap();
+            let dir = scratch.path().join(out);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("app_logo_256.png"), b"png").unwrap();
+            let found = icon_under(scratch.path().to_path_buf()).expect(out);
+            assert_eq!(found, dir.join("app_logo_256.png"));
+        }
     }
 
     #[test]

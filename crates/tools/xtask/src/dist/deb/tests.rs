@@ -72,7 +72,7 @@ fn the_control_file_names_the_package_its_architecture_and_what_it_needs() {
         "Version: 0.1.0",
         "Architecture: arm64",
         "Installed-Size: 5",
-        "Depends: libc6, libasound2t64 | libasound2, libvulkan1",
+        "Depends: libc6, libstdc++6, libasound2t64 | libasound2, libvulkan1",
     ] {
         assert!(text.lines().any(|l| l == line), "{line}\n{text}");
     }

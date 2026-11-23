@@ -382,13 +382,22 @@ impl Flow {
         (self.shell.state.active_document()).map_or(String::new(), |d| d.file_name())
     }
 
+    /// The search of this machine for installs over: a launch starts it and it ends within a few seconds.
+    pub(super) fn wait_for_the_installs(&mut self) {
+        let _ = self.wait_within(Duration::from_secs(20), "the search for installs", |flow| {
+            !flow.shell.state.discovery.is_running()
+        });
+    }
+
     /// The card of `game` on the start page opened, until its rows are read.
     pub(super) fn open_install(&mut self, game: &str) -> Step {
-        // The installs of this machine are found within a few seconds of a launch, or there are none.
-        let found = self.wait_within(Duration::from_secs(20), "the install's card", |flow| {
-            flow.shows(game)
+        // ⚠ A game's card is drawn whether or not its install is found, so the card's name says nothing.
+        self.wait_for_the_installs();
+        let found = crate::state::Game::all().any(|g| {
+            g.label() == game
+                && crate::ui::panels::game_picker::found_install(&self.shell.state, g).is_some()
         });
-        if found.is_err() {
+        if !found {
             return Err(skip(format!("no {game} install is found on this machine")));
         }
         self.click_beside("Open", game)?;
