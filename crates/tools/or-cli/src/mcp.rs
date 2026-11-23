@@ -499,17 +499,18 @@ fn run_child(
     ];
     let deadline = Instant::now() + limit;
     let status = loop {
+        // The deadline is read first, so a limit of nothing stops every child, however fast it ends.
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            // ⚠ The readers are not joined: a process the child started can hold the pipes open past the kill.
+            return Err(format!(
+                "stopped after {} s; give a larger timeoutSeconds",
+                limit.as_secs()
+            ));
+        }
         match child.try_wait().map_err(|e| e.to_string())? {
             Some(status) => break status,
-            None if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                // ⚠ The readers are not joined: a process the child started can hold the pipes open past the kill.
-                return Err(format!(
-                    "stopped after {} s; give a larger timeoutSeconds",
-                    limit.as_secs()
-                ));
-            }
             None => std::thread::sleep(Duration::from_millis(20)),
         }
     };
@@ -747,8 +748,12 @@ mod tests {
     #[test]
     fn every_route_offered_as_a_tool_is_one_serve_answers() {
         let mut s = Session::default();
+        // ⚠ `mount` with no `game` mounts the install the app has selected on this machine, so it is given a folder that is not there.
+        let nowhere = std::env::temp_dir().join("openrage-mcp-no-such-install");
+        let mut args = Map::new();
+        args.insert("game".into(), json!(nowhere.display().to_string()));
         for (route, ..) in ROUTES {
-            let said = match route_of(route, Map::new(), &mut s) {
+            let said = match route_of(route, args.clone(), &mut s) {
                 Ok(content) => content[0]["text"].to_string(),
                 Err(why) => why,
             };
