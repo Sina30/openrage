@@ -310,6 +310,20 @@ mod tests {
         extern "C" {
             fn raise(signal: i32) -> i32;
         }
+        // ⚠ The handler is the process's, and a test of this binary that ran a job first owns it: the check runs in a process of its own.
+        const ALONE: &str = "OR_CLI_INTERRUPT_TEST_ALONE";
+        if std::env::var_os(ALONE).is_none() {
+            let alone = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "jobs::tests::the_first_interrupt_runs_the_callback_and_a_second_installer_is_refused",
+                ])
+                .env(ALONE, "1")
+                .status()
+                .unwrap();
+            assert!(alone.success(), "the check failed in a process of its own");
+            return;
+        }
         let ran = Arc::new(AtomicBool::new(false));
         let seen = ran.clone();
         install_stop_handler(move || seen.store(true, Ordering::SeqCst))

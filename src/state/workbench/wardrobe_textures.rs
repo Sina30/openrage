@@ -514,7 +514,11 @@ impl AppState {
                 .watches
                 .bound
                 .iter()
-                .filter(|(_, _, b)| Path::new(&b.folder) == folder)
+                // ⚠ A watcher names a folder by its real path, which is another spelling where a link leads to it.
+                .filter(|(_, _, b)| {
+                    let bound = Path::new(&b.folder);
+                    bound == folder || std::fs::canonicalize(bound).is_ok_and(|real| real == folder)
+                })
                 .cloned()
                 .collect();
             for (module, pack, binding) in bound {

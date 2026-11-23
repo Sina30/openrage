@@ -256,7 +256,7 @@ fn f19_a_file_inside_an_install_is_saved_only_as_a_copy() {
         install(at, LEGACY)?;
         open_from_install(at, "common.rpf/data/handling.meta")?;
         at.click("File")?;
-        let save = at.find("Save Ctrl+S")?;
+        let save = at.find(super::SAVE)?;
         at.key(egui::Key::Escape);
         if !save.disabled || !at.find("Save")?.disabled {
             return Err("Save is offered on an unchanged file inside a read-only install".into());

@@ -245,6 +245,10 @@ fn first_difference(before: &str, now: &str) -> String {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "the record is of the screens as Windows and Linux draw them: a Mac names a key Cmd, and a label is as wide as its text"
+)]
 fn the_task_screens_draw_as_they_did_before_the_table() {
     // ⚠ The record is English whatever language the machine speaks or a test of this process chose.
     let _english = crate::i18n::pin("en");

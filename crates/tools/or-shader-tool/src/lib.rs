@@ -1,3 +1,5 @@
+// wgpu's auto-trait chain (`Device: Sync`) is deeper than the default 128 on this nightly.
+#![recursion_limit = "256"]
 pub mod backend_check;
 #[cfg(feature = "native-front")]
 pub mod bindings;

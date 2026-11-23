@@ -330,9 +330,9 @@ fn a_recent_cards_path_never_overprints_its_age_or_its_buttons() {
             let mut labels: Vec<_> = (shell.described.iter())
                 .filter(|w| {
                     w.role == egui::accesskit::Role::Label
-                        && w.name
-                            .as_deref()
-                            .is_some_and(|n| n.contains(":\\") && n.ends_with("proj"))
+                        && w.name.as_deref().is_some_and(|n| {
+                            n.contains(std::path::MAIN_SEPARATOR) && n.ends_with("proj")
+                        })
                 })
                 .collect();
             labels.sort_by(|a, b| a.bounds.min.y.total_cmp(&b.bounds.min.y));
