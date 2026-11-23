@@ -69,6 +69,10 @@ const ALLOWED: &[(&str, &str)] = &[
         "crates/io/or-io-verify/src/bin/scaffold.rs",
         "an ignored test, run by name, that keeps a build cache between runs by design",
     ),
+    (
+        "crates/tools/or-cli/src/mcp.rs",
+        "the pictures of a `shots` call that names no folder, which its caller reads afterwards and no test makes; and a test's path to an install that is not there, where nothing is written",
+    ),
 ];
 
 fn root() -> PathBuf {
