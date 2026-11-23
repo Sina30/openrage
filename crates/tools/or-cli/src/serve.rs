@@ -18,11 +18,12 @@ use super::search::{
 };
 use super::wardrobe_exchange;
 
-const MAX_INLINE_BYTES: usize = 8 * 1024 * 1024;
+pub(super) const MAX_INLINE_BYTES: usize = 8 * 1024 * 1024;
 
 const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 
-struct Session {
+#[derive(Default)]
+pub(super) struct Session {
     default_game: Option<PathBuf>,
     default_keys: Option<PathBuf>,
     default_dlc: Option<String>,
@@ -100,13 +101,13 @@ pub fn run(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn write_line(out: &mut impl Write, response: &Value) -> bool {
+pub(super) fn write_line(out: &mut impl Write, response: &Value) -> bool {
     let encoded = serde_json::to_string(response)
         .unwrap_or_else(|e| format!("{{\"ok\":false,\"error\":\"serialize response: {e}\"}}"));
     writeln!(out, "{encoded}").is_ok() && out.flush().is_ok()
 }
 
-fn handle_line(line: &str, session: &mut Session) -> (Value, bool) {
+pub(super) fn handle_line(line: &str, session: &mut Session) -> (Value, bool) {
     let id = serde_json::from_str::<Value>(line)
         .ok()
         .and_then(|v| v.get("id").cloned());
@@ -183,14 +184,14 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-enum LineRead {
+pub(super) enum LineRead {
     Line,
     Empty,
     Eof,
     TooLong,
 }
 
-fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> LineRead {
+pub(super) fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> LineRead {
     let mut too_long = false;
     let mut saw_any = false;
     loop {
@@ -601,7 +602,7 @@ fn str_array_upper(params: &Map<String, Value>, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn base64_encode(input: &[u8]) -> String {
+pub(super) fn base64_encode(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
@@ -665,7 +666,7 @@ fn parse_flags(args: &[String]) -> Result<Flags, String> {
     Ok((game, keys, dlc))
 }
 
-fn init_stderr_tracing() {
+pub(super) fn init_stderr_tracing() {
     let _ = tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(

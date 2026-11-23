@@ -42,6 +42,8 @@ or-interchange.workspace = true
 # Cancellation and progress-as-data. ⚠ This used to be a local module, and a
 # stderr rate limiter is the one shape the editor cannot render.
 or-job.workspace = true
+# Where the MCP clients keep their configuration, for `mcp install`.
+dirs.workspace = true
 # The DXIL front end GTA VI's programs go through, for `rpf scan-shaders` and the app's Shaded
 # view, and the SHA-1 a translated program is keyed by.
 or-shader-front.workspace = true

@@ -3133,6 +3133,7 @@ dependencies = [
 name = "or-cli"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "glam",
  "or-addonped",
  "or-anim",

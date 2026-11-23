@@ -270,4 +270,6 @@ One client, the process that spawned the server, served in order, with no
 authentication: the server trusts whoever holds its stdio. A server that dies,
 from an abort or running out of memory, is a child process to respawn and
 `mount` again. [openrage_client.go](openrage_client.go) is a
-minimal Go client that pings, mounts, searches and shuts down.
+minimal Go client that pings, mounts, searches and shuts down. An AI agent
+reaches the same routes as tools through `openrage-cli mcp`
+([MCP_Server.md](MCP_Server.md)).

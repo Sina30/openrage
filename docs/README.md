@@ -24,6 +24,7 @@ Contracts that code is written against, and the map of the tree.
 
 - [Crate_Reference.md](reference/Crate_Reference.md): where each crate and part of the app sits, the rules between them and their traps.
 - [CLI_Server_Protocol.md](reference/CLI_Server_Protocol.md): the wire contract of `openrage-cli serve`, with a Go client, [openrage_client.go](reference/openrage_client.go).
+- [MCP_Server.md](reference/MCP_Server.md): `openrage-cli mcp`, the server an AI agent drives OpenRage through, how a client is given it and its tools.
 - [Plan_Document.md](reference/Plan_Document.md): the JSON a build's plan is written as, which `openrage-cli wardrobe plan` prints.
 - [Plugin_ABI.md](reference/Plugin_ABI.md): the contract between an in-app plugin and the host.
 - [Particle_Shader_ABI.md](reference/Particle_Shader_ABI.md): the contract between the shader bake and the particle pipelines.

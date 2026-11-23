@@ -5031,7 +5031,10 @@ launch an external tool, notice the change on exit, offer to write it back into 
 `crates/tools/or-cli/tests/the_external_surface_is_what_it_documents.rs`, and
 `the_protocol_is_read_only_but_for_the_four_routes_that_change_a_pack_and_says_so` turns red with the first
 write route beyond `wardrobe-add`, `wardrobe-set`, `wardrobe-fix` and `wardrobe-waive`, which change the
-clothing pack of a project the caller names and never the install. File associations are
+clothing pack of a project the caller names and never the install. The MCP adapter exists:
+`openrage-cli mcp` offers those routes, every command of `openrage-cli` and the editor's frames drawn
+from a script as tools ([MCP_Server.md](../reference/MCP_Server.md)), and names the commands from
+`COMMANDS` at run time. File associations are
 [R25b](#r25b-explorer-ergonomics)'s.
 
 **Depends on.** [R19](#r19-one-virtual-filesystem),

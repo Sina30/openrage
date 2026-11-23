@@ -216,6 +216,23 @@ fn an_alias_is_not_a_second_route() {
     );
 }
 
+/// ⚠ The table of tools in `mcp.rs` stands beside the dispatch and is not made from it, so a new route is not a tool until it has a row there.
+#[test]
+fn every_route_but_the_transports_own_is_a_tool_of_the_mcp_server() {
+    let mcp =
+        std::fs::read_to_string(root().join("crates/tools/or-cli/src/mcp.rs")).expect("mcp.rs");
+    let untooled: Vec<String> = canonical()
+        .into_iter()
+        .filter(|route| !matches!(route.as_str(), "ping" | "shutdown"))
+        .filter(|route| !mcp.contains(&format!("\"{route}\",")))
+        .collect();
+    assert!(
+        untooled.is_empty(),
+        "these routes are not tools of `openrage-cli mcp`: {untooled:?}. Give each a row of \
+         `ROUTES` in `mcp.rs`, or an agent cannot reach what a program can."
+    );
+}
+
 #[test]
 fn the_document_does_not_promise_a_route_the_server_lacks() {
     let doc = std::fs::read_to_string(root().join("docs/reference/CLI_Server_Protocol.md"))

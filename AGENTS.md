@@ -532,6 +532,8 @@ The module table and the app's traps are in
   [openrage_client.go](docs/reference/openrage_client.go), and
   [Plugin_ABI.md](docs/reference/Plugin_ABI.md): the `openrage-cli serve` protocol and
   the plugin boundary, both read by tests.
+- [MCP_Server.md](docs/reference/MCP_Server.md): `openrage-cli mcp`, the server an AI
+  agent drives OpenRage through, how a client is given it, and its tools.
 - [README.md](README.md), [plugins/README.md](plugins/README.md),
   [tools/cw-compare/README.md](tools/cw-compare/README.md),
   [assets/logos/README.md](assets/logos/README.md), and the corpus and

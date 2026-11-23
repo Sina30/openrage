@@ -31,7 +31,7 @@ OpenRage opens, edits and saves the files Rockstar's RAGE games ship: a desktop 
 
 - **Modders.** Browse an install as one file tree, open a model, a texture, an animation or an effect, see it in a GPU viewport, change it and save it, into a `mods` copy when the archive is the game's own.
 - **Content creators.** A project holds clothing, addon peds, weapons, maps and particle effects as editable sources, checks them against rules that say what is wrong and offer the fix, and builds a server resource, a DLC pack or an `.oiv` package ([guide](docs/guides/Workbench_Guide.md)).
-- **Tool and pipeline authors.** `openrage-cli` does the same work with no window, its `serve` mode answers other programs over NDJSON, and a WebAssembly plugin adds panels and commands to the editor.
+- **Tool and pipeline authors.** `openrage-cli` does the same work with no window, its `serve` mode answers other programs over NDJSON, its `mcp` mode gives an AI agent the same as tools ([install](docs/reference/MCP_Server.md#install)), and a WebAssembly plugin adds panels and commands to the editor.
 - **Rust developers.** `or-io` declares GTA V's structures under the engine's names, and a file opens as an ordinary value: read a field, assign it, call `save()`.
 
 ## Games
@@ -110,7 +110,7 @@ The same readers and writers for scripts; `openrage-cli <command> --help` gives 
 | Convert | `convert` `meta` `texture` `mesh` `awc` `gfx` `script` `deflate` |
 | Work on archives | `rpf` `bulk` `dlc` `dlc-list` |
 | Build content | `project` `wardrobe` `addonped` `weapons` `maps` `particles` `source` `world` |
-| Automate | `serve` (NDJSON over stdio, [protocol](docs/reference/CLI_Server_Protocol.md)), `photo` (pictures of models with no window) |
+| Automate | `serve` (NDJSON over stdio, [protocol](docs/reference/CLI_Server_Protocol.md)), `mcp` (for AI agents, [tools](docs/reference/MCP_Server.md)), `photo` (pictures of models with no window) |
 
 ```bash
 openrage-cli rpf list x64a.rpf

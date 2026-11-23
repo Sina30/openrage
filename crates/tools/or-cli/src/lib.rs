@@ -55,6 +55,7 @@ mod inspect;
 mod jobs;
 mod keys;
 mod maps;
+mod mcp;
 mod mesh;
 mod meta;
 mod names;
@@ -171,6 +172,7 @@ pub const COMMANDS: &[&str] = &[
     "hash",
     "names",
     "serve",
+    "mcp",
     "source",
     "texture",
     "versions",
@@ -243,6 +245,7 @@ pub fn run(args: &[String]) -> ExitCode {
         "hash" => names::run_hash(rest),
         "names" => with_cli_tracing(|| names::run_names(rest)),
         "serve" => serve::run(rest),
+        "mcp" => mcp::run(rest),
         "source" => with_cli_tracing(|| source::run(rest)),
         "texture" => with_cli_tracing(|| texture::run(rest)),
         "ttpf" => ttpf::run(rest),
@@ -342,6 +345,7 @@ fn print_usage() {
     eprintln!("  hash       Hash names the way RAGE does (both functions, hex or decimal)");
     eprintln!("  names      Build a hash -> name index over an install and query it");
     eprintln!("  serve      Persistent NDJSON server (mount once, many commands over stdio)");
+    eprintln!("  mcp        MCP server for AI agents over stdio; `mcp install` registers it with a client");
     eprintln!("  source     One source folder: replace a drawable source's geometry from a glTF, GLB or FBX");
     eprintln!("  texture    Author textures: export/import PNG+DDS, re-encode BCn, PSNR");
     eprintln!("  ttpf       GTA VI texture packs: list, export the readable textures, replace one");
