@@ -415,6 +415,8 @@ fn every_control_of_the_project_screens_has_a_row_with_its_place_and_its_reason(
     );
     let missing: Vec<String> = drawn
         .into_iter()
+        // The rows name a key as Windows and Linux do; a Mac draws the same key as Cmd.
+        .map(|(name, seen)| (name.replace("Cmd+", "Ctrl+"), seen))
         .filter(|(name, _)| !rows.iter().any(|(pattern, ..)| matches(pattern, name)))
         .map(|(name, seen)| format!("{name}   ({seen})"))
         .collect();

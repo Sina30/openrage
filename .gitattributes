@@ -1,0 +1,2 @@
+# A shell script is run by bash on every system, Windows included, and a CRLF line end breaks it there.
+*.sh text eol=lf

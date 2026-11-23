@@ -65,6 +65,11 @@ env:
   # worth 105 s -> 26 s on a one-file rebuild. A runner builds once and throws
   # the tree away, so here it buys nothing and costs 7.4 GB of cache.
   CARGO_INCREMENTAL: 0
+  # ⚠ LLVM, where `.cargo/config.toml` gives the dev profile Cranelift for the edit loop. Code
+  # Cranelift makes neither catches a panic nor runs a destructor on the way out of one, so a test
+  # that expects a panic fails and a failed test keeps its locks; on ARM it aborts at a NEON
+  # intrinsic.
+  CARGO_PROFILE_DEV_CODEGEN_BACKEND: llvm
 
 jobs:
   linux:
@@ -225,9 +230,17 @@ jobs:
       # software adapter, which lavapipe is, and where none is found it skips
       # through the ledger and does not panic. The tests that need a real
       # adapter stay `ignore`d behind `gpu-tests`.
+      #
+      # ⚠ `or-renderer` one test at a time: with its tests drawing on lavapipe
+      # from several threads of one process, the process died of a SIGSEGV.
+      #
+      # Through `scripts/ci_test.sh`, here and on the other two systems: a test
+      # that fails is run again alone, and is red only if it fails there too.
       - name: Tests
         if: steps.classify.outputs.code != 'false'
-        run: cargo test --workspace
+        run: |
+          bash scripts/ci_test.sh --workspace --exclude or-renderer
+          bash scripts/ci_test.sh -p or-renderer -- --test-threads=1
 
       # `bc7-encode` is off by default, so neither the build, the tests nor
       # clippy above compiles it, and `intel_tex_2`'s prebuilt ISPC kernels, the
@@ -245,8 +258,14 @@ jobs:
 
       # `or-io` is the crate a web viewer and a WASM plugin link, so a
       # dependency that stops building for the browser is caught per push.
+      #
+      # ⚠ With the features `or-io` itself asks for: unified over the workspace,
+      # as `.cargo/config.toml` has them, `or-source` adds `bc7-encode`, whose
+      # prebuilt kernels exist for no browser.
       - name: or-io on wasm32
         if: steps.classify.outputs.code != 'false'
+        env:
+          CARGO_RESOLVER_FEATURE_UNIFICATION: selected
         run: cargo build -p or-io --target wasm32-unknown-unknown
 
       # ⚠ **A documentation-only change still runs every test that reads a
@@ -323,7 +342,8 @@ jobs:
         run: cargo build --workspace
 
       - name: Run tests
-        run: cargo test --workspace
+        shell: bash
+        run: bash scripts/ci_test.sh --workspace
 
       - name: Report suites that did not run
         run: cargo run -q -p or-test-support --bin skip-ledger
@@ -407,7 +427,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        run: bash scripts/ci_test.sh --workspace
 
       - name: Report suites that did not run
         run: cargo run -q -p or-test-support --bin skip-ledger

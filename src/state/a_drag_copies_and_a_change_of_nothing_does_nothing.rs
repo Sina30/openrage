@@ -533,12 +533,18 @@ fn a_copys_staged_files_are_gone_once_its_gate_question_is_answered() {
     }
 }
 
-/// How many folders the copies are staged under now.
-fn staged_copies() -> usize {
+/// How many of the folders copies are staged under hold a file called `name`.
+///
+/// ⚠ By name: every test of the process that copies stages under the same root.
+fn staged_copies(name: &str) -> usize {
     let probe = crate::ui::os_drop::staging_dir("openrage-clipboard");
     let root = probe.parent().expect("a root").to_path_buf();
     let _ = std::fs::remove_dir_all(&probe);
-    std::fs::read_dir(&root).map_or(0, |entries| entries.flatten().count())
+    std::fs::read_dir(&root).map_or(0, |entries| {
+        (entries.flatten())
+            .filter(|folder| folder.path().join(name).is_file())
+            .count()
+    })
 }
 
 /// ⚠ An install: Read only refuses outright, and nothing is asked, so nothing is left to answer.
@@ -551,15 +557,16 @@ fn a_copy_the_gate_refuses_leaves_no_staged_file() {
         &[
             (
                 "a.rpf",
-                archive(&[("one.txt", b"one"), ("two.txt", b"two")]),
+                archive(&[("refused_one.txt", b"one"), ("refused_two.txt", b"two")]),
             ),
             ("b.rpf", archive(&[("kept.txt", b"kept")])),
         ],
     );
-    let rows = ["one.txt", "two.txt"].map(|n| node_at(&mut state, tree, &format!("a.rpf/{n}")));
+    let rows = ["refused_one.txt", "refused_two.txt"]
+        .map(|n| node_at(&mut state, tree, &format!("a.rpf/{n}")));
     let b_row = node_at(&mut state, tree, "b.rpf");
     state.prefs.edit_mode = EditMode::ReadOnly;
-    let before = staged_copies();
+    let before = staged_copies("refused_one.txt");
 
     assert_eq!(state.rpf_copy_nodes(tree, &rows, b_row), Ok(()));
     assert!(
@@ -567,7 +574,7 @@ fn a_copy_the_gate_refuses_leaves_no_staged_file() {
         "a refusal asks nothing"
     );
     assert_eq!(
-        staged_copies(),
+        staged_copies("refused_one.txt"),
         before,
         "the refused copy left its staged files"
     );
@@ -583,27 +590,37 @@ fn a_copy_that_asks_while_another_question_waits_takes_the_staged_files_of_the_o
         &[
             (
                 "a.rpf",
-                archive(&[("one.txt", b"one"), ("two.txt", b"two")]),
+                archive(&[("asked_one.txt", b"one"), ("asked_two.txt", b"two")]),
             ),
             ("b.rpf", archive(&[("kept.txt", b"kept")])),
         ],
     );
-    let one = node_at(&mut state, tree, "a.rpf/one.txt");
-    let two = node_at(&mut state, tree, "a.rpf/two.txt");
+    let one = node_at(&mut state, tree, "a.rpf/asked_one.txt");
+    let two = node_at(&mut state, tree, "a.rpf/asked_two.txt");
     let b_row = node_at(&mut state, tree, "b.rpf");
     state.prefs.edit_mode = EditMode::Everything;
     state.retail_edit_session_allow = false;
-    let before = staged_copies();
+    let staged = || {
+        (
+            staged_copies("asked_one.txt"),
+            staged_copies("asked_two.txt"),
+        )
+    };
+    let before = staged();
 
     assert_eq!(state.rpf_copy_nodes(tree, &[one], b_row), Ok(()));
     assert!(state.pending_retail_edit.is_some(), "the gate did not ask");
-    assert_eq!(staged_copies(), before + 1, "the first copy is staged");
+    assert_eq!(
+        staged(),
+        (before.0 + 1, before.1),
+        "the first copy is staged"
+    );
     assert_eq!(state.rpf_copy_nodes(tree, &[two], b_row), Ok(()));
     assert_eq!(
-        staged_copies(),
-        before + 1,
+        staged(),
+        (before.0, before.1 + 1),
         "the question that was replaced kept its staged files"
     );
     state.apply_pending_retail_edit(RetailEditDecision::No);
-    assert_eq!(staged_copies(), before, "the last answer left staged files");
+    assert_eq!(staged(), before, "the last answer left staged files");
 }

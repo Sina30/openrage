@@ -28,6 +28,13 @@ fn skip(why: impl std::fmt::Display) -> String {
     format!("{SKIP}{why}")
 }
 
+/// File ▸ Save as its row is named, with the key this machine binds it to.
+const SAVE: &str = if cfg!(target_os = "macos") {
+    "Save Cmd+S"
+} else {
+    "Save Ctrl+S"
+};
+
 /// The frames after a click: more than egui's double-click time, so the next click on the same place is a click of its own.
 const AFTER_A_CLICK: usize = 12;
 

@@ -47,7 +47,7 @@ fn f60_text_is_typed_into_a_file_and_saved() {
         if !dirty(at) {
             return Err("typing left the document clean".into());
         }
-        at.menu("File", "Save Ctrl+S")?;
+        at.menu("File", super::SAVE)?;
         at.wait("the file saved", |flow| !dirty(flow))?;
         let written = std::fs::read_to_string(&file).unwrap();
         if !written.contains("<!-- tuned -->") {

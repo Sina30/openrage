@@ -218,9 +218,12 @@ fn files_whose_staged_names_collide_are_each_kept_with_their_own_bytes() {
             bytes,
             "{path} was kept as {kept} with the bytes of another file"
         );
-        assert!(
-            seen.insert(kept.to_lowercase()),
-            "{kept} is the name of two kept files"
-        );
+        // A host that tells `Readme.txt` from `readme.txt` keeps both names.
+        let name = if cfg!(target_os = "linux") {
+            kept.clone()
+        } else {
+            kept.to_lowercase()
+        };
+        assert!(seen.insert(name), "{kept} is the name of two kept files");
     }
 }

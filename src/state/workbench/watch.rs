@@ -185,6 +185,13 @@ mod tests {
         let mut watch = PackWatch::new();
         watch.follow(&[dir.path().to_path_buf()]);
         assert!(watch.covers());
+        // ⚠ A Mac can report a folder as made a moment after it was: that is heard out before the writes this test is about.
+        if cfg!(target_os = "macos") {
+            std::thread::sleep(Duration::from_millis(900));
+            let before = Instant::now();
+            watch.changed(before);
+            watch.changed(before + QUIET + Duration::from_millis(50));
+        }
 
         std::fs::create_dir_all(dir.path().join(".openrage/versions")).unwrap();
         std::fs::write(dir.path().join(".openrage/versions/000000.snapshot"), b"v").unwrap();
