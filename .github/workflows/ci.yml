@@ -27,15 +27,11 @@ on:
   # run it.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Only to refresh the dependency cache pull requests read, which is keyed on
-  # exactly these files. `main-tip.yml` is what checks every landed commit.
+  # Every landed commit. `main-tip.yml`, which checked each on the self-hosted
+  # runner, has no runner, and a hosted minute costs nothing on a public
+  # repository. It also saves the dependency cache pull requests read.
   push:
     branches: [main]
-    paths:
-      - Cargo.lock
-      - "**/Cargo.toml"
-      - rust-toolchain.toml
-      - .github/workflows/ci.yml
   # The clean-machine Windows run.
   schedule:
     - cron: "17 3 * * 1"

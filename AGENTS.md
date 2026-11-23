@@ -338,13 +338,12 @@ Nothing waits for any of it before a merge.
 ⚠ **`ci.yml` is on again, and `local-gate.yml` and `main-tip.yml` are still disabled** (owner, 2026-11-23,
 [recorded](docs/direction/Project_Context.md#hosted-ci-is-on-again-and-the-self-hosted-workflows-stay-off-2026-11-23)):
 the repository has no self-hosted runner, so `just ready` stays the gate before a merge and no run sees
-the corpus. A pull request starts the Linux job; a push straight to `main` starts it only when it
-changes a manifest, the toolchain file or `ci.yml`. `gh workflow enable` restores the other two; the
-table says what each does when it is on.
+the corpus. The Linux job starts on every push to a pull request and to `main`, and is read afterwards.
+`gh workflow enable` restores the other two; the table says what each does when it is on.
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml`, job `linux` (hosted) | every push to a non-draft pull request, and a `main` push that changes a manifest, the toolchain file or `ci.yml` (to refresh the dependency cache) | fmt, provenance, encoding, clippy, `cargo test --workspace`, the BC7 encoder, the self-check, `or-io` for wasm32; a docs-only change runs the lints and the document-reading tests |
+| `ci.yml`, job `linux` (hosted) | every push to a non-draft pull request and to `main` | fmt, provenance, encoding, clippy, `cargo test --workspace`, the BC7 encoder, the self-check, `or-io` for wasm32; a docs-only pull request runs the lints and the document-reading tests |
 | `local-gate.yml`, job `layouts` (self-hosted) | every push to a pull request from this repository, drafts included, and to `main` | `or-io-verify` on the corpus, the behaviour baselines, the clean-checkout run |
 | `main-tip.yml` (self-hosted) | every tip of `main` | compile check, tests with no pack and no corpus, clippy, BC7, GPU tests, `cargo hack --each-feature`, the shader tool |
 | `ci.yml`, job `windows` (hosted) | weekly and on request | the full Windows suite on a clean machine |

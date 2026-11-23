@@ -546,7 +546,7 @@ limit, which stopped every hosted job for seventeen hours; the header of
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml`, Linux job | every push to a non-draft pull request; a push to `main` changing a manifest, the toolchain file or `ci.yml`, to refresh the dependency cache; on request | `cargo fmt --all --check`, provenance, encoding, clippy with `--all-targets`, `just fmt` and `just lint`, `cargo test --workspace` with `or-renderer` under lavapipe, the BC7 encoder, the self-check, `or-io` built for `wasm32-unknown-unknown`, the skip ledger. A change touching only `docs/` and Markdown runs the lints and the tests that read documents instead |
+| `ci.yml`, Linux job | every push to a non-draft pull request; every push to `main`; on request | `cargo fmt --all --check`, provenance, encoding, clippy with `--all-targets`, `just fmt` and `just lint`, `cargo test --workspace` with `or-renderer` under lavapipe, the BC7 encoder, the self-check, `or-io` built for `wasm32-unknown-unknown`, the skip ledger. A pull request touching only `docs/` and Markdown runs the lints and the tests that read documents instead |
 | `local-gate.yml`, the `layouts` job | every push to a pull request from this repository, drafts included; every push to `main`; on request | `or-io-verify`'s per-format gates on the corpus, the behaviour baselines, then the workspace with no schema and no corpus (the metadata corpus aside) |
 | `main-tip.yml` | every push to `main`; on request | `cargo check --workspace --all-targets`, the workspace tests with no corpus, clippy, the BC7 encoder, the renderer's GPU tests, `cargo hack` over each feature, the shader tool |
 | `ci.yml`, Windows job | weekly, and on request | the full Windows suite on a clean hosted machine |

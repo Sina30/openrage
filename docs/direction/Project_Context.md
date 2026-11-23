@@ -30,7 +30,7 @@ Newest first. An entry records a decision as it was taken; one a later decision 
 
 The owner asked, of the public repository: "Make sure the openrage CI pass, and that on a tag it publish a github release with all the builds". `ci.yml` is enabled again (`gh workflow enable`), and `release.yml` published `v0.1.0` with a package for each OS. `local-gate.yml` and `main-tip.yml` stay disabled, because the repository has no self-hosted runner: no automatic check sees the corpus, and `just ready` with a format's `just test-format` stays the gate before a merge.
 
-Not decided: whether `ci.yml` starts on every push to `main`. A push there starts it only when it changes a manifest, the toolchain file or the workflow, and `main-tip.yml`, which checked each landed commit, has no runner.
+The owner then had `ci.yml` start on every push to `main` as well as on a pull request, as the decision of 2026-10-06 intended: `main-tip.yml`, which checked each landed commit, has no runner, and a hosted run costs nothing on a public repository. The Windows and macOS jobs keep their weekly run.
 
 Supersedes [2026-10-06](#ci-is-switched-off-during-the-dev-phase-and-runs-on-every-push-to-main-after-it-2026-10-06) for `ci.yml`; the other two workflows stay as that entry left them.
 
