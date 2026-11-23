@@ -147,6 +147,9 @@ fn move_lines(outline: &MoveOutline) -> Vec<String> {
         walk,
         String::new(),
     ];
+    if let Some(name) = text_name(head.name_hash) {
+        lines.insert(1, tr!("Network name: {name}", name = name));
+    }
     outline_lines(outline, &mut lines);
     lines
 }
@@ -247,10 +250,20 @@ fn transition_lines(
             size = t.size,
         );
         lines.push(format!("{indent}{line}"));
+        lines.push(format!("{indent}  {}", transition_words(t)));
         for c in &t.conditions {
             lines.push(format!("{indent}  {}", condition_line(c)));
         }
     }
+}
+
+/// A transition's fixed words as stored, of which only its size, flags and target are read.
+fn transition_words(t: &MoveTransition) -> String {
+    let words: Vec<String> = t.words.iter().map(|w| format!("{w:08X}")).collect();
+    tr!(
+        "words from +0x00 to +0x48 as stored: {words}",
+        words = words.join(" ")
+    )
 }
 
 /// A machine entry's state, size and flag.
@@ -326,13 +339,17 @@ fn binding_line(binding: &Binding) -> String {
     )
 }
 
-/// Each record's first word as a hash, or a dash for none.
+/// Each record's first word as `named` names a hash, or a dash for none.
 fn hashes<const N: usize>(records: &[[u32; N]]) -> String {
+    hashes_with(records, named)
+}
+
+fn hashes_with<const N: usize>(records: &[[u32; N]], hash: impl Fn(u32) -> String) -> String {
     if records.is_empty() {
         return "-".to_string();
     }
     (records.iter())
-        .map(|r| format!("hash_{:08X}", r[0]))
+        .map(|r| hash(r[0]))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -482,6 +499,37 @@ mod tests {
             node_label_with(&outline, outline.root, |w| format!("hash_{w:08X}")),
             "Tail hash_00000007"
         );
+    }
+
+    #[test]
+    fn a_binding_names_its_hashes_and_a_transition_shows_its_stored_words() {
+        let text = |w: u32| match w {
+            7 => from_the_text("speed"),
+            w => format!("hash_{w:08X}"),
+        };
+        assert_eq!(
+            hashes_with(&[[7u32, 1, 2, 3], [9, 0, 0, 0]], text),
+            "speed (from the text), hash_00000009"
+        );
+        let none: [[u32; 2]; 0] = [];
+        assert_eq!(hashes_with(&none, text), "-");
+
+        let mut words = [0u32; 19];
+        words[4] = 0x4C;
+        words[18] = 0xFFFF_FFB8;
+        let transition = MoveTransition {
+            at: 0x48,
+            size: 0x4C,
+            target: 0,
+            words,
+            conditions: Vec::new(),
+        };
+        let shown: Vec<String> = words.iter().map(|w| format!("{w:08X}")).collect();
+        assert_eq!(
+            transition_words(&transition),
+            format!("words from +0x00 to +0x48 as stored: {}", shown.join(" "))
+        );
+        assert!(shown[4] == "0000004C" && shown[18] == "FFFFFFB8");
     }
 
     #[test]

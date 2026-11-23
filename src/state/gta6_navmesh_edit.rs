@@ -176,13 +176,6 @@ impl AppState {
         }
         Ok(cuts)
     }
-
-    /// Why a polygon of the scanned GTA VI cell `doc` is not deleted while a neighbouring cell's
-    /// link numbers it or one after it; `None` for another document.
-    pub(super) fn gta6_delete_refusal(&self, doc: DocumentId) -> Option<String> {
-        self.gta6_cell(doc)?;
-        Some(tr!("A GTA VI cell's polygon is not deleted: the links of the neighbouring cells' bodies, which are saved apart, would be renumbered too. Disable it instead.").to_string())
-    }
 }
 
 /// Per edge of the view's model of a scanned cell, whether it leads anywhere.

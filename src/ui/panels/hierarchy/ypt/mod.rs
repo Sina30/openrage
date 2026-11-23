@@ -637,6 +637,7 @@ fn ypt_section_particle_rules<T: ParticleTarget>(
                             if r.clicked() {
                                 state.selection.select(doc_id, b_sel);
                             }
+                            r.context_menu(|ui| add_menu_for_behaviour(ui, asset, idx, b_idx, ops));
                         }
                     },
                 );

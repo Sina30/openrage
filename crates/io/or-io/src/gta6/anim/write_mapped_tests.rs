@@ -105,3 +105,31 @@ fn a_dof_list_that_takes_a_second_block_map_slot_moves_every_pointer_past_the_ma
         }
     }
 }
+
+#[test]
+fn a_metadata_word_that_reads_as_an_address_past_the_slots_is_kept_as_data_by_the_growth() {
+    let mut bytes = mapped_after_root(&build(&Spec::default()).bytes);
+    // The GUID property's 16 bytes, which the reader takes as they are.
+    let guid = (bytes.windows(16))
+        .position(|w| w == [0xA5u8; 16].as_slice())
+        .expect("the GUID's bytes");
+    let word = VIRTUAL + 0x100;
+    bytes[guid..guid + 8].copy_from_slice(&word.to_le_bytes());
+    let resource = opened(bytes);
+    let add = AnimEdit::AddDof {
+        animation: AT,
+        dof: Dof {
+            id: 7,
+            track: hash("boneScale"),
+            kind: 2,
+        },
+        value: [1.0, 1.0, 1.0, 0.0],
+    };
+    let added = edit(&resource, &add).expect("edits");
+    let out = &sections(&added).virtual_section;
+    assert!(out.len() > PIECE);
+    for r in [&added, &opened(out.clone())] {
+        assert_eq!(r.block_map, Some([2, 0]));
+        assert_eq!(clip_values(r), clip_values(&resource));
+    }
+}

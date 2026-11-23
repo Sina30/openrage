@@ -11,7 +11,7 @@ use super::super::{
 };
 use super::{moved_to_page, place, start_at, zlib, Rule, SaveLayout, OFFSET_LIMIT, TOP_ROW};
 use crate::codec::texture::{DxgiFormat, GrcTextureFormat};
-use crate::gta6::tiling::{chain, chain_lengths, Level, Tile};
+use crate::gta6::tiling::{chain, chain_lengths, place_planes, Level, Tile};
 
 /// A side is stated in 14 bits, less one.
 const SIDE_LIMIT: u32 = 1 << 14;
@@ -191,7 +191,8 @@ impl TexturePack {
         let sliced = !flat
             && (matches!((was.dimension, was.slices), (2, 6))
                 || (was.dimension == 5 && was.tile_mode == 0));
-        if !flat && !sliced {
+        let volume = was.dimension == 3;
+        if !flat && !sliced && !volume {
             return Err(TtpfError::ReshapeShape { index });
         }
         let Shape {
@@ -210,6 +211,9 @@ impl TexturePack {
         }
         if sliced {
             return self.planned_slices(index, was, shape);
+        }
+        if volume {
+            return self.planned_volume(index, was, shape);
         }
         let top = chain_lengths(width, height, format, &Tile::of(format, true))
             .first()
@@ -367,11 +371,22 @@ impl TexturePack {
         }
         let element = format.element_bytes();
         let mut memory = vec![0u8; rows.iter().sum::<u64>() as usize];
+        // A volume's slice is one z-plane, placed in the z-slab of tiles that holds it.
+        let slab = (entry.dimension == 3).then(|| {
+            let slabs = u64::from(entry.slices).div_ceil(tile.depth as u64);
+            memory.len() as u64 / slabs.max(1)
+        });
         for (slice, written) in places.iter().enumerate() {
             for (i, level) in written {
                 let fits = (levels.get(slice * mips + i))
                     .filter(|e| e.len() == level.width * level.height * element)
-                    .is_some_and(|e| place(&mut memory, level, e, &tile, element));
+                    .is_some_and(|e| match slab {
+                        Some(slab) => {
+                            let (size, planes) = ([level.width, level.height], slice..slice + 1);
+                            place_planes(&mut memory, level.at, size, planes, e, &tile, slab)
+                        }
+                        None => place(&mut memory, level, e, &tile, element),
+                    });
                 if !fits {
                     return Err(malformed(format!(
                         "mip {i} of texture {index}'s new chain is not {}x{} elements",
@@ -481,8 +496,9 @@ impl TexturePack {
         self.replaced.0.insert(index, bodies);
         self.moved = Some(Box::new(moved));
         // The row-size codes, small_rows and align_pages from the rows; an array in 64 KiB tiles
-        // states none, as a 2D texture in them does not.
-        let array = self.entries[index].dimension == 5 && self.entries[index].slices > 1;
+        // and a volume state none, as a 2D texture in them does not.
+        let (dimension, slices) = (self.entries[index].dimension, self.entries[index].slices);
+        let array = dimension == 3 || (dimension == 5 && slices > 1);
         let coded = match array {
             true => Some(([0; 4], 0, 0)),
             false => self.codes_by_rule(index),
@@ -643,3 +659,5 @@ fn spliced<T: Clone>(all: &[T], old: &Range<usize>, new: &[T]) -> Vec<T> {
 
 #[path = "ttpf_reshape_slices.rs"]
 mod slices;
+#[path = "ttpf_reshape_volume.rs"]
+mod volume;

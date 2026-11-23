@@ -141,6 +141,7 @@ fn draw_facts(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId, selec
         ui.strong(said);
         if let Some((group, Some(track))) = row_of(sel) {
             draw_id(ui, state, (doc_id, sel), &set, group, track);
+            draw_add_remove(ui, state, (doc_id, sel), group, track);
         }
         ui.separator();
     }
@@ -182,6 +183,43 @@ fn draw_id(
         .and_then(crate::state::gta6_expression_edit::typed_id);
     if let Some(id) = typed {
         state.edit_gta6_expression_id(doc_id, group, track, id);
+    }
+}
+
+/// Add, a copy of the picked track under the id typed after its group's last, and Remove; only
+/// for a group whose tracks the set's rules let change.
+fn draw_add_remove(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    (doc_id, sel): (DocumentId, u64),
+    group: ExpressionGroup,
+    track: usize,
+) {
+    if !group.takes_tracks() {
+        return;
+    }
+    let key = egui::Id::new(("gta6_expression_new_id", doc_id, sel));
+    let mut text = (ui.data(|d| d.get_temp::<String>(key))).unwrap_or_default();
+    let id = crate::state::gta6_expression_edit::typed_id(&text);
+    let (mut add, mut remove) = (false, false);
+    ui.horizontal(|ui| {
+        ui.label(tr!("New track's id"));
+        let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(160.0));
+        if response.changed() {
+            ui.data_mut(|d| d.insert_temp(key, text.clone()));
+        }
+        add = ui
+            .add_enabled(id.is_some(), egui::Button::new(tr!("Add")))
+            .clicked();
+        remove = ui.button(tr!("Remove")).clicked();
+    });
+    if let Some(id) = id.filter(|_| add) {
+        if state.add_gta6_expression_track(doc_id, group, track, id) {
+            ui.data_mut(|d| d.remove::<String>(key));
+        }
+    }
+    if remove {
+        state.remove_gta6_expression_track(doc_id, group, track);
     }
 }
 

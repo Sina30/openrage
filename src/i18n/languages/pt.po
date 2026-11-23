@@ -12580,8 +12580,8 @@ msgstr "Extrai as linhas selecionadas ou, se nenhuma estiver selecionada, todas 
 msgid "RBF metadata"
 msgstr "metadados RBF"
 
-msgid "Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."
-msgstr "Nada a extrair: o cabeçalho de um archive, seus nomes criptografados e uma primeira entrada não têm um fim que uma leitura conheça."
+msgid "Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."
+msgstr "Nada a extrair: um archive cujos nomes não estão posicionados, seus nomes criptografados e uma primeira entrada que nenhuma linha segue não têm um fim que uma leitura conheça."
 
 msgid "Extract into a folder outside the game's install."
 msgstr "Extraia para uma pasta fora da instalação do jogo."
@@ -15278,9 +15278,6 @@ msgstr "Os corpos das células vizinhas {cells} não estão abertos, então não
 msgid "Disable polygon {polygon}"
 msgstr "Desativar o polígono {polygon}"
 
-msgid "A GTA VI cell's polygon is not deleted: the links of the neighbouring cells' bodies, which are saved apart, would be renumbered too. Disable it instead."
-msgstr "O polígono de uma célula do GTA VI não é excluído: as ligações dos corpos das células vizinhas, que são salvos à parte, também seriam renumeradas. Desative-o em vez disso."
-
 msgid "The cell read again holds another number of edges than the one edited."
 msgstr "A célula lida de novo contém um número de arestas diferente do da editada."
 
@@ -15652,8 +15649,8 @@ msgstr "Os quadros-chave evoluídos de uma evolução são lidos e os controles 
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "Os buffers de GPU da seção física são verificados: o de +0x390 copia os floats da regra em +0x1E0, e o de +0x388 contém duas tabelas de 16 linhas cujos valores não derivam da regra, por isso são mantidos como gravados e podem discordar de um valor de quadros-chave editado. A pré-visualização não precisa de nenhum."
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
-msgstr "Salvar como grava os valores que as duas formas compartilham sobre a lista do GTA VI, no lugar, e com eles uma regra removida ou um evento vinculado a outra regra. Uma chave adicionada e um efeito duplicado são gravados após o fim da lista, e a cópia é encontrada pelo nome que Duplicate lhe dá. Uma regra criada do nada, ou um evento ou um comportamento adicionado, não tem valor indicado, por isso a área de trabalho não oferece isso."
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added, an effect, an emitter rule, a particle rule or an event duplicated, and a behaviour copied to another rule are written past the list's end, a rule's copy found by the name Duplicate gives it, and a particle rule's copy given GPU buffers of its own. A rule made from nothing has no stated value, so the workspace does not offer it."
+msgstr "Salvar como grava os valores que as duas formas compartilham sobre a lista do GTA VI, no lugar, e com eles uma regra removida ou um evento vinculado a outra regra. Uma chave adicionada, um efeito, uma regra de emissor, uma regra de partícula ou um evento duplicados, e um comportamento copiado para outra regra são gravados após o fim da lista; a cópia de uma regra é encontrada pelo nome que Duplicar lhe dá, e a cópia de uma regra de partícula recebe buffers de GPU próprios. Uma regra criada do nada não tem valor indicado, por isso a área de trabalho não a oferece."
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "Seu terceiro gerador inicia {effect} onde seu ptxu_ZCull descarta um ponto, e a pré-visualização também; que seu valor de disparo seja uma velocidade que o ponto deve atingir, como a do gerador de colisão, é inferido."
@@ -16268,7 +16265,7 @@ msgid "An event names a rule the GTA VI particle list does not hold: bind it to 
 msgstr "Um evento nomeia uma regra que a lista de partículas do GTA VI não contém: vincule-o a uma das regras da lista."
 
 msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
-msgstr "Uma lista de partículas do GTA VI só aceita um efeito novo como cópia de um que ela contém: use Duplicate e mantenha como nome da cópia o nome do efeito que ela copia seguido de _copy."
+msgstr "Uma lista de partículas do GTA VI só aceita um efeito novo como cópia de um que ela contém: use Duplicar e mantenha como nome da cópia o nome do efeito que ela copia seguido de _copy."
 
 msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
 msgstr "O polígono {polygon} não é desativado enquanto os corpos das células vizinhas {cells} não estiverem abertos: um registro de borda que ele esvazia desaparece, e suas ligações especiais podem numerar os registros seguintes. Encontre primeiro as células vizinhas na varredura."
@@ -16281,3 +16278,207 @@ msgstr "Peças"
 
 msgid "Draw the weapon as the first of each kind of its parts, each on its bone, in place of its own mesh"
 msgstr "Desenha a arma com a primeira peça de cada tipo, cada uma no seu osso, em vez da sua própria malha"
+
+msgid "Network name: {name}"
+msgstr "Nome da rede: {name}"
+
+msgid "words from +0x00 to +0x48 as stored: {words}"
+msgstr "palavras de +0x00 a +0x48 tal como estão guardadas: {words}"
+
+msgid "{count} mission state table, as the document now stands"
+msgid_plural "{count} mission state tables, as the document now stands"
+msgstr[0] "{count} tabela de estado de missão, como o documento está agora"
+msgstr[1] "{count} tabelas de estado de missão, como o documento está agora"
+
+msgid "{name} is a volume, so it keeps its size, format and mips: its levels lie across its z-slabs."
+msgstr "{name} é um volume, por isso mantém o tamanho, o formato e os mips: os seus níveis estendem-se pelas suas camadas em z."
+
+msgid "The special links of the neighbouring cell {cell} were renumbered by an edit of another cell, whose save writes them: save that cell or undo its edit first."
+msgstr "As ligações especiais da célula vizinha {cell} foram renumeradas por uma edição de outra célula, cujo salvamento as grava: salve essa célula ou desfaça primeiro a edição dela."
+
+msgid "The special links of the neighbouring cell {cell} would be renumbered, but its body holds deletions of its own, which its own save writes: undo them first."
+msgstr "As ligações especiais da célula vizinha {cell} seriam renumeradas, mas o corpo dela contém exclusões próprias, que o próprio salvamento dela grava: desfaça-as primeiro."
+
+msgid "This cell's special links were renumbered by an edit of a neighbouring cell, whose save writes them: save that cell or undo its edit first."
+msgstr "As ligações especiais desta célula foram renumeradas por uma edição de uma célula vizinha, cujo salvamento as grava: salve essa célula ou desfaça primeiro a edição dela."
+
+msgid "{count} special link of this cell ended in a record that went, and was deleted."
+msgid_plural "{count} special links of this cell ended in a record that went, and were deleted."
+msgstr[0] "{count} ligação especial desta célula terminava em um registro que saiu e foi excluída."
+msgstr[1] "{count} ligações especiais desta célula terminavam em um registro que saiu e foram excluídas."
+
+msgid "The special links of {count} neighbouring cell were renumbered: a save of this cell writes its body beside it."
+msgid_plural "The special links of {count} neighbouring cells were renumbered: a save of this cell writes their bodies beside it."
+msgstr[0] "As ligações especiais de {count} célula vizinha foram renumeradas: salvar esta célula grava o corpo dela ao lado."
+msgstr[1] "As ligações especiais de {count} células vizinhas foram renumeradas: salvar esta célula grava os corpos delas ao lado."
+
+msgid "The body at {offset} does not read, so whether it names the map is not known: {why}"
+msgstr "O corpo em {offset} não é lido, por isso não se sabe se nomeia o mapa: {why}"
+
+msgid "Looking for the maps linked to {map}"
+msgstr "Procurando os mapas ligados a {map}"
+
+msgid "Open the whole scan of {archive}: the maps that name this one as a parent, and its own parent map, are found among the bodies it lists."
+msgstr "Abra a varredura completa de {archive}: os mapas que nomeiam este como pai, e o seu próprio mapa pai, são encontrados entre os corpos que ela lista."
+
+msgid "The entity was not added or removed: {why}"
+msgstr "A entidade não foi adicionada nem removida: {why}"
+
+msgid "A map changed or closed while the maps linked to it were read: make the edit again."
+msgstr "Um mapa mudou ou foi fechado enquanto os mapas ligados a ele eram lidos: faça a edição de novo."
+
+msgid "{edit}. The maps it renumbers are open as documents of their own, each with this edit as one step: {maps}"
+msgstr "{edit}. Os mapas que ela renumera estão abertos como documentos próprios, cada um com esta edição como um passo: {maps}"
+
+msgid "The archetype holds no value {member}."
+msgstr "O arquétipo não contém nenhum valor {member}."
+
+msgid "The archetype selected is not in its map types body's tree."
+msgstr "O arquétipo selecionado não está na árvore do seu corpo de tipos de mapa."
+
+msgid "This map types body holds no plain archetype to copy the layout of."
+msgstr "Este corpo de tipos de mapa não contém nenhum arquétipo simples cuja estrutura copiar."
+
+msgid "No GTA VI drawable is open to make an archetype of."
+msgstr "Nenhum drawable do GTA VI está aberto para fazer dele um arquétipo."
+
+msgid "lodDist, guid and flags take numbers"
+msgstr "lodDist, guid e flags aceitam números"
+
+msgid "The name {name} is held by another archetype."
+msgstr "O nome {name} já pertence a outro arquétipo."
+
+msgid "The edited map types body does not read back as one."
+msgstr "O corpo de tipos de mapa editado não é relido como tal."
+
+msgid "New archetype from a drawable"
+msgstr "Novo arquétipo a partir de um drawable"
+
+msgid "Add the archetype"
+msgstr "Adicionar o arquétipo"
+
+msgid "Declares in the map types body of this entity's archetype an archetype of the drawable open, its names from the text, its box the drawable's, a seed to check, and its sphere the box's. Undo takes it back"
+msgstr "Declara no corpo de tipos de mapa do arquétipo desta entidade um arquétipo do drawable aberto: os nomes a partir do texto, a caixa a do drawable, um ponto de partida a verificar, e a esfera a da caixa. Desfazer reverte isso"
+
+msgid "Group {group}, array at 0x10 {head}"
+msgstr "Grupo {group}, matriz em 0x10 {head}"
+
+msgid "Clip {clip}, parameter {index}: points {points}, floats {floats}"
+msgstr "Clip {clip}, parâmetro {index}: pontos {points}, floats {floats}"
+
+msgid "Parameter object {index} of type {kind}: arrays at 0x10 {first} and 0x20 {second}"
+msgstr "Objeto de parâmetro {index} do tipo {kind}: matrizes em 0x10 {first} e 0x20 {second}"
+
+msgid "Parameter object {index}, lists {lists}, hashes {hashes}"
+msgstr "Objeto de parâmetro {index}, listas {lists}, hashes {hashes}"
+
+msgid "New track's id"
+msgstr "ID da nova faixa"
+
+msgid "Pairs: {count}"
+msgstr "Pares: {count}"
+
+msgid "New pair's key"
+msgstr "Chave do novo par"
+
+msgid "Delete this pair"
+msgstr "Excluir este par"
+
+msgid "A GTA VI particle list takes a new emitter or particle rule only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the rule it copies followed by _copy."
+msgstr "Uma lista de partículas do GTA VI só aceita uma nova regra de emissor ou de partícula como cópia de uma que contém: use Duplicar e mantenha como nome da cópia o nome da regra copiada seguido de _copy."
+
+msgid "An event was added to an effect that holds none to copy: a GTA VI particle list takes a new event only as a copy of one of its effect's events, so use Duplicate on an event."
+msgstr "Um evento foi adicionado a um efeito que não contém nenhum para copiar: uma lista de partículas do GTA VI só aceita um novo evento como cópia de um dos eventos do seu efeito, por isso use Duplicar num evento."
+
+msgid "A rule was given a behaviour of a class no rule of the GTA VI particle list holds: a new behaviour is written only as a copy of one the list holds, so use Copy to rule."
+msgstr "Uma regra recebeu um comportamento de uma classe que nenhuma regra da lista de partículas do GTA VI contém: um novo comportamento só é gravado como cópia de um da lista, por isso use Copy to rule."
+
+msgid "Only a geometry child's primitives and vertices are added or deleted."
+msgstr "Só as primitivas e os vértices de um filho de geometria são adicionados ou excluídos."
+
+msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
+msgstr "Só o composite de um bound independente tem um filho adicionado ou excluído: num drawable ou num fragment cada filho é também um filho do fragment."
+
+msgid "Delete primitive {primitive}"
+msgstr "Excluir a primitiva {primitive}"
+
+msgid "Add triangle {primitive}"
+msgstr "Adicionar o triângulo {primitive}"
+
+msgid "Delete vertex {vertex}"
+msgstr "Excluir o vértice {vertex}"
+
+msgid "Add vertex {vertex}"
+msgstr "Adicionar o vértice {vertex}"
+
+msgid "Delete child {child}"
+msgstr "Excluir o filho {child}"
+
+msgid "Copy child {child}"
+msgstr "Copiar o filho {child}"
+
+msgid "A drawable's lone bound keeps its type: the drawable points at its record."
+msgstr "O bound único de um drawable mantém o tipo dele: o drawable aponta para o registro dele."
+
+msgid "Give child {child} another type"
+msgstr "Dar outro tipo ao filho {child}"
+
+msgid "This document has no file, so its collision is not reshaped."
+msgstr "Este documento não tem arquivo, então a colisão dele não é remodelada."
+
+msgid "The body read again holds other numbers of children, vertices or primitives than the collision's changes began from."
+msgstr "O corpo lido de novo contém outros números de filhos, vértices ou primitivas do que aqueles de que partiam as alterações da colisão."
+
+msgid "Sphere"
+msgstr "Esfera"
+
+msgid "Capsule"
+msgstr "Cápsula"
+
+msgid "Tapered capsule"
+msgstr "Cápsula cônica"
+
+msgid "Disc"
+msgstr "Disco"
+
+msgid "Cylinder"
+msgstr "Cilindro"
+
+msgid "Add and delete collision"
+msgstr "Adicionar e excluir colisão"
+
+msgid "A primitive or a vertex is added last and deleted where it stands, a new triangle linking to the triangles it shares an edge with; a lone bound's child is copied or deleted, a primitive child given another type. Save As writes the body as a loose resource."
+msgstr "Uma primitiva ou um vértice é adicionado por último e excluído onde está, e um novo triângulo se liga aos triângulos com que compartilha uma aresta; o filho de um bound independente é copiado ou excluído, e um filho primitivo recebe outro tipo. Salvar como grava o corpo como um resource solto."
+
+msgid "Copy the child"
+msgstr "Copiar o filho"
+
+msgid "Delete the child"
+msgstr "Excluir o filho"
+
+msgid "Delete the primitive"
+msgstr "Excluir a primitiva"
+
+msgid "Add a triangle"
+msgstr "Adicionar um triângulo"
+
+msgid "Delete the vertex"
+msgstr "Excluir o vértice"
+
+msgid "Add a vertex"
+msgstr "Adicionar um vértice"
+
+msgid "The file holds a collision change that was undone after it was saved, and a save does not take it out again: open the file again to edit it."
+msgstr "O arquivo contém uma alteração da colisão desfeita depois de salva, e salvar não a remove: abra o arquivo de novo para editá-lo."
+
+msgid "Duplicate"
+msgstr "Duplicar"
+
+msgid "Copy to rule…"
+msgstr "Copiar para a regra…"
+
+msgid "(every other rule lists one of its class)"
+msgstr "(todas as outras regras já têm um da sua classe)"
+
+msgid "(the file holds no map here)"
+msgstr "(o arquivo não contém aqui uma tabela de pares)"

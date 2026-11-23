@@ -3,17 +3,26 @@
 //! and every region after it moved, where the unchanged tree lays out anew as the body stores it.
 //!
 //! ⚠ Where a body's blocks do not lay out again as stored, where a new pair's regions go and
-//! which order its blocks take are not known, so a pair is neither added nor removed there.
-//! A table is refilled in the order its pairs are read, slot order from slot 0; a table whose
+//! which order its blocks take are not known, so a pair is neither added nor removed there; a
+//! body whose re-lay differs only inside its hash tables' blocks, each block of its type, length
+//! and place, is an equally valid slot layout and takes one. A table is refilled in the order its pairs are read, slot order from slot 0; a table whose
 //! probe chain wraps was filled from the slot after its first empty slot (a slot map) or after
 //! its first group that is not full (a group map), so it comes back valid but differs from the
 //! stored table inside its own bytes.
 
+use std::collections::HashSet;
+
+use super::schema::{PsoType, RbmClass, RbmClassEntry, RbmDataBlock, RbmModel};
 use crate::meta::binary::layout::RbmLayout;
 use crate::meta::binary::pso::table_form;
 use crate::meta::error::{MetaError, Result};
 use crate::meta::instance::value::Value;
 use crate::meta::instance::MetaInstance;
+
+const SLOT_MAP: u8 = 0x73;
+const GROUP_MAP: u8 = 0x75;
+/// The name a class's array-info member takes, which names no member of a pair.
+const ARRAY_INFO: u32 = 0x100;
 
 /// Whether `instance` adds a pair to or takes one from a map of the tree `layout`'s body stores.
 pub(super) fn pairs_changed(layout: &RbmLayout, instance: &MetaInstance) -> Result<bool> {
@@ -24,12 +33,95 @@ pub(super) fn pairs_changed(layout: &RbmLayout, instance: &MetaInstance) -> Resu
     let split = layout.virtual_page_size.min(layout.decompressed.len());
     let (v, p) = layout.decompressed.split_at(split);
     let again = super::gta6_relayout::write(layout, &stored)?;
-    if again.0 != v || again.1 != p {
+    if (again.0 != v || again.1 != p) && !only_tables_differ(&layout.model, (v, p), &again) {
         return Err(MetaError::Other(
             "GTA VI RBM: a map's pairs changed, and this body's blocks do not lay out again as it stores them, so where an added or removed pair's regions go is not known".into(),
         ));
     }
     Ok(true)
+}
+
+/// Whether `again`, laid out anew from the unchanged tree of the body `stored` holds, differs
+/// from it only inside blocks of a hash table's type, every block of the same type, length and
+/// place as `model` states it.
+fn only_tables_differ(
+    model: &RbmModel,
+    stored: (&[u8], &[u8]),
+    again: &(Vec<u8>, Vec<u8>),
+) -> bool {
+    if stored.0.len() != again.0.len() || stored.1.len() != again.1.len() {
+        return false;
+    }
+    let Ok(laid) = super::gta6::read_model(&again.0, &again.1) else {
+        return false;
+    };
+    let (old, new) = (&model.data_blocks, &laid.data_blocks);
+    let same = |a: &RbmDataBlock, b: &RbmDataBlock| {
+        a.data_type == b.data_type && a.data_addr == b.data_addr && a.data.len() == b.data.len()
+    };
+    if old.len() != new.len() || !old.iter().zip(new).all(|(a, b)| same(a, b)) {
+        return false;
+    }
+    let tables = table_types(model);
+    let in_a_table = |nibble: u64, at: usize| {
+        (old.iter()).any(|b| {
+            let from = (b.data_addr & 0x0FFF_FFFF) as usize;
+            b.data_addr >> 28 == nibble
+                && tables.contains(&b.data_type)
+                && (from..from + b.data.len()).contains(&at)
+        })
+    };
+    [(5, stored.0, &again.0), (6, stored.1, &again.1)]
+        .into_iter()
+        .all(|(nibble, s, a)| {
+            (s.iter().zip(a.iter()).enumerate())
+                .filter(|(_, (x, y))| x != y)
+                .all(|(at, _)| in_a_table(nibble, at))
+        })
+}
+
+/// The types of the blocks a hash table is laid out in: a slot map's pair structure and a group
+/// map's group structure, found as the writer finds them where no stored table names one.
+fn table_types(model: &RbmModel) -> HashSet<u32> {
+    let types = |e: &RbmClassEntry| (e.data_type, e.union_ch);
+    let mut out = HashSet::new();
+    for owner in model.classes.values() {
+        for map in &owner.entries {
+            let grouped = match map.data_type {
+                PsoType::Unknown(SLOT_MAP) => false,
+                PsoType::Unknown(GROUP_MAP) => true,
+                _ => continue,
+            };
+            let pair = [
+                owner.entry(map.map_key_index()).map(types),
+                owner.entry(map.map_value_index()).map(types),
+            ];
+            let is_pair = |c: &RbmClass| {
+                let named: Vec<_> = (c.entries.iter())
+                    .filter(|e| e.name_hash != ARRAY_INFO)
+                    .map(|e| Some(types(e)))
+                    .collect();
+                named == pair
+            };
+            for c in model.classes.values() {
+                let fits = match grouped {
+                    false => is_pair(c),
+                    true => {
+                        c.entries.len() == 4
+                            && c.entries[2].data_type == PsoType::Struct
+                            && (model.class_for(c.entries[2].referent_hash())).is_some_and(|p| {
+                                is_pair(p)
+                                    && u64::from(c.data_size) == 16 + 16 * u64::from(p.data_size)
+                            })
+                    }
+                };
+                if fits {
+                    out.insert(c.name_hash);
+                }
+            }
+        }
+    }
+    out
 }
 
 fn instance_keys_differ(stored: &MetaInstance, edited: &MetaInstance) -> bool {
@@ -172,6 +264,47 @@ mod tests {
         let (v3, p3) = write_grown(&layout, &tree).expect("laid out anew");
         let (mut again, _) = opened(&v3, &p3);
         assert_eq!(held(&mut again), [(KEYS[1], 60)]);
+    }
+
+    #[test]
+    fn a_re_lay_that_differs_only_inside_a_table_s_block_is_an_equally_valid_body() {
+        let (v, p) = canonical();
+        let (_, layout) = opened(&v, &p);
+        let model = read_model(&v, &p).expect("it reads");
+        let start = |ty: u32| {
+            let block = (model.data_blocks.iter())
+                .find(|b| b.data_type == ty)
+                .expect("the block");
+            (block.data_addr & 0x0FFF_FFFF) as usize
+        };
+        let (table, root) = (start(PAIR), start(ROOT));
+        let stored = (v.as_slice(), p.as_slice());
+        // Two slots of the table traded, as a rebuild that moves a pair does.
+        let mut moved = v.clone();
+        let (a, b) = (table + 8 * 5, table + 8 * 19);
+        let first = moved[a..a + 8].to_vec();
+        moved.copy_within(b..b + 8, a);
+        moved[b..b + 8].copy_from_slice(&first);
+        assert_ne!(moved, v);
+        assert!(only_tables_differ(
+            &layout.model,
+            stored,
+            &(moved, p.clone())
+        ));
+        let mut outside = v.clone();
+        outside[root] ^= 1;
+        assert!(!only_tables_differ(
+            &layout.model,
+            stored,
+            &(outside, p.clone())
+        ));
+        let mut longer = v.clone();
+        longer.extend([0u8; 16]);
+        assert!(!only_tables_differ(
+            &layout.model,
+            stored,
+            &(longer, p.clone())
+        ));
     }
 
     #[test]

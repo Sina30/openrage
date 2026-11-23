@@ -46,6 +46,7 @@ mod gta6_resource;
 mod gta6_save;
 mod gta6_scripts;
 mod gta6_shaders;
+mod gta6_spans;
 mod gta6_text;
 mod gta6_texture;
 mod gta6_translate;

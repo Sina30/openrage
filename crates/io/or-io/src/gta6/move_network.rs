@@ -14,6 +14,7 @@ const STATE: u16 = 22;
 const BINDING_HEAD: usize = 12;
 /// The smallest transition: its fixed words up to the target offset at +0x48.
 const TRANSITION_MIN: u32 = 0x4C;
+const TRANSITION_WORDS: usize = TRANSITION_MIN as usize / 4;
 
 /// A network's head and every node its walk from the root reached.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,6 +83,8 @@ pub struct MoveTransition {
     pub size: u32,
     /// Where its offset at +0x48 leads.
     pub target: usize,
+    /// Its fixed words from +0x00 to +0x48 as stored, its size and target offset among them.
+    pub words: [u32; TRANSITION_WORDS],
     /// As many as bits 6 to 8 of its flags state, from +0x4C to its size.
     pub conditions: Vec<MoveCondition>,
 }
@@ -603,10 +606,15 @@ fn read_transitions(b: &Body, at: usize, count: u8) -> Result<(Vec<MoveTransitio
         }
         let end = p + size as usize;
         let from = p + TRANSITION_MIN as usize;
+        let mut words = [0; TRANSITION_WORDS];
+        for (k, word) in words.iter_mut().enumerate() {
+            *word = b.u32(p + 4 * k)?;
+        }
         out.push(MoveTransition {
             at: p,
             size,
             target: b.rel(p + 0x48)?,
+            words,
             conditions: conditions(b, from, (flags >> 6) & 0xF, end)?,
         });
         p = end;

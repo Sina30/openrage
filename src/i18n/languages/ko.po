@@ -12580,8 +12580,8 @@ msgstr "선택한 행을 추출하며, 선택한 행이 없으면 목록에 표�
 msgid "RBF metadata"
 msgstr "RBF 메타데이터"
 
-msgid "Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."
-msgstr "추출할 항목 없음: 아카이브의 헤더, 암호화된 이름, 첫 번째 항목에는 읽기로 알 수 있는 끝이 없습니다."
+msgid "Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."
+msgstr "추출할 항목 없음: 이름이 배치되지 않은 아카이브, 암호화된 이름, 뒤에 행이 없는 첫 번째 항목에는 읽기로 알 수 있는 끝이 없습니다."
 
 msgid "Extract into a folder outside the game's install."
 msgstr "게임 설치 폴더 밖의 폴더로 추출하십시오."
@@ -15278,9 +15278,6 @@ msgstr "이웃 셀 {cells}의 본문이 열려 있지 않으므로, 그 특수 �
 msgid "Disable polygon {polygon}"
 msgstr "폴리곤 {polygon} 사용 안 함"
 
-msgid "A GTA VI cell's polygon is not deleted: the links of the neighbouring cells' bodies, which are saved apart, would be renumbered too. Disable it instead."
-msgstr "GTA VI 셀의 폴리곤은 삭제하지 않습니다: 따로 저장되는 이웃 셀 본문의 링크도 번호가 다시 매겨지기 때문입니다. 대신 사용 안 함으로 설정하십시오."
-
 msgid "The cell read again holds another number of edges than the one edited."
 msgstr "다시 읽은 셀의 에지 수가 편집한 셀과 다릅니다."
 
@@ -15652,8 +15649,8 @@ msgstr "에볼루션의 진화 키프레임을 읽고 에볼루션 슬라이더�
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "물리 섹션의 GPU 버퍼를 검사합니다. +0x390의 버퍼는 규칙의 +0x1E0 부동소수를 복사하고, +0x388의 버퍼는 16행 표 두 개를 가지는데 그 값은 규칙에서 유도되지 않으므로 저장된 그대로 유지되고 편집한 키프레임 값과 어긋날 수 있습니다. 미리보기는 둘 다 필요하지 않습니다."
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
-msgstr "다른 이름으로 저장은 두 형식이 공유하는 값을, 제거된 규칙이나 다른 규칙에 연결된 이벤트와 함께 GTA VI 목록에 제자리에서 덮어씁니다. 추가한 키와 복제한 이펙트는 목록의 끝 뒤에 기록되며, 사본은 Duplicate가 붙인 이름으로 찾습니다. 아무것도 없이 만든 규칙이나 추가한 이벤트 또는 동작에는 명시된 값이 없으므로 작업 공간은 이를 제공하지 않습니다."
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added, an effect, an emitter rule, a particle rule or an event duplicated, and a behaviour copied to another rule are written past the list's end, a rule's copy found by the name Duplicate gives it, and a particle rule's copy given GPU buffers of its own. A rule made from nothing has no stated value, so the workspace does not offer it."
+msgstr "다른 이름으로 저장은 두 형식이 공유하는 값을, 제거된 규칙이나 다른 규칙에 연결된 이벤트와 함께 GTA VI 목록에 제자리에서 덮어씁니다. 추가한 키, 복제한 이펙트, 이미터 규칙, 파티클 규칙 또는 이벤트, 그리고 다른 규칙으로 복사한 동작은 목록의 끝 뒤에 기록됩니다. 규칙의 사본은 복제가 붙인 이름으로 찾으며, 파티클 규칙의 사본은 자체 GPU 버퍼를 받습니다. 아무것도 없이 만든 규칙에는 명시된 값이 없으므로 작업 공간은 이를 제공하지 않습니다."
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "세 번째 스포너는 ptxu_ZCull이 점을 제거하는 곳에서 {effect}을(를) 시작하며 미리보기도 그렇게 합니다. 그 발동 값이 충돌 스포너처럼 점이 도달해야 하는 속도라는 것은 추정입니다."
@@ -16268,7 +16265,7 @@ msgid "An event names a rule the GTA VI particle list does not hold: bind it to 
 msgstr "이벤트가 GTA VI 파티클 목록에 없는 규칙을 가리킵니다. 목록의 규칙 중 하나에 연결하십시오."
 
 msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
-msgstr "GTA VI 파티클 목록은 새 이펙트를 목록에 있는 이펙트의 사본으로만 받습니다. Duplicate를 사용하고, 사본의 이름은 복사한 이펙트의 이름 뒤에 _copy를 붙인 그대로 두십시오."
+msgstr "GTA VI 파티클 목록은 새 이펙트를 목록에 있는 이펙트의 사본으로만 받습니다. 복제를 사용하고, 사본의 이름은 복사한 이펙트의 이름 뒤에 _copy를 붙인 그대로 두십시오."
 
 msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
 msgstr "이웃 셀 {cells}의 본문이 열려 있지 않은 동안에는 폴리곤 {polygon}을(를) 비활성화하지 않습니다. 그것이 비우는 경계 레코드는 사라지고, 그 특수 링크가 뒤의 레코드를 번호로 가리킬 수 있습니다. 먼저 스캔에서 이웃 셀을 찾으십시오."
@@ -16281,3 +16278,207 @@ msgstr "부품"
 
 msgid "Draw the weapon as the first of each kind of its parts, each on its bone, in place of its own mesh"
 msgstr "무기를 각 종류의 첫 번째 부품으로 그립니다. 각 부품은 해당 뼈대에 놓이며 무기 자체의 메시를 대신합니다"
+
+msgid "Network name: {name}"
+msgstr "네트워크 이름: {name}"
+
+msgid "words from +0x00 to +0x48 as stored: {words}"
+msgstr "+0x00부터 +0x48까지 저장된 그대로의 워드: {words}"
+
+msgid "{count} mission state table, as the document now stands"
+msgid_plural "{count} mission state tables, as the document now stands"
+msgstr[0] "문서의 현재 상태 그대로의 미션 상태 테이블 {count}개"
+msgstr[1] "문서의 현재 상태 그대로의 미션 상태 테이블 {count}개"
+
+msgid "{name} is a volume, so it keeps its size, format and mips: its levels lie across its z-slabs."
+msgstr "{name}은(는) 볼륨이므로 크기, 형식, 밉을 유지합니다. 레벨이 z 슬래브에 걸쳐 있습니다."
+
+msgid "The special links of the neighbouring cell {cell} were renumbered by an edit of another cell, whose save writes them: save that cell or undo its edit first."
+msgstr "이웃 셀 {cell}의 특수 링크는 다른 셀의 편집으로 번호가 다시 매겨졌으며, 그 셀을 저장할 때 기록됩니다: 그 셀을 저장하거나 먼저 그 편집을 실행 취소하십시오."
+
+msgid "The special links of the neighbouring cell {cell} would be renumbered, but its body holds deletions of its own, which its own save writes: undo them first."
+msgstr "이웃 셀 {cell}의 특수 링크 번호가 다시 매겨지지만, 그 본문에는 자체 저장이 기록하는 자체 삭제가 있습니다: 먼저 실행 취소하십시오."
+
+msgid "This cell's special links were renumbered by an edit of a neighbouring cell, whose save writes them: save that cell or undo its edit first."
+msgstr "이 셀의 특수 링크는 이웃 셀의 편집으로 번호가 다시 매겨졌으며, 그 셀을 저장할 때 기록됩니다: 그 셀을 저장하거나 먼저 그 편집을 실행 취소하십시오."
+
+msgid "{count} special link of this cell ended in a record that went, and was deleted."
+msgid_plural "{count} special links of this cell ended in a record that went, and were deleted."
+msgstr[0] "없어진 레코드에서 끝나던 이 셀의 특수 링크 {count}개가 삭제되었습니다."
+msgstr[1] "없어진 레코드에서 끝나던 이 셀의 특수 링크 {count}개가 삭제되었습니다."
+
+msgid "The special links of {count} neighbouring cell were renumbered: a save of this cell writes its body beside it."
+msgid_plural "The special links of {count} neighbouring cells were renumbered: a save of this cell writes their bodies beside it."
+msgstr[0] "이웃 셀 {count}개의 특수 링크 번호가 다시 매겨졌습니다: 이 셀을 저장하면 해당 본문이 옆에 기록됩니다."
+msgstr[1] "이웃 셀 {count}개의 특수 링크 번호가 다시 매겨졌습니다: 이 셀을 저장하면 해당 본문이 옆에 기록됩니다."
+
+msgid "The body at {offset} does not read, so whether it names the map is not known: {why}"
+msgstr "{offset}의 본문을 읽을 수 없어 이 맵을 지정하는지 알 수 없습니다: {why}"
+
+msgid "Looking for the maps linked to {map}"
+msgstr "{map}에 연결된 맵을 찾는 중"
+
+msgid "Open the whole scan of {archive}: the maps that name this one as a parent, and its own parent map, are found among the bodies it lists."
+msgstr "{archive}의 전체 스캔을 여십시오: 이 맵을 부모로 지정하는 맵과 이 맵의 부모 맵은 스캔이 나열하는 본문 중에서 찾습니다."
+
+msgid "The entity was not added or removed: {why}"
+msgstr "엔티티가 추가되거나 제거되지 않았습니다: {why}"
+
+msgid "A map changed or closed while the maps linked to it were read: make the edit again."
+msgstr "연결된 맵을 읽는 동안 맵이 변경되었거나 닫혔습니다: 편집을 다시 하십시오."
+
+msgid "{edit}. The maps it renumbers are open as documents of their own, each with this edit as one step: {maps}"
+msgstr "{edit}. 번호를 다시 매긴 맵은 각각 별도의 문서로 열려 있으며, 각 문서에서 이 편집은 한 단계입니다: {maps}"
+
+msgid "The archetype holds no value {member}."
+msgstr "이 아키타입에는 값 {member}이(가) 없습니다."
+
+msgid "The archetype selected is not in its map types body's tree."
+msgstr "선택한 아키타입이 해당 맵 타입 본문의 트리에 없습니다."
+
+msgid "This map types body holds no plain archetype to copy the layout of."
+msgstr "이 맵 타입 본문에는 레이아웃을 복사할 일반 아키타입이 없습니다."
+
+msgid "No GTA VI drawable is open to make an archetype of."
+msgstr "아키타입으로 만들 GTA VI 드로어블이 열려 있지 않습니다."
+
+msgid "lodDist, guid and flags take numbers"
+msgstr "lodDist, guid, flags에는 숫자를 입력합니다"
+
+msgid "The name {name} is held by another archetype."
+msgstr "이름 {name}은(는) 다른 아키타입이 사용 중입니다."
+
+msgid "The edited map types body does not read back as one."
+msgstr "편집한 맵 타입 본문을 맵 타입 본문으로 다시 읽을 수 없습니다."
+
+msgid "New archetype from a drawable"
+msgstr "드로어블로 새 아키타입 만들기"
+
+msgid "Add the archetype"
+msgstr "아키타입 추가"
+
+msgid "Declares in the map types body of this entity's archetype an archetype of the drawable open, its names from the text, its box the drawable's, a seed to check, and its sphere the box's. Undo takes it back"
+msgstr "이 엔티티의 아키타입이 있는 맵 타입 본문에 열린 드로어블의 아키타입을 선언합니다. 이름은 텍스트에서, 박스는 드로어블의 박스(확인이 필요한 초깃값), 구는 박스에서 가져옵니다. 실행 취소로 되돌릴 수 있습니다"
+
+msgid "Group {group}, array at 0x10 {head}"
+msgstr "그룹 {group}, 0x10의 배열 {head}"
+
+msgid "Clip {clip}, parameter {index}: points {points}, floats {floats}"
+msgstr "클립 {clip}, 매개변수 {index}: 점 {points}, 부동소수점 {floats}"
+
+msgid "Parameter object {index} of type {kind}: arrays at 0x10 {first} and 0x20 {second}"
+msgstr "매개변수 객체 {index} (유형 {kind}): 0x10의 배열 {first}, 0x20의 배열 {second}"
+
+msgid "Parameter object {index}, lists {lists}, hashes {hashes}"
+msgstr "매개변수 객체 {index}, 목록 {lists}, 해시 {hashes}"
+
+msgid "New track's id"
+msgstr "새 트랙의 ID"
+
+msgid "Pairs: {count}"
+msgstr "쌍: {count}"
+
+msgid "New pair's key"
+msgstr "새 쌍의 키"
+
+msgid "Delete this pair"
+msgstr "이 쌍 삭제"
+
+msgid "A GTA VI particle list takes a new emitter or particle rule only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the rule it copies followed by _copy."
+msgstr "GTA VI 파티클 목록은 새 이미터 규칙이나 파티클 규칙을 목록이 가진 규칙의 사본으로만 받습니다. 복제를 사용하고, 사본의 이름은 복사한 규칙의 이름 뒤에 _copy를 붙인 이름으로 유지하세요."
+
+msgid "An event was added to an effect that holds none to copy: a GTA VI particle list takes a new event only as a copy of one of its effect's events, so use Duplicate on an event."
+msgstr "복사할 이벤트가 없는 이펙트에 이벤트가 추가되었습니다. GTA VI 파티클 목록은 새 이벤트를 그 이펙트의 이벤트 사본으로만 받으므로, 이벤트에 복제를 사용하세요."
+
+msgid "A rule was given a behaviour of a class no rule of the GTA VI particle list holds: a new behaviour is written only as a copy of one the list holds, so use Copy to rule."
+msgstr "GTA VI 파티클 목록의 어떤 규칙도 가지지 않은 클래스의 동작이 규칙에 주어졌습니다. 새 동작은 목록에 있는 동작의 사본으로만 기록되므로 Copy to rule을 사용하세요."
+
+msgid "Only a geometry child's primitives and vertices are added or deleted."
+msgstr "지오메트리 자식의 프리미티브와 버텍스만 추가하거나 삭제할 수 있습니다."
+
+msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
+msgstr "자식은 단독 바운드의 컴포지트에서만 추가하거나 삭제할 수 있습니다. 드로어블이나 프래그먼트에서는 각 자식이 프래그먼트 자식이기도 합니다."
+
+msgid "Delete primitive {primitive}"
+msgstr "프리미티브 {primitive} 삭제"
+
+msgid "Add triangle {primitive}"
+msgstr "삼각형 {primitive} 추가"
+
+msgid "Delete vertex {vertex}"
+msgstr "버텍스 {vertex} 삭제"
+
+msgid "Add vertex {vertex}"
+msgstr "버텍스 {vertex} 추가"
+
+msgid "Delete child {child}"
+msgstr "자식 {child} 삭제"
+
+msgid "Copy child {child}"
+msgstr "자식 {child} 복사"
+
+msgid "A drawable's lone bound keeps its type: the drawable points at its record."
+msgstr "드로어블의 단독 바운드는 유형을 유지합니다. 드로어블이 그 레코드를 가리키기 때문입니다."
+
+msgid "Give child {child} another type"
+msgstr "자식 {child} 유형 변경"
+
+msgid "This document has no file, so its collision is not reshaped."
+msgstr "이 문서에는 파일이 없으므로 충돌 형태를 변경하지 않습니다."
+
+msgid "The body read again holds other numbers of children, vertices or primitives than the collision's changes began from."
+msgstr "다시 읽은 본문의 자식, 버텍스 또는 프리미티브 수가 충돌 변경을 시작할 때와 다릅니다."
+
+msgid "Sphere"
+msgstr "구"
+
+msgid "Capsule"
+msgstr "캡슐"
+
+msgid "Tapered capsule"
+msgstr "테이퍼 캡슐"
+
+msgid "Disc"
+msgstr "원반"
+
+msgid "Cylinder"
+msgstr "원기둥"
+
+msgid "Add and delete collision"
+msgstr "충돌 추가 및 삭제"
+
+msgid "A primitive or a vertex is added last and deleted where it stands, a new triangle linking to the triangles it shares an edge with; a lone bound's child is copied or deleted, a primitive child given another type. Save As writes the body as a loose resource."
+msgstr "프리미티브나 버텍스는 맨 뒤에 추가되고 제자리에서 삭제되며, 새 삼각형은 모서리를 공유하는 삼각형과 연결됩니다. 단독 바운드의 자식은 복사하거나 삭제할 수 있고, 프리미티브 자식은 다른 유형으로 바꿀 수 있습니다. 다른 이름으로 저장은 본문을 개별 리소스로 기록합니다."
+
+msgid "Copy the child"
+msgstr "자식 복사"
+
+msgid "Delete the child"
+msgstr "자식 삭제"
+
+msgid "Delete the primitive"
+msgstr "프리미티브 삭제"
+
+msgid "Add a triangle"
+msgstr "삼각형 추가"
+
+msgid "Delete the vertex"
+msgstr "버텍스 삭제"
+
+msgid "Add a vertex"
+msgstr "버텍스 추가"
+
+msgid "The file holds a collision change that was undone after it was saved, and a save does not take it out again: open the file again to edit it."
+msgstr "파일에 저장한 뒤 실행 취소한 충돌 변경이 들어 있으며, 저장해도 제거되지 않습니다. 편집하려면 파일을 다시 여세요."
+
+msgid "Duplicate"
+msgstr "복제"
+
+msgid "Copy to rule…"
+msgstr "규칙으로 복사…"
+
+msgid "(every other rule lists one of its class)"
+msgstr "(다른 모든 규칙에 이 클래스의 동작이 있습니다)"
+
+msgid "(the file holds no map here)"
+msgstr "(여기에는 파일에 쌍 표가 없습니다)"

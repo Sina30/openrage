@@ -1349,7 +1349,109 @@ fn a_motion_dictionary_states_its_motions_the_clips_they_draw_on_and_their_curve
     );
     assert_eq!(group.curve, Typed::Constants(vec![1.0, 2.0]));
     assert_eq!(group.range, Typed::Rows(the_database()));
-    assert_eq!(walk.parameter_objects, [4]);
+    let kinds: Vec<u32> = walk.parameter_objects.iter().map(|o| o.kind).collect();
+    assert_eq!(kinds, [4]);
+}
+
+/// The motion named `name` in a built motion dictionary's root map.
+fn motion_at(bytes: &[u8], name: &str) -> usize {
+    let key = u64::from(hash(name));
+    let buckets = pointer_at(bytes, 0x48);
+    let mut entry = pointer_at(bytes, buckets + 8 * (key % 11) as usize);
+    while u64::from_le_bytes(bytes[entry..entry + 8].try_into().expect("eight bytes")) != key {
+        entry = pointer_at(bytes, entry + 0x10);
+    }
+    pointer_at(bytes, entry + 8)
+}
+
+#[test]
+fn a_motion_s_parameter_items_and_its_parameter_objects_are_read_as_stated() {
+    let mut b = Bytes(build_motions().bytes);
+    let walk = motion_at(&b.0, "walk");
+    // One parameter, so each of the two clips holds one item of points and four floats.
+    let parameter: Vec<u8> = [hash("speed").to_le_bytes(), [2, 0, 3, 0]].concat();
+    b.list(walk + 0xA0, 8, &[&parameter]);
+    b.list(walk + 0xB0, 4, &[&20u32.to_le_bytes()]);
+    b.list(walk + 0xC0, 4, &[&(-1f32).to_le_bytes()]);
+    b.list(walk + 0xD0, 4, &[&1f32.to_le_bytes()]);
+    let item = |b: &mut Bytes, clip: usize| {
+        let at = b.alloc(0x20);
+        let points: Vec<Vec<u8>> = [[0.0f32, 0.5], [clip as f32, 1.0]]
+            .iter()
+            .map(|p| p.iter().flat_map(|v| v.to_le_bytes()).collect())
+            .collect();
+        let refs: Vec<&[u8]> = points.iter().map(Vec::as_slice).collect();
+        b.list(at, 8, &refs);
+        for i in 0..4 {
+            b.f32(at + 0x10 + 4 * i, (10 * clip + i) as f32);
+        }
+        at
+    };
+    let heads = b.alloc(32);
+    for clip in 0..2 {
+        let at = item(&mut b, clip);
+        b.array(heads + 16 * clip, at, 1);
+    }
+    b.array(walk + 0x80, heads, 2);
+    // The type-4 object holds a list of two words and a hash, and an array at 0x10 read raw.
+    let lists = pointer_at(&b.0, pointer_at(&b.0, walk + 0x130));
+    let words = b.alloc(8);
+    b.u32(words, 5);
+    b.u32(words + 4, 6);
+    let list = b.alloc(16);
+    b.array(list, words, 2);
+    b.array(lists + 0x20, list, 1);
+    b.list(lists + 0x30, 4, &[&0xAAu32.to_le_bytes()]);
+    b.array(lists + 0x10, words, 3);
+    // A type-2 object beside it, whose heads alone are read.
+    let other = b.alloc(0x40);
+    b.u32(other + 8, 2);
+    b.array(other + 0x20, words, 1);
+    let pointers = b.alloc(16);
+    b.ptr(pointers, lists);
+    b.ptr(pointers + 8, other);
+    b.array(walk + 0x130, pointers, 2);
+
+    let read = read(&b.0).expect("reads");
+    let walk = (read.motions.iter())
+        .find(|m| m.kind == 2)
+        .expect("the kind-2 motion");
+    let expected: Vec<Vec<ParameterItem>> = (0..2)
+        .map(|clip| {
+            vec![ParameterItem {
+                points: vec![[0.0, 0.5], [clip as f32, 1.0]],
+                floats: [0, 1, 2, 3].map(|i| (10 * clip + i) as f32),
+            }]
+        })
+        .collect();
+    assert_eq!(walk.parameter_items, expected);
+    let head = |at: usize, count: u16| ArrayHead {
+        pointer: VIRTUAL + at as u64,
+        count,
+        capacity: count,
+        word: 0,
+    };
+    let null = ArrayHead {
+        pointer: 0,
+        count: 0,
+        capacity: 0,
+        word: 0,
+    };
+    assert_eq!(
+        walk.parameter_objects,
+        [
+            ParameterObject {
+                kind: 4,
+                heads: [head(words, 3), head(list, 1)],
+                lists: Some((vec![vec![5, 6]], vec![0xAA])),
+            },
+            ParameterObject {
+                kind: 2,
+                heads: [null, head(words, 1)],
+                lists: None,
+            },
+        ]
+    );
 }
 
 #[test]

@@ -397,9 +397,7 @@ fn cmd_replace(args: &[String]) -> Result<(), String> {
     let reshaped = opts.format.is_some()
         || opts.mips.is_some()
         || (image.width, image.height) != (was.width, was.height);
-    let mips = if reshaped && slice.is_some() {
-        return Err("--slice replaces one slice in the texture's own size, format and mips".into());
-    } else if reshaped {
+    let mips = if reshaped {
         let format = match opts.format {
             Some(grc) => Format::of_grc(grc, options.srgb)
                 .ok_or_else(|| format!("{grc:?} is no format a GTA VI pack is measured to hold"))?,
@@ -407,7 +405,11 @@ fn cmd_replace(args: &[String]) -> Result<(), String> {
                 format!("texture {index}'s format is not a measured one; name one with --format")
             })?,
         };
-        pack.reshape(index, &image, format, &options)
+        // The image is for slice --slice, 0 by default; every other slice takes its own top mip
+        // resampled to the image's size.
+        let shown = slice.unwrap_or(0);
+        (pack.slice_sources(index, Some(&image), shown, options.filter))
+            .and_then(|sources| pack.reshape_slices(index, &sources, format, &options))
     } else {
         // A cube's face, an array's slice or a one-level volume's z-plane, 0 by default.
         pack.replace_slice(index, slice.unwrap_or(0), &image, &options)
@@ -542,7 +544,10 @@ fn print_usage() {
     eprintln!("        [--format F] [--mips N] [--quality fast|normal|high]");
     eprintln!("        [--filter box|lanczos3] [--srgb|--linear] [--slice N]");
     eprintln!("        --slice N replaces a cube's face, an array's slice or a one-level");
-    eprintln!("        volume's z-plane alone, in the texture's own size, format and mips.");
+    eprintln!("        volume's z-plane alone, in the texture's own size, format and mips; with");
+    eprintln!("        another size, --format or --mips it names the slice the image is for,");
+    eprintln!("        and every other slice is encoded from its own top mip resampled to the");
+    eprintln!("        image's size.");
     eprintln!("        Encode the image into the texture's format, size and mips, tiled as the");
     eprintln!("        pack lays it, and write a new pack to <out.ttpf>, never over the input:");
     eprintln!("        every other row as the file stores it, the replaced rows as zlib. An");
@@ -572,8 +577,8 @@ fn print_usage() {
     eprintln!("elements, and past the slots measured); other DXGI numbers; entries and bytes");
     eprintln!("not on disk.");
     eprintln!("Replace takes a texture OpenRage encodes (BC1 to BC5, BC7 with bc7-encode,");
-    eprintln!("RGBA8, BGRA8, R8, A8) and refuses, each by name: another shape for a volume, or");
-    eprintln!("for a cube or an array from one image, since each slice takes its own; a tail");
+    eprintln!("RGBA8, BGRA8, R8, A8) and refuses, each by name: another shape for an array in");
+    eprintln!("4 KiB tiles, and a volume of several mips; a tail");
     eprintln!("with mips no measured slot places; a top mip over rows that are not 4 MiB each;");
     eprintln!("row-size codes not the rule's; a pack not wholly on disk. A save carries every");
     eprintln!("other row as the file stores it.");

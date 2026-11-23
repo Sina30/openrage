@@ -333,7 +333,7 @@ const MODEL_ROW: &[&str] = &[
     "Copy as",
 ];
 const DUPLICATE: &[&str] = &["Duplicate"];
-const FIND_USAGES: &[&str] = &["Find usages"];
+const DUPLICATE_AND_FIND_USAGES: &[&str] = &["Duplicate", "Find usages"];
 
 #[test]
 fn every_context_menu_offers_its_app_commands_with_the_registrys_label_binding_and_enabled_state() {
@@ -586,13 +586,13 @@ fn every_context_menu_offers_its_app_commands_with_the_registrys_label_binding_a
             "an emitter rule in the outline",
             ypt_emitter_lib_id(0),
             "em",
-            FIND_USAGES,
+            DUPLICATE_AND_FIND_USAGES,
         ),
         (
             "a particle rule in the outline",
             ypt_particle_lib_id(0),
             "pt",
-            FIND_USAGES,
+            DUPLICATE_AND_FIND_USAGES,
         ),
     ] {
         crate::ui::panels::hierarchy::ui_state(&mut state).scroll_to = Some((ypt, id));

@@ -15,7 +15,8 @@ use super::super::{
 use super::{
     mapped, place_blocks, section_of, stored, AnimEdit, BLOCK_ALIGN, BLOCK_HEAD, VIRTUAL_BASE,
 };
-use crate::container::rpf::{grow_section, Rpf9Form, Rpf9Section, Rpf9Sections};
+use crate::container::rpf::rpf9_grow::grow_section_with_data;
+use crate::container::rpf::{Rpf9Form, Rpf9Section, Rpf9Sections};
 use crate::decl::Aligned;
 use crate::gta5::CrBlockStream;
 use crate::gta6::hash::name_hash32;
@@ -209,7 +210,7 @@ pub(super) fn place_list(
         Rpf9Form::BlockMapped => {
             // Read from what is written so far, where a grown block now lies past the end.
             let held = Aligned::from_bytes(out);
-            let pointers = mapped::pointer_fields(&section_of(&held), resource)?;
+            let (pointers, data) = mapped::pointer_fields(&section_of(&held), resource)?;
             let len = out.len().next_multiple_of(BLOCK_ALIGN);
             out.resize(len, 0);
             let mut grown = Rpf9Sections {
@@ -218,7 +219,8 @@ pub(super) fn place_list(
                 physical: sections.physical.clone(),
             };
             let by = bytes.len().next_multiple_of(BLOCK_ALIGN) as isize;
-            let grew = grow_section(&mut grown, &pointers, Rpf9Section::Virtual, len, by);
+            let grew =
+                grow_section_with_data(&mut grown, &pointers, &data, Rpf9Section::Virtual, len, by);
             *out = grown.virtual_section;
             let at = grew.map_err(|e| unwritten(format!("the DOF list is not placed: {e}")))?;
             put(out, at, bytes);

@@ -171,8 +171,8 @@ fn a_scanned_map_places_its_entities_as_gta_v_s_with_the_box_of_an_open_types_bo
     assert!(state.selected_placed().is_some_and(|p| p.interior));
     assert!(
         crate::ui::commands::of(&state, crate::ui::commands::Action::RemoveEntity)
-            .is_some_and(|c| c.enabled.is_err()),
-        "a scanned map is read-only"
+            .is_some_and(|c| c.enabled.is_ok()),
+        "a scanned map's entity selected is taken out by a job"
     );
 
     // Another document made active takes the map off the screen.

@@ -2,6 +2,7 @@ mod bytes;
 mod ctx;
 mod derived;
 mod header;
+mod map;
 mod picker;
 mod presets;
 mod reference;

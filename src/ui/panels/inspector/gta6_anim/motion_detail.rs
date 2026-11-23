@@ -1,7 +1,7 @@
 //! Every value GTA VI's motion reader reads of a motion dictionary's motions, a line each: time
 //! warps, weight lists, parameters, and each group's curve and range object with its grids.
 
-use or_io::gta6::anim::{Grid, Motion, Typed};
+use or_io::gta6::anim::{ArrayHead, Grid, Motion, Typed};
 
 use super::*;
 
@@ -23,6 +23,14 @@ fn points(points: &[[f32; 2]]) -> String {
 fn hashes(words: &[u32]) -> String {
     let shown: Vec<String> = words.iter().map(|h| named(*h)).collect();
     format!("[{}]", shown.join(", "))
+}
+
+/// An array head as stated: its pointer, count of capacity and last word.
+fn array_head(h: &ArrayHead) -> String {
+    format!(
+        "{{{:#X}, {} / {}, {:#X}}}",
+        h.pointer, h.count, h.capacity, h.word
+    )
 }
 
 /// Grid `index` of group `group`: its two words, its cell ranges, its bounds, cell sizes and inverses.
@@ -80,14 +88,22 @@ fn typed_lines(group: usize, typed: &Typed, out: &mut Vec<String>) {
             ));
         }
         Typed::Lists {
+            head,
             lists,
             hashes: words,
-        } => out.push(tr!(
-            "Group {group}, lists {lists}, hashes {hashes}",
-            group = group,
-            lists = format!("{lists:08X?}"),
-            hashes = hashes(words),
-        )),
+        } => {
+            out.push(tr!(
+                "Group {group}, lists {lists}, hashes {hashes}",
+                group = group,
+                lists = format!("{lists:08X?}"),
+                hashes = hashes(words),
+            ));
+            out.push(tr!(
+                "Group {group}, array at 0x10 {head}",
+                group = group,
+                head = array_head(head),
+            ));
+        }
         Typed::Table(database) => out.push(grid(group, 0, &database.grid)),
         Typed::Rows(database) => {
             out.extend((database.grids.iter().enumerate()).map(|(i, g)| grid(group, i, g)));
@@ -153,11 +169,40 @@ fn lines(motion: &Motion) -> Vec<String> {
             max = p.max,
         ));
     }
+    for (c, items) in motion.parameter_items.iter().enumerate() {
+        for (i, item) in items.iter().enumerate() {
+            out.push(tr!(
+                "Clip {clip}, parameter {index}: points {points}, floats {floats}",
+                clip = c,
+                index = i,
+                points = points(&item.points),
+                floats = format!("{:?}", item.floats),
+            ));
+        }
+    }
     if !motion.parameter_objects.is_empty() {
+        let types: Vec<u32> = motion.parameter_objects.iter().map(|o| o.kind).collect();
         out.push(tr!(
             "Parameter objects, by type: {types}",
-            types = format!("{:?}", motion.parameter_objects)
+            types = format!("{types:?}")
         ));
+    }
+    for (i, o) in motion.parameter_objects.iter().enumerate() {
+        out.push(tr!(
+            "Parameter object {index} of type {kind}: arrays at 0x10 {first} and 0x20 {second}",
+            index = i,
+            kind = o.kind,
+            first = array_head(&o.heads[0]),
+            second = array_head(&o.heads[1]),
+        ));
+        if let Some((lists, words)) = &o.lists {
+            out.push(tr!(
+                "Parameter object {index}, lists {lists}, hashes {hashes}",
+                index = i,
+                lists = format!("{lists:08X?}"),
+                hashes = hashes(words),
+            ));
+        }
     }
     for (g, group) in motion.groups.iter().enumerate() {
         typed_lines(g, &group.curve, &mut out);
@@ -168,7 +213,9 @@ fn lines(motion: &Motion) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use or_io::gta6::anim::{Parameter, PhaseCurve, TimeWarp, Weight};
+    use or_io::gta6::anim::{
+        Parameter, ParameterItem, ParameterObject, PhaseCurve, TimeWarp, Weight,
+    };
 
     use super::*;
 
@@ -201,6 +248,10 @@ mod tests {
                 min: -1.0,
                 max: 1.0,
             }],
+            parameter_items: vec![vec![ParameterItem {
+                points: vec![[0.5, 1.0]],
+                floats: [1.0, 2.0, 3.0, 4.0],
+            }]],
             groups: vec![or_io::gta6::anim::MotionGroup {
                 first_clip: 0,
                 clips: 2,
@@ -221,23 +272,45 @@ mod tests {
                 }),
                 tags: Vec::new(),
             }],
-            parameter_objects: vec![1, 5],
+            parameter_objects: [1, 4]
+                .into_iter()
+                .map(|kind| ParameterObject {
+                    kind,
+                    heads: [ArrayHead {
+                        pointer: 0x5000_0040,
+                        count: 2,
+                        capacity: 2,
+                        word: 0,
+                    }; 2],
+                    lists: (kind == 4).then(|| (vec![vec![7]], vec![0xABCD])),
+                })
+                .collect(),
             properties: Vec::new(),
         };
         let lines = lines(&motion);
-        assert_eq!(lines.len(), 7, "{lines:#?}");
+        assert_eq!(lines.len(), 11, "{lines:#?}");
         assert_eq!(lines[0], "pack:/walk.motion");
         assert_eq!(lines[1], "Time warp 0: a 2, b 2, points (0, 0) (2, 2)");
         assert_eq!(lines[2], "Weight list 0: #1 (0.25, 0.75)");
         assert!(lines[3].contains("words [3, 4], word 0x00000009, from -1 to 1"));
-        assert_eq!(lines[4], "Parameter objects, by type: [1, 5]");
+        assert_eq!(
+            lines[4],
+            "Clip 0, parameter 0: points (0.5, 1), floats [1.0, 2.0, 3.0, 4.0]"
+        );
+        assert_eq!(lines[5], "Parameter objects, by type: [1, 4]");
+        assert_eq!(
+            lines[6],
+            "Parameter object 0 of type 1: arrays at 0x10 {0x50000040, 2 / 2, 0x0} and 0x20 {0x50000040, 2 / 2, 0x0}"
+        );
+        assert!(lines[7].starts_with("Parameter object 1 of type 4"));
+        assert!(lines[8].starts_with("Parameter object 1, lists [[00000007]]"));
         assert!(
-            lines[5].ends_with("x from 0 to 1, y1 1, 2 cycles"),
+            lines[9].ends_with("x from 0 to 1, y1 1, 2 cycles"),
             "{}",
-            lines[5]
+            lines[9]
         );
         assert!(
-            lines[6].starts_with("Group 0, grid 0: words [2, 3], cells [[0, 1], [-1, 1], [0, 0]]")
+            lines[10].starts_with("Group 0, grid 0: words [2, 3], cells [[0, 1], [-1, 1], [0, 0]]")
         );
     }
 }

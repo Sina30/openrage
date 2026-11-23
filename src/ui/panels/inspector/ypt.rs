@@ -380,8 +380,8 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     idx: usize,
 ) {
-    // A scanned GTA VI list holds no shader template name to write.
-    let named_template = !crate::state::gta6_particles::written_in_place(state, doc_id);
+    // A scanned GTA VI list holds no render state or shader instance to write.
+    let render_fields = !crate::state::gta6_particles::written_in_place(state, doc_id);
     let mut dirty = false;
     let before;
     {
@@ -441,95 +441,95 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
                     .color(theme::TEXT_SECONDARY),
             );
         });
-        ui.label(
-            egui::RichText::new(tr!("Render state"))
-                .small()
-                .color(theme::TEXT_SECONDARY),
-        );
-        let cull_options = ["None", "Front", "Back"];
-        ui.horizontal(|ui| {
-            ui.label("cull_mode");
-            egui::ComboBox::from_id_salt("ypt_rule_cull")
-                .selected_text(
-                    cull_options
-                        .get(rule.render_state.cull_mode.clamp(0, 2) as usize)
-                        .copied()
-                        .unwrap_or("None"),
-                )
-                .show_ui(ui, |ui| {
-                    for (i, name) in cull_options.iter().enumerate() {
-                        if ui
-                            .selectable_label(rule.render_state.cull_mode == i as i32, *name)
-                            .clicked()
-                        {
-                            rule.render_state.cull_mode = i as i32;
-                            dirty = true;
+        if render_fields {
+            ui.label(
+                egui::RichText::new(tr!("Render state"))
+                    .small()
+                    .color(theme::TEXT_SECONDARY),
+            );
+            let cull_options = ["None", "Front", "Back"];
+            ui.horizontal(|ui| {
+                ui.label("cull_mode");
+                egui::ComboBox::from_id_salt("ypt_rule_cull")
+                    .selected_text(
+                        cull_options
+                            .get(rule.render_state.cull_mode.clamp(0, 2) as usize)
+                            .copied()
+                            .unwrap_or("None"),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (i, name) in cull_options.iter().enumerate() {
+                            if ui
+                                .selectable_label(rule.render_state.cull_mode == i as i32, *name)
+                                .clicked()
+                            {
+                                rule.render_state.cull_mode = i as i32;
+                                dirty = true;
+                            }
                         }
-                    }
-                });
-        });
-        let blend_options = [
-            "Normal",
-            "Add",
-            "Subtract",
-            "Lightmap",
-            "Matte",
-            "Overwrite",
-            "Dest",
-            "AlphaAdd",
-            "ReverseSubtract",
-            "Min",
-            "Max",
-            "AlphaSubtract",
-            "MultiplySrcDest",
-            "CompositeAlpha",
-            "CompositeAlphaSubtract",
-        ];
-        ui.horizontal(|ui| {
-            ui.label("blend_set");
-            egui::ComboBox::from_id_salt("ypt_rule_blend")
-                .selected_text(
-                    blend_options
-                        .get(rule.render_state.blend_set as usize)
-                        .copied()
-                        .unwrap_or("?"),
-                )
-                .show_ui(ui, |ui| {
-                    for (i, name) in blend_options.iter().enumerate() {
-                        if ui
-                            .selectable_label(rule.render_state.blend_set == i as i32, *name)
-                            .clicked()
-                        {
-                            rule.render_state.blend_set = i as i32;
-                            dirty = true;
+                    });
+            });
+            let blend_options = [
+                "Normal",
+                "Add",
+                "Subtract",
+                "Lightmap",
+                "Matte",
+                "Overwrite",
+                "Dest",
+                "AlphaAdd",
+                "ReverseSubtract",
+                "Min",
+                "Max",
+                "AlphaSubtract",
+                "MultiplySrcDest",
+                "CompositeAlpha",
+                "CompositeAlphaSubtract",
+            ];
+            ui.horizontal(|ui| {
+                ui.label("blend_set");
+                egui::ComboBox::from_id_salt("ypt_rule_blend")
+                    .selected_text(
+                        blend_options
+                            .get(rule.render_state.blend_set as usize)
+                            .copied()
+                            .unwrap_or("?"),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (i, name) in blend_options.iter().enumerate() {
+                            if ui
+                                .selectable_label(rule.render_state.blend_set == i as i32, *name)
+                                .clicked()
+                            {
+                                rule.render_state.blend_set = i as i32;
+                                dirty = true;
+                            }
                         }
-                    }
-                });
-        });
-        check_bool8(
-            ui,
-            "depth_write",
-            &mut rule.render_state.depth_write,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "depth_test",
-            &mut rule.render_state.depth_test,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "alpha_blend",
-            &mut rule.render_state.alpha_blend,
-            &mut dirty,
-        );
-        ui.label(
-            egui::RichText::new(tr!("Shader instance"))
-                .small()
-                .color(theme::TEXT_SECONDARY),
-        );
-        if named_template {
+                    });
+            });
+            check_bool8(
+                ui,
+                "depth_write",
+                &mut rule.render_state.depth_write,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "depth_test",
+                &mut rule.render_state.depth_test,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "alpha_blend",
+                &mut rule.render_state.alpha_blend,
+                &mut dirty,
+            );
+            ui.label(
+                egui::RichText::new(tr!("Shader instance"))
+                    .small()
+                    .color(theme::TEXT_SECONDARY),
+            );
             ui.horizontal(|ui| {
                 ui.label("shader_template_name");
                 if ui
@@ -564,46 +564,46 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
                         }
                     });
             });
+            ui.horizontal(|ui| {
+                ui.label("shader_technique_name");
+                if ui
+                    .text_edit_singleline(&mut rule.shader_inst.shader_template_technique_name)
+                    .changed()
+                {
+                    dirty = true;
+                }
+            });
+            check_bool8(
+                ui,
+                "is_lit",
+                &mut rule.shader_inst.technique_desc.is_lit,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "is_soft",
+                &mut rule.shader_inst.technique_desc.is_soft,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "is_screen_space",
+                &mut rule.shader_inst.technique_desc.is_screen_space,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "is_refract",
+                &mut rule.shader_inst.technique_desc.is_refract,
+                &mut dirty,
+            );
+            check_bool8(
+                ui,
+                "is_normal_spec",
+                &mut rule.shader_inst.technique_desc.is_normal_spec,
+                &mut dirty,
+            );
         }
-        ui.horizontal(|ui| {
-            ui.label("shader_technique_name");
-            if ui
-                .text_edit_singleline(&mut rule.shader_inst.shader_template_technique_name)
-                .changed()
-            {
-                dirty = true;
-            }
-        });
-        check_bool8(
-            ui,
-            "is_lit",
-            &mut rule.shader_inst.technique_desc.is_lit,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "is_soft",
-            &mut rule.shader_inst.technique_desc.is_soft,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "is_screen_space",
-            &mut rule.shader_inst.technique_desc.is_screen_space,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "is_refract",
-            &mut rule.shader_inst.technique_desc.is_refract,
-            &mut dirty,
-        );
-        check_bool8(
-            ui,
-            "is_normal_spec",
-            &mut rule.shader_inst.technique_desc.is_normal_spec,
-            &mut dirty,
-        );
         ui.label(
             egui::RichText::new(tr!("Read-only"))
                 .small()

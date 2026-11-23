@@ -405,7 +405,7 @@ fn print_motion(motion: &Motion) -> usize {
             )
         })
         .collect();
-    let objects = &motion.parameter_objects;
+    let objects: Vec<u32> = motion.parameter_objects.iter().map(|o| o.kind).collect();
     println!(
         "    motion {:?}  key {:#010X}, kind {}, {} clip(s) by key, {} weight list(s), {} parameter(s), parameter objects of types {objects:?}; groups: {}",
         motion.name,

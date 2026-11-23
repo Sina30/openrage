@@ -197,8 +197,9 @@ pub enum TtpfError {
     )]
     ReshapeFormat { index: usize, format: String },
     #[error(
-        "texture {index} is a volume, or an array in 4 KiB tiles: another size, format or mip \
-         count is planned for a 2D texture, a cube and an array in 64 KiB tiles"
+        "texture {index} is an array in 4 KiB tiles, or of no measured shape: another size, \
+         format or mip count is planned for a 2D texture, a cube, an array in 64 KiB tiles and a \
+         volume of one level"
     )]
     ReshapeShape { index: usize },
     #[error(

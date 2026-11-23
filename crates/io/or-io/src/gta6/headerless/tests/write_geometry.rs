@@ -754,9 +754,11 @@ fn channel_33_s_reference_follows_a_new_vertex_where_every_vertex_sets_bit_15() 
     assert_eq!(back.vertices.reference[..3], held[..]);
     assert_eq!(back.vertices.reference[3], moved(&[1.0, 1.0, 0.0]));
 
-    // A vertex whose lane 0 clears bit 15 holds lanes no writer derives.
+    // Three vertices whose lane 0 clears bit 15 are too few to fit the cell a new vertex takes.
     let mut clear = lanes.clone();
-    clear[0][1] = 0;
+    for e in &mut clear {
+        e[1] = 0;
+    }
     let sections = with_reference(&clear);
     let mut again = sections.clone();
     let refused = write_geometry(&mut again, Rpf9Role::Drawable, None, AT, &edit);

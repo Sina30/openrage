@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use or_io::authoring::{FormatChoice, TextureBuildOptions};
-use or_io::codec::texture::{GrcTextureFormat, RgbaImage};
+use or_io::codec::texture::{decode_level, GrcTextureFormat, RgbaImage};
 use or_io::container::rpf::{read_rpf9_body, write_rpf9_resource, Rpf9Sections};
 use or_io::gta6::headerless::{
     read_dictionary, read_dictionary_model, write_dictionary, DictionaryModel, Entry, ModelTexture,
@@ -189,5 +189,71 @@ fn a_scanned_dictionary_texture_resized_re_encoded_and_added_saves_planned_anew_
     assert!(
         read_back(&copy) == stored,
         "undone, Save As copies the body"
+    );
+}
+
+#[test]
+fn a_scanned_array_resized_from_one_image_takes_it_in_its_shown_slice_and_saves_each_slice() {
+    let _serial = crate::ui::theme::serial();
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    // Two 16x16 BC1 slices of one level, each a pattern of its own.
+    let slice = |seed: usize| -> Vec<Vec<u8>> {
+        vec![(0..4 * 4 * 8)
+            .map(|i: usize| (i * 7 + seed) as u8)
+            .collect()]
+    };
+    let (first, second) = (slice(1), slice(90));
+    let slices = [first.as_slice(), second.as_slice()];
+    let array = ModelTexture::tiled_slices("zq_array", 16, 16, 1, 71, &slices).expect("it tiles");
+    let model = DictionaryModel {
+        textures: vec![array],
+        capacity: 1,
+    };
+    let sections = write_dictionary(&model).expect("planned");
+    let path = dir.path().join("array.rsc");
+    std::fs::write(&path, write_rpf9_resource(&sections).expect("writes")).expect("written");
+    let mut state = AppState::new();
+    state.load_file(path);
+    settle(&mut state);
+    let doc = (state.active_document).unwrap_or_else(|| panic!("{}", state.error_dialog_message));
+    let opened = textures(&state, doc);
+    let start = state.document(doc).expect("open").history.at();
+    let options = TextureBuildOptions {
+        mip_levels: Some(2),
+        ..TextureBuildOptions::default()
+    };
+    let (at, auto) = (TextureSource::Document, FormatChoice::Automatic);
+    let red = image(32, [255, 0, 0, 255]);
+    (state.import_texture_over(doc, at, "zq_array", &red, auto, &options))
+        .expect("an array takes another size");
+    let edited = textures(&state, doc);
+    assert_eq!((edited[0].1, edited[0].2, edited[0].3), (32, 32, 2));
+
+    let saved = dir.path().join("saved.rsc");
+    state.active_document = Some(doc);
+    assert!(state.save_active_document_as(saved.clone()));
+    finished(&mut state);
+    let sections = read_back(&saved);
+    let read =
+        read_dictionary(&sections.virtual_section, Some(&sections.physical)).expect("it reads");
+    let t = (read.entries.iter())
+        .find_map(|(_, entry)| match entry {
+            Ok(Entry::Texture(t)) => Some(t),
+            _ => None,
+        })
+        .expect("the array is saved");
+    assert_eq!((t.width, t.height, t.depth, t.mip_levels), (32, 32, 2, 2));
+    let back = t.texture.as_ref().expect("its pixels read");
+    assert!(
+        back.pixels == edited[0].4,
+        "each slice reads back as edited"
+    );
+    let shown = decode_level(&back.face(0).expect("slice 0"), 0).expect("decodes");
+    assert!(shown.data.chunks(4).all(|pixel| pixel == [255, 0, 0, 255]));
+
+    state.go_to_step(doc, start);
+    assert!(
+        textures(&state, doc) == opened,
+        "undone, it is as it opened"
     );
 }

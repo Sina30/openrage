@@ -1,10 +1,14 @@
-//! A GTA VI expression set's track ids edited, each a step of its document's history, and
-//! written in place over the body its scan read when it saves; nothing else of a set is written.
+//! A GTA VI expression set's track ids edited and its tracks added or removed, each a step of its
+//! document's history, and written over the body its scan read when it saves: ids in place, a
+//! set of other tracks laid out anew.
 
 use std::sync::Arc;
 
 use or_io::container::rpf::Rpf9Sections;
-use or_io::gta6::anim::{write_expression_ids, ExpressionGroup, Expressions};
+use or_io::gta6::anim::{
+    add_expression_track, remove_expression_track, write_edited_expressions, AnimError,
+    ExpressionGroup, Expressions,
+};
 use or_io::gta6::hash::name_hash32;
 
 use super::document::Document;
@@ -24,7 +28,9 @@ pub(crate) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
     let (archive, offset) = super::rpf9_scan::scanned_body(document.path.as_deref()?)?;
     let set = Arc::clone(set);
     let edit: Arc<EditSections> = Arc::new(move |_, sections: &mut Rpf9Sections| {
-        write_expression_ids(&mut sections.virtual_section, &set).map_err(|e| e.to_string())
+        let physical = sections.physical.len();
+        write_edited_expressions(&mut sections.virtual_section, physical, &set)
+            .map_err(|e| e.to_string())
     });
     Some(Ok(EditedSave::Body {
         archive: archive.to_path_buf(),
@@ -88,6 +94,66 @@ impl AppState {
         let key = format!("gta6 expression id {group:?}.{track}");
         let change = Change::part(key, before, expressions);
         self.record(doc, tr!("Edit a track's id"), change);
+        true
+    }
+
+    /// A copy of track `track` of group `group` added after the group's last under id `id`, as a
+    /// step of `doc`'s history; what the set's rules refuse is said in a toast.
+    pub(crate) fn add_gta6_expression_track(
+        &mut self,
+        doc: DocumentId,
+        group: ExpressionGroup,
+        track: usize,
+        id: u32,
+    ) -> bool {
+        let label = tr!("Add a track").to_string();
+        self.change_gta6_expression_tracks(doc, label, |set| {
+            add_expression_track(set, group, track, id)
+        })
+    }
+
+    /// Track `track` of group `group` removed, as a step of `doc`'s history.
+    pub(crate) fn remove_gta6_expression_track(
+        &mut self,
+        doc: DocumentId,
+        group: ExpressionGroup,
+        track: usize,
+    ) -> bool {
+        let label = tr!("Remove a track").to_string();
+        self.change_gta6_expression_tracks(doc, label, |set| {
+            remove_expression_track(set, group, track)
+        })
+    }
+
+    fn change_gta6_expression_tracks(
+        &mut self,
+        doc: DocumentId,
+        label: String,
+        change: impl FnOnce(&Expressions) -> Result<Expressions, AnimError>,
+    ) -> bool {
+        let Some(DocPayload::Gta6Expressions(set)) = self.document(doc).map(|d| &d.payload) else {
+            return false;
+        };
+        let edited = match change(set) {
+            Ok(edited) => edited,
+            Err(e) => {
+                self.show_error_toast(tr!("Cannot edit: {reason}", reason = e.to_string()));
+                return false;
+            }
+        };
+        let Some(held) = self
+            .document_mut(doc)
+            .and_then(|d| expressions(&mut d.payload))
+        else {
+            return false;
+        };
+        let before = std::mem::replace(held, Arc::new(edited));
+        // Each add or remove is a step of its own, never folded into the one before.
+        let mut step = Change::part(String::new(), before, expressions);
+        if let Change::Part { key, .. } = &mut step {
+            *key = None;
+        }
+        self.record(doc, label, step);
         true
     }
 }
@@ -169,6 +235,45 @@ mod tests {
 
         state.go_to_step(doc, start);
         assert_eq!(ids(&state, doc), [0xA1, 0xA2], "undo takes the id back");
+    }
+
+    #[test]
+    fn a_track_added_or_removed_is_a_step_of_its_own_and_undo_takes_it_back() {
+        let _serial = crate::ui::theme::serial();
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let archive = dir.path().join("a.rpf");
+        std::fs::write(&archive, vec![0u8; 4096]).expect("the archive");
+        let mut state = AppState::default();
+        let payload = DocPayload::Gta6Expressions(Arc::new(set()));
+        let doc = state.insert_document(archive.join("0x10.yed"), payload, None, None);
+        let at = |state: &AppState| state.document(doc).expect("the set").history.at();
+        let start = at(&state);
+
+        assert!(state.add_gta6_expression_track(doc, ExpressionGroup::Inputs, 0, 0xA3));
+        let one = at(&state);
+        assert!(state.add_gta6_expression_track(doc, ExpressionGroup::Inputs, 1, 0xA4));
+        assert_eq!(ids(&state, doc), [0xA1, 0xA2, 0xA3, 0xA4]);
+        assert!(state.remove_gta6_expression_track(doc, ExpressionGroup::Inputs, 0));
+        assert_eq!(ids(&state, doc), [0xA2, 0xA3, 0xA4]);
+        assert!(matches!(
+            state.document(doc).and_then(edited_save),
+            Some(Ok(EditedSave::Body { .. }))
+        ));
+
+        // A group whose tracks do not change, a twice-stated id and no track are refused.
+        assert!(!state.add_gta6_expression_track(doc, ExpressionGroup::Bones, 0, 0xB1));
+        assert!(!state.add_gta6_expression_track(doc, ExpressionGroup::Inputs, 0, 0xA3));
+        assert!(!state.remove_gta6_expression_track(doc, ExpressionGroup::Inputs, 9));
+        assert_eq!(ids(&state, doc), [0xA2, 0xA3, 0xA4]);
+
+        state.go_to_step(doc, one);
+        assert_eq!(
+            ids(&state, doc),
+            [0xA1, 0xA2, 0xA3],
+            "each add is its own step"
+        );
+        state.go_to_step(doc, start);
+        assert_eq!(ids(&state, doc), [0xA1, 0xA2]);
     }
 
     #[test]

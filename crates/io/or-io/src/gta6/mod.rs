@@ -23,6 +23,7 @@ pub mod names;
 pub mod other_bodies;
 pub mod save;
 pub mod script_bodies;
+pub mod slice_sources;
 pub mod text;
 pub mod text_language;
 pub mod texture_names;

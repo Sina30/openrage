@@ -1,7 +1,8 @@
 //! A scanned GTA VI particle effects list's edits saved: the rules its GTA V form no longer holds
-//! taken out, the effects it duplicated and the keys it added written past the section's end,
-//! then the values the two forms share and each event's rules written over the body's sections in
-//! place on the save's worker, and any edit with no place in the list refused.
+//! taken out, the effects, rules, events and behaviours it copied and the keys it added written
+//! past the section's end, then the values the two forms share and each event's rules written
+//! over the body's sections in place on the save's worker, and any edit with no place in the list
+//! refused.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -21,6 +22,9 @@ use or_particle::list::{
 
 #[path = "gta6_particles_remove.rs"]
 pub(super) mod remove;
+
+#[path = "gta6_particles_copies.rs"]
+mod copies;
 
 use super::document::Document;
 use super::gta6_edit::EditSections;
@@ -58,6 +62,8 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
             };
             duplicate_particle_effect(&mut s, source, &name).map_err(|e| e.to_string())?;
         }
+        copies::written(&mut s, &ypt)?;
+        let ypt = copies::ordered(&read(&s)?, &ypt);
         let keyed = from_ypt(&read(&s)?, &ypt)?;
         add_particle_keys(&mut s, &keyed).map_err(|e| e.to_string())?;
         let edited = from_ypt(&read(&s)?, &ypt)?;

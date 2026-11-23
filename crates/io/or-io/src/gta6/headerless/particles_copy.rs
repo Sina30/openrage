@@ -78,20 +78,28 @@ pub fn duplicate_particle_effect(
 }
 
 /// Bytes laid out from `base` on, each allocation 16-aligned, and the words written below `base`.
-struct Tail {
-    base: usize,
-    bytes: Vec<u8>,
-    patches: Vec<(usize, Vec<u8>)>,
+pub(super) struct Tail {
+    pub(super) base: usize,
+    pub(super) bytes: Vec<u8>,
+    pub(super) patches: Vec<(usize, Vec<u8>)>,
 }
 
 impl Tail {
-    fn alloc(&mut self, len: usize) -> usize {
+    pub(super) fn new(base: usize) -> Self {
+        Self {
+            base,
+            bytes: Vec::new(),
+            patches: Vec::new(),
+        }
+    }
+
+    pub(super) fn alloc(&mut self, len: usize) -> usize {
         let at = self.bytes.len().next_multiple_of(16);
         self.bytes.resize(at + len, 0);
         self.base + at
     }
 
-    fn put(&mut self, at: usize, bytes: &[u8]) -> Result<()> {
+    pub(super) fn put(&mut self, at: usize, bytes: &[u8]) -> Result<()> {
         let Some(o) = at.checked_sub(self.base) else {
             self.patches.push((at, bytes.to_vec()));
             return Ok(());
@@ -105,12 +113,18 @@ impl Tail {
         }
     }
 
-    fn ptr(&mut self, at: usize, to: usize) -> Result<()> {
+    pub(super) fn ptr(&mut self, at: usize, to: usize) -> Result<()> {
         self.put(at, &(VIRTUAL + to as u64).to_le_bytes())
     }
 
     /// The `len` bytes at `from` copied to a place of their own.
-    fn copy(&mut self, v: &Bytes, what: &'static str, from: usize, len: usize) -> Result<usize> {
+    pub(super) fn copy(
+        &mut self,
+        v: &Bytes,
+        what: &'static str,
+        from: usize,
+        len: usize,
+    ) -> Result<usize> {
         let held = v.get(what, from, len)?;
         let at = self.alloc(len);
         self.put(at, held)?;
@@ -119,7 +133,7 @@ impl Tail {
 
     /// The elements of the array whose head is at `head` copied, the head at `to` aimed at them;
     /// where they are, or `None` for an array of none.
-    fn elements(
+    pub(super) fn elements(
         &mut self,
         v: &Bytes,
         what: &'static str,
@@ -155,7 +169,7 @@ fn laid_out(
         patches: Vec::new(),
     };
     let rule = effect(&mut t, v, from.at as usize, name)?;
-    dictionary(&mut t, v, name_hash32(name.as_bytes()), rule)?;
+    dictionary(&mut t, v, 0x28, name_hash32(name.as_bytes()), rule)?;
     let mut named: BTreeMap<u64, u32> = BTreeMap::new();
     for ev in &from.events {
         let rules = [
@@ -180,7 +194,7 @@ fn laid_out(
 }
 
 /// The keys of the keyframed value at `from` copied for the one at `to`.
-fn kfp(t: &mut Tail, v: &Bytes, from: usize, to: usize) -> Result<()> {
+pub(super) fn kfp(t: &mut Tail, v: &Bytes, from: usize, to: usize) -> Result<()> {
     t.elements(v, "keyframed value", from + 8, to + 8, 0x20)?;
     Ok(())
 }
@@ -237,7 +251,7 @@ fn effect(t: &mut Tail, v: &Bytes, from: usize, name: &str) -> Result<usize> {
 
 /// The evolution list at `from` copied with its evolutions, values, keyframes and map; where the
 /// copy is.
-fn evolution_list(t: &mut Tail, v: &Bytes, from: usize) -> Result<usize> {
+pub(super) fn evolution_list(t: &mut Tail, v: &Bytes, from: usize) -> Result<usize> {
     const WHAT: &str = "evolution list";
     let at = t.copy(v, WHAT, from, EVOLUTION_LIST)?;
     t.elements(v, WHAT, from, at, 0x18)?;
@@ -302,11 +316,17 @@ fn map(
     Ok(())
 }
 
-/// The effect rule dictionary's codes and entries laid out anew with `code` for the rule at
-/// `rule` in its ascending place, each array as long as its count.
-fn dictionary(t: &mut Tail, v: &Bytes, code: u32, rule: usize) -> Result<()> {
-    const WHAT: &str = "effect rules";
-    let d = v.to(WHAT, 0x28)?;
+/// The codes and entries of the dictionary the root's `slot` points at laid out anew with `code`
+/// for the rule at `rule` in its ascending place, each array as long as its count.
+pub(super) fn dictionary(
+    t: &mut Tail,
+    v: &Bytes,
+    slot: usize,
+    code: u32,
+    rule: usize,
+) -> Result<()> {
+    const WHAT: &str = "rule dictionary";
+    let d = v.to(WHAT, slot)?;
     let (codes, n, _) = array(v, WHAT, d + 0x20, true)?;
     let (entries, _, _) = array(v, WHAT, d + 0x30, true)?;
     need(
@@ -321,7 +341,7 @@ fn dictionary(t: &mut Tail, v: &Bytes, code: u32, rule: usize) -> Result<()> {
         .collect::<Result<_>>()?;
     need(
         !held.contains(&code),
-        "an effect rule of that name's hash is in the list",
+        "a rule of that name's hash is in its dictionary",
     )?;
     let place = held.partition_point(|c| *c < code);
     held.insert(place, code);

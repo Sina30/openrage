@@ -1,14 +1,38 @@
 //! The mission state tables of a GTA VI script body in the outline of its metadata document:
 //! a row per state, by its name where one is known, opening into the records or the placed
-//! elements it owns. Read from the bytes the body was read from, so read only.
+//! elements it owns. Read from the document's current form, and read only.
 
 use std::collections::HashSet;
 use std::ops::Range;
+use std::sync::{Arc, Mutex};
 
 use or_io::gta6::mission_tables::{Body, Run, StateTable, RECORD};
 use or_io::meta::binary::hash_index::default_hash_index;
 
 use super::*;
+use crate::state::MetaDocument;
+
+/// The document last drawn, its tree and text revisions and its current form, `None` where that
+/// does not write.
+// ponytail: one document kept, so two edited outlines drawn by turns each encode every frame.
+#[allow(clippy::type_complexity)]
+static CURRENT: Mutex<Option<(DocumentId, u64, u64, Option<Arc<[u8]>>)>> = Mutex::new(None);
+
+/// The edited document's current form, encoded once per revision; `None` where it does not write.
+fn current_form(doc_id: DocumentId, meta: &MetaDocument) -> Option<Arc<[u8]>> {
+    let key = (doc_id, meta.revision(), meta.text_revision);
+    let mut kept = CURRENT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((id, revision, text, form)) = kept.as_ref() {
+        if (*id, *revision, *text) == key {
+            return form.clone();
+        }
+    }
+    let form: Option<Arc<[u8]>> = meta.to_bytes().ok().map(Arc::from);
+    *kept = Some((key.0, key.1, key.2, form.clone()));
+    form
+}
 
 /// The tables a state's run is followed through before the outline stops, against a table that owns itself.
 const DEPTH: usize = 8;
@@ -117,8 +141,19 @@ impl Tables<'_> {
 /// The body's state tables, each a collapsing row of its states, a table a state owns drawn
 /// under that state; `false`, drawing nothing, for a document that declares no state table.
 pub(crate) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) -> bool {
-    let Some(bytes) = state.document(doc_id).and_then(|d| raw(&d.payload)) else {
+    let Some(DocPayload::Meta(meta)) = state.document(doc_id).map(|d| &d.payload) else {
         return false;
+    };
+    // Every metadata document reaches here: only a body read with tables is encoded again.
+    if !Body::open(&meta.raw_bytes).is_ok_and(|b| b.holds_tables()) {
+        return false;
+    }
+    // An edit shows once the document writes; one that does not is drawn as the body was read.
+    let current = meta.is_edited().then(|| current_form(doc_id, meta));
+    let (bytes, as_read) = match &current {
+        Some(Some(form)) => (&form[..], false),
+        Some(None) => (meta.raw_bytes.as_slice(), true),
+        None => (meta.raw_bytes.as_slice(), false),
     };
     let Some(body) = Body::open(bytes).ok().filter(Body::holds_tables) else {
         return false;
@@ -138,11 +173,20 @@ pub(crate) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) 
         body: &body,
         tables: &tables,
     };
-    ui.add(detail_label(tr_n!(
-        "{count} mission state table, as the body was read: an edit of the document is not shown here",
-        "{count} mission state tables, as the body was read: an edit of the document is not shown here",
-        tables.len()
-    )));
+    let heading = if as_read {
+        tr_n!(
+            "{count} mission state table, as the body was read: an edit of the document is not shown here",
+            "{count} mission state tables, as the body was read: an edit of the document is not shown here",
+            tables.len()
+        )
+    } else {
+        tr_n!(
+            "{count} mission state table, as the document now stands",
+            "{count} mission state tables, as the document now stands",
+            tables.len()
+        )
+    };
+    ui.add(detail_label(heading));
     let owned: HashSet<usize> = (tables.iter().flat_map(|t| &t.records))
         .filter_map(|record| drawn.owned(record))
         .collect();
@@ -176,7 +220,6 @@ pub(crate) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::MetaDocument;
 
     fn frame(out: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
         out.extend_from_slice(tag);
@@ -236,5 +279,19 @@ mod tests {
         };
         assert_eq!((tables.len(), tables[0].offset), (1, 0x20));
         assert_eq!(drawn.owned(&tables[0].records[0]), None);
+    }
+
+    #[test]
+    fn an_edited_document_s_current_form_is_encoded_once_per_revision() {
+        let mut meta = MetaDocument::empty();
+        meta.raw_bytes = body(0x0C);
+        let doc_id = DocumentId::MAX - 0x215;
+        let first = current_form(doc_id, &meta).expect("an XML document writes");
+        assert_eq!(&first[..], &meta.to_bytes().expect("it writes")[..]);
+        let again = current_form(doc_id, &meta).expect("it writes");
+        assert!(Arc::ptr_eq(&first, &again));
+        meta.text_revision += 1;
+        let edited = current_form(doc_id, &meta).expect("it writes");
+        assert!(!Arc::ptr_eq(&first, &edited));
     }
 }

@@ -2,8 +2,8 @@
 //! body's sections. A move sets the child's own transform: the composite's matrix for it is its
 //! group bone's bind world times that transform, the composite's box the union of its children's
 //! placed boxes, and its BVH is fitted again. A group change keeps where the child lies: its
-//! record moves into the new group's range and the composite's per-child arrays and BVH leaves
-//! follow the children's new order.
+//! record moves into the new group's range and the composite's per-child arrays, its BVH leaves
+//! and the vehicle glass's windows follow the children's new order.
 
 use super::bound::bound_at;
 use super::bytes::{sections, u64_at};
@@ -15,7 +15,7 @@ use super::write_physics::{
 };
 use super::{
     read_drawable_with_bound, Bone, Bound, BoundChild, DrawableWithBound, Fragment, FragmentChild,
-    HeaderlessError, Result,
+    GlassWindow, HeaderlessError, Result, VehicleGlass,
 };
 
 /// A fragment child record's bytes.
@@ -24,11 +24,13 @@ const CHILD: usize = 0x50;
 const GROUP: usize = 0x70;
 /// No place among the composite's children.
 const NONE: u16 = 0xFFFF;
+/// Where a vehicle glass window's header holds the index of the child it is.
+const WINDOW_CHILD: usize = 0x44;
 
 const NO_SUCH_CHILD: &str = "the fragment holds no such child";
 const NO_SUCH_GROUP: &str = "the fragment holds no such group";
 const GLASS: &str =
-    "its vehicle glass names its children by index, which a group change would renumber";
+    "its vehicle glass names its children by index and does not read, so its windows cannot follow a group change";
 
 /// A bone's bind world: its rotation and scale, then its translation.
 type World = (M3, [f32; 3]);
@@ -260,9 +262,6 @@ pub fn regroup_fragment_child(
 ) -> Result<usize> {
     transform_holds(q, t)?;
     let f = &level.fragment;
-    if f.vehicle_glass.is_some() {
-        return Err(refuse(GLASS));
-    }
     let c = f.children.get(child).ok_or(refuse(NO_SUCH_CHILD))?;
     let target = (f.groups.get(usize::from(group))).ok_or(refuse(NO_SUCH_GROUP))?;
     let range = match c.composite {
@@ -281,6 +280,11 @@ pub fn regroup_fragment_child(
     }
     let mut order: Vec<usize> = (0..f.children.len()).filter(|&i| i != child).collect();
     order.insert(start + place, child);
+    let glass = match &f.vehicle_glass {
+        Some(Ok(g)) => Some(glass_renumbered(g, &new_of(&order))?.0),
+        Some(Err(_)) => return Err(refuse(GLASS)),
+        None => None,
+    };
     let groups_of: Vec<u16> = (order.iter())
         .map(|&i| match i == child {
             true => group,
@@ -358,6 +362,9 @@ pub fn regroup_fragment_child(
     level.fragment.children = children;
     level.fragment.groups = groups;
     level.fragment.wheels = wheels;
+    if let Some(g) = glass {
+        level.fragment.vehicle_glass = Some(Ok(g));
+    }
     if let Some(b) = level.bound.as_mut() {
         let mut old: Vec<Option<BoundChild>> = std::mem::take(&mut b.children)
             .into_iter()
@@ -368,6 +375,65 @@ pub fn regroup_fragment_child(
             .collect();
     }
     Ok(start + place)
+}
+
+/// The new index of each child, `order` naming the old index of each new one.
+fn new_of(order: &[usize]) -> Vec<usize> {
+    let mut to = vec![0; order.len()];
+    for (k, &i) in order.iter().enumerate() {
+        if let Some(slot) = to.get_mut(i) {
+            *slot = k;
+        }
+    }
+    to
+}
+
+/// `glass` with each window's child `i` named `to[i]`, the windows kept ascending by child as every
+/// measured block holds them; whether a window changed place.
+fn glass_renumbered(glass: &VehicleGlass, to: &[usize]) -> Result<(VehicleGlass, bool)> {
+    let mut out = glass.clone();
+    for w in &mut out.windows {
+        let new = (to.get(usize::from(w.child())))
+            .and_then(|n| u16::try_from(*n).ok())
+            .ok_or(refuse(
+                "a vehicle glass window names a child past the fragment's children",
+            ))?;
+        w.header[WINDOW_CHILD..WINDOW_CHILD + 2].copy_from_slice(&new.to_le_bytes());
+    }
+    let moved = out.windows.windows(2).any(|w| w[0].child() > w[1].child());
+    out.windows.sort_by_key(GlassWindow::child);
+    Ok((out, moved))
+}
+
+/// The vehicle glass `edited` holds written over `read`'s, which it must be with its windows'
+/// children renumbered by `order`, the old index of each new child.
+// The windows keep their bytes and only change place, so the block keeps its length.
+fn glass_written(v: &mut [u8], read: &Fragment, edited: &Fragment, order: &[usize]) -> Result<()> {
+    let (r, e) = match (&read.vehicle_glass, &edited.vehicle_glass) {
+        (None, None) => return Ok(()),
+        (Some(Ok(r)), Some(Ok(e))) => (r, e),
+        _ => return Err(refuse(GLASS)),
+    };
+    let (renumbered, moved) = glass_renumbered(r, &new_of(order))?;
+    if renumbered != *e {
+        return Err(refuse(
+            "the edit's vehicle glass is not the fragment's with its windows' children renumbered",
+        ));
+    }
+    let (at, stated) = sections(v, None, |b, _| {
+        let at = b.to("vehicle glass", 0xF0)?;
+        Ok((at, b.u32("vehicle glass", at + 8)? as usize))
+    })?;
+    let bytes = e.encode();
+    if bytes.len() != stated {
+        return Err(refuse(
+            "the vehicle glass would encode to another length than the block states",
+        ));
+    }
+    if moved {
+        aimed_inside(v, at, stated)?;
+    }
+    put(v, at, &bytes)
 }
 
 /// `len` bytes of `v` at `at`, copied.
@@ -481,9 +547,6 @@ fn regroup_written(
     if r.iter().zip(e).all(same) {
         return Ok(false);
     }
-    if read.vehicle_glass.is_some() {
-        return Err(refuse(GLASS));
-    }
     let kept = |(a, b): (&super::FragmentGroup, &super::FragmentGroup)| {
         (a.bone, a.bone_hash, a.parent, &a.child_groups)
             == (b.bone, b.bone_hash, b.parent, &b.child_groups)
@@ -552,6 +615,7 @@ fn regroup_written(
         *slot = usize::from(rank);
         rank += 1;
     }
+    glass_written(v, read, edited, &order)?;
 
     let (groups, children) = sections(v, None, |b, _| {
         Ok((b.to("groups", 0x20)?, b.to("children", 0x28)?))

@@ -17,6 +17,12 @@ pub(super) enum YptDeferredOp {
     DeleteEmitterRule(usize, bool),
     AddParticleRule,
     DeleteParticleRule(usize, bool),
+    DuplicateEmitterRule(usize),
+    DuplicateParticleRule(usize),
+    /// An effect's index and the index of its event to copy to its timeline's end.
+    DuplicateEvent(usize, usize),
+    /// A particle rule's index, its behaviour's, and the rule given a copy of that behaviour.
+    CopyBehaviour(usize, usize, usize),
     BindEmitterRule {
         effect_idx: usize,
         emitter_idx: usize,
@@ -298,6 +304,57 @@ fn apply_one_mutation<T: ParticleTarget>(
             }
             Some((format!("Delete particle {name}"), parts(gone)))
         }
+        YptDeferredOp::DuplicateEmitterRule(idx) => {
+            let from = list::emitter_rules(asset).nth(idx)?.name.clone();
+            let name = next_unique_name(
+                &format!("{from}_copy"),
+                list::emitter_rules(asset).map(|r| r.name.as_str()),
+            );
+            list::duplicate_emitter_rule(asset, &from, &name).then(|| {
+                let added = vec![entry(emitters::<T>, &name, None)];
+                (format!("Duplicate {from}"), parts(added))
+            })
+        }
+        YptDeferredOp::DuplicateParticleRule(idx) => {
+            let from = list::particle_rules(asset).nth(idx)?.name.clone();
+            let name = next_unique_name(
+                &format!("{from}_copy"),
+                list::particle_rules(asset).map(|r| r.name.as_str()),
+            );
+            list::duplicate_particle_rule(asset, &from, &name).then(|| {
+                let added = vec![entry(particle_rules::<T>, &name, None)];
+                (format!("Duplicate {from}"), parts(added))
+            })
+        }
+        YptDeferredOp::DuplicateEvent(effect_idx, event_idx) => {
+            let effect = list::effect_rules_mut(asset).nth(effect_idx)?;
+            let mut copy = list::events(effect).nth(event_idx)?.clone();
+            let before = effect.timeline.events.clone();
+            copy.base.index = i32::try_from(before.len()).ok()?;
+            effect.timeline.events.push(Some(Box::new(copy)));
+            let key = format!("events of {effect_idx} at {}", before.len());
+            let change = Change::part(key, before, move |p| {
+                let effect = list::effect_rules_mut(particles::<T>(p)?).nth(effect_idx)?;
+                Some(&mut effect.timeline.events)
+            });
+            Some(("Duplicate an event".to_string(), change))
+        }
+        YptDeferredOp::CopyBehaviour(rule, behaviour, into) => {
+            let from = list::particle_rules(asset).nth(rule)?;
+            let owned = from.all_behaviours.iter();
+            let copy = (owned.filter(|b| matches!(b, or_io::decl::Ref::Own(_))))
+                .nth(behaviour)?
+                .clone();
+            let to = list::particle_rules_mut(asset).nth(into)?;
+            let before = to.all_behaviours.clone();
+            to.all_behaviours.push(copy);
+            let key = format!("behaviours of {into} at {}", before.len());
+            let change = Change::part(key, before, move |p| {
+                let to = list::particle_rules_mut(particles::<T>(p)?).nth(into)?;
+                Some(&mut to.all_behaviours)
+            });
+            Some(("Copy a behaviour to another rule".to_string(), change))
+        }
         YptDeferredOp::BindEmitterRule {
             effect_idx,
             emitter_idx,
@@ -458,5 +515,60 @@ mod tests {
             first.emitter_rule_name, "",
             "a swap that said false put a name back"
         );
+    }
+
+    #[test]
+    fn the_outlines_copies_are_steps_that_undo_to_the_list_it_opened_as() {
+        use or_io::decl::Gen8;
+        let mut fx = PtxFxList::<Gen8>::default();
+        list::add_effect(&mut fx, "fx");
+        list::add_emitter_rule(&mut fx, "em");
+        list::add_particle_rule(&mut fx, "pt");
+        list::add_particle_rule(&mut fx, "pu");
+        if let Some(effect) = list::effect_rules_mut(&mut fx).next() {
+            effect.timeline.events.push(Some(Box::new(PtxEventEmitter {
+                emitter_rule_name: "em".into(),
+                particle_rule_name: "pt".into(),
+                ..Default::default()
+            })));
+        }
+        let size = or_io::gta5::particle::PtxBehaviourAny::PtxuSize(Default::default());
+        if let Some(rule) = list::particle_rules_mut(&mut fx).next() {
+            rule.all_behaviours
+                .push(or_io::decl::Ref::Own(Box::new(size)));
+        }
+        let mut state = AppState::new();
+        state.documents.clear();
+        let payload = DocPayload::Resource(or_io::Asset::Particles(fx));
+        let doc = crate::state::Document::new(1, Some("fx.ypt".into()), payload);
+        state.documents.push(doc);
+        state.active_document = Some(1);
+        let shown = |state: &mut AppState| format!("{:?}", ypt_asset_mut::<Gen8>(state, 1));
+        let opened = shown(&mut state);
+
+        // The behaviour is copied first, while rule 0 is still the one holding it.
+        let ops = vec![
+            YptDeferredOp::CopyBehaviour(0, 0, 1),
+            YptDeferredOp::DuplicateEmitterRule(0),
+            YptDeferredOp::DuplicateParticleRule(0),
+            YptDeferredOp::DuplicateEvent(0, 0),
+            YptDeferredOp::DuplicateEvent(0, 0),
+        ];
+        apply_ypt_ops::<Gen8>(&mut state, 1, ops, &egui::Context::default());
+        let fx = ypt_asset_mut::<Gen8>(&mut state, 1).expect("the list");
+        assert_eq!(list::emitter_rules(fx).count(), 2);
+        assert_eq!(list::particle_rules(fx).count(), 3);
+        let effect = list::effect_rules(fx).next().expect("the effect");
+        assert_eq!(list::events(effect).count(), 3);
+        let edited = shown(&mut state);
+
+        let mut undone = 0;
+        while state.undo().is_some() {
+            undone += 1;
+        }
+        assert_eq!(undone, 5, "each copy is a step of its own");
+        assert_eq!(shown(&mut state), opened, "undone, it is not as it opened");
+        while state.redo().is_some() {}
+        assert_eq!(shown(&mut state), edited, "redone, a copy is lost");
     }
 }

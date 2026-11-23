@@ -205,10 +205,18 @@ fn a_network_is_walked_from_its_root_and_tiles_its_body() {
         panic!("a state");
     };
     assert_eq!((state.output, state.children), (at.filter, 1));
+    // The words `network` writes: +0x0C, the size at +0x10, +0x14, +0x1C and the target at +0x48.
+    let mut words = [0; TRANSITION_WORDS];
+    words[3] = 0x4444_C0C1;
+    words[4] = 0x4C;
+    words[5] = 0xADD2_3FFF;
+    words[7] = 0.25f32.to_bits();
+    words[18] = (at.state as i64 - (at.transition + 0x48) as i64) as i32 as u32;
     let transition = MoveTransition {
         at: at.transition,
         size: 0x4C,
         target: at.state,
+        words,
         conditions: Vec::new(),
     };
     assert_eq!(state.transitions, [transition]);

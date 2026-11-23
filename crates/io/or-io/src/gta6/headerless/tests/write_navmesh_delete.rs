@@ -284,52 +284,10 @@ fn a_deletion_the_rules_do_not_cover_is_refused_by_name_and_changes_nothing() {
             polygon: 1
         }
     ));
-    let mut east = read_navmesh(&stored.virtual_section).expect("it reads");
-    east.cell = OTHER;
-    assert!(matches!(
-        refused(&built.img, 0, &[&east]),
-        NavDeleteError::NeighbourLink {
-            cell: OTHER,
-            link: 0,
-            number: 2
-        }
-    ));
     let mut same_cell = read_navmesh(&stored.virtual_section).expect("it reads");
     same_cell.special_links.clear();
     let mut s = stored.clone();
     delete_polygon(&mut s, 0, &[&same_cell]).expect("another body of the cell itself");
-
-    // Polygon 1's edge into 2 cut: the side record would go with 2, but link 0 still ends in 2.
-    let mut img = Image {
-        bytes: built.img.bytes.clone(),
-    };
-    let edge = first_item(&img, built.adjacency) + 12 * 4;
-    img.u32(edge, NOWHERE);
-    img.u16(edge + 4, 0xFFFF);
-    assert!(matches!(
-        refused(&img, 2, &[]),
-        NavDeleteError::LinkAt {
-            link: 0,
-            polygon: 2
-        }
-    ));
-    // Polygon 2's edge into 1 cut as well: link 0 still ends in 1.
-    let edge = first_item(&img, built.adjacency) + 12 * 8;
-    img.u32(edge, NOWHERE);
-    img.u16(edge + 4, 0xFFFF);
-    assert!(matches!(
-        refused(&img, 1, &[]),
-        NavDeleteError::LinkAt {
-            link: 0,
-            polygon: 1
-        }
-    ));
-    let mut no_cell = read_navmesh(&stored.virtual_section).expect("it reads");
-    no_cell.cell = 0;
-    assert!(matches!(
-        polygon_deleted(&no_cell, 0, &[]),
-        Err(NavDeleteError::NoCell)
-    ));
 }
 
 #[test]
@@ -469,3 +427,9 @@ fn a_cell_past_65_536_records_writes_each_number_modulo_65_536_and_it_resolves_a
         Err(NavDeleteError::Ambiguous { index: 65_539, .. })
     ));
 }
+
+#[path = "write_navmesh_links.rs"]
+mod write_navmesh_links;
+
+#[path = "write_navmesh_no_cell.rs"]
+mod write_navmesh_no_cell;

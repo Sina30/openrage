@@ -103,6 +103,7 @@ fn lay_out(layout: &PsoLayout, instance: &MetaInstance) -> Result<PsoLayout> {
         schema: &layout.schema,
         by_name,
         pairs: stored_pairs(layout),
+        groups: group::Groups::stored(layout),
         blocks: Vec::new(),
         open: HashMap::new(),
         pointers: Vec::new(),
@@ -202,6 +203,7 @@ struct Placer<'a> {
     schema: &'a PsoSchemaSection,
     by_name: HashMap<String, &'a PsoStructInfo>,
     pairs: HashMap<(u32, u32), u32>,
+    groups: group::Groups,
     /// `(type, bytes)` in the order the walk first reaches a region of each type.
     blocks: Vec<(u32, Vec<u8>)>,
     open: HashMap<u32, usize>,
@@ -317,12 +319,9 @@ impl<'a> Placer<'a> {
                 };
                 match entry.subtype() {
                     GTA6_PAIR_MAP => self.pair_map(owner, entry, block, at, pairs, depth),
+                    // An emptied group map is written null, as the table form stores one.
                     GTA6_GROUP_MAP if pairs.is_empty() => Ok(()),
-                    // ⚠ Where a pair goes was measured on one pair, and its array's pointer
-                    // reaches no element at 0x1000 or past it, so the map is saved in place only.
-                    GTA6_GROUP_MAP => Err(refused(
-                        "a group map that holds pairs is saved only into the allocation it arrived with, because where a pair goes and what its array's header holds in a new layout are not known",
-                    )),
+                    GTA6_GROUP_MAP => self.group_map(owner, entry, block, at, pairs, depth),
                     other => Err(refused(format!(
                         "map subtype {other}, whose layout is not measured"
                     ))),
@@ -487,6 +486,7 @@ impl<'a> Placer<'a> {
         let Placer {
             mut blocks,
             pointers,
+            groups,
             ..
         } = self;
         let order = block_order(&blocks)?;
@@ -500,6 +500,7 @@ impl<'a> Placer<'a> {
                 .ok_or_else(|| refused(format!("a pointer past block {b} at {at:#X}")))?;
             slot.copy_from_slice(&packed(id[target], offset));
         }
+        groups.overwrite(&mut blocks)?;
         let too_large = || refused("the document is larger than a block offset states");
         let mut psin = b"PSIN\0\0\0\0".to_vec();
         psin.extend_from_slice(&[PAD; 8]);
@@ -532,6 +533,9 @@ impl<'a> Placer<'a> {
         })
     }
 }
+
+#[path = "pform_layout_group.rs"]
+mod group;
 
 #[cfg(test)]
 mod tests {

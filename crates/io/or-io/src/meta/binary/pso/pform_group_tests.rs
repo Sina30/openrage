@@ -76,17 +76,35 @@ fn document(patch: impl FnOnce(&mut [u8])) -> Vec<u8> {
         }
     }
 
+    // The root describes the map's key, element and value; the map names its value as member 2
+    // of the root, and the value its elements as member 1 of the root.
     let mut items = Vec::new();
-    items.extend_from_slice(&[0, 0, 0, 1, 0, 0, 0, 0x10, 0, 0, 0, 0]);
-    entry(&mut items, MAP, 0x10, GTA6_GROUP_MAP, 0, 0);
+    items.extend_from_slice(&[0, 0, 0, 4, 0, 0, 0, 0x10, 0, 0, 0, 0]);
+    entry(
+        &mut items,
+        ARRAY_INFO_NAME_HASH,
+        0x0B,
+        GTA6_STRING_HASH,
+        0,
+        0,
+    );
+    entry(&mut items, ARRAY_INFO_NAME_HASH, 0x06, 0, 0, 0);
+    entry(
+        &mut items,
+        ARRAY_INFO_NAME_HASH,
+        0x0D,
+        GTA6_COUNT_FIRST_ARRAY,
+        0,
+        1,
+    );
+    entry(&mut items, MAP, 0x10, GTA6_GROUP_MAP, 0, 2);
     let pair_at = items.len();
-    items.extend_from_slice(&[0, 0, 0, 3]);
+    items.extend_from_slice(&[0, 0, 0, 2]);
     items.extend_from_slice(&(PAIR_SIZE as u32).to_be_bytes());
     items.extend_from_slice(&[0; 4]);
     entry(&mut items, KEY, 0x0B, GTA6_STRING_HASH, 0, 0);
-    // Its elements are described by member 2.
-    entry(&mut items, VALUE, 0x0D, GTA6_COUNT_FIRST_ARRAY, 8, 2);
-    entry(&mut items, ARRAY_INFO_NAME_HASH, 0x06, 0, 0, 0);
+    // Member 1 of the pair is the array itself, of 16-byte headers, not its element.
+    entry(&mut items, VALUE, 0x0D, GTA6_COUNT_FIRST_ARRAY, 8, 1);
     let start = 8 + 4 + 2 * 8;
     let mut psch = 2u32.to_be_bytes().to_vec();
     for (hash, offset) in [(ROOT, start), (PAIR, start + pair_at)] {

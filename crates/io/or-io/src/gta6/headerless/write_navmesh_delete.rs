@@ -1,12 +1,13 @@
 //! A navigation polygon proper deleted from its cell's body, or cut off where its side records
 //! drop a corner: its record, corners and edges and every vertex only it named go, the side records
-//! naming it are chained again and one left naming no polygon goes, the records after any that went
-//! are renumbered wherever this body names them, and the arrays that shrank give their bytes back by
-//! the resource rule.
+//! naming it are chained again and one left naming no polygon goes, a special link with an end in a
+//! record that went goes, the records after any that went are renumbered wherever this body names
+//! them, and the arrays that shrank give their bytes back by the resource rule.
 //!
 //! ⚠ Other bodies name this cell's polygons by number in their special links and are saved apart:
-//! an edit that would renumber one of those is refused, not written. Every number is stored modulo
-//! 65,536 and resolved by the corners or the box of the polygons it names, before and after.
+//! an edit is refused unless the links of each body given resolve before and after it, and
+//! `relinked` makes those links again. Every number is stored modulo 65,536 and resolved by the
+//! corners or the box of the polygons it names, before and after.
 
 use std::collections::HashSet;
 
@@ -24,11 +25,11 @@ const CHUNK: usize = 16384;
 /// A polygon record's bytes.
 const RECORD: usize = 44;
 /// Polygon +0x20's link run: the count in bits 0-5 and the start in bits 6-21.
-const RUN: u32 = 0x3F_FFFF;
+pub(super) const RUN: u32 = 0x3F_FFFF;
 /// The most entries a link run's six bits count.
 const RUN_MOST: usize = 63;
 /// The records a 16-bit polygon number tells apart.
-const NUMBERS: usize = 1 << 16;
+pub(super) const NUMBERS: usize = 1 << 16;
 /// The reader's bounds on the quadtree.
 const MAX_NODES: usize = 65536;
 const MAX_DEPTH: usize = 16;
@@ -49,10 +50,6 @@ pub enum NavDeleteError {
     Grow(#[from] Rpf9GrowError),
     #[error("polygon {polygon} is not one of the cell's {proper} polygons proper: a side record goes with the last polygon proper its pieces name, never alone")]
     NotProper { polygon: usize, proper: usize },
-    #[error(
-        "a body of no cell is not deleted in: which bodies' special links end in it is not stated"
-    )]
-    NoCell,
     #[error("polygon {from}'s edge at corner {corner} still leads into polygon {polygon}: disable it first")]
     EdgeInto {
         from: usize,
@@ -61,10 +58,6 @@ pub enum NavDeleteError {
     },
     #[error("side record {record} would name no polygon and go, but an edge of polygon {from} still leads into it")]
     SideRecordNamed { record: usize, from: usize },
-    #[error("special link {link} of this cell ends in polygon {polygon}, and no special link is deleted")]
-    LinkAt { link: usize, polygon: usize },
-    #[error("special link {link} of cell {cell}, a body saved apart, ends in this cell's polygon number {number}, which the edit removes or renumbers")]
-    NeighbourLink { cell: u32, link: usize, number: u16 },
     #[error("{what} {index}: a number stored modulo 65,536 tells no one polygon apart, before the edit or after it")]
     Ambiguous { what: &'static str, index: usize },
     #[error(
@@ -81,7 +74,7 @@ pub enum NavDeleteError {
     ReadBack(String),
 }
 
-type Done<T> = std::result::Result<T, NavDeleteError>;
+pub(super) type Done<T> = std::result::Result<T, NavDeleteError>;
 
 /// A cell [`deletion`] or [`disabling`] made again, with the stored record and edge of each.
 #[derive(Debug)]
@@ -91,13 +84,8 @@ pub struct NavRebuild {
     pub edges: Vec<usize>,
 }
 
-/// A link's two ends, each its mesh and its polygon number.
-fn ends(l: &SpecialLink) -> [(u32, u16); 2] {
-    [(l.from_mesh, l.from_polygon), (l.to_mesh, l.to_polygon)]
-}
-
 /// Whether number `n` names, among `records` records, one at or past `from`.
-fn names_from(n: u16, records: usize, from: usize) -> bool {
+pub(super) fn names_from(n: u16, records: usize, from: usize) -> bool {
     let n = usize::from(n);
     n < records && n + (records - 1 - n) / NUMBERS * NUMBERS >= from
 }
@@ -105,7 +93,7 @@ fn names_from(n: u16, records: usize, from: usize) -> bool {
 /// How a body files its links: under the to number as well as the from number, and whether an
 /// empty run starts at the running total or at 0.
 #[derive(Debug, Clone, Copy)]
-struct Filing {
+pub(super) struct Filing {
     both: bool,
     empty_at_total: bool,
 }
@@ -113,7 +101,11 @@ struct Filing {
 /// The link index list and each record's +0x20 bits 0-21 `filing` gives `links` over `records`
 /// records: under each record, in link order, the first of each set of equal links that a filed
 /// end numbers, once, at most 63; `None` where an index or a start passes 16 bits.
-fn file(links: &[SpecialLink], records: usize, filing: Filing) -> Option<(Vec<u16>, Vec<u32>)> {
+pub(super) fn file(
+    links: &[SpecialLink],
+    records: usize,
+    filing: Filing,
+) -> Option<(Vec<u16>, Vec<u32>)> {
     let mut seen = HashSet::new();
     let mut under: Vec<Vec<u16>> = vec![Vec::new(); records];
     for (i, l) in links.iter().enumerate() {
@@ -156,7 +148,14 @@ fn file(links: &[SpecialLink], records: usize, filing: Filing) -> Option<(Vec<u1
 
 /// The [`Filing`] that gives back the link index list and runs `m` holds; where none does, each
 /// link under both its ends and an empty run at the running total, as every cell with links holds.
-fn filing(m: &NavMesh) -> Filing {
+pub(super) fn filing(m: &NavMesh) -> Filing {
+    // A body of no cell files each link under its from number alone; no other body links into it.
+    if m.cell == 0 {
+        return Filing {
+            both: false,
+            empty_at_total: true,
+        };
+    }
     for both in [true, false] {
         for empty_at_total in [true, false] {
             let f = Filing {
@@ -265,9 +264,6 @@ fn rebuilt(m: &NavMesh, p: usize, gone: bool, others: &[&NavMesh]) -> Done<NavRe
             proper: m.polygons_proper,
         });
     }
-    if m.cell == 0 {
-        return Err(NavDeleteError::NoCell);
-    }
     let number = p as u16;
     let mut unresolved: Vec<(usize, u16)> = Vec::new();
     let mut runs: Vec<Vec<Corner>> = Vec::with_capacity(records);
@@ -353,9 +349,11 @@ fn rebuilt(m: &NavMesh, p: usize, gone: bool, others: &[&NavMesh]) -> Done<NavRe
         }
     }
 
-    // Each special link's own-cell ends, resolved where a record goes.
+    // Each special link's own-cell ends, resolved where a record goes; a link with an end in a
+    // record that goes goes with it, and so do its copies.
     let mut link_ends: Vec<[Option<usize>; 2]> = Vec::new();
-    if let Some(&from) = removed.first() {
+    let mut link_kept = vec![true; m.special_links.len()];
+    if !removed.is_empty() {
         for (i, l) in m.special_links.iter().enumerate() {
             let mut at = [None, None];
             let both = [
@@ -370,28 +368,11 @@ fn rebuilt(m: &NavMesh, p: usize, gone: bool, others: &[&NavMesh]) -> Done<NavRe
                     what: "special link",
                     index: i,
                 })?;
-                if !keep[t] {
-                    return Err(NavDeleteError::LinkAt {
-                        link: i,
-                        polygon: t,
-                    });
-                }
+                link_kept[i] &= keep[t];
                 at[k] = Some(t);
             }
-            link_ends.push(at);
-        }
-        // Another body of this same cell numbers its own polygons.
-        for o in others.iter().filter(|o| o.cell != m.cell) {
-            for (link, l) in o.special_links.iter().enumerate() {
-                let renumbered =
-                    |(mesh, n): &(u32, u16)| *mesh == m.cell && names_from(*n, records, from);
-                if let Some((_, n)) = ends(l).into_iter().find(renumbered) {
-                    return Err(NavDeleteError::NeighbourLink {
-                        cell: o.cell,
-                        link,
-                        number: n,
-                    });
-                }
+            if link_kept[i] {
+                link_ends.push(at);
             }
         }
     }
@@ -457,6 +438,10 @@ fn rebuilt(m: &NavMesh, p: usize, gone: bool, others: &[&NavMesh]) -> Done<NavRe
     let mut special_links = m.special_links.clone();
     let mut special_link_indices = m.special_link_indices.clone();
     if !removed.is_empty() {
+        special_links = (m.special_links.iter().zip(&link_kept))
+            .filter(|(_, kept)| **kept)
+            .map(|(l, _)| *l)
+            .collect();
         for (l, at) in special_links.iter_mut().zip(&link_ends) {
             if let Some(t) = at[0] {
                 l.from_polygon = new_of[t].unwrap_or(t) as u16;
@@ -528,11 +513,16 @@ fn rebuilt(m: &NavMesh, p: usize, gone: bool, others: &[&NavMesh]) -> Done<NavRe
             index: p,
         });
     }
-    Ok(NavRebuild {
+    let made = NavRebuild {
         mesh: want,
         records: from_records,
         edges: from_edges,
-    })
+    };
+    // Another body of this same cell numbers its own polygons.
+    for o in others.iter().filter(|o| o.cell != m.cell) {
+        super::write_navmesh_links::relinked(o, m, &made)?;
+    }
+    Ok(made)
 }
 
 /// A split array as laid out: its header, its chunk rows and starts, and each chunk's place and
@@ -652,6 +642,22 @@ fn edge_bytes(e: &NavEdge) -> Vec<u8> {
     .concat()
 }
 
+/// The 32-byte records of `links`, each field where the reader takes it.
+fn link_bytes(links: &[SpecialLink]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(32 * links.len());
+    for l in links {
+        for q in l.from.into_iter().chain(l.to) {
+            out.extend(q.to_le_bytes());
+        }
+        out.extend(l.from_polygon.to_le_bytes());
+        out.extend(l.to_polygon.to_le_bytes());
+        for word in [l.from_mesh, l.to_mesh, l.word_18, l.heading] {
+            out.extend(word.to_le_bytes());
+        }
+    }
+    out
+}
+
 /// Each record of `kept` as stored at its place in `from`, its +0x04 and +0x20 as `kept` holds them.
 fn polygon_bytes(stored: &[u8], from: &[usize], kept: &[NavPolygon]) -> Done<Vec<u8>> {
     let records = stored.as_chunks::<RECORD>().0;
@@ -729,7 +735,7 @@ pub fn disable_polygon(
 /// `made`, the cell `m` that `sections` hold made again with fewer items, written over it.
 // A split array keeps a chunk for each `16384 / stride` items: one left empty goes with its row and
 // its start.
-fn written(sections: &mut Rpf9Sections, m: &NavMesh, made: NavRebuild) -> Done<NavMesh> {
+pub(super) fn written(sections: &mut Rpf9Sections, m: &NavMesh, made: NavRebuild) -> Done<NavMesh> {
     let want = made.mesh;
     let mut s = sections.clone();
     let before = layout(&s.virtual_section)?;
@@ -815,10 +821,14 @@ fn written(sections: &mut Rpf9Sections, m: &NavMesh, made: NavRebuild) -> Done<N
         put(v, at, &(word as u32).to_le_bytes())?;
     }
     if let Some(at) = l.links {
-        for (i, link) in want.special_links.iter().enumerate() {
-            put(v, at + 32 * i + 0x0C, &link.from_polygon.to_le_bytes())?;
-            put(v, at + 32 * i + 0x0E, &link.to_polygon.to_le_bytes())?;
+        let (old, bytes) = (32 * m.special_links.len(), link_bytes(&want.special_links));
+        put_over(v, at, old, &bytes, "special links")?;
+        put(v, 0xD4, &(want.special_links.len() as u32).to_le_bytes())?;
+        // An emptied link list is null with count 0, as in every cell with no link.
+        if bytes.is_empty() {
+            put(v, 0xA8, &0u64.to_le_bytes())?;
         }
+        shrunk.push((at, old, bytes.len()));
     }
     if let Some(at) = l.link_indices {
         let bytes: Vec<u8> = (want.special_link_indices.iter())

@@ -416,11 +416,12 @@ fn each_shape_the_planner_does_not_cover_is_refused_by_name_and_changes_nothing(
         TtpfError::NoSuchTexture { index: 9, count: 4 }
     ));
 
-    let mut volume = spec(16, 16, 0x311, 1, 1, vec![Body::Zlib(vec![1; 0x1000])]);
-    (volume.dimension, volume.slices) = (3, 4);
-    let (_dir, mut volumes) = pack_of(&[volume]);
+    // No array in 4 KiB tiles is measured.
+    let mut array = spec(16, 16, 0x311, 1, 1, vec![Body::Zlib(vec![1; 0x2000])]);
+    (array.dimension, array.slices) = (5, 2);
+    let (_dir, mut arrays) = pack_of(&[array]);
     assert!(matches!(
-        volumes.reshape_levels(0, shape(16, 16, bc1, 1), &[]),
+        arrays.reshape_levels(0, shape(16, 16, bc1, 1), &[]),
         Err(TtpfError::ReshapeShape { index: 0 })
     ));
 
@@ -533,3 +534,5 @@ fn a_texture_encoded_from_an_image_of_another_size_and_format_reads_back_as_the_
 
 #[path = "ttpf_reshape_slices_tests.rs"]
 mod slices;
+#[path = "ttpf_reshape_volume_tests.rs"]
+mod volume;

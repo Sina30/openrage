@@ -60,6 +60,33 @@ fn an_archetype_selected(state: &AppState) -> Result<(), &'static str> {
     )
 }
 
+/// A map to add an entity to: a scanned GTA VI map, which a job edits with the maps linked to it,
+/// or the project's maps.
+fn an_entity_to_add(state: &AppState) -> Result<(), &'static str> {
+    match state.scanned_map().is_some() {
+        true => Ok(()),
+        false => writable_maps(state),
+    }
+}
+
+/// A map types body to add an archetype to: the scanned GTA VI one an archetype edit goes to, or
+/// the project's.
+fn an_archetype_to_add(state: &AppState) -> Result<(), &'static str> {
+    match state.scanned_archetype_target() {
+        Some(_) => Ok(()),
+        None => writable_maps(state),
+    }
+}
+
+/// An archetype to take out: the scanned GTA VI one the entity selected places, or the project's
+/// archetype selected.
+fn an_archetype_to_remove(state: &AppState) -> Result<(), &'static str> {
+    match state.scanned_archetype_target() {
+        Some((_, Some(_))) => Ok(()),
+        _ => an_archetype_selected(state),
+    }
+}
+
 fn a_change_to_take_back(state: &AppState) -> Result<(), &'static str> {
     has_maps(state)?;
     none_if(
@@ -108,8 +135,11 @@ pub(super) const ADD_ENTITY: Spec = Spec {
     label: tr_key!("Add an entity"),
     category: tr_key!("Project ▸ More ▸ Maps"),
     hover: tr_key!("Place another one of the entity selected (else the first the set holds) where the view is looking, as a copy with a guid of its own; move it with the manipulator or type where it goes. Undo takes it back"),
-    enabled: writable_maps,
-    run: |state, _| state.add_entity_here(),
+    enabled: an_entity_to_add,
+    run: |state, _| match state.scanned_map().is_some() {
+        true => state.add_scanned_entity(),
+        false => state.add_entity_here(),
+    },
     ..BASE
 };
 
@@ -119,8 +149,11 @@ pub(super) const REMOVE_ENTITY: Spec = Spec {
     label: tr_key!("Remove entity"),
     category: tr_key!("Project ▸ More ▸ Maps"),
     hover: tr_key!("Take the entity selected out of its map file, with the LOD links renumbered. Undo puts it back"),
-    enabled: an_entity_selected,
-    run: |state, _| state.remove_selected_entity(),
+    enabled: an_entity_to_stand,
+    run: |state, _| match state.scanned_map().is_some() {
+        true => state.remove_scanned_entity(),
+        false => state.remove_selected_entity(),
+    },
     ..BASE
 };
 
@@ -141,8 +174,11 @@ pub(super) const ADD_ARCHETYPE: Spec = Spec {
     label: tr_key!("Add an archetype"),
     category: tr_key!("Project ▸ More ▸ Maps"),
     hover: tr_key!("Declare another archetype in the type file shown, as a copy of the one selected (else the first plain one) under a name nobody holds yet; give it its real name and box in the selection. Undo takes it back"),
-    enabled: writable_maps,
-    run: |state, _| state.add_archetype_here(),
+    enabled: an_archetype_to_add,
+    run: |state, _| match state.scanned_archetype_target().is_some() {
+        true => state.add_scanned_archetype(),
+        false => state.add_archetype_here(),
+    },
     ..BASE
 };
 
@@ -152,8 +188,11 @@ pub(super) const REMOVE_ARCHETYPE: Spec = Spec {
     label: tr_key!("Remove archetype"),
     category: tr_key!("Project ▸ More ▸ Maps"),
     hover: tr_key!("Take the archetype selected out of its type file. Entities that place it stay, and the rules say they place a name no type file declares. Undo puts it back"),
-    enabled: an_archetype_selected,
-    run: |state, _| state.remove_selected_archetype(),
+    enabled: an_archetype_to_remove,
+    run: |state, _| match state.scanned_archetype_target() {
+        Some((_, Some(_))) => state.remove_scanned_archetype(),
+        _ => state.remove_selected_archetype(),
+    },
     ..BASE
 };
 

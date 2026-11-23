@@ -287,14 +287,112 @@ fn a_child_moved_then_given_another_group_saves_with_its_composite_matrix_moved(
 }
 
 #[test]
-fn a_group_change_is_refused_where_vehicle_glass_names_the_children_by_index() {
+fn a_group_change_is_refused_where_vehicle_glass_does_not_read() {
     let (mut img, phys, ..) = two_groups();
     let glass = img.alloc(0x10);
     img.put(glass, b"HWGV\x70\x00");
     let root = 0;
     img.ptr(root + 0xF0, glass);
     let mut level = fragment_of(&img, &phys).expect("the fragment reads");
+    assert!(matches!(level.fragment.vehicle_glass, Some(Err(_))));
     assert!(regroup_fragment_child(&mut level, 0, 1, 0, TURN_X, STEP).is_err());
+}
+
+/// A vehicle glass window of `child` whose header's first byte is `mark`, its map one blank row.
+fn glass_window(child: u16, mark: u8) -> GlassWindow {
+    let mut header = [0u8; 0x70];
+    header[0] = mark;
+    header[0x40..0x44].copy_from_slice(b"CWGV");
+    header[0x44..0x46].copy_from_slice(&child.to_le_bytes());
+    header[0x48..0x4A].copy_from_slice(&1u16.to_le_bytes());
+    header[0x4A..0x4C].copy_from_slice(&1u16.to_le_bytes());
+    // The row table's one offset, then the blank row's one byte.
+    header[0x4C..0x4E].copy_from_slice(&3u16.to_le_bytes());
+    GlassWindow {
+        header,
+        rows: vec![GlassRow::Blank],
+    }
+}
+
+/// Each window of `level`'s vehicle glass: its child and its mark.
+fn windows(level: &DrawableWithBound) -> Vec<(u16, u8)> {
+    match &level.fragment.vehicle_glass {
+        Some(Ok(g)) => g.windows.iter().map(|w| (w.child(), w.header[0])).collect(),
+        _ => Vec::new(),
+    }
+}
+
+#[test]
+fn a_group_change_renumbers_the_vehicle_glass_windows_and_keeps_them_ascending() {
+    let (mut img, phys, ..) = two_groups();
+    let glass = VehicleGlass {
+        stride: 0x70,
+        after_offsets: 0,
+        windows: vec![glass_window(0, 0xA0), glass_window(2, 0xB2)],
+    };
+    let block = glass.encode();
+    let at = img.alloc(block.len());
+    img.put(at, &block);
+    let root = 0;
+    img.ptr(root + 0xF0, at);
+    let read = fragment_of(&img, &phys).expect("the built fragment reads");
+    assert!(matches!(&read.fragment.vehicle_glass, Some(Ok(g)) if *g == glass));
+
+    let bones = bones_of(&img.bytes);
+    let mut edited = fragment_of(&img, &phys).expect("the built fragment reads");
+    let (q, t) = fragment_child_local_in(&edited.fragment, &bones, 0, 1).expect("both bones turn");
+    let now = regroup_fragment_child(&mut edited, 0, 1, 1, q, t).expect("a group change");
+    assert_eq!(now, 2);
+    // The children are 1, 2, 0 in that order: child 2's window is child 1's, child 0's child 2's.
+    assert_eq!(windows(&edited), [(1, 0xB2), (2, 0xA0)]);
+
+    let mut bytes = img.bytes.clone();
+    write_fragment_level(&mut bytes, &phys, &edited).expect("the group change writes its glass");
+    assert_eq!(bytes.len(), img.bytes.len());
+    let back = read_drawable_with_bound(&bytes, Some(phys.as_slice())).expect("it reads back");
+    assert_eq!(windows(&back), windows(&edited));
+    let Some(Ok(written)) = &edited.fragment.vehicle_glass else {
+        panic!("the edit holds its glass");
+    };
+    let encoded = written.encode();
+    assert_eq!(
+        encoded.len(),
+        block.len(),
+        "a renumbering keeps the block's length"
+    );
+    assert_eq!(&bytes[at..at + encoded.len()], encoded.as_slice());
+    for mark in [0xA0, 0xB2] {
+        let word = |level: &DrawableWithBound| {
+            let (child, _) = *windows(level)
+                .iter()
+                .find(|w| w.1 == mark)
+                .expect("the window");
+            level.fragment.children[usize::from(child)].bound_word
+        };
+        assert_eq!(
+            word(&back),
+            word(&read),
+            "window {mark:#X} is the child it was"
+        );
+    }
+
+    // A glass the edit holds that is not the renumbering is refused at the save.
+    let mut stale = fragment_of(&img, &phys).expect("the built fragment reads");
+    regroup_fragment_child(&mut stale, 0, 1, 1, q, t).expect("a group change with glass");
+    stale.fragment.vehicle_glass = Some(Ok(glass));
+    assert!(write_fragment_level(&mut img.bytes.clone(), &phys, &stale).is_err());
+
+    // Undone as the history does it, the glass is the one read and the body saves unchanged.
+    let was = &read.fragment.children[0];
+    regroup_fragment_child(&mut edited, now, 0, 0, was.rotation, was.translation)
+        .expect("the group change undone");
+    assert_eq!(windows(&edited), windows(&read));
+    let mut again = img.bytes.clone();
+    write_fragment_level(&mut again, &phys, &edited).expect("the undone edit writes");
+    assert_eq!(
+        again, img.bytes,
+        "an undone group change saves byte-identical"
+    );
 }
 
 #[test]
@@ -318,4 +416,30 @@ fn a_type_and_include_entry_writes_with_the_child_s_copy_and_alone_is_refused() 
         b.children[0].flags = Some(flags);
     }
     assert!(write_fragment_level(&mut img.bytes.clone(), &phys, &alone).is_err());
+}
+
+#[test]
+fn a_fragment_child_given_another_type_keeps_its_record_on_its_bound() {
+    let (mut img, phys, _, _) = two_groups();
+    let map = img.alloc(16 + 8);
+    img.bytes[map + 8] = 1;
+    img.ptr(0x08, map);
+    let mut s = crate::container::rpf::Rpf9Sections {
+        form: crate::container::rpf::Rpf9Form::BlockMapped,
+        virtual_section: img.bytes,
+        physical: phys,
+    };
+    let mut edited = BoundHolder::Fragment.read(&s).expect("the composite reads");
+    let Some(Ok(shape)) = &edited.children[1].bound else {
+        panic!("a shape, not {:?}", edited.children[1].bound);
+    };
+    let cube = retyped_bound_child(shape, 3).expect("a sphere becomes a box");
+    edited.children[1].bound = Some(Ok(cube));
+    write_retyped(&mut s, BoundHolder::Fragment, &edited).expect("the child's record follows it");
+    let back = BoundHolder::Fragment.read(&s).expect("it reads back");
+    assert!(
+        matches!(back.children[1].bound, Some(Ok(ChildBound::Box { .. }))),
+        "{:?}",
+        back.children[1].bound
+    );
 }

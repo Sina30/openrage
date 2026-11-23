@@ -70,7 +70,10 @@ impl AppState {
         reads: PathBuf,
     ) -> Option<bool> {
         let edited = self.edited_sections(doc)?;
-        Some(self.start_edited_save(edited, dest, name, reads))
+        // The neighbouring bodies whose links an edit of a scanned cell renumbered.
+        let beside =
+            (self.document(doc)).map_or(Vec::new(), super::gta6_navmesh_delete::links::beside);
+        Some(self.start_edited_save(edited, dest, name, reads, beside))
     }
 
     fn start_edited_save(
@@ -79,6 +82,7 @@ impl AppState {
         dest: PathBuf,
         name: String,
         reads: PathBuf,
+        beside: Vec<ExtractItem>,
     ) -> bool {
         let item = match edited {
             Ok(EditedSave::Sections(sections)) => ExtractItem::sections(name.clone(), sections),
@@ -94,7 +98,8 @@ impl AppState {
                 return false;
             }
         };
-        self.start_scanned_extraction(name, dest, reads, vec![item], OnClash::Save)
+        let items = std::iter::once(item).chain(beside).collect();
+        self.start_scanned_extraction(name, dest, reads, items, OnClash::Save)
     }
 
     /// Save a copy of the scanned body `doc` shows to `path`: a metadata body as its XML where
@@ -235,7 +240,7 @@ impl AppState {
         let Some(at) = self.document(doc).map(|d| d.history.at()) else {
             return false;
         };
-        let started = self.start_edited_save(edited, dest, name, path.clone());
+        let started = self.start_edited_save(edited, dest, name, path.clone(), Vec::new());
         if started {
             self.extract_jobs.saving(doc, at);
         }

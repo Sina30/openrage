@@ -109,6 +109,7 @@ fn transitions(
             size = t.size,
         );
         rows.push((tr!("Transition").to_string(), to));
+        rows.push((tr!("Transition").to_string(), super::transition_words(t)));
         conditions(&t.conditions, rows);
     }
 }

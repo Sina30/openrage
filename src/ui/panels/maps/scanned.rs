@@ -400,12 +400,14 @@ pub fn draw_selection(ui: &mut egui::Ui, state: &mut AppState) {
         );
         return;
     };
+    super::scanned_author::buttons(ui, state);
     let Some(scanned) = state.scanned_map() else {
         return;
     };
     let Some(m) = scanned.data() else {
         return;
     };
+    let authored = super::scanned_author::draw(ui, state);
     let mut open_model = None;
     let mut retype = None;
     let mut asked = None;
@@ -493,6 +495,11 @@ pub fn draw_selection(ui: &mut egui::Ui, state: &mut AppState) {
         }
         Some(super::scanned_pose::Asked::Ground) => state.drop_selected_to_ground(),
         None => {}
+    }
+    if let Some((text, lod_dist, guid, flags)) = authored {
+        if let Err(why) = state.author_scanned_archetype(&text, lod_dist, guid, flags) {
+            state.show_error_toast(why);
+        }
     }
 }
 

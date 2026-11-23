@@ -11,6 +11,7 @@ mod camera_cuts;
 mod columns;
 mod databases;
 mod expressions;
+mod expressions_layout;
 mod matcher;
 mod metadata;
 mod motion;
@@ -28,12 +29,16 @@ pub use expressions::{
     read_expressions, write_expression_ids, ExpressionGroup, ExpressionTracks, Expressions,
     EXPRESSIONS_SIGNATURE,
 };
+pub use expressions_layout::{
+    add_expression_track, lay_out_expressions, remove_expression_track, write_edited_expressions,
+};
 pub use matcher::{
     Matcher, MatcherClass, MatcherClip, MatcherDatabase, MatcherEntry, MatcherFeature, MatcherLevel,
 };
 pub use metadata::{known_name, Attribute, AttributeValue, Record};
 pub use motion::{
-    Database, Grid, Motion, MotionGroup, Parameter, PhaseCurve, TimeWarp, Typed, Weight,
+    ArrayHead, Database, Grid, Motion, MotionGroup, Parameter, ParameterItem, ParameterObject,
+    PhaseCurve, TimeWarp, Typed, Weight,
 };
 pub use signature::dof_signature;
 pub use write::{edit, reencode, rename_clip, AnimEdit};

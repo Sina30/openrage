@@ -625,7 +625,7 @@ impl PsoEncoder<'_> {
             )));
         };
         if self.gta6 {
-            return self.write_gta6_map(entry, offset, pairs);
+            return self.write_gta6_map(owner, entry, offset, pairs);
         }
         let (Some(key_desc), Some(value_desc)) = (
             owner.entry(entry.key_index()).copied(),
@@ -674,6 +674,7 @@ impl PsoEncoder<'_> {
     /// A GTA VI map's pairs into the ones it holds; a group map's only with GTA VI support.
     fn write_gta6_map(
         &mut self,
+        owner: &PsoStructInfo,
         entry: &PsoStructEntry,
         offset: usize,
         pairs: &[(Value, Value)],
@@ -699,7 +700,9 @@ impl PsoEncoder<'_> {
         }
         if entry.subtype() == GTA6_GROUP_MAP {
             #[cfg(feature = "gta6")]
-            return self.write_group_map(offset, pairs);
+            return self.write_group_map(owner, entry, offset, pairs);
+            #[cfg(not(feature = "gta6"))]
+            let _ = owner;
             #[cfg(not(feature = "gta6"))]
             return Err(MetaError::Other(
                 "a GTA VI group map that holds pairs, whose values' layout is not measured".into(),

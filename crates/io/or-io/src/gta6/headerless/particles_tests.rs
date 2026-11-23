@@ -630,3 +630,6 @@ mod keys_added;
 
 #[path = "particles_copy_tests.rs"]
 mod copied;
+
+#[path = "particles_dup_tests.rs"]
+mod duplicated;

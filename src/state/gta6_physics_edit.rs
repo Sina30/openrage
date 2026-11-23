@@ -512,6 +512,10 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
     }
     // ⚠ The worker holds the body until the save ends, so an edit made meanwhile is refused.
     let resource = Arc::clone(resource);
+    let reshaped = match bound_reshape::saved(document) {
+        Ok(reshaped) => reshaped,
+        Err(why) => return Some(Err(why)),
+    };
     Some(save.map(|save| match save {
         EditedSave::Body {
             archive,
@@ -520,6 +524,7 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
         } => {
             let edit: Arc<EditSections> = Arc::new(move |role, sections| {
                 edit(role, sections)?;
+                bound_reshape::write_saved(sections, &resource, &reshaped)?;
                 let (v, p) = (&mut sections.virtual_section, &sections.physical);
                 let written = match &*resource {
                     Resource::Bound(b) => {
@@ -574,6 +579,9 @@ pub(super) fn edited_cell(document: &Document) -> Option<Result<EditedSave, Stri
         edit,
     }))
 }
+
+#[path = "gta6_bound_reshape.rs"]
+pub(crate) mod bound_reshape;
 
 #[cfg(test)]
 #[path = "gta6_physics_edit_tests.rs"]

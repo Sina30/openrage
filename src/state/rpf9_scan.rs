@@ -436,7 +436,7 @@ pub(super) fn read_body(path: &Path, archive: &Path, offset: u64) -> Result<DocP
             return nested(archive, &file, offset)
         }
         // A first entry whose end is not stated ends where its list's next row starts.
-        Err(e) => match super::gta6_first_entry::opened(archive, &file, offset, BODY_LIMIT) {
+        Err(e) => match super::gta6_first_entry::opened(archive, &file, offset, BODY_LIMIT, &e) {
             Some(opened) => {
                 let (find, hex) = opened?;
                 origins().insert(path.to_path_buf(), (find, false));
@@ -791,7 +791,7 @@ pub(super) fn extracted_body(archive: &Path, offset: u64) -> Result<Vec<u8>, Str
     extract_rpf9_body(&file, offset, BODY_LIMIT)
         .map(|(_, bytes)| bytes)
         .or_else(|e| {
-            super::gta6_first_entry::bytes(archive, &file, offset, BODY_LIMIT)
+            super::gta6_first_entry::bytes(archive, &file, offset, BODY_LIMIT, &e)
                 .unwrap_or_else(|| Err(e.to_string()))
         })
 }
@@ -825,19 +825,24 @@ impl super::AppState {
         let scan = Arc::clone(scan);
         let items: Vec<ExtractItem> = {
             let found = scan.found();
-            let ends =
-                |find: &Rpf9ScanFind| super::gta6_first_entry::note(&scan.path, &found.rows, find);
+            // A nested archive ends with its names row; the names themselves have no end.
+            let ends = |find: &Rpf9ScanFind| {
+                !matches!(find.kind, Rpf9BodyKind::Names { .. })
+                    && super::gta6_first_entry::note(&scan.path, &found.rows, find)
+            };
             (rows.iter())
                 .filter_map(|row| match found.rows.get(*row) {
-                    Some(Row::Body(find)) if extracts(find) && ends(find) => Some(
-                        ExtractItem::scanned(find.file_name(), scan.path.clone(), find.offset),
-                    ),
+                    Some(Row::Body(find)) if ends(find) => Some(ExtractItem::scanned(
+                        find.file_name(),
+                        scan.path.clone(),
+                        find.offset,
+                    )),
                     _ => None,
                 })
                 .collect()
         };
         if items.is_empty() {
-            self.show_warning_toast(tr!("Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."));
+            self.show_warning_toast(tr!("Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."));
             return false;
         }
         match self.gate_permits(Some(&dest)) {

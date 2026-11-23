@@ -19,6 +19,7 @@ use super::HeaderlessError;
 use crate::container::rpf::{grow_section, Rpf9GrowError, Rpf9Role, Rpf9Section, Rpf9Sections};
 
 mod reference;
+mod reference_cells;
 mod skin;
 
 /// A vertex list's u16 entries name at most this many vertices.
@@ -578,7 +579,10 @@ fn vertex_data(
             (9..=11, 0x18, 4) if !edit.uv_tangents.is_empty() => {
                 skin::uv_tangents(c.index, edit, v, n, was)?
             }
-            (33, 0x10, 8) if n != n_old => reference::reference(held, &edit.positions, was)?,
+            (33, 0x10, 8) if n != n_old => {
+                reference_cells::channel33(held, &edit.positions, &edit.triangles, was)?
+            }
+            (33, ..) if n != n_old => return Err(reference_cells::unknown_form()),
             _ if n == n_old => {
                 carried.push(c.index);
                 was.to_vec()

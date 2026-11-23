@@ -2,7 +2,7 @@
 //! and undone by putting the whole pack back.
 
 use or_io::authoring::{FormatChoice, TextureBuildOptions};
-use or_io::codec::texture::{decode_level, RgbaImage};
+use or_io::codec::texture::RgbaImage;
 use or_io::gta6::{Entry, Format, TtpfError};
 
 use super::{edited, Replaced, TtpfDocument};
@@ -70,37 +70,17 @@ fn reshaped(
     choice: FormatChoice,
     options: &TextureBuildOptions,
 ) -> Result<Replaced, String> {
-    // A cube's or an array's every slice takes the new shape: the shown one from `image`, each
-    // other from its own top mip.
-    let slices = match entry.dimension {
-        2 | 5 => u32::from(entry.slices.max(1)),
-        _ => 1,
-    };
-    let owned;
-    let sources: &[RgbaImage] = match (image, slices) {
-        (Some(image), 1) => std::slice::from_ref(image),
-        _ => {
-            let read = ttpf.pack.texture(index).map_err(|e| e.to_string())?;
-            let own = |slice: u32| {
-                let face = read.face(slice).unwrap_or_else(|| read.clone());
-                decode_level(&face, 0).map_err(|e| e.to_string())
-            };
-            owned = (0..slices)
-                .map(|slice| match image {
-                    Some(image) if slice == shown => Ok(image.clone()),
-                    _ => own(slice),
-                })
-                .collect::<Result<Vec<_>, String>>()?;
-            &owned
-        }
-    };
+    // A cube's, an array's or a volume's every slice takes the new shape: the shown one from
+    // `image`, each other from its own top mip resampled to the image's size.
+    let sources = (ttpf.pack.slice_sources(index, image, shown, options.filter))
+        .map_err(|e| e.to_string())?;
     let source = match image {
         Some(image) => image,
         None => (sources.first()).ok_or_else(|| tr!("{name} is not in this pack", name = name))?,
     };
     let format = target(entry, index, choice, source)?;
     let before = ttpf.pack.clone();
-    let mips = ttpf.pack.reshape_slices(index, sources, format, options);
+    let mips = ttpf.pack.reshape_slices(index, &sources, format, options);
     let mips = mips.map_err(|e| e.to_string())?;
     // ⚠ Its own key: a replacement's step, which puts back only the replaced rows, must not take this one in.
     let change = Change::part(format!("texture {name} shape"), before, |payload| {
@@ -289,15 +269,22 @@ mod tests {
         let read = moved.texture(0).expect("the cube reads");
         assert_eq!((read.faces, read.levels), (6, 1));
 
-        // One face's image of another size leaves the other five at theirs, which is refused.
+        // One face's image of another size: the other five take their own top mips at its size.
         let wide = RgbaImage {
             width: 32,
             height: 32,
             data: [0, 0, 0xFF, 0xFF].repeat(32 * 32),
             is_srgb: false,
         };
-        let imported = state.import_texture_over(doc, at, &name, &wide, dxt1, &one);
-        assert!(imported.is_err(), "the other faces keep their size");
+        (state.import_texture_over(doc, at, &name, &wide, dxt1, &one))
+            .expect("the cube takes the image's size");
+        let read = pack_of(&state, doc).texture(0).expect("the cube reads");
+        assert_eq!((read.width, read.height, read.faces), (32, 32, 6));
+        let shown = decode_level(&read.face(0).expect("face 0"), 0).expect("decodes");
+        assert!(shown
+            .data
+            .chunks(4)
+            .all(|pixel| pixel == [0, 0, 0xFF, 0xFF]));
         state.go_to_step(doc, start);
         assert_eq!(pack_of(&state, doc).entries, opened.entries, "undone whole");
     }

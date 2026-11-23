@@ -619,3 +619,6 @@ mod write_bound_vertex;
 
 #[path = "write_bound_reshape.rs"]
 mod write_bound_reshape;
+
+#[path = "write_bound_grow.rs"]
+mod write_bound_grow;

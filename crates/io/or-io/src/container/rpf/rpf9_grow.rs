@@ -7,6 +7,7 @@
 //! are both wrong.
 
 use std::collections::HashSet;
+use std::ops::Range;
 
 use byteorder::{ByteOrder, LE};
 
@@ -99,6 +100,20 @@ pub fn grow_section(
     at: usize,
     by: isize,
 ) -> Result<usize, Rpf9GrowError> {
+    grow_section_with_data(sections, pointers, &[], section, at, by)
+}
+
+/// [`grow_section`], where the guard also passes over the virtual-section words inside `data`.
+// `data` are spans a typed reader reads as data, such as block payloads; they move with the
+// bytes as the pointers do.
+pub fn grow_section_with_data(
+    sections: &mut Rpf9Sections,
+    pointers: &[usize],
+    data: &[Range<usize>],
+    section: Rpf9Section,
+    at: usize,
+    by: isize,
+) -> Result<usize, Rpf9GrowError> {
     if sections.form != Rpf9Form::BlockMapped {
         return Err(Rpf9GrowError::StoredRsc8);
     }
@@ -158,8 +173,9 @@ pub fn grow_section(
     if by == 0 {
         return Ok(at);
     }
+    let mut data = merged(data);
     let mut grown = sections.clone();
-    splice(&mut grown, &mut pointers, section, at, by)?;
+    splice(&mut grown, &mut pointers, &mut data, section, at, by)?;
     let mut start = at;
     // The map moved with the bytes when it lay past the edit; its slots grow after the old ones,
     // never into the bytes after them, where the next allocation may start.
@@ -174,6 +190,7 @@ pub fn grow_section(
         splice(
             &mut grown,
             &mut pointers,
+            &mut data,
             Rpf9Section::Virtual,
             slots_end,
             grow as isize,
@@ -239,11 +256,32 @@ fn check_pointers(sections: &Rpf9Sections, pointers: &[usize]) -> Result<(), Rpf
     Ok(())
 }
 
-/// Refuses an 8-aligned word of either section that no reader names and that aims at or past `at`
-/// of `section`.
+/// `data` sorted by start, overlapping or touching spans joined.
+fn merged(data: &[Range<usize>]) -> Vec<Range<usize>> {
+    let mut spans: Vec<Range<usize>> = data.iter().filter(|r| !r.is_empty()).cloned().collect();
+    spans.sort_unstable_by_key(|r| r.start);
+    let mut out: Vec<Range<usize>> = Vec::with_capacity(spans.len());
+    for span in spans {
+        match out.last_mut() {
+            Some(last) if span.start <= last.end => last.end = last.end.max(span.end),
+            _ => out.push(span),
+        }
+    }
+    out
+}
+
+/// Whether offset `o` lies in one of the sorted, disjoint `data` spans.
+fn in_data(data: &[Range<usize>], o: usize) -> bool {
+    let i = data.partition_point(|r| r.start <= o);
+    i > 0 && o < data[i - 1].end
+}
+
+/// Refuses an 8-aligned word of either section that no reader names, that lies in no virtual
+/// `data` span and that aims at or past `at` of `section`.
 fn guard(
     sections: &Rpf9Sections,
     pointers: &[usize],
+    data: &[Range<usize>],
     section: Rpf9Section,
     at: usize,
 ) -> Result<(), Rpf9GrowError> {
@@ -252,7 +290,7 @@ fn guard(
     for holder in [Rpf9Section::Virtual, Rpf9Section::Physical] {
         let held = bytes(sections, holder);
         for o in (0..held.len().saturating_sub(7)).step_by(8) {
-            if holder == Rpf9Section::Virtual && listed.contains(&o) {
+            if holder == Rpf9Section::Virtual && (listed.contains(&o) || in_data(data, o)) {
                 continue;
             }
             let word = LE::read_u64(&held[o..o + 8]);
@@ -273,11 +311,12 @@ fn guard(
 fn splice(
     sections: &mut Rpf9Sections,
     pointers: &mut [usize],
+    data: &mut [Range<usize>],
     section: Rpf9Section,
     at: usize,
     by: isize,
 ) -> Result<(), Rpf9GrowError> {
-    guard(sections, pointers, section, at)?;
+    guard(sections, pointers, data, section, at)?;
     let nibble = section.nibble();
     let removed = if by < 0 { by.unsigned_abs() } else { 0 };
     let gone = at..at + removed;
@@ -321,6 +360,16 @@ fn splice(
         }
         false => {
             edited.drain(gone);
+        }
+    }
+    if section == Rpf9Section::Virtual {
+        // Monotone, so the spans stay sorted and disjoint; one in the bytes removed empties.
+        let moved = |x: usize, past: bool| match past {
+            true => x.wrapping_add_signed(by).max(at),
+            false => x,
+        };
+        for span in data.iter_mut() {
+            *span = moved(span.start, span.start >= at)..moved(span.end, span.end > at);
         }
     }
     let v = &mut sections.virtual_section;
@@ -616,6 +665,69 @@ mod tests {
         for (err, want) in cases {
             assert!(err.contains(want), "{want}: {err}");
         }
+    }
+
+    #[test]
+    fn a_word_inside_a_data_span_is_passed_over_and_kept_where_the_slots_grow_before_it() {
+        let (map, at, by) = (0x40, 0x1_0000 - 0x20, 0x40);
+        let mut v = virtual_section(0x1_0000 - 0x20, map, [1, 0]);
+        let after_slots = map + 16 + 8;
+        let (span, data_word) = (0x200..0x240, 0x5000_0000 + at as u64);
+        word(&mut v, 0x210, data_word);
+        let bare = mapped(v.clone(), Vec::new());
+        let mut refused = bare.clone();
+        let err = grow_section(&mut refused, &[0x08], Rpf9Section::Virtual, at, by as isize)
+            .expect_err("a word aims at the edit");
+        assert!(
+            matches!(err, Rpf9GrowError::LooksLikePointer { at: 0x210, .. }),
+            "{err}"
+        );
+        assert_eq!(refused, bare);
+        // A span that lies past the slots moves with them; one that misses the word passes nothing.
+        let mut missed = bare.clone();
+        let err = grow_section_with_data(
+            &mut missed,
+            &[0x08],
+            std::slice::from_ref(&(0x218..0x240)),
+            Rpf9Section::Virtual,
+            at,
+            by as isize,
+        )
+        .expect_err("the word lies before the span");
+        assert!(
+            matches!(err, Rpf9GrowError::LooksLikePointer { .. }),
+            "{err}"
+        );
+
+        let mut sections = bare.clone();
+        let start = grow_section_with_data(
+            &mut sections,
+            &[0x08],
+            std::slice::from_ref(&span),
+            Rpf9Section::Virtual,
+            at,
+            by as isize,
+        )
+        .expect("grown");
+        let mut expected = inserted(&inserted(&v, at, by), after_slots, 16);
+        expected[map + 8] = 2;
+        assert_eq!(start, at + 16);
+        assert_eq!(sections.virtual_section, expected);
+        assert_eq!(
+            LE::read_u64(&sections.virtual_section[span.start + 0x10 + 16..]),
+            data_word
+        );
+    }
+
+    #[test]
+    fn data_spans_are_sorted_joined_and_found_by_offset() {
+        let spans = merged(&[0x40..0x50, 0x10..0x20, 0x18..0x30, 0x60..0x60, 0x30..0x38]);
+        assert_eq!(spans, vec![0x10..0x38, 0x40..0x50]);
+        let found: Vec<bool> = [0x08, 0x10, 0x30, 0x38, 0x48, 0x50]
+            .into_iter()
+            .map(|o| in_data(&spans, o))
+            .collect();
+        assert_eq!(found, [false, true, true, false, true, false]);
     }
 
     #[test]

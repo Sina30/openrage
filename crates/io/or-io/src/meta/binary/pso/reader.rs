@@ -486,7 +486,7 @@ impl PsoDecoder<'_, '_> {
         offset: usize,
     ) -> Result<Value> {
         if self.gta6 {
-            return self.decode_gta6_map(entry, offset);
+            return self.decode_gta6_map(owner, entry, offset);
         }
         let key_desc = owner.entry(entry.key_index()).copied();
         let value_desc = owner.entry(entry.value_index()).copied();
@@ -550,12 +550,19 @@ impl PsoDecoder<'_, '_> {
 
     /// A GTA VI map: a pair map's 24 bytes are the table form's binary map, big-endian, over pairs
     /// of its block's structure; a group map is read by its groups only with GTA VI support.
-    fn decode_gta6_map(&mut self, entry: &PsoStructEntry, offset: usize) -> Result<Value> {
+    fn decode_gta6_map(
+        &mut self,
+        owner: &PsoStructInfo,
+        entry: &PsoStructEntry,
+        offset: usize,
+    ) -> Result<Value> {
         match entry.subtype() {
             GTA6_PAIR_MAP => {}
             GTA6_GROUP_MAP => {
                 #[cfg(feature = "gta6")]
-                return self.decode_group_map(offset);
+                return self.decode_group_map(owner, entry, offset);
+                #[cfg(not(feature = "gta6"))]
+                let _ = owner;
                 #[cfg(not(feature = "gta6"))]
                 return match (self.read_u32(offset)?, self.read_u32(offset + 4)?) {
                     (0, 0) if self.read_pointer(offset + 8)?.is_null() => {

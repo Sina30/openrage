@@ -12580,8 +12580,8 @@ msgstr "提取所选的行；未选择时提取列表显示的所有行。Ctrl+�
 msgid "RBF metadata"
 msgstr "RBF 元数据"
 
-msgid "Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."
-msgstr "没有可提取的内容：归档的头部、其加密的名称以及第一个条目都没有读取所能得知的结尾。"
+msgid "Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."
+msgstr "没有可提取的内容：名称未定位的归档、其加密的名称以及后面没有任何行的第一个条目，都没有读取所能得知的结尾。"
 
 msgid "Extract into a folder outside the game's install."
 msgstr "请提取到游戏安装目录之外的文件夹。"
@@ -15278,9 +15278,6 @@ msgstr "相邻单元 {cells} 的数据体未打开，因此不知道它们的特
 msgid "Disable polygon {polygon}"
 msgstr "禁用多边形 {polygon}"
 
-msgid "A GTA VI cell's polygon is not deleted: the links of the neighbouring cells' bodies, which are saved apart, would be renumbered too. Disable it instead."
-msgstr "不会删除 GTA VI 单元的多边形：单独保存的相邻单元数据体中的链接也会被重新编号。请改为禁用它。"
-
 msgid "The cell read again holds another number of edges than the one edited."
 msgstr "重新读取的单元所含的边数与被编辑的单元不同。"
 
@@ -15652,8 +15649,8 @@ msgstr "读取演化的演化关键帧，并由演化滑块播放。关键帧的
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "物理段中的 GPU 缓冲区会被检查：+0x390 处的缓冲区复制规则 +0x1E0 处的浮点数，+0x388 处的缓冲区含有两张 16 行的表，其值并非由规则推导，因此按存储原样保留，可能与编辑后的关键帧值不一致。预览两者都不需要。"
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
-msgstr "“另存为”将两种形式共有的值原地写入 GTA VI 列表，连同被移除的规则或绑定到另一条规则的事件。添加的键和复制的效果写在列表末尾之后，副本按 Duplicate 赋予它的名称找到。凭空创建的规则，或添加的事件或行为，没有明确的值，因此工作区不提供此操作。"
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added, an effect, an emitter rule, a particle rule or an event duplicated, and a behaviour copied to another rule are written past the list's end, a rule's copy found by the name Duplicate gives it, and a particle rule's copy given GPU buffers of its own. A rule made from nothing has no stated value, so the workspace does not offer it."
+msgstr "“另存为”将两种形式共有的值原地写入 GTA VI 列表，连同被移除的规则或绑定到另一条规则的事件。添加的键、复制的效果、发射器规则、粒子规则或事件，以及复制到另一条规则的行为，写在列表末尾之后；规则的副本按“创建副本”赋予它的名称找到，粒子规则的副本获得自己的 GPU 缓冲区。凭空创建的规则没有明确的值，因此工作区不提供此操作。"
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "其第三个生成器在其 ptxu_ZCull 剔除一个点的位置启动 {effect}，预览也是如此；其触发值是点必须达到的速度（与碰撞生成器相同），这是推断的。"
@@ -16268,7 +16265,7 @@ msgid "An event names a rule the GTA VI particle list does not hold: bind it to 
 msgstr "某个事件指向 GTA VI 粒子列表中没有的规则：请将其绑定到列表中的某条规则。"
 
 msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
-msgstr "GTA VI 粒子列表只接受作为其已有效果副本的新效果：请使用 Duplicate，并保持副本名称为所复制效果的名称后加 _copy。"
+msgstr "GTA VI 粒子列表只接受作为其已有效果副本的新效果：请使用“创建副本”，并保持副本名称为所复制效果的名称后加 _copy。"
 
 msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
 msgstr "在相邻单元 {cells} 的数据体未打开时，不禁用多边形 {polygon}：它清空的边记录会被移除，而它们的特殊链接可能按编号指向其后的记录。请先在扫描中查找相邻单元。"
@@ -16281,3 +16278,207 @@ msgstr "部件"
 
 msgid "Draw the weapon as the first of each kind of its parts, each on its bone, in place of its own mesh"
 msgstr "用每种部件的第一个来绘制武器，各自位于其骨骼上，取代武器自身的网格"
+
+msgid "Network name: {name}"
+msgstr "网络名称：{name}"
+
+msgid "words from +0x00 to +0x48 as stored: {words}"
+msgstr "从 +0x00 到 +0x48 按存储原样的字：{words}"
+
+msgid "{count} mission state table, as the document now stands"
+msgid_plural "{count} mission state tables, as the document now stands"
+msgstr[0] "{count} 个任务状态表，按文档当前的样子显示"
+msgstr[1] "{count} 个任务状态表，按文档当前的样子显示"
+
+msgid "{name} is a volume, so it keeps its size, format and mips: its levels lie across its z-slabs."
+msgstr "{name} 是体积纹理，因此保留其尺寸、格式和 mip：其各级分布在各个 z 切片中。"
+
+msgid "The special links of the neighbouring cell {cell} were renumbered by an edit of another cell, whose save writes them: save that cell or undo its edit first."
+msgstr "相邻单元 {cell} 的特殊链接已被另一个单元的编辑重新编号，由该单元的保存写入：请保存该单元，或先撤销其编辑。"
+
+msgid "The special links of the neighbouring cell {cell} would be renumbered, but its body holds deletions of its own, which its own save writes: undo them first."
+msgstr "相邻单元 {cell} 的特殊链接将被重新编号，但其数据体包含自身的删除，由其自身的保存写入：请先撤销这些删除。"
+
+msgid "This cell's special links were renumbered by an edit of a neighbouring cell, whose save writes them: save that cell or undo its edit first."
+msgstr "此单元的特殊链接已被相邻单元的编辑重新编号，由该单元的保存写入：请保存该单元，或先撤销其编辑。"
+
+msgid "{count} special link of this cell ended in a record that went, and was deleted."
+msgid_plural "{count} special links of this cell ended in a record that went, and were deleted."
+msgstr[0] "此单元有 {count} 条特殊链接以已移除的记录为终点，已被删除。"
+msgstr[1] "此单元有 {count} 条特殊链接以已移除的记录为终点，已被删除。"
+
+msgid "The special links of {count} neighbouring cell were renumbered: a save of this cell writes its body beside it."
+msgid_plural "The special links of {count} neighbouring cells were renumbered: a save of this cell writes their bodies beside it."
+msgstr[0] "已重新编号 {count} 个相邻单元的特殊链接：保存此单元时会将其数据体写在旁边。"
+msgstr[1] "已重新编号 {count} 个相邻单元的特殊链接：保存此单元时会将其数据体写在旁边。"
+
+msgid "The body at {offset} does not read, so whether it names the map is not known: {why}"
+msgstr "{offset} 处的数据体无法读取，因此不知道它是否指明该地图：{why}"
+
+msgid "Looking for the maps linked to {map}"
+msgstr "正在查找与 {map} 关联的地图"
+
+msgid "Open the whole scan of {archive}: the maps that name this one as a parent, and its own parent map, are found among the bodies it lists."
+msgstr "请打开 {archive} 的完整扫描：将此地图指为父级的地图及其自身的父级地图，会在其列出的数据体中找到。"
+
+msgid "The entity was not added or removed: {why}"
+msgstr "未添加或移除该实体：{why}"
+
+msgid "A map changed or closed while the maps linked to it were read: make the edit again."
+msgstr "读取与地图关联的地图时，该地图已更改或关闭：请重新进行此编辑。"
+
+msgid "{edit}. The maps it renumbers are open as documents of their own, each with this edit as one step: {maps}"
+msgstr "{edit}。它重新编号的地图已作为各自的文档打开，每个文档中此编辑为一步：{maps}"
+
+msgid "The archetype holds no value {member}."
+msgstr "该原型不含值 {member}。"
+
+msgid "The archetype selected is not in its map types body's tree."
+msgstr "所选原型不在其地图类型数据体的树中。"
+
+msgid "This map types body holds no plain archetype to copy the layout of."
+msgstr "此地图类型数据体中没有可复制其布局的普通原型。"
+
+msgid "No GTA VI drawable is open to make an archetype of."
+msgstr "没有打开可用于创建原型的 GTA VI drawable。"
+
+msgid "lodDist, guid and flags take numbers"
+msgstr "lodDist、guid 和 flags 需填写数字"
+
+msgid "The name {name} is held by another archetype."
+msgstr "名称 {name} 已被另一个原型使用。"
+
+msgid "The edited map types body does not read back as one."
+msgstr "编辑后的地图类型数据体无法按地图类型数据体读回。"
+
+msgid "New archetype from a drawable"
+msgstr "由 drawable 新建原型"
+
+msgid "Add the archetype"
+msgstr "添加原型"
+
+msgid "Declares in the map types body of this entity's archetype an archetype of the drawable open, its names from the text, its box the drawable's, a seed to check, and its sphere the box's. Undo takes it back"
+msgstr "在此实体原型所在的地图类型数据体中声明已打开的 drawable 的原型：名称取自文本，边界框取自 drawable（仅为待核对的初值），球体取自边界框。“撤消”可将其撤回"
+
+msgid "Group {group}, array at 0x10 {head}"
+msgstr "组 {group}，0x10 处的数组 {head}"
+
+msgid "Clip {clip}, parameter {index}: points {points}, floats {floats}"
+msgstr "剪辑 {clip}，参数 {index}：点 {points}，浮点数 {floats}"
+
+msgid "Parameter object {index} of type {kind}: arrays at 0x10 {first} and 0x20 {second}"
+msgstr "参数对象 {index}（类型 {kind}）：0x10 处的数组 {first}，0x20 处的数组 {second}"
+
+msgid "Parameter object {index}, lists {lists}, hashes {hashes}"
+msgstr "参数对象 {index}，列表 {lists}，哈希 {hashes}"
+
+msgid "New track's id"
+msgstr "新轨道的 ID"
+
+msgid "Pairs: {count}"
+msgstr "对：{count}"
+
+msgid "New pair's key"
+msgstr "新对的键"
+
+msgid "Delete this pair"
+msgstr "删除此对"
+
+msgid "A GTA VI particle list takes a new emitter or particle rule only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the rule it copies followed by _copy."
+msgstr "GTA VI 粒子列表只接受新的发射器规则或粒子规则作为其已有规则的副本：请使用“创建副本”，并让副本的名称保持为所复制规则的名称后加 _copy。"
+
+msgid "An event was added to an effect that holds none to copy: a GTA VI particle list takes a new event only as a copy of one of its effect's events, so use Duplicate on an event."
+msgstr "向一个没有可复制事件的效果添加了事件：GTA VI 粒子列表只接受新事件作为其效果中某个事件的副本，因此请对事件使用“创建副本”。"
+
+msgid "A rule was given a behaviour of a class no rule of the GTA VI particle list holds: a new behaviour is written only as a copy of one the list holds, so use Copy to rule."
+msgstr "某条规则被赋予了 GTA VI 粒子列表中没有任何规则拥有的类的行为：新行为只能作为列表中某个行为的副本写入，因此请使用 Copy to rule。"
+
+msgid "Only a geometry child's primitives and vertices are added or deleted."
+msgstr "只有几何子项的基本体和顶点可以添加或删除。"
+
+msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
+msgstr "只有独立 bound 的 composite 可以添加或删除子项：在 drawable 或 fragment 中，每个子项也是 fragment 的子项。"
+
+msgid "Delete primitive {primitive}"
+msgstr "删除基本体 {primitive}"
+
+msgid "Add triangle {primitive}"
+msgstr "添加三角形 {primitive}"
+
+msgid "Delete vertex {vertex}"
+msgstr "删除顶点 {vertex}"
+
+msgid "Add vertex {vertex}"
+msgstr "添加顶点 {vertex}"
+
+msgid "Delete child {child}"
+msgstr "删除子项 {child}"
+
+msgid "Copy child {child}"
+msgstr "复制子项 {child}"
+
+msgid "A drawable's lone bound keeps its type: the drawable points at its record."
+msgstr "drawable 的单个 bound 保持其类型：drawable 指向它的记录。"
+
+msgid "Give child {child} another type"
+msgstr "更改子项 {child} 的类型"
+
+msgid "This document has no file, so its collision is not reshaped."
+msgstr "此文档没有文件，因此不会重塑其碰撞。"
+
+msgid "The body read again holds other numbers of children, vertices or primitives than the collision's changes began from."
+msgstr "重新读取的数据体中子项、顶点或基本体的数量与碰撞更改开始时不同。"
+
+msgid "Sphere"
+msgstr "球体"
+
+msgid "Capsule"
+msgstr "胶囊体"
+
+msgid "Tapered capsule"
+msgstr "锥形胶囊体"
+
+msgid "Disc"
+msgstr "圆盘"
+
+msgid "Cylinder"
+msgstr "圆柱体"
+
+msgid "Add and delete collision"
+msgstr "添加和删除碰撞"
+
+msgid "A primitive or a vertex is added last and deleted where it stands, a new triangle linking to the triangles it shares an edge with; a lone bound's child is copied or deleted, a primitive child given another type. Save As writes the body as a loose resource."
+msgstr "基本体或顶点添加在末尾，并在原处删除，新三角形会与共享一条边的三角形相连；独立 bound 的子项可以复制或删除，基本体子项可以改为另一种类型。“另存为”会将数据体写成独立资源。"
+
+msgid "Copy the child"
+msgstr "复制子项"
+
+msgid "Delete the child"
+msgstr "删除子项"
+
+msgid "Delete the primitive"
+msgstr "删除基本体"
+
+msgid "Add a triangle"
+msgstr "添加三角形"
+
+msgid "Delete the vertex"
+msgstr "删除顶点"
+
+msgid "Add a vertex"
+msgstr "添加顶点"
+
+msgid "The file holds a collision change that was undone after it was saved, and a save does not take it out again: open the file again to edit it."
+msgstr "文件中有一项保存后又撤销的碰撞更改，保存不会将其移除：请重新打开文件再编辑。"
+
+msgid "Duplicate"
+msgstr "创建副本"
+
+msgid "Copy to rule…"
+msgstr "复制到规则…"
+
+msgid "(every other rule lists one of its class)"
+msgstr "（其他每条规则都已有该类的一个行为）"
+
+msgid "(the file holds no map here)"
+msgstr "（此处文件不含键值对表）"

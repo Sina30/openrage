@@ -1166,6 +1166,13 @@ pub use keys::{add_particle_keys, ParticleKeysError};
 mod copier;
 pub use copier::duplicate_particle_effect;
 
+#[path = "particles_dup.rs"]
+mod dup;
+pub use dup::{
+    copy_particle_behaviour, duplicate_particle_emitter, duplicate_particle_event,
+    duplicate_particle_rule,
+};
+
 #[path = "particles_gpu.rs"]
 mod gpu;
 pub use gpu::{read_particle_gpu_buffers, read_particle_gpu_tables, GpuBuffer, GpuTables};

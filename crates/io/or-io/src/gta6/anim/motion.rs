@@ -9,6 +9,7 @@ const MOTION_LEN: usize = 0x140;
 const GROUP_LEN: usize = 0x38;
 const TIME_WARP_LEN: usize = 0x28;
 const PHASE_CURVE_LEN: usize = 0x20;
+const PARAMETER_ITEM_LEN: usize = 0x20;
 const ROW_LEN: usize = 0x20;
 pub(super) const GRID_LEN: usize = 0x50;
 
@@ -25,11 +26,39 @@ pub struct Motion {
     pub time_warps: Vec<TimeWarp>,
     pub weight_lists: Vec<Vec<Weight>>,
     pub parameters: Vec<Parameter>,
+    /// At 0x80, for each clip, an item for each parameter.
+    pub parameter_items: Vec<Vec<ParameterItem>>,
     pub groups: Vec<MotionGroup>,
-    /// The types a kind-2 motion's own typed objects state; a type-2 object here is not a phase
-    /// curve's layout, so no object here is followed past its head.
-    pub parameter_objects: Vec<u32>,
+    /// A kind-2 motion's own typed objects at 0x130.
+    pub parameter_objects: Vec<ParameterObject>,
     pub properties: Vec<Record>,
+}
+
+/// A clip's item for one parameter: `(x, y)` points and four floats, whose roles are not known.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParameterItem {
+    pub points: Vec<[f32; 2]>,
+    pub floats: [f32; 4],
+}
+
+/// An array head `{pointer, u16 count, u16 capacity, u32}` as stated, its elements unread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArrayHead {
+    pub pointer: u64,
+    pub count: u16,
+    pub capacity: u16,
+    pub word: u32,
+}
+
+/// A kind-2 motion's typed object: its type, its array heads at 0x10 and 0x20, a type 4's lists.
+// ⚠ A type-1 or type-2 object here is not a group's constants or phase curves, so only its heads
+// are read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParameterObject {
+    pub kind: u32,
+    pub heads: [ArrayHead; 2],
+    /// Type 4's lists of words at 0x20 and hashes at 0x30.
+    pub lists: Option<(Vec<Vec<u32>>, Vec<u32>)>,
 }
 
 /// A clip's time warp: `a` and `b`, equal in every motion, and points that never fall.
@@ -85,6 +114,8 @@ pub enum Typed {
     },
     /// Type 4: lists of words and a list of hashes.
     Lists {
+        /// The array at 0x10, whose element is not known.
+        head: ArrayHead,
         lists: Vec<Vec<u32>>,
         hashes: Vec<u32>,
     },
@@ -299,6 +330,7 @@ impl Section<'_> {
             weight_lists.push(list);
         }
         let parameters = self.parameters(at, clips.len()).map_err(|why| bad(&why))?;
+        let parameter_items = self.parameter_items(at)?;
         let lists = weight_lists.len() as u64;
         let mut groups = Vec::new();
         let mut parameter_objects = Vec::new();
@@ -340,7 +372,16 @@ impl Section<'_> {
             }
             for e in self.array("motion parameter objects", at + 0x130, 8)? {
                 let object = self.target("motion parameter object", e)?;
-                parameter_objects.push(self.typed_head(object, &name)?);
+                let kind = self.typed_head(object, &name)?;
+                let lists = match kind {
+                    4 => Some(self.type_four(object)?),
+                    _ => None,
+                };
+                parameter_objects.push(ParameterObject {
+                    kind,
+                    heads: [self.head(object + 0x10)?, self.head(object + 0x20)?],
+                    lists,
+                });
             }
         }
         let stated = |t: &Typed| match t {
@@ -365,10 +406,60 @@ impl Section<'_> {
             time_warps,
             weight_lists,
             parameters,
+            parameter_items,
             groups,
             parameter_objects,
             properties,
         })
+    }
+
+    /// The lists at 0x80: for each clip an array of 0x20-byte items, each `{(x, y) points, 4 f32}`.
+    fn parameter_items(&self, at: usize) -> Result<Vec<Vec<ParameterItem>>, AnimError> {
+        let mut clips = Vec::new();
+        for list in self.array("motion parameter items", at + 0x80, 16)? {
+            let mut items = Vec::new();
+            for item in self.array("motion parameter item", list, PARAMETER_ITEM_LEN)? {
+                let mut points = Vec::new();
+                for p in self.array("motion parameter points", item, 8)? {
+                    points.push([
+                        self.f32("motion parameter point", p)?,
+                        self.f32("motion parameter point", p + 4)?,
+                    ]);
+                }
+                let mut floats = [0.0; 4];
+                for (i, f) in floats.iter_mut().enumerate() {
+                    *f = self.f32("motion parameter item", item + 0x10 + 4 * i)?;
+                }
+                items.push(ParameterItem { points, floats });
+            }
+            clips.push(items);
+        }
+        Ok(clips)
+    }
+
+    /// The array head at `at`, its elements unread.
+    fn head(&self, at: usize) -> Result<ArrayHead, AnimError> {
+        Ok(ArrayHead {
+            pointer: self.u64("array head", at)?,
+            count: self.u16("array head", at + 8)?,
+            capacity: self.u16("array head", at + 10)?,
+            word: self.u32("array head", at + 12)?,
+        })
+    }
+
+    /// A type-4 object's lists of words at 0x20 and its hashes at 0x30.
+    fn type_four(&self, at: usize) -> Result<(Vec<Vec<u32>>, Vec<u32>), AnimError> {
+        let words = |at: usize| -> Result<Vec<u32>, AnimError> {
+            self.array("typed object words", at, 4)?
+                .into_iter()
+                .map(|e| self.u32("typed object word", e))
+                .collect()
+        };
+        let mut lists = Vec::new();
+        for e in self.array("typed object lists", at + 0x20, 16)? {
+            lists.push(words(e)?);
+        }
+        Ok((lists, words(at + 0x30)?))
     }
 
     /// The parameter space at 0x80 to 0xD0: one hash, word, minimum and maximum for each
@@ -546,12 +637,6 @@ impl Section<'_> {
                 .map(|e| self.f32("typed object value", e))
                 .collect()
         };
-        let words = |at: usize| -> Result<Vec<u32>, AnimError> {
-            self.array("typed object words", at, 4)?
-                .into_iter()
-                .map(|e| self.u32("typed object word", e))
-                .collect()
-        };
         Ok(match kind {
             1 => {
                 let values = floats(at + 0x10)?;
@@ -612,13 +697,11 @@ impl Section<'_> {
                 }
             }
             4 => {
-                let mut lists = Vec::new();
-                for e in self.array("typed object lists", at + 0x20, 16)? {
-                    lists.push(words(e)?);
-                }
+                let (lists, hashes) = self.type_four(at)?;
                 Typed::Lists {
+                    head: self.head(at + 0x10)?,
                     lists,
-                    hashes: words(at + 0x30)?,
+                    hashes,
                 }
             }
             5 => Typed::Table(self.table_database(at, lists).map_err(bad)?),

@@ -1,6 +1,7 @@
 //! The first entry after an archive's table, opened and extracted as its bytes: the placeholder
 //! an archive of one entry that would otherwise be empty holds alone, whose end its bytes state,
-//! and any other, which ends where the next row of the list that opened it starts.
+//! and any other, which ends where the next row of the list that opened it starts. A nested
+//! archive extracts as its bytes from its header to the end of its names.
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -8,12 +9,13 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use or_io::container::rpf::{Rpf9BodyKind, Rpf9ScanError, Rpf9ScanFind};
+use or_io::container::rpf::{rpf9_first_entry_end, Rpf9BodyKind, Rpf9ScanError, Rpf9ScanFind};
 
 use super::document::HexDocument;
 use super::rpf9_scan::Row;
 
-/// Where each first entry whose end is not stated ends, by archive and offset, as its list gave it.
+/// Where each first entry whose end is not stated, and each nested archive, ends, by archive and
+/// offset, as its list gave it.
 // ponytail: one map for the whole app, which no close empties; an install holds 15 such entries.
 static GIVEN: Mutex<BTreeMap<(PathBuf, u64), u64>> = Mutex::new(BTreeMap::new());
 
@@ -35,32 +37,54 @@ pub(super) fn banner(find: &Rpf9ScanFind) -> String {
 }
 
 /// Give `find`, a row of `rows`, the list of `archive`, the end a read takes: a first entry whose
-/// end is not stated ends where the list's next row starts. `false` where no row follows it.
+/// end is not stated ends where the list's next row starts, and a nested archive where its names
+/// row ends. `false` where no row gives it one.
 pub(super) fn note(archive: &Path, rows: &[Row], find: &Rpf9ScanFind) -> bool {
-    if !matches!(find.kind, Rpf9BodyKind::FirstEntry { .. }) || ends(find) {
-        return true;
-    }
-    let start = |row: &Row| match row {
-        Row::Body(find) => find.offset,
-        Row::Missing { from, .. } => *from,
+    let end = match find.kind {
+        Rpf9BodyKind::FirstEntry { .. } if !ends(find) => {
+            let start = |row: &Row| match row {
+                Row::Body(find) => find.offset,
+                Row::Missing { from, .. } => *from,
+            };
+            rows.iter().map(start).filter(|at| *at > find.offset).min()
+        }
+        Rpf9BodyKind::Archive(_) => {
+            let own = Rpf9BodyKind::Names {
+                archive: find.offset,
+            };
+            rows.iter().find_map(|row| match row {
+                Row::Body(names) if names.kind == own => Some(names.offset + names.span),
+                _ => None,
+            })
+        }
+        _ => return true,
     };
-    let next = rows.iter().map(start).filter(|at| *at > find.offset).min();
-    let Some(end) = next else {
+    let Some(end) = end else {
         return false;
     };
     given().insert((archive.to_path_buf(), find.offset), end);
     true
 }
 
-/// The bytes of the first entry at `offset` of `file`, the file at `archive`, to the end [`note`]
-/// gave it, refused past `limit`; `None` where it gave none.
+/// The bytes of the body at `offset` of `file`, the file at `archive`, that a read refused as
+/// `refused`, to the end [`note`] gave it, refused past `limit`; `None` where it gave none.
 pub(super) fn bytes(
     archive: &Path,
     file: &File,
     offset: u64,
     limit: u64,
+    refused: &Rpf9ScanError,
 ) -> Option<Result<Vec<u8>, String>> {
-    let end = given().get(&(archive.to_path_buf(), offset)).copied()?;
+    let noted = given().get(&(archive.to_path_buf(), offset)).copied();
+    let end = match (noted, refused) {
+        (Some(end), _) => end,
+        // No list gave it an end: the scan from the file's start gives the one its list would.
+        (None, Rpf9ScanError::NoBodyAt { .. }) => match rpf9_first_entry_end(file, offset) {
+            Ok(end) => end?,
+            Err(e) => return Some(Err(e.to_string())),
+        },
+        (None, _) => return None,
+    };
     let len = end.saturating_sub(offset);
     if len > limit {
         return Some(Err(
@@ -83,8 +107,9 @@ pub(super) fn opened(
     file: &File,
     offset: u64,
     limit: u64,
+    refused: &Rpf9ScanError,
 ) -> Option<Result<(Rpf9ScanFind, HexDocument), String>> {
-    let bytes = match bytes(archive, file, offset, limit)? {
+    let bytes = match bytes(archive, file, offset, limit, refused)? {
         Ok(bytes) => bytes,
         Err(e) => return Some(Err(e)),
     };
@@ -165,10 +190,13 @@ mod tests {
         bytes.extend(zlib(b"<?xml version=\"1.0\"?>\n<CMapTypes/>\n"));
         let dir = tempfile::tempdir().expect("a scratch directory");
         let archive = written(dir.path(), &bytes);
-        assert!(
-            extracted_body(&archive, entry).is_err(),
-            "no list gave it an end yet"
+        let held = bytes[entry as usize..next as usize].to_vec();
+        assert_eq!(
+            extracted_body(&archive, entry),
+            Ok(held.clone()),
+            "with no list, a scan from the file's start gives it the end its list would"
         );
+        assert!(extracted_body(&archive, entry + 16).is_err());
         let mut state = AppState::new();
         let parent = scanned(&mut state, archive.clone());
         let listed = rows(&state, parent);
@@ -188,7 +216,6 @@ mod tests {
         let Some(DocPayload::Hex(hex)) = state.document(doc).map(|d| &d.payload) else {
             panic!("its bytes: {}", state.error_dialog_message);
         };
-        let held = bytes[entry as usize..next as usize].to_vec();
         assert_eq!(hex.bytes, held);
         assert!(
             hex.banner.contains(&held.len().to_string()),
@@ -199,5 +226,44 @@ mod tests {
         let path = body_path(&archive, entry, View::Bytes);
         let origin = scan_origin(&path).map(|(find, _)| find.offset);
         assert_eq!(origin, Some(entry), "its origin is kept for the inspector");
+    }
+
+    #[test]
+    fn a_nested_archive_extracts_from_its_header_to_the_end_of_its_names() {
+        use std::time::{Duration, Instant};
+
+        use crate::state::opening_an_rpf9_archive::{
+            row_at, rows, rpf9_head, scanned, written, zlib,
+        };
+        use crate::state::AppState;
+
+        const NESTED: u64 = 0x1000;
+        let xml = |root: &str| format!("<?xml version=\"1.0\"?>\n<{root}/>\n").into_bytes();
+        // A nested archive of one entry whose names only a count places, then a top-level body.
+        let mut bytes = rpf9_head(2, 0x1B0);
+        bytes.resize(NESTED as usize, 0);
+        bytes.extend(rpf9_head(1, 0x1B0));
+        bytes.extend(zlib(&xml("CMapTypes")));
+        bytes.resize(bytes.len().next_multiple_of(16), 0);
+        let names_end = bytes.len() + 0x40;
+        bytes.extend([0x33; 0x40]);
+        bytes.extend(zlib(&xml("CMapData")));
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let mut state = AppState::new();
+        let doc = scanned(&mut state, written(dir.path(), &bytes));
+        let listed = rows(&state, doc);
+        let out = dir.path().join("out");
+        let picked = [row_at(&listed, NESTED), row_at(&listed, 0)];
+        assert!(state.extract_scanned_bodies(doc, &picked, out.clone()));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while state.extract_jobs.is_running() {
+            state.poll_extract_job();
+            assert!(Instant::now() < deadline, "the extraction never ended");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let nested = std::fs::read(out.join("0x1000.rpf")).expect("the nested archive");
+        assert_eq!(nested, bytes[NESTED as usize..names_end]);
+        // The archive the list is of has no names row, so nothing is written of it.
+        assert!(!out.join("0x0.rpf").exists());
     }
 }

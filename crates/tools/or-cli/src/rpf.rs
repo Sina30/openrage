@@ -849,13 +849,25 @@ fn cmd_scan_body(args: &[String]) -> Result<(), Failure> {
         ));
     };
     let offset = parse_offset(offset).map_err(Usage)?;
+    if super::navmesh_edit::same_file(path, out) {
+        return Err(Usage(format!(
+            "the output is the archive {path}: name another file"
+        )));
+    }
     let file = fs::File::open(path).map_err(|e| format!("open({path}): {e}"))?;
     let read = if stored {
         extract_rpf9_body
     } else {
         read_rpf9_body
     };
-    let (find, mut bytes) = read(file, offset, limit).map_err(|e| e.to_string())?;
+    let (find, mut bytes) = match read(&file, offset, limit) {
+        Ok(read) => read,
+        // A first entry of unstated end, or a nested archive: the bytes a scan gives it.
+        Err(e) if !(xml || gxt2 || rewrite) => {
+            return super::gta6_spans::write_refused(&file, offset, &e, out).map_err(Run)
+        }
+        Err(e) => return Err(Run(e.to_string())),
+    };
     if xml {
         bytes = metadata_xml(&find, &bytes)?.into_bytes();
     }
@@ -1056,15 +1068,21 @@ fn extract_scanned(
     let file = fs::File::open(path).map_err(|e| format!("open({path}): {e}"))?;
     let cancelled = super::jobs::on_interrupt();
     let mut finds = Vec::new();
+    let mut spans = super::gta6_spans::Spans::default();
     for find in Rpf9Scan::new(&file, 0..u64::MAX).map_err(|e| e.to_string())? {
         if cancelled.is_set() {
             return Err("cancelled".to_string());
         }
         let find = find.map_err(|e| e.to_string())?;
-        if is_read(&find) && admits(&find) {
+        spans.push(&find);
+        if admits(&find) && !matches!(find.kind, Rpf9BodyKind::Names { .. }) {
             finds.push(find);
         }
     }
+    // A first entry of unstated end and a nested archive are written as the span the list gives.
+    let file_len = file.metadata().map_err(|e| format!("{path}: {e}"))?.len();
+    let ends = spans.ends(&file, file_len)?;
+    finds.retain(|find| is_read(find) || ends.contains_key(&find.offset));
     let out_dir = PathBuf::from(out_dir);
     if !dry_run {
         fs::create_dir_all(&out_dir).map_err(|e| format!("create_dir_all: {e}"))?;
@@ -1083,6 +1101,13 @@ fn extract_scanned(
         progress.now_on(name.clone());
         if dry_run {
             return or_job::Step::Done(0);
+        }
+        if let (false, Some(&end)) = (is_read(&find), ends.get(&find.offset)) {
+            let out = out_dir.join(&name);
+            return match super::gta6_spans::write_span(&file, find.offset, end, &out) {
+                Ok(len) => or_job::Step::Done(len),
+                Err(e) => or_job::Step::Failed(format!("{name}: {e}")),
+            };
         }
         if form == Form::Converted {
             match convert(&file, &find, limit, &out_dir) {
@@ -1427,12 +1452,7 @@ fn print_rbf(name: &str, bytes: &[u8]) -> Result<(), String> {
 
 /// The scan of the archive nested at `offset`, from its header to the end of its names.
 fn open_nested(path: &str, file: &fs::File, offset: u64) -> Result<(), String> {
-    let end = match nested_end(file, offset)? {
-        Some(end) => Some(end),
-        None => or_io::container::rpf::rpf9_names_by_count_at(file, offset)
-            .map_err(|e| e.to_string())?
-            .map(|names| names.offset + names.span),
-    };
+    let end = super::gta6_spans::archive_end(file, offset)?;
     let end = end.ok_or_else(|| {
         format!(
             "the archive nested at {offset:#X} has no known extent: neither names a scan places \
@@ -1446,7 +1466,7 @@ fn open_nested(path: &str, file: &fs::File, offset: u64) -> Result<(), String> {
 
 /// Where the archive nested at `offset` ends: past the names a scan from its header places after
 /// its last entry; `None` when another header or the file's end comes first.
-fn nested_end(file: &fs::File, offset: u64) -> Result<Option<u64>, String> {
+pub(crate) fn nested_end(file: &fs::File, offset: u64) -> Result<Option<u64>, String> {
     let scan = Rpf9Scan::new(file, offset..u64::MAX).map_err(|e| e.to_string())?;
     for find in scan {
         let find = find.map_err(|e| e.to_string())?;
@@ -2380,6 +2400,17 @@ fn save(builder: &RpfBuilder, path: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scan_body_refuses_to_write_over_the_archive_it_reads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.rpf");
+        fs::write(&path, [1u8; 64]).expect("written");
+        let p = path.to_string_lossy().into_owned();
+        let args = [p.clone(), "0x10".to_string(), p];
+        assert!(matches!(cmd_scan_body(&args), Err(Usage(_))));
+        assert_eq!(fs::read(&path).expect("kept"), [1u8; 64]);
+    }
 
     /// A 64-byte RPF9 head of layout 4 that holds every measured rule: `entries` entries, the
     /// table to `toc_end` with its index rows at its end, and `names` bytes of names.

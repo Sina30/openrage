@@ -3830,8 +3830,8 @@ msgstr "選択した行を抽出します。選択がない場合は、一覧に
 msgid "RBF metadata"
 msgstr "RBFメタデータ"
 
-msgid "Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."
-msgstr "抽出するものがありません：アーカイブのヘッダー、暗号化された名前、最初のエントリには、読み取りで判別できる終端がありません。"
+msgid "Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."
+msgstr "抽出するものがありません：名前が配置されていないアーカイブ、暗号化された名前、後に行が続かない最初のエントリには、読み取りで判別できる終端がありません。"
 
 msgid "Extract into a folder outside the game's install."
 msgstr "ゲームのインストールの外にあるフォルダーに抽出してください。"
@@ -15147,9 +15147,6 @@ msgstr "隣接セル {cells}のボディが開かれていないため、その�
 msgid "Disable polygon {polygon}"
 msgstr "ポリゴン {polygon}を無効にする"
 
-msgid "A GTA VI cell's polygon is not deleted: the links of the neighbouring cells' bodies, which are saved apart, would be renumbered too. Disable it instead."
-msgstr "GTA VIのセルのポリゴンは削除されません：別々に保存されている隣接セルのボディのリンクも、番号が振り直されてしまうためです。代わりに無効にしてください。"
-
 msgid "The cell read again holds another number of edges than the one edited."
 msgstr "再読み込みしたセルのエッジ数は、編集したセルと異なります。"
 
@@ -15652,8 +15649,8 @@ msgstr "エボリューションの進化キーフレームは読み込まれ、
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "物理セクションのGPUバッファを検査します。+0x390 のものはルールの +0x1E0 の浮動小数を複製し、+0x388 のものは 16 行の表を 2 つ持ちます。その値はルールから導けないため保存されたまま保たれ、編集したキーフレーム値と食い違うことがあります。プレビューにはどちらも必要ありません。"
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
-msgstr "「名前を付けて保存」は、2つの形式が共通して持つ値を、削除されたルールや別のルールに割り当てたイベントとともに、GTA VIのリストにその場で上書きします。追加したキーと複製したエフェクトはリストの末尾より後に書き込まれ、コピーはDuplicateが付けた名前で見つけられます。何もないところから作ったルール、または追加したイベントや挙動には記された値がないため、ワークスペースでは提供しません。"
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added, an effect, an emitter rule, a particle rule or an event duplicated, and a behaviour copied to another rule are written past the list's end, a rule's copy found by the name Duplicate gives it, and a particle rule's copy given GPU buffers of its own. A rule made from nothing has no stated value, so the workspace does not offer it."
+msgstr "「名前を付けて保存」は、2つの形式が共通して持つ値を、削除されたルールや別のルールに割り当てたイベントとともに、GTA VIのリストにその場で上書きします。追加したキー、複製したエフェクト、エミッタールール、パーティクルルール、イベント、および別のルールにコピーした挙動はリストの末尾より後に書き込まれます。ルールのコピーは「複製」が付けた名前で見つけられ、パーティクルルールのコピーには専用のGPUバッファが与えられます。何もないところから作ったルールには記された値がないため、ワークスペースでは提供しません。"
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "3 番目のスポナーは、ptxu_ZCull が点を除去した場所で {effect} を開始し、プレビューも同様です。その発動値が衝突スポナーと同じく点の到達すべき速度であることは推定です。"
@@ -16268,7 +16265,7 @@ msgid "An event names a rule the GTA VI particle list does not hold: bind it to 
 msgstr "イベントが、GTA VIのパーティクルリストにないルールを指しています：リストのルールのいずれかに割り当ててください。"
 
 msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
-msgstr "GTA VIのパーティクルリストは、新しいエフェクトをリスト内のエフェクトのコピーとしてのみ受け付けます：Duplicateを使い、コピーの名前はコピー元のエフェクト名の後に_copyを付けたままにしてください。"
+msgstr "GTA VIのパーティクルリストは、新しいエフェクトをリスト内のエフェクトのコピーとしてのみ受け付けます：「複製」を使い、コピーの名前はコピー元のエフェクト名の後に_copyを付けたままにしてください。"
 
 msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
 msgstr "隣接セル {cells} のボディが開かれていない間は、ポリゴン {polygon} を無効化しません：それが空にする境界レコードは消え、それらの特殊リンクがその後のレコードを番号で指している可能性があります。先にスキャン内の隣接セルを探してください。"
@@ -16281,3 +16278,207 @@ msgstr "パーツ"
 
 msgid "Draw the weapon as the first of each kind of its parts, each on its bone, in place of its own mesh"
 msgstr "武器を各種パーツの最初のもので描画します。それぞれ自分のボーンに置かれ、武器自身のメッシュの代わりになります"
+
+msgid "Network name: {name}"
+msgstr "ネットワーク名：{name}"
+
+msgid "words from +0x00 to +0x48 as stored: {words}"
+msgstr "+0x00 から +0x48 までの保存されたままのワード：{words}"
+
+msgid "{count} mission state table, as the document now stands"
+msgid_plural "{count} mission state tables, as the document now stands"
+msgstr[0] "ドキュメントの現在の状態のミッションステートテーブル {count} 個"
+msgstr[1] "ドキュメントの現在の状態のミッションステートテーブル {count} 個"
+
+msgid "{name} is a volume, so it keeps its size, format and mips: its levels lie across its z-slabs."
+msgstr "{name} はボリュームのため、サイズ、形式、ミップを保持します。そのレベルは z スラブにまたがっています。"
+
+msgid "The special links of the neighbouring cell {cell} were renumbered by an edit of another cell, whose save writes them: save that cell or undo its edit first."
+msgstr "隣接セル {cell}の特殊リンクは、別のセルの編集によって番号が振り直されました。その保存で書き込まれます：そのセルを保存するか、先にその編集を元に戻してください。"
+
+msgid "The special links of the neighbouring cell {cell} would be renumbered, but its body holds deletions of its own, which its own save writes: undo them first."
+msgstr "隣接セル {cell}の特殊リンクの番号が振り直されますが、そのボディには独自の削除が含まれており、それ自体の保存で書き込まれます：先にそれらを元に戻してください。"
+
+msgid "This cell's special links were renumbered by an edit of a neighbouring cell, whose save writes them: save that cell or undo its edit first."
+msgstr "このセルの特殊リンクは、隣接セルの編集によって番号が振り直されました。その保存で書き込まれます：そのセルを保存するか、先にその編集を元に戻してください。"
+
+msgid "{count} special link of this cell ended in a record that went, and was deleted."
+msgid_plural "{count} special links of this cell ended in a record that went, and were deleted."
+msgstr[0] "このセルの特殊リンク {count} 個は、なくなったレコードを終点としていたため削除されました。"
+msgstr[1] "このセルの特殊リンク {count} 個は、なくなったレコードを終点としていたため削除されました。"
+
+msgid "The special links of {count} neighbouring cell were renumbered: a save of this cell writes its body beside it."
+msgid_plural "The special links of {count} neighbouring cells were renumbered: a save of this cell writes their bodies beside it."
+msgstr[0] "隣接セル {count} 個の特殊リンクの番号が振り直されました：このセルを保存すると、そのボディが隣に書き込まれます。"
+msgstr[1] "隣接セル {count} 個の特殊リンクの番号が振り直されました：このセルを保存すると、そのボディが隣に書き込まれます。"
+
+msgid "The body at {offset} does not read, so whether it names the map is not known: {why}"
+msgstr "{offset}のボディは読み取れないため、このマップを指しているかどうかは分かりません：{why}"
+
+msgid "Looking for the maps linked to {map}"
+msgstr "{map}にリンクされたマップを探しています"
+
+msgid "Open the whole scan of {archive}: the maps that name this one as a parent, and its own parent map, are found among the bodies it lists."
+msgstr "{archive}の完全なスキャンを開いてください：このマップを親として指すマップと、このマップ自身の親マップは、そこに並ぶボディの中から見つかります。"
+
+msgid "The entity was not added or removed: {why}"
+msgstr "エンティティは追加も削除もされませんでした：{why}"
+
+msgid "A map changed or closed while the maps linked to it were read: make the edit again."
+msgstr "リンクされたマップを読み取っている間にマップが変更されたか閉じられました：もう一度編集してください。"
+
+msgid "{edit}. The maps it renumbers are open as documents of their own, each with this edit as one step: {maps}"
+msgstr "{edit}。番号を振り直したマップはそれぞれ別のドキュメントとして開かれ、この編集はそれぞれで1つのステップです：{maps}"
+
+msgid "The archetype holds no value {member}."
+msgstr "このアーキタイプには値{member}がありません。"
+
+msgid "The archetype selected is not in its map types body's tree."
+msgstr "選択したアーキタイプは、そのマップタイプのボディのツリーにありません。"
+
+msgid "This map types body holds no plain archetype to copy the layout of."
+msgstr "このマップタイプのボディには、レイアウトをコピーできる通常のアーキタイプがありません。"
+
+msgid "No GTA VI drawable is open to make an archetype of."
+msgstr "アーキタイプにするGTA VIのドローアブルが開かれていません。"
+
+msgid "lodDist, guid and flags take numbers"
+msgstr "lodDist、guid、flagsには数値を入力します"
+
+msgid "The name {name} is held by another archetype."
+msgstr "名前{name}は別のアーキタイプが使っています。"
+
+msgid "The edited map types body does not read back as one."
+msgstr "編集したマップタイプのボディは、マップタイプのボディとして読み戻せません。"
+
+msgid "New archetype from a drawable"
+msgstr "ドローアブルから新しいアーキタイプ"
+
+msgid "Add the archetype"
+msgstr "アーキタイプを追加"
+
+msgid "Declares in the map types body of this entity's archetype an archetype of the drawable open, its names from the text, its box the drawable's, a seed to check, and its sphere the box's. Undo takes it back"
+msgstr "このエンティティのアーキタイプがあるマップタイプのボディに、開いているドローアブルのアーキタイプを宣言します。名前はテキストから、ボックスはドローアブルのもの(確認が必要な初期値)、球はボックスのものです。「元に戻す」で取り消せます"
+
+msgid "Group {group}, array at 0x10 {head}"
+msgstr "グループ {group}、0x10 の配列 {head}"
+
+msgid "Clip {clip}, parameter {index}: points {points}, floats {floats}"
+msgstr "クリップ {clip}、パラメーター {index}：点 {points}、浮動小数点 {floats}"
+
+msgid "Parameter object {index} of type {kind}: arrays at 0x10 {first} and 0x20 {second}"
+msgstr "パラメーターオブジェクト {index}（型 {kind}）：0x10 の配列 {first}、0x20 の配列 {second}"
+
+msgid "Parameter object {index}, lists {lists}, hashes {hashes}"
+msgstr "パラメーターオブジェクト {index}、リスト {lists}、ハッシュ {hashes}"
+
+msgid "New track's id"
+msgstr "新しいトラックの ID"
+
+msgid "Pairs: {count}"
+msgstr "ペア：{count}"
+
+msgid "New pair's key"
+msgstr "新しいペアのキー"
+
+msgid "Delete this pair"
+msgstr "このペアを削除"
+
+msgid "A GTA VI particle list takes a new emitter or particle rule only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the rule it copies followed by _copy."
+msgstr "GTA VIのパーティクルリストは、新しいエミッタールールやパーティクルルールを、リストが持つルールのコピーとしてのみ受け付けます。「複製」を使い、コピーの名前はコピー元のルール名の後に_copyを付けたものにしてください。"
+
+msgid "An event was added to an effect that holds none to copy: a GTA VI particle list takes a new event only as a copy of one of its effect's events, so use Duplicate on an event."
+msgstr "コピーできるイベントを持たないエフェクトにイベントが追加されました。GTA VIのパーティクルリストは、新しいイベントをそのエフェクトのイベントのコピーとしてのみ受け付けるため、イベントに対して「複製」を使ってください。"
+
+msgid "A rule was given a behaviour of a class no rule of the GTA VI particle list holds: a new behaviour is written only as a copy of one the list holds, so use Copy to rule."
+msgstr "GTA VIのパーティクルリストのどのルールも持たないクラスの挙動がルールに与えられました。新しい挙動はリストにある挙動のコピーとしてのみ書き込まれるため、Copy to ruleを使ってください。"
+
+msgid "Only a geometry child's primitives and vertices are added or deleted."
+msgstr "追加や削除ができるのはジオメトリの子のプリミティブと頂点だけです。"
+
+msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
+msgstr "子を追加・削除できるのは単独のバウンドのコンポジットだけです。ドローアブルやフラグメントでは、各子はフラグメントの子でもあります。"
+
+msgid "Delete primitive {primitive}"
+msgstr "プリミティブ {primitive} を削除"
+
+msgid "Add triangle {primitive}"
+msgstr "三角形 {primitive} を追加"
+
+msgid "Delete vertex {vertex}"
+msgstr "頂点 {vertex} を削除"
+
+msgid "Add vertex {vertex}"
+msgstr "頂点 {vertex} を追加"
+
+msgid "Delete child {child}"
+msgstr "子 {child} を削除"
+
+msgid "Copy child {child}"
+msgstr "子 {child} をコピー"
+
+msgid "A drawable's lone bound keeps its type: the drawable points at its record."
+msgstr "ドローアブルの単独バウンドは型を保ちます。ドローアブルがそのレコードを指しているためです。"
+
+msgid "Give child {child} another type"
+msgstr "子 {child} の型を変更"
+
+msgid "This document has no file, so its collision is not reshaped."
+msgstr "このドキュメントにはファイルがないため、コリジョンは作り直されません。"
+
+msgid "The body read again holds other numbers of children, vertices or primitives than the collision's changes began from."
+msgstr "読み直したボディの子・頂点・プリミティブの数が、コリジョンの変更の開始時と異なります。"
+
+msgid "Sphere"
+msgstr "球"
+
+msgid "Capsule"
+msgstr "カプセル"
+
+msgid "Tapered capsule"
+msgstr "テーパー付きカプセル"
+
+msgid "Disc"
+msgstr "円盤"
+
+msgid "Cylinder"
+msgstr "円柱"
+
+msgid "Add and delete collision"
+msgstr "コリジョンの追加と削除"
+
+msgid "A primitive or a vertex is added last and deleted where it stands, a new triangle linking to the triangles it shares an edge with; a lone bound's child is copied or deleted, a primitive child given another type. Save As writes the body as a loose resource."
+msgstr "プリミティブや頂点は末尾に追加され、その場で削除されます。新しい三角形は辺を共有する三角形とリンクされます。単独のバウンドの子はコピーや削除ができ、プリミティブの子は別の型にできます。「名前を付けて保存」は、ボディを独立したリソースとして書き出します。"
+
+msgid "Copy the child"
+msgstr "子をコピー"
+
+msgid "Delete the child"
+msgstr "子を削除"
+
+msgid "Delete the primitive"
+msgstr "プリミティブを削除"
+
+msgid "Add a triangle"
+msgstr "三角形を追加"
+
+msgid "Delete the vertex"
+msgstr "頂点を削除"
+
+msgid "Add a vertex"
+msgstr "頂点を追加"
+
+msgid "The file holds a collision change that was undone after it was saved, and a save does not take it out again: open the file again to edit it."
+msgstr "ファイルには保存後に元に戻したコリジョンの変更が含まれており、保存してもそれは取り除かれません。編集するにはファイルを開き直してください。"
+
+msgid "Duplicate"
+msgstr "複製"
+
+msgid "Copy to rule…"
+msgstr "ルールにコピー…"
+
+msgid "(every other rule lists one of its class)"
+msgstr "(他のすべてのルールにこのクラスの挙動があります)"
+
+msgid "(the file holds no map here)"
+msgstr "(ここではファイルにペアの表がありません)"

@@ -459,6 +459,7 @@ impl AppState {
         (self.map_search.iter().filter_map(ArchetypeSearch::job))
             .chain(self.models_in_place_job())
             .chain(super::gta6_world::fill::job())
+            .chain(entity::job())
     }
 
     /// Ask every search to stop; each says it stopped once its worker sees the stop.
@@ -466,6 +467,7 @@ impl AppState {
         self.map_search.iter().for_each(|s| s.cancel.set());
         self.stop_models_in_place();
         super::gta6_world::fill::stop();
+        entity::stop();
     }
 
     /// Say in the job list how each search that ended went, and drop it.
@@ -515,6 +517,7 @@ impl AppState {
         if let Some((outcome, said)) = super::gta6_world::fill::ended() {
             self.jobs.record(JobKind::ArchetypeSearch, outcome, said);
         }
+        self.poll_entity_edit();
         self.refresh_scanned_map();
         self.refresh_models_in_place();
     }
@@ -709,6 +712,12 @@ fn model_at(file: &File, offset: u64) -> Option<u64> {
 
 #[path = "gta6_map_links.rs"]
 pub(crate) mod links;
+
+#[path = "gta6_map_entity.rs"]
+mod entity;
+
+#[path = "gta6_map_types_edit.rs"]
+mod types_edit;
 
 #[cfg(test)]
 #[path = "gta6_map_tests.rs"]

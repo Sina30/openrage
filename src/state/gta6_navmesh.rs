@@ -28,6 +28,10 @@ fn cells() -> MutexGuard<'static, BTreeMap<PathBuf, Arc<NavMesh>>> {
 /// Keep `mesh`, the cell the body at `path` opened to, with none of an earlier session's deletions.
 pub(super) fn remember(path: &Path, mesh: NavMesh) {
     super::gta6_navmesh_delete::forget(path);
+    // A body whose links an edit of another cell renumbered keeps them while that edit holds.
+    if super::gta6_navmesh_delete::links::renumbered_by(path).is_some() {
+        return;
+    }
     cells().insert(path.to_path_buf(), Arc::new(mesh));
 }
 
@@ -256,6 +260,10 @@ fn chosen() -> MutexGuard<'static, BTreeSet<PathBuf>> {
 /// Each border of the cell opened at `path`, the cell across it, and that cell's open body a
 /// search of the scan chose: only a read of every body of the archive knows which is the second.
 pub(crate) fn neighbours(path: &Path, m: &NavMesh) -> Vec<(Border, u32, Option<Arc<NavMesh>>)> {
+    // A body of no cell has no border, and no other body's special link ends in it.
+    if m.cell == 0 {
+        return Vec::new();
+    }
     let archive = body_at(path).map(|(archive, _)| archive);
     let open = cells();
     let chosen = chosen();
@@ -269,6 +277,27 @@ pub(crate) fn neighbours(path: &Path, m: &NavMesh) -> Vec<(Border, u32, Option<A
                 })
                 .map(|(_, n)| Arc::clone(n));
             Some((border, across, body))
+        })
+        .collect()
+}
+
+/// The path and the open body of each cell across `m`'s borders that [`neighbours`] finds.
+pub(super) fn neighbour_paths(path: &Path, m: &NavMesh) -> Vec<(PathBuf, Arc<NavMesh>)> {
+    if m.cell == 0 {
+        return Vec::new();
+    }
+    let archive = body_at(path).map(|(archive, _)| archive);
+    let open = cells();
+    let chosen = chosen();
+    BORDERS
+        .into_iter()
+        .filter_map(|border| {
+            let across = border.across(m.cell)?;
+            (open.iter())
+                .find(|(p, n)| {
+                    n.cell == across && chosen.contains(*p) && body_at(p).map(|(a, _)| a) == archive
+                })
+                .map(|(p, n)| (p.clone(), Arc::clone(n)))
         })
         .collect()
 }

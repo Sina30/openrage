@@ -140,7 +140,7 @@ fn numbers(shape: &ChildBound) -> Option<(u8, Vec<f32>)> {
 
 /// The primitive record at `at` written from `shape`: its box about its centre, its radius and
 /// margin as the reader derives them, and its own fields.
-fn put_shape(section: &mut [u8], at: usize, shape: &ChildBound) -> Result<()> {
+pub(super) fn put_shape(section: &mut [u8], at: usize, shape: &ChildBound) -> Result<()> {
     let mid = |lo: &[f32; 3], hi: &[f32; 3]| -> [f32; 3] {
         std::array::from_fn(|a| (lo[a] + hi[a]) / 2.0)
     };

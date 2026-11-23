@@ -102,14 +102,18 @@ pub(super) fn group_pairs<'s>(
     }))
 }
 
-/// The element member of a pair's `value` where it is a subtype-10 array, whose header in a group
-/// map's pair is not the one an array has elsewhere.
-pub(super) fn pair_array(pair: &PsoStructInfo, value: &PsoStructEntry) -> Option<PsoStructEntry> {
+/// The element member of the pair value of group map `map` of `owner` where that value is a
+/// subtype-10 array, whose header in a group map's pair is not the one an array has elsewhere.
+// ⚠ The map's value index names the value's descriptor among the owner's members, and that
+// descriptor's member index names the element among them too: among the pair's, the same index
+// can be the array itself, read as 16-byte elements.
+pub(super) fn pair_array(owner: &PsoStructInfo, map: &PsoStructEntry) -> Option<PsoStructEntry> {
+    let value = owner.entry(map.value_index())?;
     let array = value.data_type == PsoDataType::Array
         && value.subtype() == GTA6_COUNT_FIRST_ARRAY
         && value.count() == 0;
     array
-        .then(|| value.member_index().and_then(|i| pair.entry(i)).copied())
+        .then(|| value.member_index().and_then(|i| owner.entry(i)).copied())
         .flatten()
 }
 

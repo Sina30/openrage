@@ -1,7 +1,8 @@
 //! A scanned GTA VI cell's polygon deleted, or cut off where a side record naming it drops a
 //! corner, one step of undo: the view's model is drawn again from the cell the inspector reads,
-//! each record's flags and each edge cut kept, and a save makes the step on the body read again,
-//! after every earlier one and before the flags and the cuts are written.
+//! each record's flags and each edge cut kept, the open neighbouring bodies' special links made
+//! again, and a save makes the step on the body read again, after every earlier one and before the
+//! flags and the cuts are written.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -11,12 +12,15 @@ use or_io::container::rpf::Rpf9Sections;
 use or_io::gta5::navmesh::NO_NEIGHBOUR;
 use or_io::gta5::{CNavMesh, TAdjPoly, TNavMeshPoly};
 use or_io::gta6::headerless::{
-    delete_polygon, deletion, disable_polygon, disabling, read_navmesh, Border, NavDeleteError,
-    NavMesh, NavRebuild, NOWHERE,
+    delete_polygon, deletion, disable_polygon, disabling, read_navmesh, Border, NavMesh,
+    NavRebuild, NOWHERE,
 };
 
 use super::edit_history::{Change, Swap};
 use super::{AppState, DocPayload, DocumentId};
+
+#[path = "gta6_navmesh_links.rs"]
+pub(super) mod links;
 
 /// A deletion, or a disable that moves the arrays, as a save makes it again: the polygon, and the
 /// records the cell held before it.
@@ -39,6 +43,7 @@ fn deletions() -> MutexGuard<'static, BTreeMap<PathBuf, Vec<Deletion>>> {
 /// Drop the deletions kept for `path`, whose body opens again as it is stored.
 pub(super) fn forget(path: &Path) {
     deletions().remove(path);
+    links::forget(path);
 }
 
 fn view_of(payload: &mut DocPayload) -> Option<&mut CNavMesh> {
@@ -130,26 +135,37 @@ impl AppState {
         let near = super::gta6_navmesh::neighbours(path, cell);
         let open = others(cell, &near, polygon)?;
         let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
-        let made = match deletion(cell, polygon, &bodies) {
-            Ok(made) => made,
-            Err(e @ NavDeleteError::NeighbourLink { .. }) => {
-                let why = self.gta6_delete_refusal(doc).unwrap_or_default();
-                return Err(format!("{why} {e}"));
-            }
-            Err(e) => return Err(e.to_string()),
-        };
+        let made = deletion(cell, polygon, &bodies).map_err(|e| e.to_string())?;
         let left = made.mesh.polygons.len();
+        let gone = (cell.special_links.len()).saturating_sub(made.mesh.special_links.len());
         let step = Deletion {
             polygon,
             records: cell.polygons.len(),
             disable: false,
         };
-        self.make_in_cell(doc, path, made, step, open)?;
-        Ok(tr!(
+        let renumbered = self.make_in_cell(doc, path, cell, made, step)?;
+        let mut said = tr!(
             "Deleted polygon {polygon}. Polygons left: {count}.",
             polygon = polygon,
             count = left
-        ))
+        );
+        if gone > 0 {
+            said.push(' ');
+            said.push_str(&tr_n!(
+                "{count} special link of this cell ended in a record that went, and was deleted.",
+                "{count} special links of this cell ended in a record that went, and were deleted.",
+                gone
+            ));
+        }
+        if renumbered > 0 {
+            said.push(' ');
+            said.push_str(&tr_n!(
+                "The special links of {count} neighbouring cell were renumbered: a save of this cell writes its body beside it.",
+                "The special links of {count} neighbouring cells were renumbered: a save of this cell writes their bodies beside it.",
+                renumbered
+            ));
+        }
+        Ok(said)
     }
 
     /// Polygon `polygon` of the scanned cell `doc` cut off as one step where a side record naming
@@ -197,31 +213,43 @@ impl AppState {
             records: cell.polygons.len(),
             disable: true,
         };
-        Some(
-            self.make_in_cell(doc, path, made, step, open)
-                .map(|()| cuts),
-        )
+        let made = self.make_in_cell(doc, path, cell, made, step);
+        Some(made.map(|_| cuts))
     }
 
-    /// `made` the cell and the view of `doc` hold, as one step of undo that a save makes again.
+    /// `made`, made from `cell`, the cell and the view of `doc` hold, with the open neighbouring
+    /// bodies' special links made again, as one step of undo that a save makes again; how many
+    /// neighbouring bodies it renumbered.
     fn make_in_cell(
         &mut self,
         doc: DocumentId,
         path: &Path,
+        cell: &NavMesh,
         made: NavRebuild,
         step: Deletion,
-        open: Vec<Arc<NavMesh>>,
-    ) -> Result<(), String> {
+    ) -> Result<usize, String> {
         let closed = || tr!("its document is closed").to_string();
+        // ⚠ Each body is written by one save: this one's links are another cell's to write.
+        if links::renumbered_by(path).is_some() {
+            return Err(tr!("This cell's special links were renumbered by an edit of a neighbouring cell, whose save writes them: save that cell or undo its edit first.").to_string());
+        }
         let before = match self.document(doc).map(|d| &d.payload) {
             Some(DocPayload::Resource(or_io::Asset::NavMesh(view))) => view.clone(),
             Some(_) => return Err(tr!("The cell's view holds no edges.").to_string()),
             None => return Err(closed()),
         };
         let edited = view_after(&before, &made)?;
+        let relinks = links::planned(path, cell, &made)?;
+        let own = |p: &Path| deletions().get(p).is_some_and(|d| !d.is_empty());
+        if let Some((_, body)) = relinks.iter().find(|(p, _)| own(p.as_path())) {
+            return Err(tr!(
+                "The special links of the neighbouring cell {cell} would be renumbered, but its body holds deletions of its own, which its own save writes: undo them first.",
+                cell = body.cell
+            ));
+        }
         let mut planned = deletions().get(path).cloned().unwrap_or_default();
         planned.push(step);
-        tried(path, planned, open)?;
+        tried(path, planned)?;
         let held = super::gta6_navmesh::replace(path, Arc::new(made.mesh)).ok_or_else(closed)?;
         if let Some(view) = self.document_mut(doc).and_then(|d| view_of(&mut d.payload)) {
             *view = edited;
@@ -243,6 +271,8 @@ impl AppState {
                 tr!("Delete polygon {polygon}", polygon = step.polygon),
             ),
         };
+        let bodies = links::apply(path, relinks);
+        let renumbered = bodies.len();
         let mut change = Change::part(kind, before, view_of);
         if let Change::Part { parts, .. } = &mut change {
             parts.push(Box::new(CellPart {
@@ -250,13 +280,14 @@ impl AppState {
                 cell: held,
                 deletions: earlier,
             }));
+            parts.extend(bodies);
         }
         self.record(doc, label, change);
         // ⚠ Never folded into the next edit: polygon numbers change under a deletion.
         if let Some(document) = self.document_mut(doc) {
             document.history.seal();
         }
-        Ok(())
+        Ok(renumbered)
     }
 }
 
@@ -289,24 +320,23 @@ fn view_after(before: &CNavMesh, made: &NavRebuild) -> Result<CNavMesh, String> 
     Ok(view)
 }
 
-/// The deletions a save of the cell at `path` makes, and the open bodies of the cells across its
-/// borders.
-pub(super) fn saved_with(path: &Path, cell: &NavMesh) -> (Vec<Deletion>, Vec<Arc<NavMesh>>) {
-    let made = deletions().get(path).cloned().unwrap_or_default();
-    let open = (super::gta6_navmesh::neighbours(path, cell).into_iter())
-        .filter_map(|(_, _, body)| body)
-        .collect();
-    (made, open)
+/// The deletions a save of the cell at `path` makes, and no neighbouring body: their links were
+/// made again at each step and are written beside the cell.
+pub(super) fn saved_with(path: &Path, _cell: &NavMesh) -> (Vec<Deletion>, Vec<Arc<NavMesh>>) {
+    (
+        deletions().get(path).cloned().unwrap_or_default(),
+        Vec::new(),
+    )
 }
 
 /// `made` made on the body at `path` read again, as a save makes them, so a deletion only its bytes
 /// refuse is refused when it is made rather than at every save after it.
 // ponytail: the body is read on the UI thread, as the edit's other checks run; a job if cells grow.
-fn tried(path: &Path, made: Vec<Deletion>, others: Vec<Arc<NavMesh>>) -> Result<(), String> {
+fn tried(path: &Path, made: Vec<Deletion>) -> Result<(), String> {
     let Some((archive, offset)) = super::rpf9_scan::scanned_body(path) else {
         return Ok(());
     };
-    let edit = move |_, s: &mut Rpf9Sections| write_deletions(s, &made, &others);
+    let edit = move |_, s: &mut Rpf9Sections| write_deletions(s, &made, &[]);
     super::gta6_edit::written(archive, offset, &edit).map(drop)
 }
 
@@ -346,7 +376,7 @@ pub(super) fn write_deletions(
 #[cfg(test)]
 mod tests {
     use or_io::container::rpf::Rpf9Form;
-    use or_io::gta6::headerless::SpecialLink;
+    use or_io::gta6::headerless::{NavDeleteError, SpecialLink};
 
     use super::*;
     use crate::state::opening_an_rpf9_archive::{
