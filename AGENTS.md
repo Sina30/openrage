@@ -348,7 +348,7 @@ cancelled. `gh workflow enable` restores each, and the intent stands that CI run
 | `main-tip.yml` (self-hosted) | every tip of `main` | compile check, tests with no pack and no corpus, clippy, BC7, GPU tests, `cargo hack --each-feature`, the shader tool |
 | `ci.yml`, job `windows` (hosted) | weekly and on request | the full Windows suite on a clean machine |
 | `ci.yml`, job `macos` (hosted) | weekly and on request | clippy, the workspace tests, the BC7 encoder and the self-check on a clean Apple-silicon machine |
-| `release.yml` | a `v*` tag | `cargo xtask dist` on Windows, Linux and macOS: a `.zip`, a `.tar.gz` and a `.dmg`, each with a checksum |
+| `release.yml` | a `v*` tag; on request, the packages with no release | `cargo xtask dist` on Windows, Linux and macOS: a `.zip`, a `.tar.gz` and a `.dmg`, each with a checksum |
 
 - Do not move per-pull-request hosted CI back to Windows; the cost figures
   are in [Development_Workflow.md](docs/guides/Development_Workflow.md).
