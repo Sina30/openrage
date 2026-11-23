@@ -1,0 +1,295 @@
+use std::cell::Cell;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use crate::meta::schema::{consistent_struct_short_name, SchemaLibrary};
+
+#[derive(Debug, Default)]
+pub struct HashIndex {
+    map: HashMap<u32, String>,
+}
+
+impl HashIndex {
+    pub fn from_library(library: &SchemaLibrary) -> Self {
+        let mut names: Vec<(&str, bool)> =
+            Vec::with_capacity(library.structs.len() * 8 + library.enums.len() * 4);
+        for s in library.structs.values() {
+            names.push((s.name.as_str(), true));
+            for f in &s.fields {
+                names.push((f.name.as_str(), false));
+            }
+        }
+        for e in library.enums.values() {
+            names.push((e.name.as_str(), true));
+            for v in &e.values {
+                names.push((v.name.as_str(), false));
+            }
+        }
+        names.sort_unstable();
+        names.dedup();
+
+        let mut map: HashMap<u32, String> = HashMap::with_capacity(names.len() * 2);
+        for (name, is_type) in names {
+            if is_type {
+                insert_type(&mut map, name);
+            } else {
+                insert(&mut map, name);
+            }
+        }
+        Self { map }
+    }
+
+    /// Add the identifiers public sources name, for the hashes a library
+    /// left unresolved.
+    ///
+    /// ⚠ Applied after the library so a staged snapshot's answer survives:
+    /// a title's own schema outranks what we know without one, and [`insert`]
+    /// is first-wins.
+    pub fn with_public_names(mut self) -> Self {
+        for name in crate::meta::binary::public_names::all() {
+            insert(&mut self.map, name);
+        }
+        self
+    }
+
+    pub fn lookup(&self, hash: u32) -> Option<&str> {
+        self.map.get(&hash).map(String::as_str)
+    }
+
+    /// The name `hash` has, or `hash_XXXXXXXX` when nothing names it.
+    pub fn name_or_literal(&self, hash: u32) -> String {
+        match self.lookup(hash) {
+            Some(s) => s.to_string(),
+            None => format!("hash_{hash:08X}"),
+        }
+    }
+
+    /// Every name the index holds, once per hash it is filed under.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.map.values().map(String::as_str)
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
+
+/// The hash `text` spells: `hash_` and exactly eight hex digits, or the `0x`
+/// form earlier builds wrote.
+pub fn spelled_hash(text: &str) -> Option<u32> {
+    let hex = text
+        .strip_prefix("hash_")
+        .or_else(|| text.strip_prefix("0x"))
+        .or_else(|| text.strip_prefix("0X"))?;
+    if hex.len() != 8 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    u32::from_str_radix(hex, 16).ok()
+}
+
+fn insert(map: &mut HashMap<u32, String>, name: &str) {
+    let literal = crate::literal_string_hash(name.as_bytes());
+    map.entry(literal).or_insert_with(|| name.to_string());
+}
+
+fn insert_type(map: &mut HashMap<u32, String>, friendly: &str) {
+    insert(map, friendly);
+    let underscored = consistent_struct_short_name(friendly);
+    if underscored != friendly {
+        let literal = crate::literal_string_hash(underscored.as_bytes());
+        map.entry(literal).or_insert_with(|| friendly.to_string());
+    }
+}
+
+std::thread_local! {
+    static PUBLIC_ONLY: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Runs `f` naming every hash on this thread from the public table alone, whatever library the host installed, so what `f` reads and writes is what a clean checkout makes.
+pub fn with_public_names_only<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            PUBLIC_ONLY.with(|only| only.set(self.0));
+        }
+    }
+    let _restore = Restore(PUBLIC_ONLY.with(|only| only.replace(true)));
+    f()
+}
+
+/// The names the default library and [`crate::meta::binary::public_names`] give.
+///
+/// ⚠ Keyed on whether a library is installed: an index built before the host
+/// installed one would otherwise name nothing outside the public names for
+/// the rest of the process.
+pub fn default_hash_index() -> &'static HashIndex {
+    static INSTALLED_INDEX: OnceLock<HashIndex> = OnceLock::new();
+    static PUBLIC_INDEX: OnceLock<HashIndex> = OnceLock::new();
+    let installed = crate::meta::snapshot::installed().filter(|_| !PUBLIC_ONLY.with(Cell::get));
+    match installed {
+        Some(library) => {
+            INSTALLED_INDEX.get_or_init(|| HashIndex::from_library(library).with_public_names())
+        }
+        None => PUBLIC_INDEX
+            .get_or_init(|| HashIndex::from_library(&SchemaLibrary::default()).with_public_names()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::meta::schema::{
+        EnumDef, EnumValue, Field, FieldHint, FieldType, Literal, StructDef,
+    };
+
+    fn make_library() -> SchemaLibrary {
+        let mut lib = SchemaLibrary::new();
+        lib.insert_struct(StructDef {
+            name: "CFooBar".into(),
+            base: None,
+            abstract_: false,
+            simple: true,
+            fields: vec![Field {
+                name: "m_Probability".into(),
+                ty: FieldType::Float,
+                init: Some(Literal::Float(0.5)),
+                min: None,
+                max: None,
+                step: None,
+                ui_key: false,
+                hide_widgets: false,
+                description: None,
+                hint: FieldHint::None,
+            }],
+            source_path: "test.psc".into(),
+        });
+        lib.insert_enum(EnumDef {
+            name: "EFooKind".into(),
+            values: vec![EnumValue {
+                name: "EFK_Default".into(),
+                description: None,
+                value: Some(0),
+            }],
+            generate_bitset: false,
+            source_path: "test.psc".into(),
+        });
+        lib
+    }
+
+    #[test]
+    fn structs_and_fields_are_indexed() {
+        let lib = make_library();
+        let idx = HashIndex::from_library(&lib);
+        let h_struct = crate::literal_string_hash(b"CFooBar");
+        let h_field = crate::literal_string_hash(b"m_Probability");
+        let h_enum = crate::literal_string_hash(b"EFooKind");
+        let h_value = crate::literal_string_hash(b"EFK_Default");
+        assert_eq!(idx.lookup(h_struct), Some("CFooBar"));
+        assert_eq!(idx.lookup(h_field), Some("m_Probability"));
+        assert_eq!(idx.lookup(h_enum), Some("EFooKind"));
+        assert_eq!(idx.lookup(h_value), Some("EFK_Default"));
+    }
+
+    #[test]
+    fn scoped_struct_double_underscore_spelling_resolves() {
+        let mut lib = SchemaLibrary::new();
+        lib.insert_struct(StructDef {
+            name: "CDataFileMgr::DataFile".into(),
+            base: None,
+            abstract_: false,
+            simple: true,
+            fields: vec![],
+            source_path: "test.psc".into(),
+        });
+        let idx = HashIndex::from_library(&lib);
+        let under = crate::literal_string_hash(b"CDataFileMgr__DataFile");
+        assert_eq!(idx.lookup(under), Some("CDataFileMgr::DataFile"));
+    }
+
+    #[test]
+    fn an_unknown_name_is_spelled_as_its_hash_and_read_back() {
+        let lib = make_library();
+        let idx = HashIndex::from_library(&lib);
+        assert_eq!(idx.name_or_literal(0xDEADBEEF), "hash_DEADBEEF");
+        assert_eq!(
+            crate::meta::binary::synth::name_hash("hash_DEADBEEF"),
+            0xDEAD_BEEF
+        );
+        for name in [
+            "hash_table",
+            "hash_DEADBEE",
+            "hash_DEADBEEF0",
+            "hash_+EADBEEF",
+        ] {
+            assert_eq!(
+                crate::meta::binary::synth::name_hash(name),
+                crate::literal_string_hash(name.as_bytes()),
+                "{name} is a name, not a hash"
+            );
+        }
+    }
+
+    /// Without a snapshot the world metadata reads as numbers, and this is
+    /// what gives it names. The hashes are ones a retail install ships.
+    #[test]
+    fn public_names_resolve_what_an_empty_library_cannot() {
+        let bare = HashIndex::from_library(&SchemaLibrary::new());
+        assert_eq!(bare.lookup(0xD359_3FA6), None);
+        let named = bare.with_public_names();
+        assert_eq!(named.lookup(0xD359_3FA6), Some("CMapData"));
+        assert_eq!(named.lookup(0xCCAB_9307), Some("entities"));
+        assert_eq!(named.lookup(0x0116_6164), Some("position"));
+    }
+
+    /// ⚠ Seeding order is load-bearing: the library indexes
+    /// `rage::fwInstancedMapData` under its double-underscore hash too, the
+    /// slot the public table claims, so seeding the table first renames it.
+    #[test]
+    fn the_library_outranks_the_public_table() {
+        let mut lib = SchemaLibrary::new();
+        lib.insert_struct(StructDef {
+            name: "rage::fwInstancedMapData".into(),
+            base: None,
+            abstract_: false,
+            simple: true,
+            fields: vec![],
+            source_path: "test.psc".into(),
+        });
+        let under = crate::literal_string_hash(b"rage__fwInstancedMapData");
+        let idx = HashIndex::from_library(&lib).with_public_names();
+        assert_eq!(idx.lookup(under), Some("rage::fwInstancedMapData"));
+    }
+
+    /// Seeding is additive: it never changes an answer the library already
+    /// gave, so staging a snapshot cannot be made worse by this table.
+    #[test]
+    fn the_override_is_scoped_to_its_closure_and_its_thread() {
+        assert!(!PUBLIC_ONLY.with(Cell::get));
+        with_public_names_only(|| {
+            assert!(PUBLIC_ONLY.with(Cell::get));
+            with_public_names_only(|| {});
+            assert!(
+                PUBLIC_ONLY.with(Cell::get),
+                "the inner call restores what the outer set"
+            );
+            std::thread::spawn(|| assert!(!PUBLIC_ONLY.with(Cell::get)))
+                .join()
+                .expect("another thread is not under the override");
+        });
+        assert!(!PUBLIC_ONLY.with(Cell::get));
+    }
+
+    #[test]
+    fn seeding_only_adds() {
+        let lib = make_library();
+        let before = HashIndex::from_library(&lib);
+        let h_field = crate::literal_string_hash(b"m_Probability");
+        let after = HashIndex::from_library(&lib).with_public_names();
+        assert_eq!(after.lookup(h_field), before.lookup(h_field));
+        assert!(after.len() > before.len());
+    }
+}

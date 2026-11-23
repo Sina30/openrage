@@ -1,0 +1,1038 @@
+[
+ {
+  "id": "WAR-132",
+  "status": "partial",
+  "evidence": "src/ui/panels/wardrobe/behaviour.rs hair_row: 'Hide hair' is a Button writing hair::HIDES (-1.0); line 350 says 'Hide ears is not offered'. Heels and Squash the hair are checkboxes.",
+  "missing": "Hide hair is a preset button, not a checkbox, and hide ears is not offered because no flag or value for it is known.",
+  "area": "flags-heels",
+  "statement": "Hide hair and hide ears are named checkboxes in the Garment panel, written by the engine and not as raw expression values.",
+  "p31": {
+   "status": "Excluded",
+   "note": "D15: names and values come from the engine through the corpus, and no staged document states a flag or value for them, so no control writes one. Hide hair is a preset that writes the round number staged hats state, and audio presets are the ids by slot. A sample that states one decides: question Q11"
+  }
+ },
+ {
+  "id": "WAR-133",
+  "status": "partial",
+  "evidence": "hair_row in src/ui/panels/wardrobe/behaviour.rs: 'Squash the hair under it' checkbox with value, Hide hair preset, 'State a hair height'; crates/domain/or-wardrobe/src/hair.rs says no hat cut value exists.",
+  "missing": "Squash, remove (hide) and custom hair height are built; a hat cut value has no flag or value in the engine tables, so no control writes one.",
+  "area": "flags-heels",
+  "statement": "Hat hair squash and cut, remove or custom hairs are supported.",
+  "p31": {
+   "status": "Excluded",
+   "note": "D15: names and values come from the engine through the corpus, and no staged document states a flag or value for them, so no control writes one. Hide hair is a preset that writes the round number staged hats state, and audio presets are the ids by slot. A sample that states one decides: question Q11"
+  }
+ },
+ {
+  "id": "WAR-135",
+  "status": "partial",
+  "evidence": "crates/domain/or-wardrobe/src/audio.rs PRESETS: ids per Component slot as hashes with use counts; selectable in Audio fold of src/ui/panels/wardrobe/behaviour.rs.",
+  "missing": "Presets are the game's ids by slot, not named heels, boots, gas mask or armour; the names behind the hashes are not held.",
+  "area": "flags-heels",
+  "statement": "Audio presets per garment type (heels, boots, gas mask, armour) are selectable.",
+  "p31": {
+   "status": "Excluded",
+   "note": "D15: names and values come from the engine through the corpus, and no staged document states a flag or value for them, so no control writes one. Hide hair is a preset that writes the round number staged hats state, and audio presets are the ids by slot. A sample that states one decides: question Q11"
+  }
+ },
+ {
+  "id": "WAR-137",
+  "status": "missing",
+  "evidence": "grep for time cycle, timecycle, intensity in crates/domain/or-wardrobe/src and src/ui/panels/wardrobe finds only the viewport Light sun-hour hint in light.rs; no per-texture field in model.rs.",
+  "missing": "No per-texture-variation TimeCycle modifier or intensity can be set, written or read back.",
+  "area": "flags-heels",
+  "statement": "A TimeCycle modifier with an intensity can be set per texture variation.",
+  "p31": {
+   "status": "Excluded",
+   "note": "D15: names and values come from the engine through the corpus, and no staged document states a flag or value for them, so no control writes one. Hide hair is a preset that writes the round number staged hats state, and audio presets are the ids by slot. A sample that states one decides: question Q11"
+  }
+ },
+ {
+  "id": "WAR-144",
+  "status": "diverged",
+  "evidence": "src/ui/panels/wardrobe/preview.rs lines 129-143: A = 'The ped as the game has it, without this pack', B = 'wearing the pack's garments'; test a_and_b_show_the_ped_without_the_pack_and_with_it.",
+  "missing": "A/B compares ped without the pack against ped with it, not a garment's original against its edit; Review versions only writes WebP pictures to a folder.",
+  "area": "preview",
+  "statement": "An A/B control shows the original against the edit in the preview.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: A/B has Before, the ped wearing the pack as it was before its latest change, read from the versions the Wardrobe keeps, to set against B, the pack as it is. The original of a replaced texture is not kept, because nothing is written over a file, so one texture is compared through Earlier versions and Review versions"
+  }
+ },
+ {
+  "id": "WAR-146",
+  "status": "partial",
+  "evidence": "src/ui/panels/wardrobe/tools.rs: Draw (shape, edges, vertex data), Level with triangles/vertices per LOD, Bones, Grid, light.rs alternate_model; the_dressed_ped.rs switching_the_level_of_detail_changes_what_is_drawn_and_what_is_counted.",
+  "missing": "No preview of alternate-variation sets (hair switching with a hat), and live heels only lift the ped over the ordinary grid, no floor drawn for them.",
+  "area": "preview",
+  "statement": "The preview offers wireframe, skeleton, grid, polygon and vertex counts per LOD, LOD switching and alternation preview, and shows the floor for live heels.",
+  "p31": {
+   "status": "Question",
+   "question": "Q14",
+   "note": "Wireframe, skeleton, grid, levels, motion and the debug views are built. No first-person view, no mesh-physics preview and no preview of a set of alternates exist, and HDR and shadows are whatever Shaded mode draws"
+  }
+ },
+ {
+  "id": "WAR-176",
+  "status": "partial",
+  "evidence": "or-project test seventy_thousand_entries_in_one_archive_are_refused_with_the_sentence_that_says_why and ..._divide_into_two_packs_at_the_boundary_between_contents; docs/features/Dlc_Pack_Creation.md; a_clothing_pack_builds_as_a_singleplayer_dlc_and_as_an_oiv has hat and heels.",
+  "missing": "Over 65,535 entries the build refuses, or divides only between contents with Split on; one content over the limit is refused and cutting inside a content is not built. Hats and props do build.",
+  "area": "build",
+  "statement": "A singleplayer pack past the archive entry limit (65,535) divides into several packs instead of producing a corrupt archive, and hats and props build correctly.",
+  "p31": {
+   "status": "Question",
+   "question": "Q15",
+   "note": "As of 2026-10-20, past 65,535 entries a build divides between contents when Split is on and refuses one content over the limit; cutting inside a content would renumber drawables, which frozen positions forbid"
+  }
+ },
+ {
+  "id": "WAR-182",
+  "status": "partial",
+  "evidence": "src/ui/panels/project/review_window.rs 'Review versions' and or_wardrobe::review::between give a read-only diff of two versions; 'Pictures of both sides' writes _before/_after WebP files; Clothing_Tool_Design.md says a 3D comparison is not built.",
+  "missing": "No interactive 3D A/B between two revisions in the viewport, only pictures of both sides written to a folder.",
+  "area": "build",
+  "statement": "A review mode shows a read-only diff of two project revisions with a 3D A/B comparison.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: Review versions lists the difference of two versions and Before wears the previous kept version in the viewport against B. Two versions chosen by the person are not compared in 3D: question Q14"
+  }
+ },
+ {
+  "id": "WAR-16",
+  "status": "partial",
+  "evidence": "src/ui/dock.rs Workspace enum has Project and Wardrobe only; ModuleKind in or-project container.rs has Files, Clothing, AddonPed, Unknown; Workbench_Plan.md P32 only drafts views.",
+  "missing": "Project and Wardrobe views exist and switching changes nothing in the project, but the Map view and a map content kind do not exist.",
+  "area": "views",
+  "statement": "One project can be viewed through the neutral Project workspace, the Wardrobe or the Map view without the project changing.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "WAR-17",
+  "status": "partial",
+  "evidence": "src/state/workbench/workspace_memory.rs + project_io.rs remembered_workspace; test the_project_polish.rs a_project_reopens_on_the_workspace_it_was_left_on...; content.rs where_content_opens greys non-showing workspaces, kept 'by design' in Workbench_UX_Design.md.",
+  "missing": "The project now remembers its workspace (private folder), but Open in greys out every workspace that does not show the content instead of offering any, and there is no Map workspace.",
+  "area": "views",
+  "statement": "A workspace is a panel layout independent of any content kind: clicking a Content row only suggests its default workspace, Open in offers any other, and the project remembers the active workspace.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: Open in lists every workspace and none is greyed; one that cannot show the asset or the content says why in a line under its name, opens when pressed and says the same in a toast. The Map workspace is the row of the Map view below"
+  }
+ },
+ {
+  "id": "WAR-18",
+  "status": "missing",
+  "evidence": "No Workspace::Map in src/ui/dock.rs, no map content kind in or-project, and src/ui/panels/empty_state.rs heading() has no Map entry; Workbench_Plan.md P32 only drafts it.",
+  "missing": "No Map view, so no empty state offering to add Map content or open a .ymap or .ytyp.",
+  "area": "views",
+  "statement": "The Map view of a project with no map content shows an empty state that offers to add Map content or open a .ymap or .ytyp.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "WAR-20",
+  "status": "partial",
+  "evidence": "docs/direction/Wardrobe_Parity.md is the matrix: rows are Present, 'Present in part' (hat hair, first-person alternates, shader auto-fix, cloth, review) or Excluded; Workbench_Plan.md 'Held back' says exclusions need a ruling not given.",
+  "missing": "Several incumbent yes rows are only 'Present in part' (hide ears, hat cut, per-texture time cycle), and the exclusions are plan defaults, not recorded owner rulings.",
+  "area": "parity",
+  "statement": "Wardrobe has at least the features of Durty Cloth Tool 4, grzyClothTool and Vestium, tracked by a feature matrix in which every incumbent yes row is either present or carries a recorded owner exclusion.",
+  "p31": {
+   "status": "Question",
+   "question": "Q13",
+   "note": "Every row of the matrix above has a status. The Excluded rows are defaults of the plan and not sentences of the owner, and the five costs that remain are by design. These close when the owner confirms them as rulings"
+  }
+ },
+ {
+  "id": "WAR-23",
+  "status": "partial",
+  "evidence": "Workbench_UX_Design.md 'What stays a disadvantage' lists five costs and Wardrobe_Parity.md 'What the project approach costs' seven; neither names hidden source folders, a slow-looking cook, missing features at launch, huge lists, onboarding or data loss as drawback-and-resolution pairs.",
+  "missing": "Only more concepts is on both lists; the other drawbacks the owner named have no stated drawback-and-resolution pair in the design.",
+  "area": "parity",
+  "statement": "Each drawback of the project approach against the incumbents (more concepts, hidden source folders, a cook that looks slow, missing features at launch, huge lists, onboarding, data loss) has a stated resolution in the design.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: seven drawback-and-resolution pairs in [Workbench_UX_Design.md](Workbench_UX_Design.md#each-drawback-of-the-project-approach-and-what-answers-it), next to the five costs that remain"
+  }
+ },
+ {
+  "id": "WAR-24",
+  "status": "partial",
+  "evidence": "src/ui/every_control_of_the_project_screens_has_a_reason.rs draws the Wardrobe with and without a garment chosen and checks each control against the Control inventory in Workbench_UX_Design.md; Wardrobe_Parity.md lists homes for most incumbent features.",
+  "missing": "Not every incumbent advantage has a home: hide ears, hat cut and per-texture time cycle modifiers are absent, and the test covers only two Wardrobe states.",
+  "area": "parity",
+  "statement": "Every Wardrobe button has a place and a meaning, and every incumbent advantage has a home in the UI without the incumbents' disadvantages.",
+  "p31": {
+   "status": "Question",
+   "question": "Q13",
+   "note": "Every row of the matrix above has a status. The Excluded rows are defaults of the plan and not sentences of the owner, and the five costs that remain are by design. These close when the owner confirms them as rulings"
+  }
+ },
+ {
+  "id": "IMP-037",
+  "status": "missing",
+  "evidence": "or-source/src/game_import.rs KINDS has only ytd, ydr, ydd, yft, ymt, ymap, ytyp; tests/game_import.rs:155 asserts yld has no kind; Source_Format_Design.md layout table: .yld cloth.json Later",
+  "missing": "No cloth kind or cloth.json source; a .yld is only a loose file or a Wardrobe cloth link.",
+  "area": "other-kinds",
+  "statement": "A .yld maps to the kind cloth: a cloth.json source (planned, later).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. A cloth is a compiled .yld the garment links, and the cloth painter and wind scale edit what a build ships (L, P34)"
+  }
+ },
+ {
+  "id": "IMP-038",
+  "status": "missing",
+  "evidence": "game_import.rs KINDS has no ycd row; tests/game_import.rs:155 asserts ycd has no kind; Source_Format_Design.md layout table: .ycd clips Later",
+  "missing": "No clips kind, clips.json or glb bone-track source exists.",
+  "area": "other-kinds",
+  "statement": "A .ycd maps to the kind clips: clips/<clip>.glb with bone tracks plus clips.json (planned, later).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. A clip dictionary is kept whole and played in the Animation preview"
+  }
+ },
+ {
+  "id": "IMP-039",
+  "status": "missing",
+  "evidence": "game_import.rs KINDS has no ypt row; tests/game_import.rs:155 asserts ypt has no kind; Source_Format_Design.md layout table: .ypt Later",
+  "missing": "No particles source kind (JSON rules plus DDS) exists.",
+  "area": "other-kinds",
+  "statement": "A .ypt maps to the kind particles: JSON rules plus DDS (planned, later).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. The Particle workspace edits a .ypt file in place"
+  }
+ },
+ {
+  "id": "IMP-040",
+  "status": "missing",
+  "evidence": "game_import.rs KINDS has no awc row; tests/game_import.rs:155 asserts awc has no kind; Source_Format_Design.md layout table: .awc Later",
+  "missing": "No audio kind, WAV export or streams.json exists.",
+  "area": "other-kinds",
+  "statement": "An .awc maps to the kind audio: WAV files plus streams.json (planned, later).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. The audio container is edited in place"
+  }
+ },
+ {
+  "id": "IMP-041",
+  "status": "diverged",
+  "evidence": "or-source/src/metadata.rs header: <name>.metadata.src/ holds asset.json, base.ymap, metadata.xml; Source_Format_Design.md 'A folder and not a flat file'",
+  "missing": "Built as a .metadata.src folder (with id, hash, from_game), not a flat name.ymap.xml; documented as a deliberate divergence, no owner ruling found.",
+  "area": "other-kinds",
+  "statement": "Metadata files (.ymt, .ymap, .ytyp, .meta) stay single flat canonical XML files such as name.ymap.xml and are not wrapped in a .src folder.",
+  "p31": {
+   "status": "Question",
+   "question": "Q2",
+   "note": "Built as a .metadata.src folder (id, hash, from_game and the canonical XML), a deliberate divergence of wave P10 with no owner ruling found"
+  }
+ },
+ {
+  "id": "IMP-042",
+  "status": "partial",
+  "evidence": "game_import.rs KINDS: textures (exact DDS/images), drawable, drawables, fragment (glb+json), metadata (canonical XML); tests/game_import.rs:155 lists ybn, ycd, ypt, awc, yld as having no source form",
+  "missing": "Bounds, cloth, clips, particles and audio have no decompile target, so not every edited kind has one.",
+  "area": "source-folder",
+  "statement": "Every kind of game file the app edits is given its own decompile target in the best source-like format for that kind, chosen kind by kind and not one format for all.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Seven extensions have a source form (texture dictionaries, drawables, drawable dictionaries, fragments and the metadata files). The rest are kept whole under files/ and shipped as they are (R3), and the mapping of each format to its target is documented"
+  }
+ },
+ {
+  "id": "IMP-057",
+  "status": "partial",
+  "evidence": "or-source/src/models.rs: const EDIT, compile_of() refuses any mode but edit ('compile mode ... is not built'); compile.base hash checked in Inputs::compile; Source_Format_Design.md row compile.mode",
+  "missing": "compile.mode edit and compile.base are built; the author mode is refused and not built.",
+  "area": "asset-json",
+  "statement": "For models asset.json states compile.mode (edit or author) and compile.base, the hash of the base file kept in the folder.",
+  "p31": {
+   "status": "Excluded",
+   "note": "Author mode is on the held-back list, and R10 keeps it so. Edit mode and compile.base are built"
+  }
+ },
+ {
+  "id": "IMP-121",
+  "status": "partial",
+  "evidence": "or-source/src/models.rs Rules: materials (shader, params, flags), lod_distances, bucket_masks, bounds_sphere/box, bones tags; drawable_values.rs Material.shader 'A compile refuses a different one'; Source_Format_Design.md: presets held back",
+  "missing": "Vertex layout as a named preset is not in drawable.json, and a shader name cannot be changed, so shader and layout cannot be chosen.",
+  "area": "models",
+  "statement": "drawable.json holds what glTF cannot say: shader names and parameters, the vertex layout as a named preset, LOD distances, flags, bone tags and bounds.",
+  "p31": {
+   "status": "Excluded",
+   "note": "The shipped shader and vertex-layout presets are on the held-back list (R10). A material's parameters are editable; its shader is not changed"
+  }
+ },
+ {
+  "id": "IMP-124",
+  "status": "missing",
+  "evidence": "No bounds.json or prefix-named collision node in crates/domain/or-source or or-interchange; Source_Format_Design.md table row 'No collision | Nodes named by prefix and bounds.json' is design only; .ybn Later",
+  "missing": "No collision source: no prefix-named glTF nodes and no bounds.json.",
+  "area": "models",
+  "statement": "Because glTF has no collision, collision is carried by nodes named by prefix and by bounds.json.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Source_Format_Design.md records it as planned, later. A .ybn is kept whole under files/ and shipped as it is (R3)"
+  }
+ },
+ {
+  "id": "IMP-126",
+  "status": "missing",
+  "evidence": "or-interchange/src/gltf/read.rs:130 only counts glTF animations as dropped (note animations); no TRS tracks in or-source models.rs or drawable.json; Source_Format_Design.md table: animation a route, not built",
+  "missing": "No translation/rotation/scale tracks carried through glTF and no JSON for other tracks; animation is only reported as not carried.",
+  "area": "models",
+  "statement": "Animation in a model source is limited to translation, rotation and scale tracks through glTF, and the JSON holds the other tracks.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. A clip dictionary is kept whole and played in the Animation preview"
+  }
+ },
+ {
+  "id": "IMP-127",
+  "status": "partial",
+  "evidence": "or-source/src/models.rs: Extraction.textures is false at the import door (game_import.rs models_how); module doc: textures stay the base's; no DDS written beside model.glb",
+  "missing": "Textures are kept inside base.ydr; no DDS files are placed beside the glb or referenced by name from it.",
+  "area": "models",
+  "statement": "Because glTF textures are PNG or JPEG, a model's textures are DDS files beside the glb referenced by name.",
+  "p31": {
+   "status": "Question",
+   "question": "Q3",
+   "note": "The textures stay inside the drawable the source cooks from; no DDS is placed beside the glb"
+  }
+ },
+ {
+  "id": "IMP-063",
+  "status": "partial",
+  "evidence": "or-source/src/asset.rs Source::save rewrites JSON canonically, tests/game_import.rs:792,816; grep finds no caller of Source::save in src/, or-cli, or-wardrobe or or-project",
+  "missing": "The no-diff rewrite exists and is tested but nothing in the app or CLI calls it, so a user never triggers it.",
+  "area": "git",
+  "statement": "Saving a source that did not change rewrites every JSON file byte-identically, so a save produces no diff.",
+  "p31": {
+   "status": "Question",
+   "question": "Q18",
+   "note": "Source::save does it and is tested; no screen or verb calls it, because the app edits a source by writing the one file that changed"
+  }
+ },
+ {
+  "id": "IMP-064",
+  "status": "partial",
+  "evidence": "or-project reference::resolve follows a source id through rename (Project_Model_Design.md l.199); but project.rs Member{path}, wardrobe.schema.json model/texture/cloth are module-relative paths, links by path; test a_texture_that_is_not_there_offers_locate_and_remove",
+  "missing": "Only .ref.json references and diffs follow the id; members, Wardrobe links and project links are stored by path, so a moved source folder breaks them.",
+  "area": "ids",
+  "statement": "Inside a project an asset is identified by its id and not by its name; modules, builds and links point at the id, so renaming or moving a source folder breaks nothing.",
+  "p31": {
+   "status": "Excluded",
+   "note": "R6 (a default): paths are kept, as the owner ruled for links, and the id detects duplicates, moves and the build diff"
+  }
+ },
+ {
+  "id": "IMP-068",
+  "status": "missing",
+  "evidence": "or-source/src/textures.rs:549 and models.rs:955 refuse any platform but win64; cook.rs:158 same; no .otd extraction anywhere in crates or src; Source_Format_Design.md l.50 only states the intent and defers to R36",
+  "missing": "No platform extension is written and no PS4 .otd is extracted or recompiled; non-win64 sources are refused.",
+  "area": "platform",
+  "statement": "A build writes the extension of the platform it targets from the asset's platform, so a PS4 .otd extracts to a textures folder and compiles back to .otd.",
+  "p31": {
+   "status": "Question",
+   "question": "Q4",
+   "note": "Legacy and Enhanced retarget with a named stop. Only win64 is written; a source of another platform is refused. OpenRage is Windows first"
+  }
+ },
+ {
+  "id": "IMP-076",
+  "status": "partial",
+  "evidence": "Source_Format_Design.md 'Formats compared': 'CodeWalker XML' section measured with pros and cons; 'OpenIV's open formats' section says Unmeasured, no .odr/.otd/.oft file exists",
+  "missing": "OpenIV's open formats have no recorded advantages or drawbacks; it needs sample exports from the owner.",
+  "area": "sidecar-naming",
+  "statement": "The source-format design records the advantages and drawbacks of CodeWalker's XML exports and OpenIV's open formats (.odr, .otd, .oft) against the chosen folder format.",
+  "p31": {
+   "status": "Question",
+   "question": "Q18",
+   "note": "It needs sample exports from the owner; CodeWalker's are recorded"
+  }
+ },
+ {
+  "id": "IMP-185",
+  "status": "partial",
+  "evidence": "or-wardrobe/src/import.rs:614-630 a cloth whose ownsCloth is off is not linked, stays loose with a Link hint; rules.rs cloth-ignored covers only prop or no model; Clothing_Tool_Design.md: waits for a real pack check",
+  "missing": "Flag follows the link (built), but a flag-off cloth is not auto-linked or flagged on, and cloth ignored names only prop and placeholder cloth; the real-pack check was never run.",
+  "area": "cloth",
+  "statement": "A cloth file whose garment's flag is off is linked and the flag is written on, after the wave has checked on a real pack what the game does with a cloth shipped that way, and a cloth that is shipped but unused is named 'cloth ignored'.",
+  "p31": {
+   "status": "Question",
+   "question": "Q18",
+   "note": "The flag follows the link. A cloth with the flag off stays loose with a hint, and the check on a real pack was not run"
+  }
+ },
+ {
+  "id": "WAR-86",
+  "status": "partial",
+  "evidence": "Complete materials command + finding material-parameters Fix 'Complete' (src/ui/commands/textures.rs, findings.rs); test a_material_that_lacks_declared_constants_is_found_and_completed_and_a_sampler_is_left",
+  "missing": "The auto-fix states only missing constants; a missing sampler is left, an Enhanced material is not written, and it needs the install's shader database.",
+  "area": "textures",
+  "statement": "A material editor and an embedded-texture editor change shader parameters and embedded textures, with auto-fix of shader parameters.",
+  "p31": {
+   "status": "Excluded",
+   "note": "Complete materials states the constants a shader declares. A missing sampler is left, since an entry would state an empty binding and not the shader's default, and an Enhanced material is not written. It needs the shader database of an install"
+  }
+ },
+ {
+  "id": "WAR-148",
+  "status": "partial",
+  "evidence": "state/workbench/dressed/view.rs ViewMode Normals/UVs/Tangents/Vertex colours/Shaded; wardrobe/light.rs sun at the hour; test each_mode_is_a_mode_of_the_viewport_and_only_the_four_vertex_data_views_carry_a_channel",
+  "missing": "No first-person view and no mesh-physics preview exist, and HDR/shadows are only whatever Shaded mode draws (needs baked game shaders), with no control of their own.",
+  "area": "preview",
+  "statement": "Debug render modes (normals, tangents, UV, vertex colours), time of day, HDR and shadows, first-person view and mesh physics are available in the preview.",
+  "p31": {
+   "status": "Question",
+   "question": "Q14",
+   "note": "Wireframe, skeleton, grid, levels, motion and the debug views are built. No first-person view, no mesh-physics preview and no preview of a set of alternates exist, and HDR and shadows are whatever Shaded mode draws"
+  }
+ },
+ {
+  "id": "WAR-155",
+  "status": "diverged",
+  "evidence": "src/state/workbench/wardrobe_fix.rs fix_all_safe -> or_wardrobe::fix::all_safe runs repair, textures, order, mask; test fix_all_safe_runs_on_the_worker_says_each_step_in_the_log_and_is_one_step_of_undo; test ...fix_all_safe_has_four_steps",
+  "missing": "The pipeline has no LOD step (levels are the separate Add levels of detail command) and adds a Mask step the owner did not list; report per step and one Undo step are built.",
+  "area": "validation",
+  "statement": "A Fix all safe pipeline (repair, LODs, textures, order) runs with a report of each step and one history step per action.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: a box in the Fix menu, Also add missing levels of detail, adds a Levels step to the same one step of Undo; it is off to begin with because a level is a change to a model's geometry. The Mask step stays, added by P27. The doctor's other operations make a new source the person asks for and stay on-demand steps of Undo, not steps of the pipeline"
+  }
+ },
+ {
+  "id": "WAR-159",
+  "status": "partial",
+  "evidence": "docs/reference/Plugin_ABI.md 'A plugin that extends a build'; state/plugins/extensions.rs; findings.rs Fix::WaivePlugin; no 'plugin' in or-wardrobe/src/rules.rs",
+  "missing": "A validator plugin reads the build plan document and not the pack; its findings can be waived but are not rules (not in the Rules window or exported list) and have no Fix.",
+  "area": "validation",
+  "statement": "Rule packs can come from plugins that read the pack and return findings as data.",
+  "p31": {
+   "status": "Question",
+   "question": "Q10",
+   "note": "A plugin write no longer clears the undo history. No host function writes more than the open document, and a validator plugin reads the build plan and not the pack, so its findings can be waived but are not rules. Both are the plugin ABI's"
+  }
+ },
+ {
+  "id": "WAR-160",
+  "status": "missing",
+  "evidence": "No game-build selector or ped-metadata slot count in crates or src; Clothing_Tool_Design.md 'Not built' paragraph; Workbench_UX_Design.md line 321 says it waits for a per-build engine figure",
+  "missing": "There is no FiveM game-build selector and no count of free ped-metadata slots that adjusts warnings (only a Legacy/Enhanced edition setting exists).",
+  "area": "validation",
+  "statement": "A target FiveM game-build selector adjusts warning thresholds, such as how many ped-metadata slots remain free.",
+  "p31": {
+   "status": "Excluded",
+   "note": "No staged file and no table of the engine states a figure per game build, and a figure is not invented (D15). The Legacy and Enhanced edition setting exists"
+  }
+ },
+ {
+  "id": "WAR-166",
+  "status": "partial",
+  "evidence": "or-wardrobe/src/alternate.rs alternate-limit (MOST_SWITCHES_FOR_ONE_ASSET=159); rules.rs dictionary-size 16 MB and texture-bc7-legacy; measured.rs; Clothing_Tool_Design.md 'Not built' paragraph",
+  "missing": "The shared texture-pool budget rule is not built (recorded as the game's own configuration); the alternate limit is 159 switches, not 160.",
+  "area": "validation",
+  "statement": "Game-limit rules cover more than 160 alternate variations per item, a texture dictionary over 16 MB, BC7 where the game build is DX11 only, and the shared texture-pool budget.",
+  "p31": {
+   "status": "Excluded",
+   "note": "The shared texture pool is the game's own configuration, which no file of a pack states. The two figures are one limit, as read on 2026-10-20: 160 alternates count alternate 0, which is the drawable itself, so the rule counts 159 switches. The reference pack states at most 103 switches for one asset (question Q16)"
+  }
+ },
+ {
+  "id": "WAR-220",
+  "status": "missing",
+  "evidence": "git ls-files docs shows no weapon/project-views draft; Workbench_Plan.md row P32 'Draft the weapon, particle, map and other project views' only planned",
+  "missing": "Wave P32 is not merged, so no design draft of the weapon view exists.",
+  "area": "project-views",
+  "statement": "A design draft exists for the weapon view of a project.",
+  "p31": {
+   "status": "Planned",
+   "note": "Wave P32, which starts once this wave has merged"
+  }
+ },
+ {
+  "id": "WAR-221",
+  "status": "missing",
+  "evidence": "No particle project-view draft in docs/ (only features/Particle_Preview.md, which is the preview); Workbench_Plan.md row P32 is planned only",
+  "missing": "Wave P32 is not merged, so no design draft of the particle project view exists.",
+  "area": "project-views",
+  "statement": "A design draft exists for the particle view of a project.",
+  "p31": {
+   "status": "Planned",
+   "note": "Wave P32, which starts once this wave has merged"
+  }
+ },
+ {
+  "id": "WAR-222",
+  "status": "missing",
+  "evidence": "No map project-view draft in docs/; Project_Model_Design.md only lists Map as a module type row; Workbench_Plan.md row P32 is planned only",
+  "missing": "Wave P32 is not merged, so no design draft of the map project view exists.",
+  "area": "project-views",
+  "statement": "A design draft exists for the map view of a project.",
+  "p31": {
+   "status": "Planned",
+   "note": "Wave P32, which starts once this wave has merged"
+  }
+ },
+ {
+  "id": "WAR-223",
+  "status": "missing",
+  "evidence": "No draft of vehicle, prop, audio or script project views anywhere under docs/ outside docs/audit; Workbench_Plan.md row P32 is planned only",
+  "missing": "Wave P32 is not merged, so no draft of other useful project views exists.",
+  "area": "project-views",
+  "statement": "A design draft exists for other useful project views, such as vehicle, prop, audio and script views, chosen by their value to a project.",
+  "p31": {
+   "status": "Planned",
+   "note": "Wave P32, which starts once this wave has merged"
+  }
+ },
+ {
+  "id": "WAR-230",
+  "status": "partial",
+  "evidence": "R49a-d done in Roadmap.md; src/ui/panels/mods.rs; src/state/reordering_mods_from_the_app.rs test reordering_two_conflicting_mods_changes_the_winner_and_the_order_survives_a_restart; Roadmap R52 'Not built' list",
+  "missing": "Mods panel and overlay exist, but the load order is not written into the overlay the game reads and a build or package (R50) cannot be installed into it.",
+  "area": "project-views",
+  "statement": "The mods overlay (R49) and a mod manager with load order (R52) are built, since built packs have to be installed and ordered.",
+  "p31": {
+   "status": "Question",
+   "question": "Q17",
+   "note": "The Mods panel and the overlay exist. The load order is not written into the overlay the game reads, and a build cannot be installed into it. Installing is the copy of the guide's Install on a server"
+  }
+ },
+ {
+  "id": "WAR-237",
+  "status": "partial",
+  "evidence": "Open the sample project + Take the tour (src/ui/commands/tools_and_help.rs, panels/tour.rs); help_button only in project/problems.rs and build_tab.rs; test the_start_page_offers_the_sample_project_and_the_tour_and_the_tour_ends_on_the_guide",
+  "missing": "Sample project and six-step tour are built, but documentation links are a Help button on only the Problems header and Build tab, not on tooltips or the Wardrobe.",
+  "area": "ux",
+  "statement": "Onboarding is served by a sample project, a guided tour and tooltips that link to the documentation, because grzyClothTool has no guide.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: a command the guide explains, and each tool of the dressed ped, ends its tooltip with the guide section that explains it, and Shift+F1 with the pointer on the control opens the guide there"
+  }
+ },
+ {
+  "id": "WAR-238",
+  "status": "missing",
+  "evidence": "No i18n/fluent/gettext dependency in Cargo.toml or Cargo.lock and no locale/translation code under src/ or crates/; Clothing_Tool_Design.md line 139 only records the competitors' language counts",
+  "missing": "The interface is English only and no translation mechanism exists.",
+  "area": "ux",
+  "statement": "The interface is translatable from the first release, since Durty Cloth Tool ships nine languages and Vestium two.",
+  "p31": {
+   "status": "Question",
+   "question": "Q8",
+   "note": "R13 deferred it until after P31 so that strings are extracted once; the interface is English only"
+  }
+ },
+ {
+  "id": "WAR-200",
+  "status": "partial",
+  "evidence": "state/plugins.rs run_plugin uses patch_resource_image (one Change::Image step); test a_plugin_that_replaces_a_file_is_one_step_of_undo_and_the_history_before_it_is_kept; Clothing_Tool_Design.md line 191",
+  "missing": "A plugin write no longer clears undo history, but there is no multi-file transaction: no host function writes more than the one open document.",
+  "area": "plugins",
+  "statement": "A plugin write does not clear the document's undo history, and a multi-file change is one transaction.",
+  "p31": {
+   "status": "Question",
+   "question": "Q10",
+   "note": "A plugin write no longer clears the undo history. No host function writes more than the open document, and a validator plugin reads the build plan and not the pack, so its findings can be waived but are not rules. Both are the plugin ABI's"
+  }
+ },
+ {
+  "id": "WAR-204",
+  "status": "partial",
+  "evidence": "or-project/src/container.rs ModuleKind has only Files, Clothing, AddonPed, Unknown; Files content carries documents and file_types (contribution.rs data_file lines); Project_Model_Design.md Map row; P32 unmerged",
+  "missing": "Map documents are held and packaged only as loose Files content with person-stated file types; there is no Map content kind or map template.",
+  "area": "content-kinds",
+  "statement": "The project system holds map content (the documents of a map or interior and their packaging), with map editing staying a plugin.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "PRO-128",
+  "status": "partial",
+  "evidence": "Built: git.rs Commit{sources,build,game_sources}, Properties 'Commit the build' boxes (project/properties.rs), managed .gitignore ignores /build/ and from_game sources. Warning is only on-demand sharing.rs Check before sharing.",
+  "missing": "No warning at push time: the app installs no Git hook (UX doc says it cannot see a push), only the manual Project > Check before sharing.",
+  "area": "open-vs-import",
+  "statement": "The person decides whether to commit the project's source or its build: the commit holds sources, build output is ignorable, and a source flagged from the game is not committed by default, with a generated .gitignore and a warning before a push.",
+  "p31": {
+   "status": "Question",
+   "question": "Q7",
+   "note": "Check before sharing warns when the person runs it, and openrage-cli project check-sharing makes the same check with no window and exits 1 for a path of this machine or a source taken from the game, so a pre-push hook of the person's own can run it; the private folders it lists do not fail it. The editor installs no hook and cannot see a push, so the warning at push time is the person's to set up until the owner answers Q7"
+  }
+ },
+ {
+  "id": "PRO-129",
+  "status": "diverged",
+  "evidence": "Import never writes into an existing folder (Source_Format_Design.md 'How an import writes'), but ends in a report window with Undo import (src/ui/panels/import_report.rs); UX doc: 'The report is a window, not a toast'.",
+  "missing": "The owner asked for a toast with Undo; only Wardrobe drops (edit::add_clothes) use a toast with Undo, game-file imports use the report window.",
+  "area": "open-vs-import",
+  "statement": "An import only adds: it never overwrites an existing source, and a toast says what was done with an Undo.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: an import ends with a toast that says what it made and has Undo import, besides the report window"
+  }
+ },
+ {
+  "id": "IMP-157",
+  "status": "partial",
+  "evidence": "or_source::git Commit::default() has game_sources false and the ignore block names each from_game source; sharing.rs Kind::GameContent lists them in Check before sharing (command in ui/commands/project.rs).",
+  "missing": "No warning at push time: no Git hook is installed and the app cannot see a push, so the warning exists only when the person runs Check before sharing.",
+  "area": "git",
+  "statement": "A source with origin.from_game true is not committed by default, and the app warns before a push that would include game content.",
+  "p31": {
+   "status": "Question",
+   "question": "Q7",
+   "note": "Check before sharing warns when the person runs it, and openrage-cli project check-sharing makes the same check with no window and exits 1 for a path of this machine or a source taken from the game, so a pre-push hook of the person's own can run it; the private folders it lists do not fail it. The editor installs no hook and cannot see a push, so the warning at push time is the person's to set up until the owner answers Q7"
+  }
+ },
+ {
+  "id": "WAR-100",
+  "status": "partial",
+  "evidence": "or-project/src/build.rs:495 skippable = FivemResource && !ship_unchanged; Source_Format_Design.md: 'A pack or a package ... always ships it'. Warning is only the manual Check before sharing.",
+  "missing": "Only FiveM builds leave game-identical from_game sources out; singleplayer DLC and .oiv builds ship them, and the push warning is on demand, not tied to a push.",
+  "area": "import",
+  "statement": "A source marked from_game is never shipped by a build as a vanilla file, and the project warns before it would be pushed.",
+  "p31": {
+   "status": "Question",
+   "question": "Q6",
+   "note": "A FiveM resource leaves an unchanged source of the game out. A singleplayer DLC and an .oiv ship it, and the build's ship-unchanged key overrides. R5 recommended the skip for every build"
+  }
+ },
+ {
+  "id": "WAR-101",
+  "status": "partial",
+  "evidence": "Built: ui/commands/mesh.rs Add levels of detail, Repair rig, Clean weights, Mirror model, Crop texture coordinates; or-wardrobe mesh/uvcrop.rs; Show-model-before checkbox in panels/wardrobe/mesh.rs; src/state/the_mesh_doctor_in_the_app.rs",
+  "missing": "They are on-demand Undo steps making new sources, not plan steps (not in Fix all safe); no UV remap beyond crop; before/after only for the last step via a checkbox.",
+  "area": "models",
+  "statement": "A mesh doctor offers LOD generation and decimation, UV crop and remap, weight cleanup and a heel-bone check, each as a plan step with before and after shown in the viewport.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: a box in the Fix menu, Also add missing levels of detail, adds a Levels step to the same one step of Undo; it is off to begin with because a level is a change to a model's geometry. The Mask step stays, added by P27. The doctor's other operations make a new source the person asks for and stay on-demand steps of Undo, not steps of the pipeline"
+  }
+ },
+ {
+  "id": "WAR-116",
+  "status": "missing",
+  "evidence": "Source_Format_Design.md layout table row '.yld | cloth.json | Later'; game_import KINDS has no cloth kind; no cloth.json or cloth-weight glTF attribute code anywhere in crates/src.",
+  "missing": "No cloth source form exists, so cloth does not round-trip through a source folder; it stays a compiled .yld copied into cloth/.",
+  "area": "cloth",
+  "statement": "A cloth source form (cloth.json, with a custom cloth-weight attribute in glTF) exists later so cloth round-trips through a source folder.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Planned, later. A cloth is a compiled .yld the garment links, and the cloth painter and wind scale edit what a build ships (L, P34)"
+  }
+ },
+ {
+  "id": "WAR-38",
+  "status": "partial",
+  "evidence": "Drawable dummies: or-wardrobe/src/dummies.rs (replace_on_add, fill, resort, take_out), menus.rs 'Fill the holes with dummies', rules_window.rs, CLI wardrobe dummies. Variation.texture None only arises from import.",
+  "missing": "Texture places have no equivalent: nothing creates, fills, resorts or replaces-on-add reserved textures (variations.rs add needs a source file).",
+  "area": "pack-model",
+  "statement": "Reserved positions and dummies exist for both drawables and textures, with options to replace a dummy on add and to fill or resort positions.",
+  "p31": {
+   "status": "Question",
+   "question": "Q18",
+   "note": "Dummies are built for drawables. A texture place has no equivalent: nothing creates, fills, sorts or replaces on add a reserved texture"
+  }
+ },
+ {
+  "id": "WAR-55",
+  "status": "missing",
+  "evidence": "No 'menyoo' string in any .rs under src/ or crates/; Wardrobe_Parity.md row 'Menyoo and CodeWalker XML import | Excluded ... Menyoo is not read (R16)'.",
+  "missing": "No Menyoo import exists; excluded by default ruling R16, not an owner sentence.",
+  "area": "import",
+  "statement": "Menyoo characters can be imported as garments, as Durty Cloth Tool does.",
+  "p31": {
+   "status": "Excluded",
+   "note": "R16: the one foreign project format read is grzyClothTool's .gctproject. Durty's formats are sealed and Menyoo is not read. R16 is a default the owner may reverse"
+  }
+ },
+ {
+  "id": "WAR-56",
+  "status": "partial",
+  "evidence": "or-wardrobe/src/gctproject.rs (.gctproject reopen), reopen.rs for DLC/.oiv, Open Built Pack…; unplaced files listed in the reopen report (panels/reopen_report.rs). No Durty or Vestium reader in the tree.",
+  "missing": "Durty and Vestium project files have no reader (Durty's formats are sealed; R16 default ruling); only grzyClothTool projects and built resources import.",
+  "area": "import",
+  "statement": "Existing Durty, grzyClothTool and Vestium projects and built resources can be imported as the strongest adoption lever, with what could not be mapped listed.",
+  "p31": {
+   "status": "Excluded",
+   "note": "R16: the one foreign project format read is grzyClothTool's .gctproject. Durty's formats are sealed and Menyoo is not read. R16 is a default the owner may reverse"
+  }
+ },
+ {
+  "id": "PRO-98",
+  "status": "diverged",
+  "evidence": "Job is named Project build (src/state/jobs.rs:60) but test a_build_stopped_from_the_job_list_removes_what_it_was_writing_and_says_so shows Cancel stops it; Workbench_UX_Design.md says the same",
+  "missing": "Cancel does not let the build being written finish: it stops it, removes its folder, keeps the last good build and starts no later build of the run.",
+  "area": "builds",
+  "statement": "A build runs as a job named Project build in the job list, and Cancel lets the build being written finish and stops a run of several after it.",
+  "p31": {
+   "status": "Question",
+   "question": "Q5",
+   "note": "Cancel stops the build being written, removes its folder, keeps the last good build and starts no later build of the run"
+  }
+ },
+ {
+  "id": "PRO-117",
+  "status": "partial",
+  "evidence": "Import, source, cook, verify, package exist (or_source::cook, or_project::build); Source_Format_Design.md 'Unchanged from the game' says none of 18 corpus files cooked back to the original bytes",
+  "missing": "An unchanged source is cooked to OpenRage's canonical form, not copied byte-exact; only a FiveM resource leaves it out, other builds ship the recook.",
+  "area": "open-vs-import",
+  "statement": "Game-format files are not edited directly inside a project: they are imported, edited in source form and cooked back to the game format through a pipeline of source, cook, verify and package in which an unchanged source is copied exactly.",
+  "p31": {
+   "status": "Excluded",
+   "note": "A save writes OpenRage's deterministic canonical form and byte identity with shipped files is not the goal (AGENTS.md). Only the DDS blocks of a texture and files kept whole are exact, which is the texture ruling"
+  }
+ },
+ {
+  "id": "PRO-120",
+  "status": "partial",
+  "evidence": "crates/domain/or-source/src/game_import.rs KINDS has rows for ytd, ydr, ydd, yft and the metadata kinds ymt, ymap, ytyp; Source_Format_Design.md 'Layout per format' marks ybn, yld, ycd, ypt, awc as Later",
+  "missing": "Only seven extensions have a source form; collision, cloth, clips, particles, audio and the rest are kept whole under files/ (the mapping is documented, the decompilers are not built).",
+  "area": "open-vs-import",
+  "statement": "Every game file type is decompiled into its own best source-like form, with the mapping of each format to its source documented.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Seven extensions have a source form (texture dictionaries, drawables, drawable dictionaries, fragments and the metadata files). The rest are kept whole under files/ and shipped as they are (R3), and the mapping of each format to its target is documented"
+  }
+ },
+ {
+  "id": "IMP-036",
+  "status": "missing",
+  "evidence": "No bounds.glb producer or bounds kind in crates/domain/or-source (grep bounds.glb hits only docs/direction/Source_Format_Design.md, row '.ybn ... Later')",
+  "missing": "No bounds kind, extractor or compiler; a .ybn is kept whole under files/.",
+  "area": "other-kinds",
+  "statement": "A .ybn maps to the kind bounds: bounds.glb with named nodes plus bounds.json (planned, later).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "Source_Format_Design.md records it as planned, later. A .ybn is kept whole under files/ and shipped as it is (R3)"
+  }
+ },
+ {
+  "id": "PRO-17",
+  "status": "partial",
+  "evidence": "crates/domain/or-project/src/container.rs ModuleKind = Files, Clothing, AddonPed, Unknown; or_content::kinds() lists Clothing and AddonPed; the Content trait is the shared contract",
+  "missing": "Map, Weapons and Vehicles kinds are not built (the mechanism is open-ended, three of the six named kinds exist).",
+  "area": "model",
+  "statement": "The set of Content kinds is open-ended: Files, Clothing, Map, Weapons, Addon ped and Vehicles are the named kinds, built one at a time, each owning its own data and reaching a build through the same contribution contract.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "PRO-19",
+  "status": "partial",
+  "evidence": "src/ui/dock.rs Workspace = Browse, Model, Texture, Animation, Particle, Data, Project, Wardrobe; Workbench_UX_Design.md defines a workspace as a layout of panels",
+  "missing": "No Map (or Weapons/Vehicles) workspace exists, and Wardrobe is the only content workspace (offered only while the project holds clothing).",
+  "area": "views",
+  "statement": "The same project can be viewed through another content's workspace (for example Map) without changing the project, because a workspace is a layout of panels independent of any content.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "IMP-147",
+  "status": "partial",
+  "evidence": "Source_Format_Design.md 'Unchanged from the game': cook writes canonical form, none of 18 corpus files matched original bytes; DDS blocks are copied exactly (textures.rs) but a model's geometry is rebuilt from the glb",
+  "missing": "An unchanged source is re-encoded to OpenRage's canonical form, not copied to the output exactly (only DDS blocks and files kept whole are exact).",
+  "area": "cook",
+  "statement": "A source that did not change is copied to the output exactly and not re-encoded.",
+  "p31": {
+   "status": "Excluded",
+   "note": "A save writes OpenRage's deterministic canonical form and byte identity with shipped files is not the goal (AGENTS.md). Only the DDS blocks of a texture and files kept whole are exact, which is the texture ruling"
+  }
+ },
+ {
+  "id": "IMP-151",
+  "status": "partial",
+  "evidence": "crates/domain/or-project/src/build.rs:495 skippable = plan.kind == OutputKind::FivemResource && !plan.ship_unchanged; tests in or-cli a_build_cooks_what_a_project_imported.rs",
+  "missing": "Only a FiveM resource leaves an unchanged from_game source out; a singleplayer DLC pack and an .oiv always ship it, and ship_unchanged overrides.",
+  "area": "cook",
+  "statement": "A build does not ship, as a vanilla file, content whose origin.from_game is true and which the person did not change.",
+  "p31": {
+   "status": "Question",
+   "question": "Q6",
+   "note": "A FiveM resource leaves an unchanged source of the game out. A singleplayer DLC and an .oiv ship it, and the build's ship-unchanged key overrides. R5 recommended the skip for every build"
+  }
+ },
+ {
+  "id": "IMP-152",
+  "status": "partial",
+  "evidence": "Origin::Retarget and BuildError::Retargeting{file} in or-project build.rs; test a_file_that_cannot_move_stops_the_build_and_leaves_the_last_good_one; or-source cook.rs:158 refuses any platform but win64; R36 closed as declined",
+  "missing": "Legacy/Enhanced retarget and the named stop work, but no platform extension is written (win64 only).",
+  "area": "cook",
+  "statement": "An output can retarget a source's layout (Legacy or Enhanced) and writes the extension of its platform, and a file the other layout cannot describe stops the build with its name.",
+  "p31": {
+   "status": "Question",
+   "question": "Q4",
+   "note": "Legacy and Enhanced retarget with a named stop. Only win64 is written; a source of another platform is refused. OpenRage is Windows first"
+  }
+ },
+ {
+  "id": "PRO-173",
+  "status": "partial",
+  "evidence": "crates/tools/or-cli/src/project.rs has create, adopt, link, unlink, links, template, plan, build, verify, history, rollback, remove, recook (test the_actions_of_the_workspace_run_from_the_command_line.rs); no CLI hit for sharing, apply template, origin check",
+  "missing": "No verb for Apply a template to an open project, Check before sharing, or Check against the game, which the Project workspace offers.",
+  "area": "cli",
+  "statement": "The project verbs of openrage-cli (create, plan, build, verify, adopt, link, unlink, links, template) do headlessly everything the Project workspace does, using the same container as the app.",
+  "p31": {
+   "status": "Present",
+   "note": "P31: openrage-cli project apply-template, check-sharing and check-original"
+  }
+ },
+ {
+  "id": "PRO-180",
+  "status": "missing",
+  "evidence": "docs/direction/Workbench_Plan.md:122 lists P32 'Draft the weapon, particle, map and other project views' depending on P31; no such draft document exists in docs/direction",
+  "missing": "The weapons, particles and maps view draft (P32) is not written; it is ordered last in the plan and waits for this re-verification.",
+  "area": "future-views",
+  "statement": "After everything above is finished and re-verified, view systems (workspaces) for weapons, particles, maps and other useful project views are drafted, in that order of priority and last.",
+  "p31": {
+   "status": "Planned",
+   "note": "Wave P32, which starts once this wave has merged"
+  }
+ },
+ {
+  "id": "PRO-148",
+  "status": "partial",
+  "evidence": "docs/direction/Wardrobe_Parity.md: nearly every row Present incl. normal/specular maps (P35); Excluded: Menyoo/CodeWalker import, tattoos and overlays, alt:V and RageMP; Present in part: hide ears, first-person alternates, review 3D, auto-fix samplers, cloth",
+  "missing": "Three competitor rows are excluded by ruling and several are only present in part, so parity is not complete.",
+  "area": "wardrobe",
+  "statement": "The Wardrobe has at least feature parity with the competing tools (Durty Cloth Tool, grzyClothTool, Vestium) and is better where the plan says so.",
+  "p31": {
+   "status": "Question",
+   "question": "Q13",
+   "note": "Every row of the matrix above has a status. The Excluded rows are defaults of the plan and not sentences of the owner, and the five costs that remain are by design. These close when the owner confirms them as rulings"
+  }
+ },
+ {
+  "id": "WAR-205",
+  "status": "partial",
+  "evidence": "Clothing, addon ped and Files contents plan into one FiveM resource: or-content test a_project_of_both_kinds_plans_with_what_each_hands_over; or-project builds_take_content_and_links_carry_files.rs. ModuleKind is Files, Clothing, AddonPed only.",
+  "missing": "There is no Map content kind, so maps can only ride as loose files in Files (no ytyp/ymap registration in the manifest); a Map plus Clothing build is not a thing the app models.",
+  "area": "content-kinds",
+  "statement": "A project holding Map and Clothing content (and loose files such as scripts) builds them into a single FiveM resource.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "The mechanism is open-ended and three of the six named kinds exist (Files, Clothing, Addon ped). Map documents ride as loose files of the Files content with a type the person states. P32 drafts the Map view"
+  }
+ },
+ {
+  "id": "WAR-207",
+  "status": "missing",
+  "evidence": "crates/domain/or-project/src/container.rs ModuleKind has no Weapons; or_content::kinds() is [Clothing, AddonPed]; 'weapons' appears only as Unknown(\"weapons\") in tests; Project_Model_Design.md row Weapons has an empty Notes cell.",
+  "missing": "No weapon content kind, no weapon metadata model, no component/attachment-point screen, no template; only a design row and the parked gap G18.",
+  "area": "content-kinds",
+  "statement": "The project system holds weapon content (weapon metadata and models, by component and attachment point).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-208",
+  "status": "missing",
+  "evidence": "No Props or Map ModuleKind (container.rs); New project templates are Empty, Files, Clothing pack, Adopt (src/state/front_door/new_project.rs); 'Props and maps' exists only as a design row, Clothing_Tool_Design.md.",
+  "missing": "No props content kind with placement and archetype; ymap/ytyp ship only as loose Files.",
+  "area": "content-kinds",
+  "statement": "The project system holds props content (placement and archetype).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-209",
+  "status": "partial",
+  "evidence": "Addon ped is a built content kind: crates/domain/or-addonped (addonped.json, RULES, verify), openrage-cli addonped, plans via or-content; Wardrobe_Parity.md row Addon peds says it has no workspace of its own.",
+  "missing": "A ped is a list of files: no component set or clip sets modelled, peds.meta is shipped as written and untyped (or-addonped/src/metadata.rs), so it does not share clothing's typed ped metadata; no workspace or preview.",
+  "area": "content-kinds",
+  "statement": "The project system holds ped content beyond freemode clothing, as an addon ped (a model with its component set and clip sets) that shares the ped metadata family.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-210",
+  "status": "partial",
+  "evidence": "Vehicles named in one row only: Clothing_Tool_Design.md module table 'Vehicles | model with handling and variation data'; G18 parked in docs/audit/workbench-waves-2026-10-08.json. No Vehicle ModuleKind.",
+  "missing": "Vehicles are not recorded as the biggest kind after clothing, maps and weapons, and cars/bikes/helicopters/boats, sirens, liveries and wheels are in no design document; nothing built.",
+  "area": "content-kinds",
+  "statement": "Vehicles (cars, bikes, helicopters, boats with handling, variations, sirens, liveries and wheels) are named as the biggest content kind after clothing, maps and weapons.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-211",
+  "status": "partial",
+  "evidence": "Named inside single rows: Clothing_Tool_Design.md 'Props and maps', Project_Model_Design.md Map row ('a map or an interior'), Roadmap R47 'interior (MLO) builder' as a plugin; no ModuleKind for any.",
+  "missing": "Props, shells and interiors (MLO) are not recorded as content kinds of their own (shells nowhere) and none is built.",
+  "area": "content-kinds",
+  "statement": "Props and shells, and interiors (MLO) as a map family big enough for their own content, are named as content kinds.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-212",
+  "status": "partial",
+  "evidence": "Only a parked-gap label: 'animation, sound and graphics content kinds (G18)' in docs/audit/workbench-waves-2026-10-08.json notCovered; Roadmap R47 lists an animation studio and audio world tools as plugins. No ModuleKind.",
+  "missing": "No design document records emotes, walk styles, weapon animations or engine/siren/weapon sounds/custom radios as content kinds, and nothing is built.",
+  "area": "content-kinds",
+  "statement": "Animations (emotes, walk styles, weapon animations) and sounds (engine, siren, weapon sounds, custom radios) are named as content kinds.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-213",
+  "status": "partial",
+  "evidence": "Wardrobe_Parity.md row 'Tattoos and overlays | Excluded | Held back'; Workbench_Plan.md Held back list; graphics named only in the G18 line of docs/audit/workbench-waves-2026-10-08.json. No ModuleKind.",
+  "missing": "Tattoos and overlays are excluded rather than a content kind; graphics packs (timecycle, weather, texture replacement) are a bare parked label with no design and no code.",
+  "area": "content-kinds",
+  "statement": "Tattoos and overlays (faces, makeup, eyes) and graphics packs (timecycle, weather, texture replacement) are named as content kinds.",
+  "p31": {
+   "status": "Excluded",
+   "note": "Tattoo and overlay editing is on the held-back list of [Workbench_Plan.md](Workbench_Plan.md#held-back). Graphics packs are a parked label with no design: question Q1"
+  }
+ },
+ {
+  "id": "WAR-214",
+  "status": "partial",
+  "evidence": "Scripts ship as the Files content (or-project plan.rs files_contributions, start-page card 'Ship files as a resource', test a_script_cannot_ship_in_a_singleplayer_dlc_and_the_reason_names_it); P32 title names 'particle' views.",
+  "missing": "Particle effects, interface (HUD, minimap, loading screens) and data patches (traffic, population, weapon balance) are not named as content kinds in any design document and nothing is built; scripts have no Lua/JS/C# awareness.",
+  "area": "content-kinds",
+  "statement": "Particle effects, interface (HUD, minimap, loading screens), scripts in Lua, JS or C# (the Files content) and data patches (traffic, population, weapon balance) are named as content kinds.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-215",
+  "status": "partial",
+  "evidence": "Clothing (waves F to P37) then addon ped (wave L, crates/domain/or-addonped; Clothing_Tool_Design.md 'natural second one is the addon ped') exist in that order; ModuleKind has no Vehicle.",
+  "missing": "Vehicles, the third in the owner's order, are not built and the order is not recorded: the Clothing_Tool_Design.md module table lists props/maps and weapons before vehicles.",
+  "area": "content-kinds",
+  "statement": "Content kinds are built in the order clothing, then addon peds, then vehicles.",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "WAR-216",
+  "status": "partial",
+  "evidence": "Content trait (or-project/src/content.rs); or_project::cannot_ship (plan.rs) locks a DLC cell with a reason, test a_cell_a_kind_of_build_cannot_ship_is_locked_and_says_why (src/ui/the_builds_window_as_a_person_meets_it.rs); clothing has typed metadata, RULES and the Wardrobe.",
+  "missing": "The lock is derived from what a contribution holds, not declared per kind; addon ped has rules but no screen or typed metadata, and Files has neither.",
+  "area": "content-kinds",
+  "statement": "Each content kind brings its own typed metadata, rules and screen, and declares which build kinds it can ship in, with a locked cell and a reason where it cannot (scripts cannot ship in a DLC).",
+  "p31": {
+   "status": "Question",
+   "question": "Q1",
+   "note": "None of them is a kind of content. The Clothing_Tool_Design module table lists props, maps and weapons before vehicles, which is not the owner's order. P32 drafts weapon, particle, map and other views"
+  }
+ },
+ {
+  "id": "PRO-182",
+  "status": "partial",
+  "evidence": "docs/direction/Wardrobe_Parity.md: most rows Present (normal/specular generation, budgeting, LODs, shop fields, tags, packages, size map); seven costs listed; Workbench_UX_Design.md 'What stays a disadvantage'.",
+  "missing": "Menyoo/CodeWalker XML, tattoos/overlays and alt:V/RageMP are Excluded; hide ears, first-person, auto-fix, cloth physics and review mode are only 'Present in part'; the costs remain by design.",
+  "area": "quality",
+  "statement": "The UI gives all the advantages of Durty Cloth Tool, grzyClothTool and Vestium without their disadvantages, on top of the project system underneath.",
+  "p31": {
+   "status": "Question",
+   "question": "Q13",
+   "note": "Every row of the matrix above has a status. The Excluded rows are defaults of the plan and not sentences of the owner, and the five costs that remain are by design. These close when the owner confirms them as rulings"
+  }
+ },
+ {
+  "id": "PRO-184",
+  "status": "partial",
+  "evidence": "Goal recorded in Workbench_Plan.md 'What this plan is for'; waves A-L, P1-P30, P33-P37 merged (git log 1cf70226); Wardrobe_Parity.md and the control inventory test hold the UX.",
+  "missing": "'No disadvantage' is not reached: the plan's five costs remain by design, parity rows are Excluded or in part, and P31 and P32 have not run.",
+  "area": "quality",
+  "statement": "The goal is to implement projects properly in OpenRage with the best UX and no avoidable disadvantage.",
+  "p31": {
+   "status": "Question",
+   "question": "Q13",
+   "note": "Every row of the matrix above has a status. The Excluded rows are defaults of the plan and not sentences of the owner, and the five costs that remain are by design. These close when the owner confirms them as rulings"
+  }
+ },
+ {
+  "id": "PRO-188",
+  "status": "partial",
+  "evidence": "P36 closed the admitted edges: read-only second window (a_second_window_on_a_project_another_holds_is_told_so...), Redo remakes an import (redo_makes_the_sources_of_an_import_again_exactly...); no TODO markers in project code; on-screen suites exist.",
+  "missing": "Recorded edges remain: no real multi-window shell, a read-only window stays read-only until reopened, and the screens have not been re-judged since P36/P37 (P31 shots); polish to the maximum needs the owner's eye.",
+  "area": "quality",
+  "statement": "The project system is polished to the maximum and left clean (no defects, rough edges or half-finished states in the project screens).",
+  "p31": {
+   "status": "Question",
+   "question": "Q9",
+   "note": "The screens were drawn again at five sizes by P31 and the defects seen were fixed. What remains is recorded: no multi-window shell (a second project is a second process), and a read-only window stays read-only until the project is opened again"
+  }
+ },
+ {
+  "id": "WAR-127",
+  "status": "partial",
+  "evidence": "Shop section edits price, restriction tags, forced components per texture as one Edit::Shop Undo step (or-wardrobe/src/shop_edit.rs, src/ui/panels/wardrobe/entry_fields.rs; test a_shop_entry_is_edited_per_texture_and_the_build_writes_what_was_stated).",
+  "missing": "Lock hash, variant components and outfits have no typed field or model: only Field::Raw, a free XML box, because no staged shop file states them.",
+  "area": "shop-hashes",
+  "statement": "Shop metadata is editable per item with price, lock hash, restriction tags, forced components, variant components and outfits.",
+  "p31": {
+   "status": "Excluded",
+   "note": "D15: names and values come from the engine through the corpus, and no staged document states a flag or value for them, so no control writes one. Hide hair is a preset that writes the round number staged hats state, and audio presets are the ids by slot. A sample that states one decides: question Q11"
+  }
+ },
+ {
+  "id": "WAR-129",
+  "status": "partial",
+  "evidence": "Emitter plugin kind exists (plugins/README.md, src/state/plugins/extensions.rs, tests an_emitter_adds_the_files_it_names_and_the_plan_gets_them_in_order, the_sample_emitter_adds_a_catalogue...); a generic clothes dump (or_wardrobe::dump) carries JSON/Lua.",
+  "missing": "No framework-specific emitter (illenium-appearance, qb/ESX/rcore/xnTattoos, Menyoo overlays) exists as a plugin or built in; tattoo and overlay output is Excluded in Wardrobe_Parity.md.",
+  "area": "plugins",
+  "statement": "Config builders for server frameworks (illenium-appearance, qb-tattooshop, ESX-TattooShop, rcore-tattoos, xnTattoos, Menyoo overlays) exist as emitter plugins reading the emitted plan.",
+  "p31": {
+   "status": "Question",
+   "question": "Q12",
+   "note": "The clothes dump (JSON and Lua table) is built, and a plugin of the emitter kind can write a framework's config. No framework-specific emitter ships, and tattoo output is on the held-back list"
+  }
+ }
+]

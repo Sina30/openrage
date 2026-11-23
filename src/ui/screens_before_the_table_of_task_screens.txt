@@ -1,0 +1,1924 @@
+## project
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "If you keep this folder in Git" 1035.0 366.0 1220.2 389.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project file" 1035.0 339.0 1122.8 362.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal in the file manager" 1035.0 122.0 1200.5 145.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "Start this project on this workspace" 1035.0 149.0 1255.3 172.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 build" 1150.9 236.5 1187.4 251.5
+Label "1 error, 1 warning" 1150.9 280.5 1249.3 295.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 assets" 1150.9 258.5 1199.2 273.5
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "Assets" 1035.0 258.5 1073.9 273.5
+Label "Builds" 1035.0 236.5 1070.1 251.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing · 3\ngarments\nFiles · 3 assets" 1150.9 186.0 1236.3 231.0
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 1035.0 201.0 1080.8 216.0
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Problems" 1035.0 280.5 1089.4 295.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "The project itself; select an asset to see it" 1035.0 102.0 1229.2 114.0
+Label "Unsaved changes" 1035.0 308.5 1138.9 323.5
+Label "Yes: Save project\nwrites them" 1150.9 301.0 1252.3 331.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 1035.0 80.0 1078.9 98.0
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, the menu of a content
+Button "Add files…" 123.0 201.0 326.8 219.0
+Button "Add images as a textures source…" 123.0 267.0 326.8 285.0
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Animation" 343.0 283.0 666.6 301.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Browse" 343.0 169.0 666.6 187.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Data" 343.0 359.0 666.6 377.0
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "If you keep this folder in Git" 1035.0 366.0 1220.2 389.0
+Button "Import folder…" 123.0 245.0 326.8 263.0
+Button "Import game files…" 123.0 223.0 326.8 241.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "Model" 343.0 207.0 666.6 225.0
+Button "New ⏵" 123.0 179.0 326.8 197.0
+Button "Open in ⏵" 123.0 147.0 326.8 165.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Particle" 343.0 321.0 666.6 339.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project file" 1035.0 339.0 1122.8 362.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 343.0 147.0 666.6 165.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal in the file manager" 1035.0 122.0 1200.5 145.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "Start this project on this workspace" 1035.0 149.0 1255.3 172.0
+Button "Texture" 343.0 245.0 666.6 263.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Wardrobe" 343.0 397.0 666.6 415.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 build" 1150.9 236.5 1187.4 251.5
+Label "1 error, 1 warning" 1150.9 280.5 1249.3 295.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 assets" 1150.9 258.5 1199.2 273.5
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "Assets" 1035.0 258.5 1073.9 273.5
+Label "Builds" 1035.0 236.5 1070.1 251.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing · 3\ngarments\nFiles · 3 assets" 1150.9 186.0 1236.3 231.0
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 1035.0 201.0 1080.8 216.0
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Problems" 1035.0 280.5 1089.4 295.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "The project itself; select an asset to see it" 1035.0 102.0 1229.2 114.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 191.0 666.6 203.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 229.0 666.6 241.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 267.0 666.6 279.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 305.0 666.6 317.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 343.0 666.6 355.0
+Label "This workspace shows a document: open one of the content's assets" 343.0 381.0 666.6 393.0
+Label "Unsaved changes" 1035.0 308.5 1138.9 323.5
+Label "Yes: Save project\nwrites them" 1150.9 301.0 1252.3 331.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 1035.0 80.0 1078.9 98.0
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, the menu of an asset
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Animation" 675.0 333.0 862.1 351.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Browse" 675.0 219.0 862.1 237.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Data" 675.0 409.0 862.1 427.0
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "Model" 675.0 257.0 862.1 275.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open asset" 471.0 159.0 658.8 177.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Open in ⏵" 471.0 181.0 658.8 199.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Particle" 675.0 371.0 862.1 389.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Project" 675.0 181.0 862.1 199.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Quick look Space" 471.0 203.0 658.8 221.0
+Button "Remove asset from the project" 471.0 313.0 658.8 331.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Reveal asset in the file manager" 471.0 225.0 658.8 243.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "Texture" 675.0 295.0 862.1 313.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Wardrobe" 675.0 431.0 862.1 449.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Check against the game" 471.0 291.0 658.8 309.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+Button (disabled) "Compile again" 471.0 247.0 658.8 265.0
+Button (disabled) "Replace geometry…" 471.0 269.0 658.8 287.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "This workspace does not show this kind" 675.0 203.0 862.1 215.0
+Label "This workspace does not show this kind" 675.0 241.0 862.1 253.0
+Label "This workspace does not show this kind" 675.0 279.0 862.1 291.0
+Label "This workspace does not show this kind" 675.0 317.0 862.1 329.0
+Label "This workspace does not show this kind" 675.0 355.0 862.1 367.0
+Label "This workspace does not show this kind" 675.0 393.0 862.1 405.0
+Label "This workspace does not show this kind" 675.0 453.0 862.1 465.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, Builds
+Button "Add build" 330.0 427.5 400.9 450.5
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Cancel" 408.9 427.5 465.0 450.5
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Done" 330.0 470.5 376.5 493.5
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "New build takes Clothing" 330.0 383.5 396.1 401.5
+CheckBox "New build takes Files" 330.0 405.5 374.7 423.5
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Edition" 543.2 298.5 659.5 321.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Kind" 363.9 296.0 487.9 319.0
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A FiveM resource is a folder in build/ with its fxmanifest.lua. A build writes it to a fresh folder, reads it back and swaps it in." 330.0 280.0 901.8 292.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 330.0 226.0 378.6 247.0
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Edition" 495.9 300.0 535.2 315.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 330.0 297.5 355.9 312.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 330.0 327.0 363.9 342.0
+Label "Name" 438.0 119.5 471.9 134.5
+Label "New build" 330.0 261.0 387.9 276.0
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Takes" 330.0 364.5 365.0 379.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "Written to build/tshirts_v2" 330.0 348.5 449.7 360.5
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+TextInput "Name of the new build" 371.9 325.5 651.9 344.5
+## project, Clean the builds
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Close" 430.0 404.0 478.8 427.0
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clean the builds" 430.0 293.0 558.6 314.0
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "OpenRage built nothing that is in build/ now, so there is nothing to remove." 430.0 328.0 813.4 358.0
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "The project's own files are never touched, and a folder OpenRage did not build is left alone. Build writes them again." 430.0 366.0 828.8 390.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, Fix
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Cancel" 723.8 435.0 779.8 458.0
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Remove mp_m_freemode_01_mp_m_t^jbib_001_u" 420.0 435.0 715.8 458.0
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Remove mp_m_freemode_01_mp_m_t^jbib_001_u from the pack. Its files are not touched. Garments in the same slot that have no fixed position may move up; the next build lists which ones." 420.0 357.0 856.4 402.0
+Label "Remove mp_m_freemode_01_mp_m_t^jbib_001_u?" 420.0 263.0 816.0 284.0
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "This changes exactly:" 420.0 338.0 545.8 353.0
+Label "Undo takes it back." 420.0 406.0 531.1 421.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 420.0 298.0 433.0 313.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_freemode_01_mp_m_t^jbib_001_u ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 441.0 298.0 819.4 328.0
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, Waive
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Cancel" 549.0 428.0 605.1 451.0
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+Button (disabled) "Record the waiver" 420.0 428.0 541.0 451.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "A reason is needed" 420.0 402.0 509.9 414.0
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Reason" 420.0 380.5 462.8 395.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "The build still goes ahead. Your reason is saved in the pack, so the next person who opens it sees why." 420.0 345.0 836.4 375.0
+Label "Waive this warning" 420.0 270.0 571.9 291.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 420.0 305.0 433.0 320.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_freemode_01_mp_m_t^jbib_001_u ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 441.0 305.0 819.4 335.0
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+TextInput "Reason for the waiver" 470.8 379.0 790.8 398.0
+## project, Clothes dropped
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Cancel" 653.1 403.0 709.2 426.0
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Import as sources" 525.3 403.0 645.1 426.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "Make clothing" 420.0 403.0 517.3 426.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "1 file dropped could be clothes, and this project holds no clothing yet." 420.0 330.0 821.3 345.0
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothes dropped" 420.0 295.0 553.5 316.0
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Make clothing gives the project a clothing pack and the Wardrobe, and the dropped files are copied in as its garments. Import as sources decompiles each file into a source of the project instead, as any game file is." 420.0 353.0 856.8 389.0
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## project, Apply the fix
+Button "All" 318.0 494.0 348.3 517.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Apply the fix" 410.0 420.0 498.6 443.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 219.5 305.0 236.5
+Button "Cancel" 506.6 420.0 562.7 443.0
+Button "Clothing  ·  3 garments" 44.0 129.0 188.8 150.0
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 356.3 494.0 407.3 517.0
+Button "Export…" 878.2 495.9 942.2 518.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  3 assets" 44.0 170.0 150.3 191.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Fix…" 908.2 604.5 951.6 621.5
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 999.8 525.2 1022.0 542.2
+Button "History" 598.4 466.0 741.6 488.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Locate…" 810.8 557.5 876.5 574.5
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "More" 1035.0 237.0 1091.1 260.0
+Button "Open in \u{e136}" 1035.0 125.0 1112.2 148.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Quick look Space" 1120.2 125.0 1241.5 148.0
+Button "Remove from project" 884.5 557.5 1022.0 574.5
+Button "Reveal asset in the file manager" 1035.0 152.0 1234.8 175.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 950.2 495.9 1008.4 518.9
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 959.6 604.5 1022.0 621.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Warnings" 415.3 494.0 486.1 517.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button "tshirts  ·  FiveM resource" 63.2 241.0 222.2 264.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+ComboBox "Group the problems" 622.1 496.5 727.9 519.5
+ComboBox "Order the problems" 735.9 497.8 870.2 520.8
+Label "   Blocked by 1 error" 44.0 268.0 136.7 280.0
+Label "   ● 1 error" 44.0 195.0 93.8 207.0
+Label "   ● 1 warning" 44.0 154.0 108.3 166.0
+Label "" 740.0 144.5 740.0 159.5
+Label "" 740.0 196.5 740.0 211.5
+Label "" 740.0 222.5 740.0 237.5
+Label "" 740.0 248.5 740.0 263.5
+Label "" 740.0 274.5 740.0 289.5
+Label "1 error, 1 warning" 318.0 526.2 416.4 541.2
+Label "2 garments have no label, so a list can only show their files" 431.0 312.0 771.1 327.0
+Label "6 of 6 assets" 866.0 80.0 926.4 103.0
+Label "A loose file of the project" 1087.0 212.5 1232.0 227.5
+Label "Builds" 44.0 220.5 79.1 235.5
+Label "Clothing" 389.0 605.5 437.1 620.5
+Label "Clothing" 810.0 222.5 858.1 237.5
+Label "Clothing" 810.0 248.5 858.1 263.5
+Label "Clothing" 810.0 274.5 858.1 289.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Content" 810.0 119.5 855.8 134.5
+Label "Drawable Dictionary" 600.0 196.5 716.8 211.5
+Label "Drawable" 600.0 170.5 654.7 185.5
+Label "Drop game files here to import them, or Import game files" 161.3 703.0 429.0 715.0
+Label "Files" 369.1 558.5 395.8 573.5
+Label "Files" 810.0 144.5 836.7 159.5
+Label "Files" 810.0 170.5 836.7 185.5
+Label "Files" 810.0 196.5 836.7 211.5
+Label "Garment" 600.0 222.5 649.6 237.5
+Label "Garment" 600.0 248.5 649.6 263.5
+Label "Garment" 600.0 274.5 649.6 289.5
+Label "Give each a label?" 410.0 277.0 555.5 298.0
+Label "In the clothing pack" 894.0 222.5 1007.3 237.5
+Label "In the clothing pack" 894.0 248.5 1007.3 263.5
+Label "In the clothing pack" 894.0 274.5 1007.3 289.5
+Label "Kind" 1035.0 190.5 1060.9 205.5
+Label "Kind" 600.0 119.5 625.9 134.5
+Label "Legacy" 740.0 170.5 782.2 185.5
+Label "Loose file" 894.0 144.5 950.2 159.5
+Label "Loose file" 894.0 170.5 950.2 185.5
+Label "Loose file" 894.0 196.5 950.2 211.5
+Label "Name" 438.0 119.5 471.9 134.5
+Label "Origin" 1035.0 212.5 1069.6 227.5
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 318.0 626.0 835.7 641.0
+Label "State" 318.0 119.5 347.8 134.5
+Label "Stored as" 894.0 119.5 949.1 134.5
+Label "Suggested by Labeller (plugin.labeller.garment-unlabelled)" 410.0 331.0 684.1 343.0
+Label "Target" 740.0 119.5 778.0 134.5
+Label "Text Document" 1087.0 190.5 1175.5 205.5
+Label "Text Document" 600.0 144.5 688.5 159.5
+Label "This writes these files, all together:" 410.0 353.0 611.5 368.0
+Label "Undo takes them all back as one step." 410.0 391.0 629.8 406.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 410.0 312.0 423.0 327.0
+Label "client.lua" 1035.0 80.0 1098.8 98.0
+Label "client.lua" 438.0 144.5 489.8 159.5
+Label "legacy.ydr" 438.0 170.5 498.8 185.5
+Label "missing_hat.ydd is missing: <path>"
+Label "missing_hat.ydd" 438.0 196.5 531.2 211.5
+Label "mp_m_fre…_t^jbib_000_u" 438.0 222.5 582.6 237.5
+Label "mp_m_fre…_t^jbib_002_u" 438.0 274.5 582.3 289.5
+Label "mp_m_fre…m_t^jbib_001_u" 438.0 248.5 590.5 263.5
+Label "notes/labels.json  ·  a new file" 410.0 372.0 580.8 387.0
+Label "tshirts" 44.0 80.0 79.7 95.0
+Label "● Error" 318.0 558.5 361.1 573.5
+Label "● Missing" 318.0 196.5 377.2 211.5
+Label "● Ready" 1035.0 102.0 1085.8 117.0
+Label "● Ready" 318.0 144.5 368.8 159.5
+Label "● Ready" 318.0 170.5 368.8 185.5
+Label "● Ready" 318.0 222.5 368.8 237.5
+Label "● Ready" 318.0 274.5 368.8 289.5
+Label "● Warning" 318.0 248.5 381.0 263.5
+Label "● Warning" 318.0 605.5 381.0 620.5
+Label "●" 44.0 242.5 55.2 257.5
+Link "missing_hat.ydd" 403.8 558.5 497.1 573.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 445.1 605.5 674.4 620.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+TextInput "Filter problems" 494.1 496.0 614.1 515.0
+## the workspace commands
+"workspace: Project" | Project | Some("The project's content and builds: every asset it holds, its problems and its builds") | Some(true) | Some("Ctrl+1")
+"workspace: Browse" | Browse | Some("Archives, the install, folders, video and files with no editor of their own (.rpf, .bik, …)") | Some(false) | None
+"workspace: Model" | Model | Some("Drawables, fragments, physics bounds and cloth (.ydr, .ydd, .yft, .ybn, .yld) — viewport and gallery") | Some(false) | None
+"workspace: Texture" | Texture | Some("Texture dictionaries (.ytd), loose .dds and the world's maps — gallery and preview") | Some(false) | None
+"workspace: Animation" | Animation | Some("Animation clip dictionaries (.ycd) — play clips on a skeleton") | Some(false) | None
+"workspace: Particle" | Particle | Some("Particle effects (.ypt)") | Some(false) | None
+"workspace: Data" | Data | Some("Metadata, text, string tables, game data tables and audio (.meta, .ymt, .xml, .gxt2, .dat, .rel, .awc, …)") | Some(false) | None
+"workspace: Wardrobe" | Wardrobe | Some("A clothing pack: drop models and textures to add garments, and see what needs attention before a build") | Some(false) | Some("Ctrl+2")
+"workspace button: Project" | Project | Some("Show this workspace as a button in the strip; the project remembers it") | Some(true) | None
+"workspace button: Browse" | Browse | Some("Show this workspace as a button in the strip; the project remembers it") | Some(false) | None
+"workspace button: Model" | Model | Some("Show this workspace as a button in the strip; the project remembers it") | Some(true) | None
+"workspace button: Texture" | Texture | Some("Show this workspace as a button in the strip; the project remembers it") | Some(true) | None
+"workspace button: Animation" | Animation | Some("Show this workspace as a button in the strip; the project remembers it") | Some(false) | None
+"workspace button: Particle" | Particle | Some("Show this workspace as a button in the strip; the project remembers it") | Some(false) | None
+"workspace button: Data" | Data | Some("Show this workspace as a button in the strip; the project remembers it") | Some(false) | None
+"workspace button: Wardrobe" | Wardrobe | Some("Show this workspace as a button in the strip; the project remembers it") | Some(true) | None
+## wardrobe
+Button "000, place 000, 1 texture" 44.0 161.0 353.0 183.0
+Button "001, place 001, 1 texture, 1 problem" 44.0 187.0 353.0 209.0
+Button "002, place 002, 1 texture" 44.0 213.0 353.0 235.0
+Button "1 duplicate" 271.2 110.5 336.8 124.5
+Button "? 1 needs attention" 160.2 110.5 263.2 124.5
+Button "Actions for Male · Tops · 3 garments" 336.0 137.0 349.0 155.0
+Button "Add clothes…" 983.1 28.0 1078.6 51.0
+Button "Add package…" 939.0 179.1 1041.9 202.1
+Button "All figures" 250.2 467.0 313.2 487.0
+Button "All" 44.0 552.0 74.3 575.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 216.8 524.0 395.6 546.0
+Button "Choose a game install…" 382.0 229.2 535.7 252.2
+Button "Details" 933.0 53.0 1280.0 75.0
+Button "Dressed ped" 360.0 53.0 932.0 75.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 82.3 552.0 133.3 575.0
+Button "Export…" 604.2 553.9 668.2 576.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Filter terms" 219.0 83.0 234.0 98.0
+Button "Fix" 1086.6 28.0 1119.4 51.0
+Button "Fix…" 812.2 662.5 855.6 679.5
+Button "Frame the ped" 849.1 462.0 918.0 485.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 903.8 583.2 926.0 600.2
+Button "History" 395.6 524.0 574.4 546.0
+Button "Jobs" 574.4 524.0 753.2 546.0
+Button "Light" 581.2 462.0 658.6 485.0
+Button "Locate…" 714.8 615.5 780.5 632.5
+Button "Log" 753.2 524.0 932.1 546.0
+Button "Male · Tops · 3 garments" 44.0 135.0 353.0 157.0
+Button "Motion" 619.4 168.2 708.2 191.2
+Button "Outfit" 601.7 82.2 666.2 105.2
+Button "Ped's own parts" 485.7 168.2 611.4 191.2
+Button "Pictures" 716.2 168.2 812.2 191.2
+Button "Problems" 38.0 524.0 216.8 546.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Project: editable \u{e136}" 1028.9 4.0 1121.9 22.0
+Button "Remove from project" 788.5 615.5 926.0 632.5
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 676.2 553.9 734.4 576.9
+Button "Versions" 1127.4 28.0 1194.0 51.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 863.6 662.5 926.0 679.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Wardrobe" 38.0 53.0 359.0 75.0
+Button "Warnings" 141.3 552.0 212.1 575.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button (disabled) "Female set" 1150.0 277.1 1229.0 300.1
+Button (disabled) "Male set" 1077.0 277.1 1142.0 300.1
+Button (disabled) "Redo" 1240.0 28.0 1270.0 51.0
+Button (disabled) "Undo" 1202.0 28.0 1232.0 51.0
+CheckBox "Grid" 436.1 462.0 478.3 480.0
+CheckBox "Heels" 674.2 84.8 724.9 102.8
+CheckBox "Name shop entries as Durty Cloth Tool does" 939.0 331.1 1212.1 349.1
+CheckBox (disabled) "Bones" 374.0 462.0 428.1 480.0
+CheckBox (disabled) "First person" 486.3 462.0 573.2 480.0
+CheckBox (disabled) "Ped without hair" 366.0 168.2 477.7 186.2
+ComboBox "Build the Build button makes" 52.0 491.0 283.0 514.0
+ComboBox "Draw" 404.3 137.5 488.3 160.5
+ComboBox "Group the problems" 348.1 554.5 453.9 577.5
+ComboBox "Level" 535.3 140.0 619.3 163.0
+ComboBox "Order the problems" 461.9 555.8 596.2 578.8
+ComboBox "Peds shown" 245.0 81.5 353.0 104.5
+ComboBox "Tint" 657.3 141.2 741.3 164.2
+ComboBox (disabled) "Skin" 509.7 83.5 593.7 106.5
+Label "" 48.0 161.0 62.0 183.0
+Label "" 48.0 213.0 62.0 235.0
+Label "000" 125.5 164.5 148.6 179.5
+Label "000" 70.0 164.5 93.5 179.5
+Label "001" 125.5 190.5 145.8 205.5
+Label "001" 70.0 190.5 93.5 205.5
+Label "002" 125.5 216.5 148.3 231.5
+Label "002" 70.0 216.5 93.5 231.5
+Label "1 error, 1 warning" 44.0 584.2 142.4 599.2
+Label "1 texture" 309.0 166.0 349.0 178.0
+Label "1 texture" 309.0 192.0 349.0 204.0
+Label "1 texture" 309.0 218.0 349.0 230.0
+Label "1 warning" 52.0 467.0 96.2 485.0
+Label "3 garments · 3 textures" 44.0 108.5 152.2 126.5
+Label "3 garments, 3 drawables and 3 textures in the metadata it plans" 939.0 125.1 1235.7 137.1
+Label "A script, a shop table or a package keyed on Durty's names (CLO_DCT_TOP_0_0_M) keeps finding the entries after a move to OpenRage. Off, an entry is named for its collection, slot, position and texture. Two packs that both use Durty's names share them, as Durty's do." 939.0 353.1 1272.8 413.1
+Label "A set makes drawables wear an alternate model (the game's hair, a bag, a drawable of this pack) while the garments that cause it are worn" 939.0 233.1 1270.8 257.1
+Label "Alternate variations" 939.0 214.1 1050.9 229.1
+Label "Blocked" 291.0 496.5 328.6 508.5
+Label "Clothing" 115.0 663.5 163.1 678.5
+Label "Draw" 366.0 139.0 396.3 154.0
+Label "Drop clothes here, or Add clothes" 161.3 703.0 318.4 715.0
+Label "Female: collection mp_f_tshirts" 939.0 160.1 1181.6 175.1
+Label "Files" 95.1 616.5 121.8 631.5
+Label "Level" 496.3 141.5 527.3 156.5
+Label "Male · Tops · 3 garments" 48.0 138.5 191.3 153.5
+Label "Male: collection mp_m_tshirts" 939.0 141.1 1166.0 156.1
+Label "Name" 939.0 103.5 972.9 118.5
+Label "No game install is chosen, so the preview shows the garment alone" 382.0 208.8 770.8 223.8
+Label "None: Waive… in Problems records a reason a finding stands" 939.0 444.1 1223.8 456.1
+Label "Pack" 939.0 81.0 971.7 98.0
+Label "Select a garment to see its textures" 374.0 502.0 538.9 514.0
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 44.0 684.0 561.7 699.0
+Label "Shop" 939.0 312.1 968.9 327.1
+Label "Show" 366.0 112.0 398.4 127.0
+Label "Skin" 477.0 85.0 501.7 100.0
+Label "This pack has none" 939.0 261.1 1029.7 273.1
+Label "Tint" 627.3 142.8 649.3 157.8
+Label "Waivers (0)" 939.0 425.1 1006.0 440.1
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 48.0 187.0 62.0 209.0
+Label "missing_hat.ydd is missing: <path>"
+Label "· Estimated memory: 48.0 KiB" 104.0 467.0 242.2 485.0
+Label "● Error" 44.0 616.5 87.1 631.5
+Label "● Warning" 44.0 663.5 107.0 678.5
+Link "missing_hat.ydd" 129.8 616.5 223.1 631.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 171.1 663.5 400.4 678.5
+RadioButton "Before the last change" 617.9 110.5 764.4 133.5
+RadioButton "Female" 411.0 81.0 469.0 104.0
+RadioButton "Male" 366.0 81.0 410.0 104.0
+RadioButton "With the pack" 521.4 110.5 616.9 133.5
+RadioButton (disabled) "Without the pack" 406.4 110.5 520.4 133.5
+TextInput "Filter garments" 44.0 81.0 237.0 100.0
+TextInput "Filter problems" 220.1 554.0 340.1 573.0
+TextInput "Name of a new set of alternate variations" 939.0 277.1 1069.0 296.1
+TextInput "Pack name" 980.9 102.0 1260.9 121.1
+Unknown "Dressed ped" 366.0 195.2 926.0 459.0
+## wardrobe, a garment chosen
+Button "000, place 000, 1 texture" 44.0 161.0 353.0 183.0
+Button "001, place 001, 1 texture, 1 problem" 44.0 187.0 353.0 209.0
+Button "002, place 002, 1 texture" 44.0 213.0 353.0 235.0
+Button "1 duplicate" 271.2 110.5 336.8 124.5
+Button "? 1 needs attention" 160.2 110.5 263.2 124.5
+Button "Actions for Male · Tops · 3 garments" 336.0 137.0 349.0 155.0
+Button "Add clothes…" 983.1 28.0 1078.6 51.0
+Button "Add package…" 939.0 179.1 1041.9 202.1
+Button "All figures" 250.2 467.0 313.2 487.0
+Button "All" 44.0 552.0 74.3 575.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 216.8 524.0 395.6 546.0
+Button "Choose a game install…" 382.0 229.2 535.7 252.2
+Button "Details" 933.0 53.0 1280.0 75.0
+Button "Dressed ped" 360.0 53.0 932.0 75.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 82.3 552.0 133.3 575.0
+Button "Export…" 604.2 553.9 668.2 576.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Filter terms" 219.0 83.0 234.0 98.0
+Button "Fix" 1086.6 28.0 1119.4 51.0
+Button "Fix…" 812.2 662.5 855.6 679.5
+Button "Frame the ped" 849.1 462.0 918.0 485.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 903.8 583.2 926.0 600.2
+Button "History" 395.6 524.0 574.4 546.0
+Button "Jobs" 574.4 524.0 753.2 546.0
+Button "Light" 581.2 462.0 658.6 485.0
+Button "Locate…" 714.8 615.5 780.5 632.5
+Button "Log" 753.2 524.0 932.1 546.0
+Button "Male · Tops · 3 garments" 44.0 135.0 353.0 157.0
+Button "Motion" 619.4 168.2 708.2 191.2
+Button "Outfit" 601.7 82.2 666.2 105.2
+Button "Ped's own parts" 485.7 168.2 611.4 191.2
+Button "Pictures" 716.2 168.2 812.2 191.2
+Button "Problems" 38.0 524.0 216.8 546.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Project: editable \u{e136}" 1028.9 4.0 1121.9 22.0
+Button "Remove from project" 788.5 615.5 926.0 632.5
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 676.2 553.9 734.4 576.9
+Button "Versions" 1127.4 28.0 1194.0 51.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 863.6 662.5 926.0 679.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Wardrobe" 38.0 53.0 359.0 75.0
+Button "Warnings" 141.3 552.0 212.1 575.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button (disabled) "Female set" 1150.0 277.1 1229.0 300.1
+Button (disabled) "Male set" 1077.0 277.1 1142.0 300.1
+Button (disabled) "Redo" 1240.0 28.0 1270.0 51.0
+Button (disabled) "Undo" 1202.0 28.0 1232.0 51.0
+CheckBox "Grid" 436.1 462.0 478.3 480.0
+CheckBox "Heels" 674.2 84.8 724.9 102.8
+CheckBox "Name shop entries as Durty Cloth Tool does" 939.0 331.1 1212.1 349.1
+CheckBox (disabled) "Bones" 374.0 462.0 428.1 480.0
+CheckBox (disabled) "First person" 486.3 462.0 573.2 480.0
+CheckBox (disabled) "Ped without hair" 366.0 168.2 477.7 186.2
+ComboBox "Build the Build button makes" 52.0 491.0 283.0 514.0
+ComboBox "Draw" 404.3 137.5 488.3 160.5
+ComboBox "Group the problems" 348.1 554.5 453.9 577.5
+ComboBox "Level" 535.3 140.0 619.3 163.0
+ComboBox "Order the problems" 461.9 555.8 596.2 578.8
+ComboBox "Peds shown" 245.0 81.5 353.0 104.5
+ComboBox "Tint" 657.3 141.2 741.3 164.2
+ComboBox (disabled) "Skin" 509.7 83.5 593.7 106.5
+Label "" 48.0 161.0 62.0 183.0
+Label "" 48.0 213.0 62.0 235.0
+Label "000" 125.5 164.5 148.6 179.5
+Label "000" 70.0 164.5 93.5 179.5
+Label "001" 125.5 190.5 145.8 205.5
+Label "001" 70.0 190.5 93.5 205.5
+Label "002" 125.5 216.5 148.3 231.5
+Label "002" 70.0 216.5 93.5 231.5
+Label "1 error, 1 warning" 44.0 584.2 142.4 599.2
+Label "1 texture" 309.0 166.0 349.0 178.0
+Label "1 texture" 309.0 192.0 349.0 204.0
+Label "1 texture" 309.0 218.0 349.0 230.0
+Label "1 warning" 52.0 467.0 96.2 485.0
+Label "3 garments · 3 textures" 44.0 108.5 152.2 126.5
+Label "3 garments, 3 drawables and 3 textures in the metadata it plans" 939.0 125.1 1235.7 137.1
+Label "A script, a shop table or a package keyed on Durty's names (CLO_DCT_TOP_0_0_M) keeps finding the entries after a move to OpenRage. Off, an entry is named for its collection, slot, position and texture. Two packs that both use Durty's names share them, as Durty's do." 939.0 353.1 1272.8 413.1
+Label "A set makes drawables wear an alternate model (the game's hair, a bag, a drawable of this pack) while the garments that cause it are worn" 939.0 233.1 1270.8 257.1
+Label "Alternate variations" 939.0 214.1 1050.9 229.1
+Label "Blocked" 291.0 496.5 328.6 508.5
+Label "Clothing" 115.0 663.5 163.1 678.5
+Label "Draw" 366.0 139.0 396.3 154.0
+Label "Drop clothes here, or Add clothes" 161.3 703.0 318.4 715.0
+Label "Female: collection mp_f_tshirts" 939.0 160.1 1181.6 175.1
+Label "Files" 95.1 616.5 121.8 631.5
+Label "Level" 496.3 141.5 527.3 156.5
+Label "Male · Tops · 3 garments" 48.0 138.5 191.3 153.5
+Label "Male: collection mp_m_tshirts" 939.0 141.1 1166.0 156.1
+Label "Name" 939.0 103.5 972.9 118.5
+Label "No game install is chosen, so the preview shows the garment alone" 382.0 208.8 770.8 223.8
+Label "None: Waive… in Problems records a reason a finding stands" 939.0 444.1 1223.8 456.1
+Label "Pack" 939.0 81.0 971.7 98.0
+Label "Select a garment to see its textures" 374.0 502.0 538.9 514.0
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 44.0 684.0 561.7 699.0
+Label "Shop" 939.0 312.1 968.9 327.1
+Label "Show" 366.0 112.0 398.4 127.0
+Label "Skin" 477.0 85.0 501.7 100.0
+Label "This pack has none" 939.0 261.1 1029.7 273.1
+Label "Tint" 627.3 142.8 649.3 157.8
+Label "Waivers (0)" 939.0 425.1 1006.0 440.1
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 48.0 187.0 62.0 209.0
+Label "missing_hat.ydd is missing: <path>"
+Label "· Estimated memory: 48.0 KiB" 104.0 467.0 242.2 485.0
+Label "● Error" 44.0 616.5 87.1 631.5
+Label "● Warning" 44.0 663.5 107.0 678.5
+Link "missing_hat.ydd" 129.8 616.5 223.1 631.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 171.1 663.5 400.4 678.5
+RadioButton "Before the last change" 617.9 110.5 764.4 133.5
+RadioButton "Female" 411.0 81.0 469.0 104.0
+RadioButton "Male" 366.0 81.0 410.0 104.0
+RadioButton "With the pack" 521.4 110.5 616.9 133.5
+RadioButton (disabled) "Without the pack" 406.4 110.5 520.4 133.5
+TextInput "Filter garments" 44.0 81.0 237.0 100.0
+TextInput "Filter problems" 220.1 554.0 340.1 573.0
+TextInput "Name of a new set of alternate variations" 939.0 277.1 1069.0 296.1
+TextInput "Pack name" 980.9 102.0 1260.9 121.1
+Unknown "Dressed ped" 366.0 195.2 926.0 459.0
+## wardrobe, the menu of a garment
+Button "000, place 000, 1 texture" 44.0 161.0 353.0 183.0
+Button "001, place 001, 1 texture, 1 problem" 44.0 187.0 353.0 209.0
+Button "002, place 002, 1 texture" 44.0 213.0 353.0 235.0
+Button "1 duplicate" 271.2 110.5 336.8 124.5
+Button "? 1 needs attention" 160.2 110.5 263.2 124.5
+Button "Actions for Male · Tops · 3 garments" 336.0 137.0 349.0 155.0
+Button "Add clothes…" 983.1 28.0 1078.6 51.0
+Button "Add package…" 939.0 179.1 1041.9 202.1
+Button "All figures" 250.2 467.0 313.2 487.0
+Button "All" 44.0 552.0 74.3 575.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 216.8 524.0 395.6 546.0
+Button "Choose a game install…" 382.0 229.2 535.7 252.2
+Button "Details" 933.0 53.0 1280.0 75.0
+Button "Dressed ped" 360.0 53.0 932.0 75.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Errors" 82.3 552.0 133.3 575.0
+Button "Export…" 604.2 553.9 668.2 576.9
+Button "File" 8.0 4.0 32.2 22.0
+Button "Filter terms" 219.0 83.0 234.0 98.0
+Button "Fix" 1086.6 28.0 1119.4 51.0
+Button "Fix…" 812.2 662.5 855.6 679.5
+Button "Frame the ped" 849.1 462.0 918.0 485.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Help: See what is wrong and fix it" 903.8 583.2 926.0 600.2
+Button "History" 395.6 524.0 574.4 546.0
+Button "Jobs" 574.4 524.0 753.2 546.0
+Button "Light" 581.2 462.0 658.6 485.0
+Button "Locate…" 714.8 615.5 780.5 632.5
+Button "Log" 753.2 524.0 932.1 546.0
+Button "Male · Tops · 3 garments" 44.0 135.0 353.0 157.0
+Button "Motion" 619.4 168.2 708.2 191.2
+Button "Outfit" 601.7 82.2 666.2 105.2
+Button "Ped's own parts" 485.7 168.2 611.4 191.2
+Button "Pictures" 716.2 168.2 812.2 191.2
+Button "Problems" 38.0 524.0 216.8 546.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Project: editable \u{e136}" 1028.9 4.0 1121.9 22.0
+Button "Remove from project" 788.5 615.5 926.0 632.5
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Rules…" 676.2 553.9 734.4 576.9
+Button "Versions" 1127.4 28.0 1194.0 51.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Waive…" 863.6 662.5 926.0 679.5
+Button "Wardrobe" 104.8 28.0 178.3 50.0
+Button "Wardrobe" 38.0 53.0 359.0 75.0
+Button "Warnings" 141.3 552.0 212.1 575.0
+Button "\u{e256} tshirts ●" 85.4 700.0 139.3 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Blocked by 1 error" 1129.9 4.0 1272.0 22.0
+Button (disabled) "Female set" 1150.0 277.1 1229.0 300.1
+Button (disabled) "Male set" 1077.0 277.1 1142.0 300.1
+Button (disabled) "Redo" 1240.0 28.0 1270.0 51.0
+Button (disabled) "Undo" 1202.0 28.0 1232.0 51.0
+CheckBox "Grid" 436.1 462.0 478.3 480.0
+CheckBox "Heels" 674.2 84.8 724.9 102.8
+CheckBox "Name shop entries as Durty Cloth Tool does" 939.0 331.1 1212.1 349.1
+CheckBox (disabled) "Bones" 374.0 462.0 428.1 480.0
+CheckBox (disabled) "First person" 486.3 462.0 573.2 480.0
+CheckBox (disabled) "Ped without hair" 366.0 168.2 477.7 186.2
+ComboBox "Build the Build button makes" 52.0 491.0 283.0 514.0
+ComboBox "Draw" 404.3 137.5 488.3 160.5
+ComboBox "Group the problems" 348.1 554.5 453.9 577.5
+ComboBox "Level" 535.3 140.0 619.3 163.0
+ComboBox "Order the problems" 461.9 555.8 596.2 578.8
+ComboBox "Peds shown" 245.0 81.5 353.0 104.5
+ComboBox "Tint" 657.3 141.2 741.3 164.2
+ComboBox (disabled) "Skin" 509.7 83.5 593.7 106.5
+Label "" 48.0 161.0 62.0 183.0
+Label "" 48.0 213.0 62.0 235.0
+Label "000" 125.5 164.5 148.6 179.5
+Label "000" 70.0 164.5 93.5 179.5
+Label "001" 125.5 190.5 145.8 205.5
+Label "001" 70.0 190.5 93.5 205.5
+Label "002" 125.5 216.5 148.3 231.5
+Label "002" 70.0 216.5 93.5 231.5
+Label "1 error, 1 warning" 44.0 584.2 142.4 599.2
+Label "1 texture" 309.0 166.0 349.0 178.0
+Label "1 texture" 309.0 192.0 349.0 204.0
+Label "1 texture" 309.0 218.0 349.0 230.0
+Label "1 warning" 52.0 467.0 96.2 485.0
+Label "3 garments · 3 textures" 44.0 108.5 152.2 126.5
+Label "3 garments, 3 drawables and 3 textures in the metadata it plans" 939.0 125.1 1235.7 137.1
+Label "A script, a shop table or a package keyed on Durty's names (CLO_DCT_TOP_0_0_M) keeps finding the entries after a move to OpenRage. Off, an entry is named for its collection, slot, position and texture. Two packs that both use Durty's names share them, as Durty's do." 939.0 353.1 1272.8 413.1
+Label "A set makes drawables wear an alternate model (the game's hair, a bag, a drawable of this pack) while the garments that cause it are worn" 939.0 233.1 1270.8 257.1
+Label "Alternate variations" 939.0 214.1 1050.9 229.1
+Label "Blocked" 291.0 496.5 328.6 508.5
+Label "Clothing" 115.0 663.5 163.1 678.5
+Label "Draw" 366.0 139.0 396.3 154.0
+Label "Drop clothes here, or Add clothes" 161.3 703.0 318.4 715.0
+Label "Female: collection mp_f_tshirts" 939.0 160.1 1181.6 175.1
+Label "Files" 95.1 616.5 121.8 631.5
+Label "Level" 496.3 141.5 527.3 156.5
+Label "Male · Tops · 3 garments" 48.0 138.5 191.3 153.5
+Label "Male: collection mp_m_tshirts" 939.0 141.1 1166.0 156.1
+Label "Name" 939.0 103.5 972.9 118.5
+Label "No game install is chosen, so the preview shows the garment alone" 382.0 208.8 770.8 223.8
+Label "None: Waive… in Problems records a reason a finding stands" 939.0 444.1 1223.8 456.1
+Label "Pack" 939.0 81.0 971.7 98.0
+Label "Select a garment to see its textures" 374.0 502.0 538.9 514.0
+Label "Ships the same model as mp_m_freemode_01_mp_m_t^jbib_000_u, with the same textures" 44.0 684.0 561.7 699.0
+Label "Shop" 939.0 312.1 968.9 327.1
+Label "Show" 366.0 112.0 398.4 127.0
+Label "Skin" 477.0 85.0 501.7 100.0
+Label "This pack has none" 939.0 261.1 1029.7 273.1
+Label "Tint" 627.3 142.8 649.3 157.8
+Label "Waivers (0)" 939.0 425.1 1006.0 440.1
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "\u{e4e0}" 48.0 187.0 62.0 209.0
+Label "missing_hat.ydd is missing: <path>"
+Label "· Estimated memory: 48.0 KiB" 104.0 467.0 242.2 485.0
+Label "● Error" 44.0 616.5 87.1 631.5
+Label "● Warning" 44.0 663.5 107.0 678.5
+Link "missing_hat.ydd" 129.8 616.5 223.1 631.5
+Link "mp_m_freemode_01_mp_m_t^jbib_001_u" 171.1 663.5 400.4 678.5
+RadioButton "Before the last change" 617.9 110.5 764.4 133.5
+RadioButton "Female" 411.0 81.0 469.0 104.0
+RadioButton "Male" 366.0 81.0 410.0 104.0
+RadioButton "With the pack" 521.4 110.5 616.9 133.5
+RadioButton (disabled) "Without the pack" 406.4 110.5 520.4 133.5
+TextInput "Filter garments" 44.0 81.0 237.0 100.0
+TextInput "Filter problems" 220.1 554.0 340.1 573.0
+TextInput "Name of a new set of alternate variations" 939.0 277.1 1069.0 296.1
+TextInput "Pack name" 980.9 102.0 1260.9 121.1
+Unknown "Dressed ped" 366.0 195.2 926.0 459.0
+## wardrobe, no clothing
+Button "1 job running" 1212.6 700.0 1272.0 718.0
+Button "Add a clothing pack to this project" 539.2 134.0 752.8 157.0
+Button "Add a clothing pack to this project" 91.8 134.0 305.2 157.0
+Button "Add a clothing pack to this project" 999.8 134.0 1213.2 157.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 216.8 524.0 395.6 546.0
+Button "Details" 933.0 52.0 1280.0 74.0
+Button "Dressed ped" 360.0 52.0 932.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "File" 8.0 4.0 32.2 22.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "History" 395.6 524.0 574.4 546.0
+Button "Jobs" 574.4 524.0 753.2 546.0
+Button "Log" 753.2 524.0 932.1 546.0
+Button "Open file…" 1067.1 161.0 1145.9 184.0
+Button "Open file…" 159.1 161.0 237.9 184.0
+Button "Open file…" 606.6 161.0 685.4 184.0
+Button "Problems" 38.0 524.0 216.8 546.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Project: editable \u{e136}" 1074.0 4.0 1167.0 22.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Wardrobe" 38.0 52.0 359.0 74.0
+Button "\u{e256} plain" 85.4 700.0 120.9 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Not built" 1175.0 4.0 1272.0 22.0
+Label "Drop clothes here, or Add clothes" 142.9 703.0 299.9 715.0
+Label "No clothing in this project" 1015.6 104.0 1197.5 122.0
+Label "No clothing in this project" 107.6 104.0 289.5 122.0
+Label "No clothing in this project" 555.1 104.0 737.0 122.0
+Label "Reading the project…" 44.0 552.0 926.0 692.0
+Label "\u{e2f2} Log" 1140.5 703.0 1170.6 715.0
+## project, no clothing
+Button "1 job running" 1212.6 700.0 1272.0 718.0
+Button "All" 509.0 80.0 539.4 103.0
+Button "Assets" 312.0 52.0 1028.0 74.0
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Build" 455.2 466.0 598.4 488.0
+Button "Builds: Add build…" 280.9 162.5 305.0 179.5
+Button "Content: Add files…" 280.9 107.5 305.0 124.5
+Button "Details" 1029.0 52.0 1280.0 74.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files  ·  0 assets" 44.0 129.0 150.5 150.0
+Button "Files" 547.4 81.0 588.1 102.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "History" 598.4 466.0 741.6 488.0
+Button "If you keep this folder in Git" 1035.0 327.0 1220.2 350.0
+Button "Jobs" 741.6 466.0 884.8 488.0
+Button "Log" 884.8 466.0 1027.9 488.0
+Button "Outline" 174.5 52.0 311.0 74.0
+Button "Problems" 312.0 466.0 455.2 488.0
+Button "Project file" 1035.0 300.0 1122.8 323.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Project" 38.0 52.0 174.5 74.0
+Button "Project" 44.0 28.0 100.8 50.0
+Button "Reveal in the file manager" 1035.0 122.0 1200.5 145.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Sources" 596.1 81.0 657.7 102.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "\u{e256} plain" 85.4 700.0 120.9 718.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e80e} Build  ● Not built" 1175.0 4.0 1272.0 22.0
+Button "plain  ·  FiveM resource" 63.2 184.0 214.0 207.0
+Button (disabled) "Clear filters" 775.6 80.0 858.2 103.0
+Button (disabled) "Start this project on this workspace" 1035.0 149.0 1255.3 172.0
+CheckBox "Only problems" 665.7 82.5 767.6 100.5
+Label "   Not built" 44.0 211.0 91.6 223.0
+Label "0 assets" 1150.9 231.5 1199.4 246.5
+Label "0 of 0 assets" 866.0 80.0 926.7 103.0
+Label "1 build" 1150.9 209.5 1187.4 224.5
+Label "Assets" 1035.0 231.5 1073.9 246.5
+Label "Builds" 1035.0 209.5 1070.1 224.5
+Label "Builds" 44.0 163.5 79.1 178.5
+Label "Content" 1035.0 187.5 1080.8 202.5
+Label "Content" 44.0 108.5 89.8 123.5
+Label "Drop game files here to import them, or Import game files" 142.9 703.0 410.5 715.0
+Label "Files · 0 assets" 1150.9 187.5 1236.5 202.5
+Label "No" 1150.9 275.5 1167.4 290.5
+Label "None" 1150.9 253.5 1181.8 268.5
+Label "Problems" 1035.0 253.5 1089.4 268.5
+Label "Reading the project…" 318.0 494.0 1022.0 692.0
+Label "Reading the project…" 344.0 118.5 467.2 133.5
+Label "The project itself; select an asset to see it" 1035.0 102.0 1229.2 114.0
+Label "Unsaved changes" 1035.0 275.5 1138.9 290.5
+Label "\u{e2f2} Log" 1140.5 703.0 1170.6 715.0
+Label "plain" 1035.0 80.0 1068.8 98.0
+Label "plain" 44.0 80.0 71.5 95.0
+Label "●" 44.0 185.5 55.2 200.5
+TextInput "Filter assets" 318.0 80.0 501.0 99.0
+## the start page
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Choose its folder…" 966.8 179.5 1092.0 202.5
+Button "Choose its folder…" 966.8 251.5 1092.0 274.5
+Button "Choose its folder…" 966.8 323.5 1092.0 346.5
+Button "Clothing pack" 434.9 577.0 530.5 600.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files project" 340.2 577.0 426.9 600.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Map pack" 740.8 577.0 813.6 600.0
+Button "Open in new window" 883.4 455.0 1036.8 472.0
+Button "Open" 1044.8 455.0 1092.0 478.0
+Button "Particle pack" 642.0 577.0 732.8 600.0
+Button "Project from a folder" 821.6 577.0 956.7 600.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Weapon pack" 538.5 577.0 634.0 600.0
+Button "\u{e230} Open file…" 612.7 612.0 707.8 635.0
+Button "\u{e256} Open folder…" 493.0 612.0 604.7 635.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e390} Import built pack…" 345.1 612.0 485.0 635.0
+Button "\u{e3d4} New project…" 219.0 577.0 332.2 600.0
+Button "\u{ea86} Open project…" 219.0 612.0 337.1 635.0
+Label "<path>"
+Label "Clothing · 0 garments" 226.0 495.0 326.2 507.0
+Label "GTA V (Enhanced)" 292.0 167.0 415.6 184.0
+Label "GTA V (Legacy)" 292.0 239.0 398.0 256.0
+Label "Looking for installs (Steam, Rockstar Games Launcher, Epic)…" 245.0 379.0 535.2 391.0
+Label "No document open — File ▸ Open file… (Ctrl+O)" 85.4 703.0 309.7 715.0
+Label "Not built" 345.1 495.0 384.3 507.0
+Label "Not found on this machine" 292.0 188.0 415.0 200.0
+Label "Not found on this machine" 292.0 260.0 415.0 272.0
+Label "Not found on this machine" 292.0 332.0 415.0 344.0
+Label "Open an install" 219.0 134.0 324.3 152.0
+Label "OpenRage" 293.0 50.0 423.3 82.0
+Label "Reads, edits and writes the files of GTA V, Legacy and Enhanced" 293.0 86.0 667.7 101.0
+Label "Recent projects" 219.0 422.0 330.6 440.0
+Label "Red Dead Redemption 2" 292.0 311.0 453.3 328.0
+Label "What do you want to make?" 219.0 551.0 416.7 569.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "opened just now" 798.3 455.0 875.4 467.0
+Label "·" 334.2 495.0 337.1 507.0
+Link "clothes" 226.0 455.0 274.5 472.0
+## new project, Gallery
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Cancel" 922.9 623.0 979.0 646.0
+Button "Choose its folder…" 966.8 179.5 1092.0 202.5
+Button "Choose its folder…" 966.8 251.5 1092.0 274.5
+Button "Choose its folder…" 966.8 323.5 1092.0 346.5
+Button "Clothing pack" 250.0 254.0 608.8 282.0
+Button "Clothing pack" 434.9 577.0 530.5 600.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "Empty project" 250.0 138.0 608.8 166.0
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files project" 250.0 190.0 608.8 218.0
+Button "Files project" 340.2 577.0 426.9 600.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Map pack" 250.0 482.0 608.8 510.0
+Button "Map pack" 740.8 577.0 813.6 600.0
+Button "Next" 987.0 623.0 1030.0 646.0
+Button "Open in new window" 883.4 455.0 1036.8 472.0
+Button "Open" 1044.8 455.0 1092.0 478.0
+Button "Particle pack" 250.0 406.0 608.8 434.0
+Button "Particle pack" 642.0 577.0 732.8 600.0
+Button "Project from a folder" 250.0 558.0 608.8 586.0
+Button "Project from a folder" 821.6 577.0 956.7 600.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "Template file…" 507.1 546.0 608.8 569.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Weapon pack" 250.0 330.0 608.8 358.0
+Button "Weapon pack" 538.5 577.0 634.0 600.0
+Button "\u{e230} Open file…" 612.7 612.0 707.8 635.0
+Button "\u{e256} Open folder…" 493.0 612.0 604.7 635.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e390} Import built pack…" 345.1 612.0 485.0 635.0
+Button "\u{e3d4} New project…" 219.0 577.0 332.2 600.0
+Button "\u{ea86} Open project…" 219.0 612.0 337.1 635.0
+Label "<path>"
+Label "A FiveM resource, named after the project" 691.4 230.5 935.9 245.5
+Label "A map for the game: add .ymap and .ytyp files, and OpenRage shows what they place, lets you move, turn and scale each thing with a manipulator, checks the pack and makes a FiveM resource." 250.0 514.0 600.8 550.0
+Label "A project with nothing in it yet." 250.0 170.0 392.0 182.0
+Label "Builds" 623.8 230.5 658.9 245.5
+Label "Clothes for the male and female freemode peds: drop models and textures, and OpenRage names, numbers and checks them and makes a FiveM resource." 250.0 286.0 602.8 322.0
+Label "Clothes for the male and female freemode peds: drop models and textures, and OpenRage names, numbers and checks them and makes a FiveM resource." 623.8 138.0 1007.2 183.0
+Label "Clothing pack" 623.8 116.0 721.8 134.0
+Label "Clothing · 0 garments" 226.0 495.0 326.2 507.0
+Label "Clothing: an empty pack, ready for the models and textures you drop on it" 691.4 195.0 986.8 225.0
+Label "Content" 623.8 202.5 669.6 217.5
+Label "GTA V (Enhanced)" 292.0 167.0 415.6 184.0
+Label "GTA V (Legacy)" 292.0 239.0 398.0 256.0
+Label "Looking for installs (Steam, Rockstar Games Launcher, Epic)…" 245.0 379.0 535.2 391.0
+Label "Loose files shipped as they are: scripts, interface and configuration, copied into a FiveM resource." 250.0 222.0 603.8 246.0
+Label "Make a folder you already have a project." 250.0 590.0 443.7 602.0
+Label "New project" 250.0 74.0 347.2 95.0
+Label "No document open — File ▸ Open file… (Ctrl+O)" 85.4 703.0 309.7 715.0
+Label "Not built" 345.1 495.0 384.3 507.0
+Label "Not found on this machine" 292.0 188.0 415.0 200.0
+Label "Not found on this machine" 292.0 260.0 415.0 272.0
+Label "Not found on this machine" 292.0 332.0 415.0 344.0
+Label "Open an install" 219.0 134.0 324.3 152.0
+Label "OpenRage" 293.0 50.0 423.3 82.0
+Label "Opens on" 623.8 252.5 679.4 267.5
+Label "Particle effects for the game: drop .ypt files, and OpenRage keeps each as a source of rules and textures you can read and change, checks the pack and makes a FiveM resource." 250.0 438.0 608.8 474.0
+Label "Reads, edits and writes the files of GTA V, Legacy and Enhanced" 293.0 86.0 667.7 101.0
+Label "Recent projects" 219.0 422.0 330.6 440.0
+Label "Red Dead Redemption 2" 292.0 311.0 453.3 328.0
+Label "The Wardrobe workspace" 691.4 252.5 841.6 267.5
+Label "Weapons for the game: drop weapon models, textures and weapon files, and OpenRage reads what they define, lets you change it, checks the pack and makes a FiveM resource." 250.0 362.0 601.8 398.0
+Label "What do you want to make?" 219.0 551.0 416.7 569.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "opened just now" 798.3 455.0 875.4 467.0
+Label "·" 334.2 495.0 337.1 507.0
+Link "clothes" 226.0 455.0 274.5 472.0
+TextInput "Search templates" 250.0 109.0 608.8 128.0
+## new project, Details
+Button "Automate" 167.3 4.0 227.0 22.0
+Button "Back" 858.8 623.0 903.3 646.0
+Button "Browse…" 538.8 204.0 608.8 227.0
+Button "Cancel" 911.3 623.0 967.4 646.0
+Button "Choose its folder…" 966.8 179.5 1092.0 202.5
+Button "Choose its folder…" 966.8 251.5 1092.0 274.5
+Button "Choose its folder…" 966.8 323.5 1092.0 346.5
+Button "Clothing pack" 434.9 577.0 530.5 600.0
+Button "Create" 975.4 623.0 1030.0 646.0
+Button "Edit" 40.2 4.0 66.0 22.0
+Button "File" 8.0 4.0 32.2 22.0
+Button "Files project" 340.2 577.0 426.9 600.0
+Button "Help" 235.0 4.0 265.6 22.0
+Button "Map pack" 740.8 577.0 813.6 600.0
+Button "Open in new window" 883.4 455.0 1036.8 472.0
+Button "Open" 1044.8 455.0 1092.0 478.0
+Button "Particle pack" 642.0 577.0 732.8 600.0
+Button "Project from a folder" 821.6 577.0 956.7 600.0
+Button "Project" 114.5 4.0 159.3 22.0
+Button "Room: Automate" 4.0 134.0 34.0 164.0
+Button "Room: Game" 4.0 66.0 34.0 96.0
+Button "Room: Guide" 4.0 628.0 34.0 658.0
+Button "Room: Home" 4.0 32.0 34.0 62.0
+Button "Room: Project" 4.0 100.0 34.0 130.0
+Button "Room: Settings…" 4.0 662.0 34.0 692.0
+Button "View" 74.0 4.0 106.5 22.0
+Button "Weapon pack" 538.5 577.0 634.0 600.0
+Button "\u{e230} Open file…" 612.7 612.0 707.8 635.0
+Button "\u{e256} Open folder…" 493.0 612.0 604.7 635.0
+Button "\u{e26e} No game" 8.0 700.0 63.4 718.0
+Button "\u{e390} Import built pack…" 345.1 612.0 485.0 635.0
+Button "\u{e3d4} New project…" 219.0 577.0 332.2 600.0
+Button "\u{ea86} Open project…" 219.0 612.0 337.1 635.0
+Label "+     wardrobe.json" 623.8 196.0 772.5 211.0
+Label "+   .gitattributes" 623.8 253.0 764.7 268.0
+Label "+   .gitignore" 623.8 234.0 733.4 249.0
+Label "+   clothing/" 623.8 177.0 725.6 192.0
+Label "+   police.openrage-proj"
+Label "+   sources/" 623.8 158.0 717.7 173.0
+Label "+ police/" 623.8 139.0 694.2 154.0
+Label "<path>"
+Label "An empty clothing pack, and a FiveM resource for it. The Wardrobe opens, and you drop in the models and textures." 623.8 280.0 964.3 310.0
+Label "Clothing pack" 250.0 109.0 347.9 127.0
+Label "Clothing · 0 garments" 226.0 495.0 326.2 507.0
+Label "Create in" 250.0 185.0 302.2 200.0
+Label "FiveM resource name" 250.0 296.0 375.4 311.0
+Label "GTA V (Enhanced)" 292.0 167.0 415.6 184.0
+Label "GTA V (Legacy)" 292.0 239.0 398.0 256.0
+Label "Game" 250.0 235.0 283.8 250.0
+Label "Looking for installs (Steam, Rockstar Games Launcher, Epic)…" 245.0 379.0 535.2 391.0
+Label "Name" 250.0 139.0 283.9 154.0
+Label "New clothing pack" 250.0 74.0 398.7 95.0
+Label "No document open — File ▸ Open file… (Ctrl+O)" 85.4 703.0 309.7 715.0
+Label "Not built" 345.1 495.0 384.3 507.0
+Label "Not found on this machine" 292.0 188.0 415.0 200.0
+Label "Not found on this machine" 292.0 260.0 415.0 272.0
+Label "Not found on this machine" 292.0 332.0 415.0 344.0
+Label "Open an install" 219.0 134.0 324.3 152.0
+Label "OpenRage" 293.0 50.0 423.3 82.0
+Label "Reads, edits and writes the files of GTA V, Legacy and Enhanced" 293.0 86.0 667.7 101.0
+Label "Recent projects" 219.0 422.0 330.6 440.0
+Label "Red Dead Redemption 2" 292.0 311.0 453.3 328.0
+Label "The edition the pack is made for." 250.0 276.0 403.3 288.0
+Label "The folder name of the resource on your server. Filled in from the name; change it if the folder there differs." 250.0 338.0 589.8 362.0
+Label "What do you want to make?" 219.0 551.0 416.7 569.0
+Label "What this writes" 623.8 116.0 716.6 131.0
+Label "\u{e2f2} Log" 1241.9 703.0 1272.0 715.0
+Label "opened just now" 798.3 455.0 875.4 467.0
+Label "·" 334.2 495.0 337.1 507.0
+Link "clothes" 226.0 455.0 274.5 472.0
+RadioButton "Enhanced" 318.2 254.0 393.7 272.0
+RadioButton "Legacy and Enhanced" 401.7 254.0 547.8 272.0
+RadioButton "Legacy" 250.0 254.0 310.2 272.0
+TextInput "Clothing pack name" 250.0 158.0 608.8 177.0
+TextInput "Folder" 250.0 204.0 530.8 223.0
+TextInput "Resource name" 250.0 315.0 608.8 334.0

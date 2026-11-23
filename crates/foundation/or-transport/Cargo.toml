@@ -1,0 +1,13 @@
+[package]
+name = "or-transport"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Playback clock for the editor's previews: play, loop, scrub"
+
+[dependencies]
+# Deliberately none. A transport is time arithmetic, and the moment it knows
+# what it is scrubbing it stops being usable by the other preview.

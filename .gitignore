@@ -1,0 +1,203 @@
+# Rust
+/target/
+# An agent lane that cannot use a worktree points CARGO_TARGET_DIR somewhere
+# else in this tree instead, and leaves several gigabytes behind. Ignored so it
+# does not bury a real stray in `git status` -- but delete them too, since
+# `/target/` being ignored is exactly why the first one went unnoticed.
+#
+# ⚠ This rule reaches only inside the repository, and the directories that
+# actually grew were **siblings** of it -- outside any .gitignore's reach and
+# outside `git status`. `just janitor` is what sees those.
+/target-*/
+**/*.rs.bk
+
+# Marks a worktree as a throwaway agent lane. Written by `just agent-worktree`,
+# read by the two build variables at the top of the justfile.
+#
+# ⚠ Ignoring it is load-bearing, not tidiness: `just janitor` refuses to remove
+# a worktree with untracked files, so a tracked-or-visible marker would hold
+# every lane it creates forever.
+/.agent-worktree
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Windows junk
+nul
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test fixtures (copyrighted game files).
+#
+# Everything staged under a fixture root is game content, at any depth: the
+# corpus is organised `<title>/<target>/`, so a one-level pattern would miss most
+# of it. The README that documents the layout is the only tracked file there.
+crates/io/or-io-verify/tests/fixtures/*
+!crates/io/or-io-verify/tests/fixtures/README.md
+
+# The sibling corpus, reached from inside the tree.
+#
+# ⚠ Git descends into a Windows junction as though it were an ordinary
+# directory, and `core.symlinks` does not change that because a junction is not
+# a symlink. So `mklink /J corpus ..\openrage-corpus` -- a reasonable way to
+# have the corpus on hand without copying it -- offers git every file behind
+# the link as its own entry rather than one link entry, and `git add -A` stages
+# them one by one. Measured on the owner's checkout: 6,964 files behind the
+# junction, 593 of them carrying an extension the list below does not name and
+# therefore ignored by nothing at all.
+#
+# This is a permanent rule for an arrangement that is expected, not a cleanup.
+# Two spellings because whoever makes the junction names it, and these are the
+# two names it gets. Anchored to the root, so a directory called `corpus` that
+# is genuinely source stays visible wherever else in the tree it sits.
+/corpus/
+/openrage-corpus/
+
+# The same content again, by extension.
+#
+# Not redundancy. The rules above name paths, and a path-shaped rule stops
+# working the moment a crate moves -- which is exactly what happened: the
+# fixture roots were `crates/format/or-io/` and `crates/format/or-meta/` until
+# the V2 split relocated them, the patterns were not updated, and the next
+# `git add -A` swept in 414 MB of game resources and 6,000 metadata files
+# across 24 commits without anything noticing.
+#
+# A RAGE extension is game content by definition -- nothing in this repository
+# authors one -- so following the content is more durable than following the
+# directory. Whichever rule fires first, the file stays out.
+#
+# ⚠ The list grows by measurement, never by transcribing the engine's extension
+# table. `.yed`, `.ypdb` and `.yfd` are here because a real corpus held 590 of
+# them and not one rule above named any; the other extensions that table lists
+# are absent because no corpus has yet been seen to carry them, and an ignore
+# rule that is wider than the evidence hides files somebody wanted to see.
+*.ypt
+*.ytd
+*.ydr
+*.ydd
+*.yft
+*.ybn
+*.yld
+*.ycd
+*.yed
+*.ypdb
+*.yfd
+*.ymt
+*.ymf
+*.ymap
+*.ytyp
+*.pso
+*.rpf
+*.gxt2
+*.fxc
+*.dds
+
+# There used to be an exception here. Two files -- a `.ydr` drawable fixture and
+# the metadata schema snapshot -- were tracked from before these rules existed,
+# and git does not consult .gitignore for a path it already tracks, so the list
+# above did not reach them. They have been retracted from history and the
+# exception is gone with them; the rules below now apply to both without
+# qualification, and the provenance lint fails if either returns.
+
+# Descriptor pack sources.
+#
+# A pack carries the engine's own type and field names, which is the point of
+# it and the reason it is not published from here. The usual place for one is a
+# private repository checked out beside this tree; this rule is for anyone who
+# keeps a working copy inside it instead.
+#
+# Nothing in this repository needs a pack to build. See docs/direction/OR_IO_Specification.md.
+/packs/
+
+# The built artefact, wherever it lands. A `.orpack` *is* the private tier --
+# it carries the engine's type and field names -- so the extension is ignored
+# outright rather than only the directory it usually sits in.
+#
+# The directory rule is here because `just pack` used to default `--out` to a
+# path relative to the shell's working directory, which put two of these in the
+# repository root and then into three commits before anyone noticed.
+*.orpack
+/dist/
+
+# Scratch space for staged samples, probe output and one-off scripts. Whatever
+# is in here came out of a game install, so it is game content by default and
+# a whole-directory rule is the only safe one.
+/tmp/
+
+# Python bytecode, from the throwaway scripts in tools/. A one-off analysis
+# script is worth keeping; the cache the interpreter leaves beside it is not,
+# and it reappears on every run.
+__pycache__/
+*.py[cod]
+
+# Redirected command output. `cargo test > tmp_test.log` is the obvious way to
+# read a long run, and one of those spent months tracked at 330 KB because
+# nothing stopped it. Any `.log` at the root is scratch by definition.
+/*.log
+
+# The metadata schema snapshot.
+#
+# The snapshot is a machine-extracted derivative of a source tree that is not
+# ours to redistribute, so neither ships. Nothing compiles one in: the editor
+# and the CLI install one found at run time, and without one metadata still
+# reads and writes exactly as before, and field names show as hashes. See
+# crates/io/or-io/src/meta/README.md.
+# By name rather than by path, for the same reason the extension list above
+# exists: this file has moved once already. The stamp beside it names the
+# generator that wrote it and means nothing without it.
+schema_snapshot.bin
+schema_snapshot.stamp
+
+/test-files/
+
+# `docs/` is documentation *of OpenRage* and ships. `docs/extra/` is the tier
+# that documents RAGE's proprietary binary layouts, or leans on the GTA source
+# tree or CodeWalker to do it, and stays local. A whole-directory rule because
+# the distinction is about provenance, not file type.
+/docs/extra/
+
+# Agent harness state.
+#
+# ⚠ Ignoring these hides more than settings. A harness that makes its own
+# `git worktree` puts it under one of them — measured: 3.93 GiB at
+# `.claude/worktrees/agent-ae40727c07fa874ab`, a second full checkout of this
+# repository inside the checkout. Ignored, so `git status` never mentions it;
+# not ignored, so every recursive walk that does not read `.gitignore` still
+# descends into it. `just janitor-dry` names any worktree outside the lane root
+# and marks this one `[inside the checkout]`, which is the only report that
+# finds it. A lane belongs under `../openrage-lanes/`, not here.
+/.claude/
+/.cursor/
+/.opencode/
+
+*-repomix-output.xml
+
+/_bmad/
+/_bmad-output/
+/repomix/
+
+# .NET build output. A tool without these rules once had 1.8 MB of Release
+# artifacts committed, including a 1.16 MB PDB.
+tools/cw-compare/bin/
+tools/cw-compare/obj/
+# A shader definition database is extracted from a game install, so it is game
+# content and must never be committed. It is written wherever the operator asks
+# for it, so the rule is by name rather than by path.
+*.shaderdefs.json

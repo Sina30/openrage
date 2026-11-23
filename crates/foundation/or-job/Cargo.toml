@@ -1,0 +1,14 @@
+[package]
+name = "or-job"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Cancellation and progress-as-data for the long jobs the CLI and the editor both run"
+
+[dependencies]
+# Deliberately none. A job model that knew what it was extracting would be
+# usable by one of its two consumers, which is how `or-cli/src/jobs.rs` came to
+# print to stderr and be unusable from a frame.

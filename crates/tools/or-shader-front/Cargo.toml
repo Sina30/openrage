@@ -1,0 +1,24 @@
+[package]
+name = "or-shader-front"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "DXBC to SPIR-V through the vendored dxbc-spirv translator, compiled by the `native` feature"
+
+[features]
+default = []
+# Compiles the vendored C++ translator. Off, the crate has no C++ in its build and every call says so.
+native = []
+
+[dependencies]
+thiserror.workspace = true
+# The DXIL front end writes naga IR and the pack manifest's reflection types.
+naga.workspace = true
+# `gta6` reads the XDAT payload a GTA VI program carries where bitcode would be.
+or-io = { workspace = true, features = ["gta6"] }
+
+[build-dependencies]
+cc = "1"

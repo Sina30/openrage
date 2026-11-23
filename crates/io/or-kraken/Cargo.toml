@@ -1,0 +1,14 @@
+[package]
+name = "or-kraken"
+description = "Decodes Oodle Kraken through a pure-Rust port, behind a boundary that turns the port's panics into errors"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+# ⚠ The strictest licence of what it links. `oozextract` declares MIT for its port of ooz, whose own
+# licence its repository does not state; that question is open (see LICENSE-third-party.md).
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+oozextract = { path = "oozextract", features = ["verbose_errors"] }

@@ -1,0 +1,28 @@
+[package]
+name = "or-weapons"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The weapons engine: weapons, their models and textures and the metadata that defines them as content of a project, with their rules, the plan they contribute and the verifier, with no UI"
+
+[dependencies]
+# The typed weapon family and the readers a weapon's files are opened with.
+or-io = { workspace = true, features = ["meta"] }
+# The contract through which content reaches a plan.
+or-project.workspace = true
+# The folders a source is: what one cooks to, the metadata source of a `.meta`, and a game file's way in.
+or-source.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The digest of a weapon's content, which the diff of two builds compares.
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true
+or-test-support.workspace = true
+# The mounted install the weapon metadata is measured on.
+or-title.workspace = true

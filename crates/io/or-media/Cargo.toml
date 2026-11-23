@@ -1,0 +1,30 @@
+[package]
+name = "or-media"
+description = "Decodes audio and video: one media interface over every container, and one table from codec to decoder"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+# ⚠ The strictest licence of any file the crate holds, never the workspace's MIT by default.
+# Ported decoders (FFmpeg's LGPL C, NihAV's AGPL Rust) land here with a header naming their
+# origin, upstream path, revision and licence, and the first one raises this field. The Bink 1
+# and XMA decoders are ported from FFmpeg n7.0, LGPL-2.1-or-later; the Bink 2 decoder from NihAV's
+# nihav-rad, AGPL-3.0-only, because NihAV's COPYING is version 3 of the Affero GPL and its README
+# states no later one. Code under LGPL-2.1-or-later may be combined into a work under AGPL-3.0, so
+# the crate is AGPL-3.0-only; the licences are reviewed before any publication. Kept out of
+# `or-io` so that crate's licence stays MIT. The Bink 2 in-loop filter is derived from RAD's
+# proprietary bink2w64.dll for interoperability (owner, 2026-10-06), which that review weighs too.
+license = "AGPL-3.0-only"
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The `.awc` container and the PCM16, ADPCM and MP3 decode its streams are stored in.
+or-io = { workspace = true, features = ["awc"] }
+thiserror.workspace = true
+# GTA VI's Opus streams, decoded and encoded; BSD-3-Clause, and only `src/opus.rs` names it.
+ropus.workspace = true
+
+[dev-dependencies]
+or-test-support.workspace = true
+# The hand-built movies FFmpeg is asked to decode go through a file.
+tempfile.workspace = true

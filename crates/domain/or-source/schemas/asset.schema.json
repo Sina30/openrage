@@ -1,0 +1,190 @@
+{
+  "$defs": {
+    "Compile": {
+      "additionalProperties": false,
+      "description": "The `compile` block of `asset.json`.",
+      "properties": {
+        "base": {
+          "description": "The SHA-256 of the base the glb was made from.",
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "base"
+      ],
+      "type": "object"
+    },
+    "Compile2": {
+      "additionalProperties": false,
+      "description": "The `compile` block of `asset.json`.",
+      "properties": {
+        "base": {
+          "description": "The SHA-256 of the file kept as the base, which the XML was exported from.",
+          "type": "string"
+        },
+        "extension": {
+          "description": "The game extension the cooked file has.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "extension",
+        "base"
+      ],
+      "type": "object"
+    },
+    "Credit": {
+      "additionalProperties": false,
+      "description": "Who made an asset, where it was found and on what terms it may be used: what a credits file says of it.",
+      "properties": {
+        "author": {
+          "description": "Who made it.",
+          "type": "string"
+        },
+        "licence": {
+          "description": "The terms it may be used on: the name of a licence such as `CC-BY-4.0`, or a sentence.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Where it was found: a page, a shop, or the pack it was taken from.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "How": {
+      "enum": [
+        "extracted",
+        "authored",
+        "imported"
+      ],
+      "type": "string"
+    },
+    "Origin": {
+      "additionalProperties": true,
+      "description": "Where an asset's content came from.",
+      "properties": {
+        "cooked_sha256": {
+          "description": "The SHA-256 of what the cook of this source made when the game's file was imported, which a build takes for the game's file as `sha256` is, because a cook writes OpenRage's form of a file and not the game's bytes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from_game": {
+          "description": "True when the content is the game's, which a build leaves out while it is still the game's file and a repository does not keep by default.",
+          "type": "boolean"
+        },
+        "game_build": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "how": {
+          "$ref": "#/$defs/How"
+        },
+        "sha256": {
+          "description": "The SHA-256 of the compiled original, to tell that the game's file changed after an update.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "virtual_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "how",
+        "from_game"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "The contents of `asset.json`; nothing in it changes when the payload does.",
+  "properties": {
+    "compile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Compile"
+        },
+        {
+          "$ref": "#/$defs/Compile2"
+        }
+      ],
+      "description": "What a kind that compiles from a base keeps in the manifest: a model the mode and the hash of the base its glb was made from, a metadata source the extension of the file and the hash of the base its XML was exported from"
+    },
+    "created_with": {
+      "type": "string"
+    },
+    "credit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Credit"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Who made the asset and on what terms it may be used, which a build can list in a credits file; nothing compiles from it."
+    },
+    "format": {
+      "const": "openrage-source",
+      "type": "string"
+    },
+    "id": {
+      "description": "Made once and never changed, so a rename or a move breaks no reference to the asset.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "A word with no platform letter that chooses the compiler, such as `textures`.",
+      "type": "string"
+    },
+    "name": {
+      "description": "One plain file name: the folder is `<name>.<kind>.src` and the cook writes `<name>.ytd`.",
+      "type": "string"
+    },
+    "notes": {
+      "default": "",
+      "type": "string"
+    },
+    "origin": {
+      "$ref": "#/$defs/Origin"
+    },
+    "platform": {
+      "default": "win64",
+      "type": "string"
+    },
+    "schema": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "target": {
+      "description": "The slug of the RSC7 layout the asset compiles to, such as `gen8`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "format",
+    "schema",
+    "kind",
+    "id",
+    "name",
+    "target",
+    "origin",
+    "created_with"
+  ],
+  "title": "asset.json",
+  "type": "object"
+}

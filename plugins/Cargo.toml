@@ -1,0 +1,11 @@
+# Plugins build for wasm32-unknown-unknown, apart from the editor's workspace:
+# the guest library's imports resolve only inside the host.
+[workspace]
+resolver = "2"
+members = ["guest", "sample", "cloth-painter"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false

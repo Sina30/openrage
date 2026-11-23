@@ -1,0 +1,166 @@
+# The half of the testing hosted CI structurally cannot do.
+#
+# Hosted CI has no corpus, so it can only ever answer "is a file this tree
+# builds read correctly". Two things therefore ran nowhere automatic until
+# this job existed:
+#
+#   * the corpus-gated suites, on real files,
+#   * the clean-checkout run, because discovery walks the workspace root's
+#     ancestors and finds the shared corpus and schema store from every
+#     worktree.
+#
+# ⚠ Hosted CI is deliberately **not** aligned with this. It answers a different
+# question on a clean machine and its value is that it is clean.
+name: Local gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# ⚠ A self-hosted runner executes whatever the pull request contains, and this
+# one can read a private corpus. So it runs only for
+# branches in this repository: a pull request from a fork gets no job rather
+# than a job that fails, because a failing job on a fork PR invites someone to
+# "fix" the condition.
+#
+# The repository is private, which makes a fork PR unlikely rather than
+# impossible — a collaborator can still fork it.
+jobs:
+  layouts:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, openrage-corpus]
+    # ⚠ Measured: run 36229552001 took 87 minutes without the behaviour
+    # baselines step, which adds four test binaries' builds and about five
+    # minutes of suites (`just baselines-record`, 314 s, on this machine). At
+    # 90 a cold or busy run fails for no fault in the commit.
+    timeout-minutes: 120
+
+    env:
+      # The runner shares this machine with several agents, each with its own
+      # target directory. This is a fifth, so a job cannot invalidate an
+      # agent's incremental state or wait on its lock.
+      #
+      # ⚠ It lives beside the runner installation and **not** under
+      # `openrage-lanes`, which `just janitor` sweeps by construction: anything
+      # under the lane root is a lane, and this is not one. The repository
+      # variable `OPENRAGE_RUNNER_ROOT` names the runner's directory.
+      CARGO_TARGET_DIR: ${{ vars.OPENRAGE_RUNNER_ROOT }}\_cargo-target
+      CARGO_TERM_COLOR: never
+      # ⚠ On this machine the default `-j` fails at link time with
+      # `rust-lld: undefined symbol: anon.*.llvm.*` — which is how `layouts`
+      # failed on every pull request for a while. Four jobs do not. Stale
+      # incremental state in this target directory causes the same error:
+      # when no job runs, delete its `debug\incremental` and rerun the job.
+      CARGO_BUILD_JOBS: 4
+      # The corpus, named once. Explicit rather than discovered, so the log
+      # says which corpus a result came from. The repository variable
+      # `OPENRAGE_CORPUS` is the path of `openrage-corpus` on the runner.
+      OPENRAGE_FIXTURES: ${{ vars.OPENRAGE_CORPUS }}\or-asset
+
+    steps:
+      # ⚠ **Plain git rather than `actions/checkout`, and not by preference.**
+      # That action copies the user's `.gitconfig` into a temporary HOME and
+      # deletes it again, and on this machine the delete fails: a dozen or more
+      # git processes belonging to the agents sharing the box hold a handle
+      # long enough for `rmdir` to return EBUSY. It failed twice in a row, so
+      # it is a property of a busy machine rather than a flake to retry.
+      #
+      # Doing it here also keeps the token out of the checkout. It goes in an
+      # `http.extraheader` passed with `-c`, so it is never written to
+      # `.git/config` — which matters because the work directory survives
+      # between jobs on a runner, and this one is shared.
+      - name: Check out the commit under test
+        shell: powershell
+        run: |
+          $dir = $env:GITHUB_WORKSPACE
+          if (-not (Test-Path "$dir\.git")) { git init -q -b main $dir }
+          Set-Location $dir
+          git remote remove origin 2>$null
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          $basic = [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes("x-access-token:${{ github.token }}"))
+          git -c http.extraheader="AUTHORIZATION: basic $basic" `
+              fetch --no-tags --force --depth 1 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "fetch failed" }
+          git checkout -q --force --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "checkout failed" }
+          git clean -xdfq -e /target
+          $at = (git rev-parse HEAD).Trim()
+          if ($at -ne $env:GITHUB_SHA) { throw "checked out $at, wanted $env:GITHUB_SHA" }
+          "checked out $at"
+
+      # or-io's per-format gates on the same corpus: typed reads, the canonical
+      # fixed point, the testimony and the structural diff. Hosted CI has no
+      # corpus, so without this step they skip everywhere automatic. The link
+      # cap is restated so the step keeps it if it is ever moved out; the
+      # corpus stays the job's.
+      - name: or-io corpus gates
+        shell: powershell
+        env:
+          CARGO_BUILD_JOBS: 4
+        run: |
+          cargo test -p or-io-verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # R66e's behaviour baselines (OD-BASELINES): every corpus drawable's
+      # `.glb` and viewport upload, every clip's poses, every effect's
+      # simulation snapshot, the documented CLI commands' stdout and every
+      # Legacy texture's RGBA, held
+      # to the digests `just baselines-record` took from `main`. The record is
+      # named rather than discovered, so a missing one fails, and a skip fails
+      # too because this job names the corpus. The link cap is restated so the
+      # step keeps it if it is ever moved out.
+      - name: Behaviour baselines
+        shell: powershell
+        env:
+          CARGO_BUILD_JOBS: 4
+          OPENRAGE_BASELINES: ${{ vars.OPENRAGE_CORPUS }}\baselines
+          OPENRAGE_REQUIRE_FIXTURES: 1
+        run: |
+          cargo test -p or-interchange -p or-anim -p or-simulation -p or-cli -p or-io-verify --test every_corpus_drawable_exports_as_recorded --test every_corpus_clip_poses_as_recorded --test every_corpus_effect_simulates_as_recorded --test every_documented_command_reports_as_recorded --test every_corpus_legacy_texture_decodes_as_recorded
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The viewport upload digests are a unit test of the app binary, not a crate's `tests/`.
+          cargo test -p openrage --bin openrage -- every_corpus_drawable_uploads_as_recorded
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The clean-checkout condition, asked for deliberately. An empty fixture
+      # root makes the corpus absent, and `none` the schema snapshot. Together
+      # they are what a fresh clone sees, which is the state the refusal paths
+      # and the skip ledger exist for.
+      # ⚠ Two variables, not one. The schema snapshot is found by walking the
+      # workspace root's ancestors, so on this runner every worktree finds one
+      # and a clean checkout is unreachable without the sentinel.
+      - name: No pack, no corpus
+        shell: powershell
+        env:
+          OPENRAGE_SCHEMA: none
+        run: |
+          $empty = Join-Path $env:RUNNER_TEMP "empty-corpus"
+          New-Item -ItemType Directory -Force -Path $empty | Out-Null
+          $env:OPENRAGE_FIXTURES = $empty
+          cargo test --workspace
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # ⚠ No `upload-artifact` anywhere in this file, deliberately. The corpus
+      # is game content; it does not leave the machine.
+
+# One runner, so two queued jobs run in sequence rather than at once and cannot
+# race over one target directory. This cancels a superseded run on the same branch so
+# a push during a long job does not queue behind its own predecessor.
+#
+# ⚠ **Keyed on the event as well as the ref, and that is a fix rather than a
+# tidy-up.** With the ref alone, a merge to `main` and the pull request that
+# produced it shared one group — so merging cancelled the PR run that was about
+# to report, and a second merge cancelled the first merge's run. Measured over
+# the run history: the `main` runs for #50, #51, #53 and #56 were cancelled after
+# 10s, 6m50s, 8s and 1m56s, because merges arrive in batches seconds apart. Not
+# one of them finished.
+#
+# `main` pushes still supersede each other here, which is right for a
+# forty-minute deep check — only the tip matters. `main-tip.yml` has a group of
+# its own, so the two workflows never cancel each other.
+concurrency:
+  group: local-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true

@@ -1,0 +1,201 @@
+//! GTA VI's Xbox programs, which ship as native gfx10 GPU code and no bitcode: the container
+//! unwrapped to instruction words, the words decoded, their control flow, and a lowering to naga IR.
+
+pub mod cfg;
+pub mod decode;
+mod opcodes;
+pub mod sym;
+pub mod to_naga;
+
+use or_io::gta5::shaders::xdat;
+
+pub use cfg::{Block, Cfg, CfgError, Terminator};
+pub use decode::{decode, decode_one, DecodeError, Family, Inst, Op, Operand};
+pub use sym::{Index, IndexSource, Loc};
+pub use to_naga::{lower, lower_with, Lowered, NotTranslated, Options, Resource, ResourceKind};
+
+use crate::dxil::container::{Container, ContainerError};
+use crate::dxil::ShaderKind;
+
+/// Two 12-byte records open a block's code range; the first instruction follows them.
+const CODE_DESCRIPTOR: usize = 0x18;
+/// The filler after a program's last instruction, to the end of its code range.
+const S_CODE_END: u32 = 0xBF9F_0000;
+/// The package word whose bit 5 says the code was compiled for 32 lanes rather than 64.
+const PACKAGE_FLAGS: usize = 0xD4;
+const WAVE32: u32 = 0x20;
+/// A pixel package's input records: eight bytes each, from here while the first byte is 6.
+const INPUT_TABLE: usize = 0x138;
+const INPUT_RECORD: usize = 8;
+const INPUT_TAG: u8 = 6;
+
+/// One input a pixel program interpolates; its place in [`Program::inputs`] is the attribute number the code names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelInput {
+    /// The parameter the vertex stage exported it as.
+    pub slot: u8,
+    /// Bit 0: read flat; bit 1: interpolated as 32-bit; bit 3: a 16-bit parameter; bit 4: interpolated as 16-bit.
+    pub flags: u8,
+}
+
+/// One element of a vertex program's input signature, which a fetch routine outside the program loads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VertexInput {
+    pub register: u32,
+    pub mask: u8,
+    /// 1 unsigned, 2 signed, 3 float, as the signature states it.
+    pub component_type: u32,
+}
+
+/// One `XBCH` block's code: a container holds one, or two where its `XDAT` directory lists two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Program {
+    pub kind: ShaderKind,
+    /// The one used slot of the block's package, which tells two blocks of a container apart.
+    pub slot: usize,
+    /// The instruction words, the trailing filler dropped; data the code reads may follow the last instruction.
+    pub words: Vec<u32>,
+    pub wave32: bool,
+    pub inputs: Vec<PixelInput>,
+    pub vertex_inputs: Vec<VertexInput>,
+    /// The components of the position a pixel program's signature says it reads, as a mask.
+    pub position_read: u8,
+    /// Whether a pixel program's signature says it reads which way its triangle faces.
+    pub front_face: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RdnaError {
+    #[error(transparent)]
+    Container(#[from] ContainerError),
+    #[error(transparent)]
+    Cfg(#[from] CfgError),
+    #[error(transparent)]
+    NotTranslated(#[from] NotTranslated),
+}
+
+/// An input signature's element size, and where an element holds its system value, and the mask of the components the program reads.
+const ELEMENT: usize = 32;
+const ELEMENT_SYSTEM_VALUE: usize = 12;
+const ELEMENT_READ_MASK: usize = 25;
+/// The system values of a position and of a triangle's facing.
+const SV_POSITION: u32 = 1;
+const SV_IS_FRONT_FACE: u32 = 9;
+
+/// The position components an input signature says are read, and whether the facing is.
+fn system_reads(signature: &[u8]) -> (u8, bool) {
+    let word = |at: usize| {
+        (signature.get(at..at + 4)).map_or(0, |w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]))
+    };
+    let (count, first) = (word(0) as usize, word(4) as usize);
+    let (mut position, mut facing) = (0, false);
+    for element in 0..count {
+        let Some(at) = element
+            .checked_mul(ELEMENT)
+            .and_then(|by| by.checked_add(first))
+        else {
+            break;
+        };
+        let Some(&read) = signature.get(at + ELEMENT_READ_MASK) else {
+            break;
+        };
+        match word(at + ELEMENT_SYSTEM_VALUE) {
+            SV_POSITION => position |= read & 0xF,
+            SV_IS_FRONT_FACE => facing |= read != 0,
+            _ => {}
+        }
+    }
+    (position, facing)
+}
+
+fn pixel_inputs(package: &[u8]) -> Vec<PixelInput> {
+    (package.get(INPUT_TABLE..).unwrap_or_default())
+        .as_chunks::<INPUT_RECORD>()
+        .0
+        .iter()
+        .take_while(|record| record[0] == INPUT_TAG)
+        .map(|record| PixelInput {
+            slot: record[6],
+            flags: record[7],
+        })
+        .collect()
+}
+
+/// Every block of a DXBC container's `DXIL` part, in directory order, as instruction words.
+pub fn unwrap(dxbc: &[u8]) -> Result<Vec<Program>, ContainerError> {
+    let container = Container::read(dxbc)?;
+    let part = (container.part(b"DXIL")).ok_or(ContainerError::NoPart("DXIL"))?;
+    let program = xdat::read(part)?;
+    let kind = ShaderKind::from_program_version(program.program_version);
+    // A container with no input signature fetches nothing.
+    let vertex_inputs: Vec<VertexInput> = (container.inputs().unwrap_or_default().iter())
+        .map(|e| VertexInput {
+            register: e.register,
+            mask: e.mask,
+            component_type: e.component_type,
+        })
+        .collect();
+    let (position_read, front_face) = match kind {
+        ShaderKind::Pixel => system_reads(container.part(b"ISG1").unwrap_or_default()),
+        _ => (0, false),
+    };
+    (program.stages.iter().enumerate())
+        .map(|(block, stage)| {
+            let code = (stage.package.get(stage.code.clone()))
+                .and_then(|code| code.get(CODE_DESCRIPTOR..))
+                .unwrap_or_default();
+            let mut words: Vec<u32> = (code.as_chunks::<4>().0.iter())
+                .map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]))
+                .collect();
+            while words.last() == Some(&S_CODE_END) {
+                words.pop();
+            }
+            if words.is_empty() {
+                return Err(ContainerError::Malformed {
+                    part: "DXIL",
+                    why: format!(
+                        "block {block}'s code range holds no instruction after its descriptor"
+                    ),
+                });
+            }
+            let flags = (stage.package.get(PACKAGE_FLAGS..PACKAGE_FLAGS + 4))
+                .map_or(0, |w| u32::from_le_bytes([w[0], w[1], w[2], w[3]]));
+            Ok(Program {
+                kind,
+                slot: stage.slot,
+                words,
+                wave32: flags & WAVE32 != 0,
+                inputs: match kind {
+                    ShaderKind::Pixel => pixel_inputs(&stage.package),
+                    _ => Vec::new(),
+                },
+                vertex_inputs: vertex_inputs.clone(),
+                position_read,
+                front_face,
+            })
+        })
+        .collect()
+}
+
+/// `program` as a naga module with what it binds, or why this front end does not translate it.
+pub fn translate(program: &Program) -> Result<Lowered, RdnaError> {
+    translate_with(program, &Options::default())
+}
+
+/// [`translate`], told what the program's neighbours need of it.
+pub fn translate_with(program: &Program, options: &Options) -> Result<Lowered, RdnaError> {
+    let cfg = Cfg::build(&program.words)?;
+    Ok(lower_with(program, &cfg, options)?)
+}
+
+/// Whether naga's validator takes a translated module, with every capability allowed; `Err` is a fault of the lowering.
+pub fn check(module: &naga::Module) -> Result<(), String> {
+    use naga::valid::{Capabilities, ValidationFlags, Validator};
+    Validator::new(ValidationFlags::all(), Capabilities::all())
+        .validate(module)
+        .map(|_| ())
+        .map_err(|e| e.into_inner().to_string())
+}
+
+#[cfg(test)]
+mod tests;

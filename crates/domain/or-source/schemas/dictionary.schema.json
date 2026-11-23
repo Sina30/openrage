@@ -1,0 +1,39 @@
+{
+  "$defs": {
+    "EntryRef": {
+      "additionalProperties": false,
+      "description": "One drawable of a dictionary, by the hash the file keys it with.",
+      "properties": {
+        "code": {
+          "description": "`0x` and eight hex digits.",
+          "type": "string"
+        },
+        "folder": {
+          "description": "A folder of `drawables/`, which is a label and not the key.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "folder"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`dictionary.json`: which folder holds which drawable of the base dictionary.",
+  "properties": {
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/EntryRef"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries"
+  ],
+  "title": "dictionary.json",
+  "type": "object"
+}

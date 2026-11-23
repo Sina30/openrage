@@ -1,0 +1,26 @@
+[package]
+name = "or-world"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The world editor's model: map data, archetypes, interiors and what they imply"
+
+[dependencies]
+glam.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# `.ymap` and `.ytyp` are metadata containers, so the bytes arrive as a
+# MetaInstance and this crate is the layer that says what they mean. It holds
+# no reader of its own and must not grow one.
+or-io = { workspace = true, features = ["meta"] }
+
+[dev-dependencies]
+or-test-support.workspace = true
+# The install censuses crawl a retail install for world files. Both sit below
+# this layer, so the edge points the right way even as a dev-dependency.
+or-io.workspace = true
+or-title.workspace = true

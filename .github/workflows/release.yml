@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+# ⚠ No `concurrency` group, and never one that cancels: a release that a newer tag cancelled is a
+# release nobody got.
+jobs:
+  # One package per OS, all made by `cargo xtask dist`, so the three share their code: the
+  # executables, the licences, a checksum and what each system needs to list the app and offer it for
+  # the game's files. Built on the oldest hosted Linux image, so its glibc runs on the newer ones.
+  package:
+    name: Package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: ubuntu-22.04
+            target: linux
+          - os: macos-14
+            target: macos
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The same pin CI uses, not `stable`.
+      #
+      # A release built on a compiler nothing was tested on is a small risk with
+      # a free fix, and it is the one build nobody re-runs before shipping it.
+      # `or-test-support`'s `toolchain_pin.rs` fails if this drifts from
+      # `rust-toolchain.toml`.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "nightly-2026-10-08"
+          # A universal macOS binary is both architectures joined with `lipo`.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      # `cpal` links ALSA, so the app's build needs its headers; a user's machine needs libasound2.
+      - name: System packages (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+
+      - name: Package
+        shell: bash
+        run: cargo xtask dist ${{ matrix.target }}
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            target/dist/*.zip
+            target/dist/*.tar.gz
+            target/dist/*.dmg
+            target/dist/*.deb
+            target/dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Collect the packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: packages
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: packages/*
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}

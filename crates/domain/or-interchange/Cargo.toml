@@ -1,0 +1,29 @@
+[package]
+name = "or-interchange"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "A drawable as an external DCC tool sees it, and the interchange files that carry it"
+
+[dependencies]
+or-io.workspace = true
+
+# glTF is JSON, and the document types are ordinary structs.
+serde.workspace = true
+serde_json.workspace = true
+
+# Inverse bind matrices are a 4x4 inversion per bone.
+glam.workspace = true
+
+# FBX is a binary node tree, and this reads one. The only reader with a licence the tree can take
+# (MIT OR Apache-2.0); it reads FBX 7.0 and later in binary, and no ASCII file.
+fbxcel = { version = "0.9", features = ["tree"] }
+
+[dev-dependencies]
+# Finds the shared corpus the export suite reads.
+or-test-support.workspace = true
+# Writes the FBX files the importer's suite reads, node by node.
+fbxcel = { version = "0.9", features = ["tree", "writer"] }

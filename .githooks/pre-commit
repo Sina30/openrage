@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+set -eu
+
+# The checks are `cargo xtask pre-commit`, run from a *built* binary that
+# `just install-hooks` copies beside this hook: formatting over every
+# workspace target, encoding over the staged files and provenance, in under
+# ten seconds and with nothing compiled. A hook that compiles takes minutes and
+# gets skipped with --no-verify, and a skipped hook is how UTF-8 BOMs reached
+# main. `just ready` holds clippy and the tests and does not repeat these.
+#
+# ⚠ The binary is a copy, so a change to `crates/tools/xtask` reaches exactly
+# the machines that re-install, which for the commit that makes the change is
+# none of them. The install records a hash of that source and this hook
+# compares it with the index: when they differ, or the binary is missing, it
+# refuses and says so, where it used to skip two of the checks in silence. The
+# hash is computed from the index and the hook insists on nothing unstaged
+# before it checks anything, so it describes the commit and not the disk.
+hooks=$(git rev-parse --git-path hooks)
+binary="$hooks/openrage-xtask"
+[ -f "$binary" ] || binary="$binary.exe"
+
+want=$(git ls-files -s -- crates/tools/xtask | git hash-object --stdin)
+have=$(cat "$hooks/openrage-xtask.stamp" 2>/dev/null || true)
+
+if [ ! -f "$binary" ] || [ "$want" != "$have" ]; then
+  echo "pre-commit: the checks are not installed, or crates/tools/xtask has changed" >&2
+  echo "since they were. Install them again:" >&2
+  echo "" >&2
+  echo "  just install-hooks" >&2
+  echo "" >&2
+  echo "To commit without the checks having seen it:" >&2
+  echo "" >&2
+  echo "  git commit --no-verify" >&2
+  exit 1
+fi
+
+exec "$binary" pre-commit

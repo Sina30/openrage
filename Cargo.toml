@@ -1,0 +1,494 @@
+[workspace]
+resolver = "2"
+exclude = ["crates/io/or-kraken/oozextract"]
+members = [
+    # Layer-per-directory. A crate's directory names the layer it belongs to,
+    # so a dependency that points the wrong way is visible in the diff rather
+    # than only in `cargo tree`.
+    #
+    # The order below is the dependency order, and it only runs one way:
+    #
+    #   foundation -> io -> title -> domain -> runtime -> app
+    #
+    # `tools` sits outside it: build-time programs that consume the lower
+    # layers, and that only the app depends on — it is what drives them.
+
+    # No internal dependencies but each other's. Nothing here knows about a
+    # game, a file format or an editor.
+    "crates/foundation/or-job",
+    "crates/foundation/or-test-support",
+    "crates/foundation/or-transport",
+
+    # GTA V's file formats: the RSC7 paged resource and the RPF7 archive, the
+    # description and the canonical writer, and the declarations the record macro
+    # turns into zero-copy structs. `or-io-verify` holds the checks that read
+    # evidence the published crate does not carry.
+    "crates/io/or-io",
+    "crates/io/or-io-macros",
+    "crates/io/or-kraken",
+    "crates/io/or-io-verify",
+    # Every audio and video codec OpenRage decodes in its own Rust, behind one
+    # interface. May hold ported code under a stricter licence than the rest.
+    "crates/io/or-media",
+
+    # Where the bytes live: editions, archives, DLC overlay order, the VFS.
+    "crates/title/or-title",
+
+    # The editor's model of what it is editing.
+    "crates/domain/or-addonped",
+    "crates/domain/or-content",
+    "crates/domain/or-depends",
+    "crates/domain/or-editor",
+    "crates/domain/or-interchange",
+    "crates/domain/or-plugin",
+    "crates/domain/or-particle",
+    "crates/domain/or-particles",
+    "crates/domain/or-maps",
+    "crates/domain/or-project",
+    "crates/domain/or-source",
+    "crates/domain/or-wardrobe",
+    "crates/domain/or-weapons",
+    "crates/domain/or-world",
+
+    # Things that run: evaluated, simulated, drawn.
+    "crates/runtime/or-anim",
+    "crates/runtime/or-simulation",
+    "crates/runtime/or-renderer",
+
+    # Build-time programs.
+    "crates/tools/or-cli",
+    "crates/tools/or-shader-front",
+    "crates/tools/or-shader-tool",
+    # Repository tasks, with no workspace dependency of their own.
+    "crates/tools/xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["OpenRage contributors"]
+license = "MIT"
+# Kept in step with rust-toolchain.toml, and checked by CI. Without a declared
+# minimum, "it builds here" is the only specification, and the version that
+# introduced whatever broke is discovered by a contributor rather than by a job.
+rust-version = "1.95"
+
+# Nothing is published yet. Set deliberately rather than by omission: the default
+# is publishable, so a stray `cargo publish` in the workspace would push crates
+# whose APIs are still moving under a name nobody can reclaim.
+#
+# Flip this per crate as each one's surface settles. `or-io` and
+# `or-io-macros` are the two the owner has decided to publish (D2 in
+# docs/direction/OR_IO_Specification.md), together and with the editor, at P7.
+publish = false
+
+[workspace.dependencies]
+# Shared dependencies
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# The JSON Schemas of the source files, generated from the types that read and write them.
+schemars = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+
+# Binary parsing and compression
+byteorder = "1.5"
+# ⚠ The backend is named, not left to whatever else is in the build: `zip`
+# (through or-shader-tool) turns `zlib-rs` on, so a workspace build deflated
+# with it and a one-package build (`cargo test -p or-io-verify`) with
+# `miniz_oxide`, which wrote other bytes for the same save and ran slower.
+flate2 = { version = "1.0", features = ["zlib-rs"] }
+
+# XML pull-parsing (GTA mount descriptors: dlclist/setup2/content.xml)
+quick-xml = "0.38"
+
+# Crypto + key extraction (RPF retail AES/NG)
+aes = "0.8"
+sha1 = "0.10"
+memmap2 = "0.9"
+tempfile = "3"
+rayon = "1.10"
+bincode = "1.3"
+# Opus decode and encode for GTA VI's `.awc` streams, in `or-media` only; pinned exactly.
+ropus = "=0.12.18"
+
+# UI Framework - egui for immediate-mode GUI
+egui = "0.34"
+egui-wgpu = "0.34"
+# `accesskit` is what sends a window's AccessKit tree to the platform's screen reader.
+egui-winit = { version = "0.34", features = ["accesskit"] }
+# `serde` is what lets a dock arrangement outlive the session; without it
+# `DockState` cannot be written down at all.
+egui_dock = { version = "0.19", features = ["serde"] }
+# Image loading (PNG/JPEG decoders + file:// loader) for the startup
+# game-picker logos. `all_loaders` pulls in the `image` and `file`
+# loaders so `egui::Image::new("file://...")` Just Works.
+egui_extras = { version = "0.34", features = ["all_loaders"] }
+# Phosphor icon font for the hierarchy panel (file-type icons + state
+# badges). 9000+ tintable vector glyphs, registered as a fallback font
+# so existing labels keep their Proportional rendering. The `fill`
+# variant is enabled alongside `regular` so we can render a filled
+# circle for the "dirty / unsaved" state badge.
+egui-phosphor = { version = "0.12", features = ["regular"] }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    # `ico` + `bmp` are needed by the PE-icon extraction path in
+    # `state::game_discovery`: modern game executables embed a 256×256
+    # PNG-encoded entry inside an `RT_ICON` resource (handled by `png`),
+    # but the synthetic-ICO fallback for older / smaller entries needs
+    # the ICO container codec, which in turn pulls in BMP for
+    # DIB-encoded sub-images.
+    "ico",
+    "bmp",
+] }
+
+# Windowing
+winit = "0.30.13"
+
+# GPU Rendering - wgpu for particle preview viewport
+# Note: Using wgpu 29.x to match egui-wgpu 0.34's requirements
+wgpu = "29"
+# Moves with `wgpu`: the naga wgpu links is the one the shader tool reads SPIR-V with.
+naga = "29"
+pollster = "0.4"
+raw-window-handle = "0.6"
+
+# File dialogs
+rfd = "0.15"
+
+# Cross-platform user/config dirs (used for prefs.json)
+dirs = "5"
+
+# Phase F: cross-platform filesystem-event watcher (replaces the
+# poll-based mtime tracker for live YPT reload). Uses the OS-native
+# backend (ReadDirectoryChangesW on Windows, FSEvents on macOS,
+# inotify on Linux) so changes show up the next frame instead of
+# after a polling tick.
+notify = "6"
+
+# PE resource walker — used by `state::game_discovery` to pull icon
+# resources straight out of the user's installed `gta5.exe` /
+# `RDR2.exe` so the startup picker can show the real game artwork.
+pelite = "0.10"
+
+# Per-vertex math used by the viewport renderer (wireframe transforms etc.)
+glam = { version = "0.27", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
+
+# Bounded byte-cache used by the RPF / GameRoot session.
+lru = "0.12"
+
+# Rope data structure for the Text workspace's editor. `String` cannot
+# back a virtualized text widget at scale: every insert/remove is O(n)
+# in bytes, and any character-to-line lookup requires re-scanning the
+# whole buffer. `ropey` provides a chunk-based rope with O(log n)
+# edits, O(log n) line/byte/char index conversion, and an iterator-based
+# slice API — the same combination Helix and several VS Code-style
+# editors use for files in the tens / hundreds of MB.
+ropey = "1.6"
+
+# Regex engine for the text editor's Find/Replace UI. Already in the
+# transitive graph through `tracing-subscriber`, promoted to a direct
+# workspace dep so we can use `Regex::find_iter` + `Captures::expand`
+# for capture-group references in replacements.
+regex = "1"
+# Sub-string searcher used by the literal-mode find_iter. SIMD-fast,
+# also already pulled in transitively by `regex`.
+memchr = "2"
+
+# Internal crate dependencies
+or-io = { path = "crates/io/or-io" }
+or-io-macros = { path = "crates/io/or-io-macros" }
+or-kraken = { path = "crates/io/or-kraken" }
+or-media = { path = "crates/io/or-media" }
+or-job = { path = "crates/foundation/or-job" }
+or-test-support = { path = "crates/foundation/or-test-support" }
+or-transport = { path = "crates/foundation/or-transport" }
+or-anim = { path = "crates/runtime/or-anim" }
+or-depends = { path = "crates/domain/or-depends" }
+or-editor = { path = "crates/domain/or-editor" }
+or-interchange = { path = "crates/domain/or-interchange" }
+or-plugin = { path = "crates/domain/or-plugin" }
+or-particle = { path = "crates/domain/or-particle" }
+or-particles = { path = "crates/domain/or-particles" }
+or-maps = { path = "crates/domain/or-maps" }
+or-project = { path = "crates/domain/or-project" }
+or-source = { path = "crates/domain/or-source" }
+or-addonped = { path = "crates/domain/or-addonped" }
+or-content = { path = "crates/domain/or-content" }
+or-wardrobe = { path = "crates/domain/or-wardrobe" }
+or-weapons = { path = "crates/domain/or-weapons" }
+or-world = { path = "crates/domain/or-world" }
+or-title = { path = "crates/title/or-title" }
+or-renderer = { path = "crates/runtime/or-renderer" }
+or-cli = { path = "crates/tools/or-cli" }
+or-shader-front = { path = "crates/tools/or-shader-front" }
+or-shader-tool = { path = "crates/tools/or-shader-tool" }
+or-simulation = { path = "crates/runtime/or-simulation" }
+
+# Main application binary
+[package]
+name = "openrage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+build = "build.rs"
+
+[[bin]]
+name = "openrage"
+path = "src/main.rs"
+
+[[bin]]
+name = "openrage-cli"
+path = "src/cli_main.rs"
+
+[dependencies]
+# UI
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
+egui_dock.workspace = true
+egui_extras.workspace = true
+egui-phosphor.workspace = true
+winit.workspace = true
+
+# Rendering
+wgpu.workspace = true
+pollster.workspace = true
+
+# File dialogs
+rfd.workspace = true
+
+# Error handling and logging
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Serialization for project files and user prefs
+serde.workspace = true
+serde_json.workspace = true
+
+# User config dirs and viewport math
+dirs.workspace = true
+
+# PE resource extraction (auto-discovery of game install icons)
+pelite.workspace = true
+# `webp` for the pictures `openrage --photo` writes.
+image = { workspace = true, features = ["webp"] }
+
+# Phase F: filesystem-event-driven file watcher. Used by
+# `state::file_watcher` to surface external YPT edits without
+# per-frame polling.
+notify.workspace = true
+
+glam.workspace = true
+bytemuck.workspace = true
+lru.workspace = true
+ropey.workspace = true
+regex.workspace = true
+memchr.workspace = true
+
+# Internal crates
+or-anim = { workspace = true, features = ["gta6"] }
+# What a row's file uses and which maps place it, as `openrage-cli depends`
+# resolves them.
+or-depends.workspace = true
+or-editor.workspace = true
+or-interchange.workspace = true
+or-particle.workspace = true
+# The container keys of a `.openrage-proj`, and the paths it stores, which
+# `openrage-cli project` reads and writes the same way.
+or-project.workspace = true
+or-source.workspace = true
+# The clothing engine: the recogniser an adopted folder is read with, the empty pack a template's clothing
+# content starts from, and the pack, rules, fixes and edits the Wardrobe workspace works through.
+or-wardrobe.workspace = true
+# The addon ped engine, whose module the Content panel names and counts.
+or-addonped.workspace = true
+# The weapons engine: the model of a pack of weapons, its rules and the plan it hands a build.
+or-weapons.workspace = true
+# The particles engine: the model of a pack of particle files, its rules and the plan it hands a build.
+or-particles.workspace = true
+# The maps engine: the model of a pack of map files, its rules, the scene it places and the plan it hands a build.
+or-maps.workspace = true
+# The kinds of content this build knows, listed once: planned, adopted and started with by the editor.
+or-content.workspace = true
+# The plugin host. The app is the embedder, so it supplies the two answers
+# `or-plugin` cannot have: the edit mode as the write gate, and the format's
+# own read-back as the save check.
+or-plugin.workspace = true
+or-transport.workspace = true
+or-world.workspace = true
+# Cancellation and progress-as-data, shared with `or-cli`. The app does depend
+# on `or-cli`, to host the `openrage-cli` binary; `or-job` keeps the job model
+# out of that edge.
+or-job.workspace = true
+# Every layer the app spans: it opens archives and reads every declared format
+# (io) and mounts installs (title). Every other crate names one.
+or-io = { workspace = true, features = ["awc", "fxc", "gfx", "gta6", "meta", "rel"] }
+# Every audio and video decode, behind one interface: the `.awc` panel and the `.bik` preview.
+or-media.workspace = true
+or-title.workspace = true
+or-renderer.workspace = true
+# The shader baker is a build tool, and the app is what drives it: `Tools ->
+# Bake game shaders` walks a game install and produces a shader pack. It used
+# to be driven from inside `or-renderer`, which made a rendering crate depend
+# on a build tool and on the title layer.
+or-cli.workspace = true
+or-shader-tool.workspace = true
+or-simulation.workspace = true
+
+# The baker compresses and translates shaders in parallel.
+rayon.workspace = true
+
+# Sound output, on every platform: only the output device, since or-media decodes and so no rodio
+# decoder is built. ⚠ On Linux `cpal` links ALSA, so building needs libasound2-dev (CI installs it).
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+
+# Windows registry lookups for Steam / Rockstar / Epic install paths.
+# The platform's own trash: Finder's on a Mac, the freedesktop one on Linux. Windows keeps its shell
+# call, which asks before deleting for good what the bin cannot take.
+[target.'cfg(not(windows))'.dependencies]
+trash = "5"
+
+# Pure-Rust wrapper, only compiled on Windows targets.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+# Files on the clipboard for Explorer (`platform::clipboard`). egui-winit builds
+# it already for text, so it adds no crate.
+arboard = { version = "3.6.1", default-features = false }
+
+# OS-level mouse-button polling on Windows. Used to detect when egui's
+# input state has gotten out of sync with reality (a stuck "pressed"
+# button, usually because winit dropped a release event while the
+# cursor was outside the window) and synthesize a clean release. See
+# `app::reconcile_mouse_buttons` for the exact reasoning.
+#
+# The shell features are `platform::drag_drop`, `platform::associations` and
+# `platform::recycle_bin`: the cursor during a file drop, a drag out to
+# Explorer, telling Explorer that associations changed, and a delete into the
+# Recycle Bin. winit provides none of the four. `Win32_System_DataExchange` is
+# the clipboard's sequence number, which says whether Explorer copied files
+# after OpenRage did (`platform::clipboard`).
+# `Win32_Globalization` is the language Windows shows its own interface in (`platform::locale`).
+# `Win32_System_LibraryLoader` loads the `bink2w64.dll` of the user's install in the test that
+# holds the Bink 2 decoder to it (`src/bink.rs`), never bundled.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+# Scratch directories that clean up on drop, for the tests that write files.
+tempfile.workspace = true
+# Finds the shared corpus. The bound-rendering tests in `render::lines` and
+# `render::viewport` read `.ybn` files out of the shared corpus.
+or-test-support.workspace = true
+# A project folder zipped and opened elsewhere, as a person sends one.
+zip = { version = "8", default-features = false }
+
+[profile.dev]
+debug = "line-tables-only"
+# ⚠ **The workspace's own crates are optimized in dev too, and the reason
+# is the test suite rather than the app.**
+#
+# The dependency line below has been here a while; this one covers
+# the workspace's own crates, which is where the expensive code actually is.
+# A full `cargo test --workspace` spends about half its time in three
+# `.ycd` suites, and those are bit-packing loops — `ycd_roundtrip` alone
+# was 94s at `opt-level = 0` and is 11s at 1, an 8.4x difference on one
+# suite. Measured across the run: ~464s of test time, of which
+# `ycd_roundtrip`, `what_a_reencoded_clip_drops` and `ycd_encode` were
+# 220s.
+#
+# The cost is a slower first build and somewhat slower incremental
+# rebuilds. That trade is worth making at 1 and stops being worth it at
+# 2 or 3, where codegen time grows faster than the suites shrink.
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 1
+
+# ⚠ Set explicitly so a proc macro's hash does not depend on which targets are
+# built. At cargo's default a build dependency drops its debug info unless the
+# same crate is also built for the target, which `quote` and `syn` are only
+# when `or-io-macros` builds its own tests. `cargo test
+# --workspace` and `cargo test --bin openrage` then hashed every proc macro,
+# and so every crate, differently, and the second rebuilt the whole graph.
+[profile.dev.build-override]
+debug = "line-tables-only"
+
+# The inner loops every corpus suite runs on each file: inflate and deflate
+# (`flate2` on `zlib-rs`), the testimony's SHA-1, and BCn decode. Small crates,
+# compiled once and cached, so full optimisation costs the build little.
+[profile.dev.package.zlib-rs]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.adler2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.sha1]
+opt-level = 3
+[profile.dev.package.texture2ddecoder]
+opt-level = 3
+[profile.dev.package.bcdec_rs]
+opt-level = 3
+[profile.dev.package.texpresso]
+opt-level = 3
+# MP3 decode, which the Enhanced `.awc` install suite runs over every stream.
+[profile.dev.package.nanomp3-core]
+opt-level = 3
+# Opus decode and encode, which the GTA VI `.awc` suites run over every stream.
+[profile.dev.package.ropus]
+opt-level = 3
+
+# The editor built to be used: `dev` with LLVM for every crate (`.cargo/config.toml`)
+# and the interface's crates optimised. Under Cranelift a widget costs 12 to 16 µs,
+# so a table of forty rows in view is a 10 ms frame.
+[profile.editor]
+inherits = "dev"
+[profile.editor.package.egui]
+opt-level = 3
+[profile.editor.package.egui_extras]
+opt-level = 3
+[profile.editor.package.egui_dock]
+opt-level = 3
+[profile.editor.package.epaint]
+opt-level = 3
+[profile.editor.package.emath]
+opt-level = 3
+[profile.editor.package.ecolor]
+opt-level = 3
+
+# Build-script dependencies. The build script renders
+# `assets/brand/openrage-symbol.png` into a multi-resolution `.ico` and a
+# 256x256 PNG, then embeds the icon into the Windows PE resources of the
+# binary so Explorer / taskbar / Alt-Tab show the OpenRage symbol instead
+# of the generic Rust glyph.
+[build-dependencies]
+# `png` is the on-disk + ICO sub-image format; `jpeg` lets a replacement
+# source be a JPEG (the build script always re-emits a real PNG into
+# `OUT_DIR`).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

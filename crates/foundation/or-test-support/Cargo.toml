@@ -1,0 +1,13 @@
+[package]
+name = "or-test-support"
+description = "Shared fixture discovery and skip handling for OpenRage test suites"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+# Scratch folders the tests remove when they end, a failed test's too.
+tempfile.workspace = true

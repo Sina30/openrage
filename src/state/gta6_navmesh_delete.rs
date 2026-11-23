@@ -1,0 +1,368 @@
+//! A scanned GTA VI cell's polygon deleted, one step of undo: the view's model and the cell the
+//! inspector reads lose it at once, and a save deletes it from the body read again, after every
+//! earlier deletion and before the flags and the cuts are written.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use or_io::container::rpf::Rpf9Sections;
+use or_io::gta5::CNavMesh;
+use or_io::gta6::headerless::{
+    delete_polygon, polygon_deleted, read_navmesh, Border, NavDeleteError, NavMesh, NOWHERE,
+};
+
+use super::edit_history::{Change, Swap};
+use super::{AppState, DocPayload, DocumentId};
+
+/// A deletion as a save makes it again: the polygon, and the records the cell held before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Deletion {
+    polygon: usize,
+    records: usize,
+}
+
+// ponytail: one entry per scanned cell a polygon was deleted from, never emptied, as the cells are.
+static DELETIONS: Mutex<BTreeMap<PathBuf, Vec<Deletion>>> = Mutex::new(BTreeMap::new());
+
+fn deletions() -> MutexGuard<'static, BTreeMap<PathBuf, Vec<Deletion>>> {
+    DELETIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Drop the deletions kept for `path`, whose body opens again as it is stored.
+pub(super) fn forget(path: &Path) {
+    deletions().remove(path);
+}
+
+fn view_of(payload: &mut DocPayload) -> Option<&mut CNavMesh> {
+    match payload {
+        DocPayload::Resource(or_io::Asset::NavMesh(mesh)) => Some(mesh),
+        _ => None,
+    }
+}
+
+/// The cell the inspector reads and the deletions a save makes, which an undo puts back.
+struct CellPart {
+    path: PathBuf,
+    cell: Arc<NavMesh>,
+    deletions: Vec<Deletion>,
+}
+
+impl Swap for CellPart {
+    fn swap(&mut self, _: &mut DocPayload) -> bool {
+        let Some(now) = super::gta6_navmesh::replace(&self.path, Arc::clone(&self.cell)) else {
+            return false;
+        };
+        self.cell = now;
+        let mut made = deletions();
+        std::mem::swap(
+            made.entry(self.path.clone()).or_default(),
+            &mut self.deletions,
+        );
+        true
+    }
+}
+
+/// The open bodies of the cells across `cell`'s borders, which a deletion checks for links into
+/// it, or why it needs more of them.
+fn others(
+    cell: &NavMesh,
+    near: &[(Border, u32, Option<Arc<NavMesh>>)],
+    polygon: usize,
+) -> Result<Vec<Arc<NavMesh>>, String> {
+    let closed: Vec<String> = (near.iter())
+        .filter(|(_, _, body)| body.is_none())
+        .map(|(_, c, _)| c.to_string())
+        .collect();
+    if !closed.is_empty() {
+        return Err(tr!(
+            "Polygon {polygon} is not deleted while the bodies of the neighbouring cells {cells} are not open: their special links may number this cell's polygons. Find the neighbouring cells in the scan first.",
+            polygon = polygon,
+            cells = closed.join(", ")
+        ));
+    }
+    let across: Vec<u32> = near.iter().map(|(_, c, _)| *c).collect();
+    for (i, l) in cell.special_links.iter().enumerate() {
+        for mesh in [l.from_mesh, l.to_mesh] {
+            if mesh != cell.cell && mesh != NOWHERE && !across.contains(&mesh) {
+                return Err(tr!(
+                    "Polygon {polygon} is not deleted: special link {link} ends in cell {cell}, which is not across a border of this one, so no search opens its body.",
+                    polygon = polygon,
+                    link = i,
+                    cell = mesh
+                ));
+            }
+        }
+    }
+    Ok(near
+        .iter()
+        .filter_map(|(_, _, body)| body.clone())
+        .collect())
+}
+
+impl AppState {
+    /// Polygon `polygon` of the scanned GTA VI cell `doc` deleted as one step, or why not; `None`
+    /// for any other document.
+    pub(super) fn delete_gta6_polygon(
+        &mut self,
+        doc: DocumentId,
+        polygon: usize,
+    ) -> Option<Result<String, String>> {
+        let path = self.document(doc)?.path.clone()?;
+        let cell = super::gta6_navmesh::scanned_cell(&path)?;
+        Some(self.delete_in_cell(doc, &path, &cell, polygon))
+    }
+
+    fn delete_in_cell(
+        &mut self,
+        doc: DocumentId,
+        path: &Path,
+        cell: &NavMesh,
+        polygon: usize,
+    ) -> Result<String, String> {
+        let near = super::gta6_navmesh::neighbours(path, cell);
+        let open = others(cell, &near, polygon)?;
+        let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
+        let after = match polygon_deleted(cell, polygon, &bodies) {
+            Ok(after) => after,
+            Err(e @ NavDeleteError::NeighbourLink { .. }) => {
+                let why = self.gta6_delete_refusal(doc).unwrap_or_default();
+                return Err(format!("{why} {e}"));
+            }
+            Err(e) => return Err(e.to_string()),
+        };
+        let closed = || tr!("its document is closed").to_string();
+        let before = match self.document(doc).map(|d| &d.payload) {
+            Some(DocPayload::Resource(or_io::Asset::NavMesh(view))) => view.clone(),
+            Some(_) => return Err(tr!("The cell's view holds no edges.").to_string()),
+            None => return Err(closed()),
+        };
+        let mut edited = before.clone();
+        edited.delete_polygon(polygon).map_err(|e| e.to_string())?;
+        let (records, left) = (cell.polygons.len(), after.polygons.len());
+        let mut planned = deletions().get(path).cloned().unwrap_or_default();
+        planned.push(Deletion { polygon, records });
+        tried(path, planned, open.clone())?;
+        let held = super::gta6_navmesh::replace(path, Arc::new(after)).ok_or_else(closed)?;
+        if let Some(view) = self.document_mut(doc).and_then(|d| view_of(&mut d.payload)) {
+            *view = edited;
+        }
+        let earlier = {
+            let mut made = deletions();
+            let list = made.entry(path.to_path_buf()).or_default();
+            let earlier = list.clone();
+            list.push(Deletion { polygon, records });
+            earlier
+        };
+        let mut change = Change::part("gta6 delete polygon", before, view_of);
+        if let Change::Part { parts, .. } = &mut change {
+            parts.push(Box::new(CellPart {
+                path: path.to_path_buf(),
+                cell: held,
+                deletions: earlier,
+            }));
+        }
+        self.record(
+            doc,
+            tr!("Delete polygon {polygon}", polygon = polygon),
+            change,
+        );
+        // ⚠ Never folded into the next edit: polygon numbers change under a deletion.
+        if let Some(document) = self.document_mut(doc) {
+            document.history.seal();
+        }
+        Ok(tr!(
+            "Deleted polygon {polygon}. Polygons left: {count}.",
+            polygon = polygon,
+            count = left
+        ))
+    }
+}
+
+/// The deletions a save of the cell at `path` makes, and the open bodies of the cells across its
+/// borders.
+pub(super) fn saved_with(path: &Path, cell: &NavMesh) -> (Vec<Deletion>, Vec<Arc<NavMesh>>) {
+    let made = deletions().get(path).cloned().unwrap_or_default();
+    let open = (super::gta6_navmesh::neighbours(path, cell).into_iter())
+        .filter_map(|(_, _, body)| body)
+        .collect();
+    (made, open)
+}
+
+/// `made` made on the body at `path` read again, as a save makes them, so a deletion only its bytes
+/// refuse is refused when it is made rather than at every save after it.
+// ponytail: the body is read on the UI thread, as the edit's other checks run; a job if cells grow.
+fn tried(path: &Path, made: Vec<Deletion>, others: Vec<Arc<NavMesh>>) -> Result<(), String> {
+    let Some((archive, offset)) = super::rpf9_scan::scanned_body(path) else {
+        return Ok(());
+    };
+    let edit = move |_, s: &mut Rpf9Sections| write_deletions(s, &made, &others);
+    super::gta6_edit::written(archive, offset, &edit).map(drop)
+}
+
+/// `made` over the cell `sections` hold, in order, each where the cell holds the records it began
+/// from: a body saved with a deletion holds fewer, and it is not made twice.
+pub(super) fn write_deletions(
+    sections: &mut Rpf9Sections,
+    made: &[Deletion],
+    others: &[Arc<NavMesh>],
+) -> Result<(), String> {
+    let bodies: Vec<&NavMesh> = others.iter().map(|b| &**b).collect();
+    for d in made {
+        let read = read_navmesh(&sections.virtual_section).map_err(|e| e.to_string())?;
+        let records = read.polygons.len();
+        if records < d.records {
+            continue;
+        }
+        if records > d.records {
+            return Err(tr!(
+                "The cell read again holds {found} polygon records, more than the {records} its deletion of polygon {polygon} began from.",
+                found = records,
+                records = d.records,
+                polygon = d.polygon
+            ));
+        }
+        delete_polygon(sections, d.polygon, &bodies).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use or_io::container::rpf::Rpf9Form;
+    use or_io::gta6::headerless::SpecialLink;
+
+    use super::*;
+    use crate::state::opening_an_rpf9_archive::{
+        navmesh_cell, row_at, rows, rpf9_head, scanned, settle, written, zlib,
+    };
+
+    fn opened(dir: &Path, body: &[u8]) -> (AppState, DocumentId) {
+        let mut bytes = rpf9_head(1, 0x1A0);
+        bytes.resize(0x1010, 0);
+        bytes.extend(zlib(body));
+        let mut state = AppState::new();
+        let archive = scanned(&mut state, written(dir, &bytes));
+        state.open_scanned_body(archive, row_at(&rows(&state, archive), 0x1010));
+        settle(&mut state);
+        let doc = (state.active_document)
+            .filter(|&d| d != archive)
+            .unwrap_or_else(|| panic!("the cell: {}", state.error_dialog_message));
+        (state, doc)
+    }
+
+    fn cell() -> NavMesh {
+        read_navmesh(&navmesh_cell()).expect("the cell reads")
+    }
+
+    #[test]
+    fn a_polygon_whose_neighbours_bodies_are_not_open_is_not_deleted_and_makes_no_step() {
+        let _serial = crate::ui::theme::serial();
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let (mut state, doc) = opened(dir.path(), &navmesh_cell());
+        let refused = state.delete_navmesh_polygon(doc, 0).unwrap_err();
+        assert!(refused.contains("are not open"), "{refused}");
+        assert!(!state.document(doc).expect("open").history.can_undo());
+    }
+
+    #[test]
+    fn a_link_into_a_cell_across_no_border_is_named_and_the_body_s_own_rules_still_hold() {
+        let mut m = cell();
+        let near: Vec<(Border, u32, Option<Arc<NavMesh>>)> =
+            [Border::East, Border::West, Border::North, Border::South]
+                .into_iter()
+                .filter_map(|b| Some((b, b.across(m.cell)?, Some(Arc::new(cell())))))
+                .collect();
+        let diagonal = m.cell + 512 + 1;
+        m.special_links.push(SpecialLink {
+            from: [0; 3],
+            to: [0; 3],
+            from_polygon: 0,
+            to_polygon: 0,
+            from_mesh: m.cell,
+            to_mesh: diagonal,
+            word_18: 0,
+            heading: 0,
+        });
+        let refused = others(&m, &near, 0).unwrap_err();
+        assert!(refused.contains(&diagonal.to_string()), "{refused}");
+        m.special_links.clear();
+        let open = others(&m, &near, 0).expect("every border's body is open");
+        assert_eq!(open.len(), near.len());
+        // The cell's one polygon takes its vertices with it, and a split array keeps its chunk.
+        let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
+        let refused = polygon_deleted(&m, 0, &bodies).unwrap_err();
+        assert!(
+            matches!(refused, NavDeleteError::ChunkEmpties { .. }),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_cell_part_puts_the_cell_and_the_deletions_back_and_forth() {
+        let path = PathBuf::from("a_cell_part_puts_the_cell_back/0x1010.cell");
+        let mut after = cell();
+        after.flags = 11;
+        super::super::gta6_navmesh::remember(&path, after);
+        let made = vec![Deletion {
+            polygon: 0,
+            records: 1,
+        }];
+        deletions().insert(path.clone(), made.clone());
+        let mut part = CellPart {
+            path: path.clone(),
+            cell: Arc::new(cell()),
+            deletions: Vec::new(),
+        };
+        let mut payload = DocPayload::Resource(or_io::Asset::NavMesh(CNavMesh::default()));
+        let flags = |p: &Path| super::super::gta6_navmesh::scanned_cell(p).map(|c| c.flags);
+        let held = |p: &Path| deletions().get(p).cloned();
+        assert!(part.swap(&mut payload));
+        assert_eq!((flags(&path), held(&path)), (Some(9), Some(Vec::new())));
+        assert!(part.swap(&mut payload));
+        assert_eq!((flags(&path), held(&path)), (Some(11), Some(made)));
+
+        let mut nowhere = CellPart {
+            path: PathBuf::from("no cell is kept here"),
+            cell: Arc::clone(&part.cell),
+            deletions: Vec::new(),
+        };
+        assert!(!nowhere.swap(&mut payload), "nothing to put back");
+        assert_eq!(held(&nowhere.path), None, "and nothing changed");
+    }
+
+    #[test]
+    fn a_cell_opened_again_keeps_none_of_the_deletions_an_earlier_session_made() {
+        let path = PathBuf::from("a_cell_opened_again/0x1010.cell");
+        let made = vec![Deletion {
+            polygon: 0,
+            records: 1,
+        }];
+        deletions().insert(path.clone(), made);
+        super::super::gta6_navmesh::remember(&path, cell());
+        assert_eq!(deletions().get(&path), None);
+    }
+
+    #[test]
+    fn a_save_makes_each_deletion_once_from_the_records_it_began_from() {
+        let mut s = Rpf9Sections {
+            form: Rpf9Form::BlockMapped,
+            virtual_section: navmesh_cell(),
+            physical: Vec::new(),
+        };
+        let kept = s.clone();
+        let made = |records| Deletion {
+            polygon: 0,
+            records,
+        };
+        write_deletions(&mut s, &[made(5)], &[]).expect("a body saved with it holds it");
+        assert_eq!(s, kept);
+        let err = write_deletions(&mut s, &[made(0)], &[]).unwrap_err();
+        assert!(err.contains("more than the 0"), "{err}");
+        let err = write_deletions(&mut s, &[made(1)], &[]).unwrap_err();
+        assert!(err.contains("last chunk"), "{err}");
+        assert_eq!(s, kept);
+    }
+}

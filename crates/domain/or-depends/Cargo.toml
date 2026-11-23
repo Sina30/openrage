@@ -1,0 +1,28 @@
+[package]
+name = "or-depends"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "What an asset needs and where it is placed, resolved over a mounted install"
+
+[dependencies]
+glam.workspace = true
+# `.ymap`, `.ytyp` and `_manifest.ymf` arrive as value trees.
+or-io = { workspace = true, features = ["awc", "meta", "rel"] }
+# The placement substrate, borrowed rather than re-derived. An index that
+# built its own model of map data would be the second model `or-world`
+# exists to avoid.
+or-world.workspace = true
+# ⚠ The one thing that puts this crate above the domain line rather than
+# inside `or-world`: a dependency is a name until something says which file
+# in which archive that name is, and only a mount knows.
+or-title.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+or-test-support.workspace = true
+# Scratch folders the tests remove when they end, a failed test's too.
+tempfile.workspace = true

@@ -1,0 +1,488 @@
+{
+  "$defs": {
+    "AlphaMode": {
+      "description": "How the colour of an image relates to its alpha.",
+      "oneOf": [
+        {
+          "const": "straight",
+          "description": "The colour is independent of the alpha, which is what an image is unless it says otherwise.",
+          "type": "string"
+        },
+        {
+          "const": "premultiplied",
+          "description": "The colour is multiplied by the alpha, as an exporter that premultiplies writes it, and every mip is stored so.",
+          "type": "string"
+        }
+      ]
+    },
+    "Channel": {
+      "description": "A channel of an image, by the letter its tools use.",
+      "enum": [
+        "r",
+        "g",
+        "b",
+        "a"
+      ],
+      "type": "string"
+    },
+    "ColourSpace": {
+      "enum": [
+        "srgb",
+        "linear"
+      ],
+      "type": "string"
+    },
+    "Encode": {
+      "additionalProperties": false,
+      "description": "How an image becomes a DDS; what is left out follows the DDS the image replaces.",
+      "properties": {
+        "alpha": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AlphaMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the colour of the image is straight or already multiplied by its alpha; what is left out is straight."
+        },
+        "alpha_coverage": {
+          "description": "The alpha a cutout is tested against, above 0 and at most 1: every mip keeps the share of texels that reach it at the top level.",
+          "format": "float",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "clamp": {
+          "description": "The part of a 16-bit image's range, or of floating-point light, that is kept as `[min, max]`: it is stretched over the\n8 bits the game's formats hold and cut outside. A 16-bit value is a fraction of its range and light is itself. With\nnone stated a 16-bit image is scaled over its full range and floating-point light (EXR, HDR) is refused.",
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "colour_space": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColourSpace"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exposure": {
+          "description": "Stops of exposure before the tone map: the light is multiplied by two to this power. Needs a `tonemap`.",
+          "format": "float",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "flip_green": {
+          "description": "Inverts the green channel of the image, for a normal map authored with green pointing up.\nShipped maps point it down the image, so an image made from a DDS needs no flip.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "format": {
+          "description": "A RAGE or D3D spelling, such as `DXT5` or `BC5`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mips": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mips"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tonemap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tonemap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How floating-point light comes down to 8 bits in place of a clamp."
+        }
+      },
+      "type": "object"
+    },
+    "EnhancedHeader": {
+      "additionalProperties": false,
+      "description": "The header words of an Enhanced texture that its DDS cannot state; a word that is absent is zero.",
+      "properties": {
+        "anti_alias_type": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flags": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "pattern": "^0[xX][0-9a-fA-F]+$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "flags: the names of its bits and, for every other bit, one 0x… string; a number reads as well"
+        },
+        "tile_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "Depth",
+                "Linear",
+                "Display",
+                "Standard",
+                "RenderTarget",
+                "VolumeStandard",
+                "VolumeRenderTarget",
+                "Auto"
+              ]
+            },
+            {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "How the pixels are arranged: the name the engine's declaration gives the mode, or its number"
+        },
+        "usage_data": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "pattern": "^0[xX][0-9a-fA-F]+$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "usage_data: the names of its bits and, for every other bit, one 0x… string; a number reads as well"
+        }
+      },
+      "type": "object"
+    },
+    "Entry": {
+      "additionalProperties": false,
+      "description": "One texture's rules; a texture with none still compiles from its files.",
+      "properties": {
+        "encode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Encode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "header": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LegacyHeader"
+            },
+            {
+              "$ref": "#/$defs/EnhancedHeader"
+            }
+          ],
+          "description": "The header words of the texture that a DDS cannot state, under the engine's names."
+        },
+        "name": {
+          "type": "string"
+        },
+        "pack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pack"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Images whose channels make the texture, where the pixels are not one image or the DDS."
+        },
+        "source": {
+          "description": "A file in `textures/`, named when the source is not the image or DDS of the texture's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Filter": {
+      "enum": [
+        "box",
+        "lanczos3"
+      ],
+      "type": "string"
+    },
+    "LegacyHeader": {
+      "additionalProperties": false,
+      "description": "The header words of a Legacy texture that its DDS cannot state; a word that is absent is zero.",
+      "properties": {
+        "extra_flags": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "pattern": "^0[xX][0-9a-fA-F]+$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "extra_flags: the names of its bits and, for every other bit, one 0x… string; a number reads as well"
+        },
+        "handle_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "info_bits": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "dirty",
+                      "dynamic",
+                      "has_been_deleted",
+                      "owns_backing_store"
+                    ]
+                  },
+                  {
+                    "pattern": "^0[xX][0-9a-fA-F]+$",
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Without bit 0, the sRGB flag, which the DDS states."
+        },
+        "resource_type_and_conversion_flags": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "processed"
+                    ]
+                  },
+                  {
+                    "pattern": "^0[xX][0-9a-fA-F]+$",
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "description": "resource_type_and_conversion_flags: the names of its bits and, for every other bit, one 0x… string; a number reads as well"
+        },
+        "stereo_rt_mode": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "template_type": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "items": {
+                "pattern": "^0[xX][0-9a-fA-F]+$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "template_type: the names of its bits and, for every other bit, one 0x… string; a number reads as well"
+        }
+      },
+      "type": "object"
+    },
+    "Mips": {
+      "oneOf": [
+        {
+          "enum": [
+            "to-1x1"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "to-4x4",
+          "description": "Until the shorter side is four texels, where shipped textures stop.",
+          "type": "string"
+        }
+      ]
+    },
+    "Pack": {
+      "additionalProperties": false,
+      "description": "The image each channel of a texture is taken from, as a specular map is made of three measures\nthat artists author apart. A channel left out is 0, and an alpha left out is opaque.",
+      "properties": {
+        "a": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Taken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "b": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Taken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "g": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Taken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "r": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Taken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Quality": {
+      "enum": [
+        "fast",
+        "normal",
+        "high"
+      ],
+      "type": "string"
+    },
+    "Taken": {
+      "additionalProperties": false,
+      "description": "One channel of one image in `textures/`.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/Channel"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "channel"
+      ],
+      "type": "object"
+    },
+    "Tonemap": {
+      "description": "A tone map for floating-point light.",
+      "oneOf": [
+        {
+          "const": "reinhard",
+          "description": "`x / (1 + x)`, which keeps what is brighter than 1 in the range.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`textures.json`: what a DDS cannot say and how an image becomes one.",
+  "properties": {
+    "textures": {
+      "items": {
+        "$ref": "#/$defs/Entry"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "textures"
+  ],
+  "title": "textures.json",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+[package]
+name = "or-anim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Skeletal animation runtime for RAGE clips: forward kinematics, pose evaluation and CPU skinning"
+
+[dependencies]
+# The playback clock, and nothing else from that direction. This used to be
+# `or-particle`, which meant animation depended on the particle rule hierarchy
+# to know what time it was.
+or-transport.workspace = true
+# The io layer, and only that: this reads formats, it never mounts an
+# install. Naming the layer rather than a facade is what keeps the DLC overlay
+# ordering out of this crate's dependency tree.
+or-io.workspace = true
+glam.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# GTA VI's animations and skeletons, which or-io reads behind its own `gta6` feature.
+gta6 = ["or-io/gta6"]
+
+[dev-dependencies]
+or-test-support.workspace = true

@@ -1,0 +1,9 @@
+[toolchain]
+# A dated nightly, not a floating one: the dev profile builds with Cranelift and a
+# parallel rustc frontend (`.cargo/config.toml`), which only nightly has. Bump the
+# date here, in `.github/workflows` and in AGENTS.md together.
+channel = "nightly-2026-10-08"
+components = ["rustfmt", "clippy", "rustc-codegen-cranelift-preview"]
+# `or-plugin`'s and the app's plugin tests build a guest for it and fail without the target.
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

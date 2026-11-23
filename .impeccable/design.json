@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-22T00:00:00Z",
+  "title": "Design System: OpenRage",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Bench Blue",
+        "canonical": "#0078d4",
+        "tonalRamp": ["#001a33", "#00335f", "#004c8c", "#0063b1", "#0078d4", "#3d98e0", "#85bfee", "#d6e9fa"]
+      },
+      "accent-text": { "role": "primary", "displayName": "Readable Blue", "canonical": "#68afe5" },
+      "selection": { "role": "primary", "displayName": "Selection", "canonical": "#183c59" },
+      "bg-l1": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#212429",
+        "tonalRamp": ["#121316", "#1a1c20", "#212429", "#2a2d33", "#383c44", "#5a5f69", "#9a9fa8", "#e4e6ea"]
+      },
+      "bg-l0": { "role": "neutral", "displayName": "Well", "canonical": "#1a1c20" },
+      "bg-l2": { "role": "neutral", "displayName": "Raised", "canonical": "#2a2d33" },
+      "bg-l3": { "role": "neutral", "displayName": "Lifted", "canonical": "#383c44" },
+      "border": { "role": "neutral", "displayName": "Divider", "canonical": "#383c44" },
+      "text-primary": { "role": "neutral", "displayName": "Text", "canonical": "#cccccc" },
+      "text-secondary": { "role": "neutral", "displayName": "Quiet text", "canonical": "#aaaaaa" },
+      "success": { "role": "tertiary", "displayName": "Success", "canonical": "#4ec469" },
+      "warning": { "role": "tertiary", "displayName": "Warning", "canonical": "#cca700" },
+      "error": { "role": "tertiary", "displayName": "Error", "canonical": "#f68787" },
+      "info": { "role": "tertiary", "displayName": "Info", "canonical": "#4ec4ff" }
+    },
+    "typographyMeta": {
+      "heading": { "displayName": "Heading", "purpose": "A document's or an inspector's title." },
+      "body": { "displayName": "Body", "purpose": "Labels, rows, menus, prose." },
+      "small": { "displayName": "Small", "purpose": "Inspector field labels, counts, secondary facts." },
+      "mono": { "displayName": "Mono", "purpose": "Offsets, hashes, sizes, paths, code." }
+    },
+    "shadows": [
+      { "name": "window", "value": "0 6px 24px rgba(0,0,0,0.43)", "purpose": "A floating window; rgba(0,0,0,0.20) in the light theme." },
+      { "name": "popup", "value": "0 6px 14px rgba(0,0,0,0.35)", "purpose": "A menu or popup; rgba(0,0,0,0.16) in the light theme." }
+    ],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The resting control; hover lifts the fill and strokes it in the accent.",
+      "html": "<button class=\"ds-btn\">Expand</button>",
+      "css": ".ds-btn { background: #2a2d33; color: #cccccc; border: 1px solid #6e737c; border-radius: 4px; padding: 4px 8px; font: 12.5px Inter, sans-serif; } .ds-btn:hover { background: #383c44; border-color: #0078d4; } .ds-btn:active { background: #183c59; color: #ffffff; border-color: #68afe5; } .ds-btn:focus-visible { outline: 2px solid #68afe5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Workspace Button",
+      "kind": "nav",
+      "refersTo": "workspace-button-active",
+      "description": "The workspace on show: the one filled use of the accent in the shell.",
+      "html": "<span class=\"ds-ws ds-ws-on\">Model</span><span class=\"ds-ws\">Texture</span>",
+      "css": ".ds-ws { display: inline-block; width: 88px; height: 22px; line-height: 22px; text-align: center; border-radius: 4px; color: #cccccc; font: 12.5px/22px Inter, sans-serif; } .ds-ws:hover { background: #383c44; } .ds-ws-on, .ds-ws-on:hover { background: #0078d4; color: #ffffff; }"
+    },
+    {
+      "name": "Document Tab",
+      "kind": "nav",
+      "refersTo": "document-tab-active",
+      "description": "An open document; the tab on show carries a two-pixel accent line along its top.",
+      "html": "<span class=\"ds-tab ds-tab-on\"><i class=\"ds-tab-kind\"></i>prop.ydr<i class=\"ds-tab-dirty\"></i></span><span class=\"ds-tab\">vehicles.rpf</span>",
+      "css": ".ds-tab { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; background: #212429; color: #aaaaaa; font: 12.5px Inter, sans-serif; border-top: 2px solid transparent; border-radius: 4px 4px 0 0; } .ds-tab:hover { color: #cccccc; } .ds-tab-on { background: #2a2d33; color: #cccccc; border-top-color: #0078d4; } .ds-tab-kind { width: 10px; height: 10px; border: 1.5px solid #6ac86a; border-radius: 2px; } .ds-tab-dirty { width: 6px; height: 6px; border-radius: 50%; background: #cca700; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A field in the well colour, with a placeholder that says what it accepts.",
+      "html": "<input class=\"ds-input\" placeholder=\"Filter (substring)...\">",
+      "css": ".ds-input { background: #1a1c20; color: #cccccc; border: 1px solid #6e737c; border-radius: 4px; padding: 3px 6px; font: 12.5px Inter, sans-serif; caret-color: #68afe5; } .ds-input::placeholder { color: #aaaaaa; } .ds-input:hover { border-color: #0078d4; } .ds-input:focus-visible { outline: 2px solid #68afe5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A bordered card that lifts by fill and outline, never by shadow.",
+      "html": "<div class=\"ds-card\">vehicles.rpf<br><small>1,204 files</small></div>",
+      "css": ".ds-card { background: #212429; color: #cccccc; border: 1px solid #383c44; border-radius: 6px; padding: 6px; font: 12.5px Inter, sans-serif; } .ds-card small { color: #aaaaaa; font-size: 10.5px; } .ds-card:hover { background: #2a2d33; border-color: #6e737c; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Workbench",
+    "overview": "A neutral dark bench where the asset is the only colourful thing. Panels are flat graphite in four close steps, text is grey on grey at a ratio that has been measured, and one blue marks where the user is. The bench is dense on purpose: sessions are long, a dozen documents are open at once, and the inspector shows offsets, hashes and sizes that have to be read exactly. Copy is part of the look: no surface sells anything.",
+    "keyCharacteristics": [
+      "Flat graphite panels, separated by a one-pixel border and never by shadow.",
+      "One accent, blue, kept for place, focus and selection.",
+      "Colour otherwise belongs to file kinds, states and the asset itself.",
+      "Small type, tight spacing, monospace for every value read from a file.",
+      "Every text colour reaches 4.5 to 1 on every panel, in both themes, by test.",
+      "Two themes and a user-chosen accent, scale and font: nothing is a constant."
+    ],
+    "rules": [
+      { "name": "The Place Rule", "body": "Blue says where you are and what is selected: the active workspace, the tab on show, the focused widget, the selection, a link. This is guidance, not a prohibition; a new use of the accent should be able to say which of those it is.", "section": "colors" },
+      { "name": "The Measured Text Rule", "body": "A text colour is judged by its contrast ratio on every panel and on a selection, 4.5 to 1 for text and 3 to 1 for a mark that carries meaning.", "section": "colors" },
+      { "name": "The Resolved Colour Rule", "body": "A themed colour is read at draw time, never stored as a constant, because the user picks the theme and the accent.", "section": "colors" },
+      { "name": "The One Weight Rule", "body": "There is no bold face in the bundle. Emphasis is the strong text colour, which is white on dark and black on light.", "section": "typography" },
+      { "name": "The User's Font Rule", "body": "The user may pick a system font, the monospace, a scale and a language. A layout that depends on Inter's exact widths is broken.", "section": "typography" },
+      { "name": "The Flat Dock Rule", "body": "A docked panel never casts a shadow, and a card lifts on hover by changing its fill and outline, not by rising.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do take every colour from the theme, read at draw time.",
+      "Do pass a colour that is not a palette slot through the theme's legibility helper before drawing text or a meaningful icon with it.",
+      "Do separate panels with the divider and controls with the stronger outline.",
+      "Do set file values (offsets, hashes, sizes, paths) in monospace.",
+      "Do check a screen in both themes and in a long-string and a CJK language."
+    ],
+    "donts": [
+      "Don't hard-code a hex in a panel; a constant draws dark-theme colours on the light theme's white.",
+      "Don't put a shadow on a docked panel or a card.",
+      "Don't dim text below quiet text to show it is disabled.",
+      "Don't add a second weight or a second interface font.",
+      "Don't centre-and-justify a message that can wrap."
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "or-io-macros"
+description = "The #[record] declaration macro for or-io"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+proc-macro = true
+# No tests: the test harness of a proc-macro crate does not link under this toolchain (`core::unicode` statics are undefined), and `cargo test --workspace` stops there
+test = false
+
+[dependencies]
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"

@@ -1,0 +1,32 @@
+[package]
+name = "or-maps"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The maps engine: the map files of a project as content, with their rules, the plan they contribute, the scene they place, the edits to an entity and the manipulator that moves one, with no UI"
+
+[dependencies]
+# The typed world family a map's files are opened and saved with.
+or-io = { workspace = true, features = ["meta"] }
+# The world model: extents, the checks of the engine, interiors.
+or-world.workspace = true
+# The contract through which content reaches a plan.
+or-project.workspace = true
+# The folders a source is: what one cooks to, the metadata source of a map file, and a game file's way in.
+or-source.workspace = true
+# The vector types the manipulator and the scene are computed in.
+glam.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The digest of a map's content, which the diff of two builds compares.
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true
+or-test-support.workspace = true
+# The mounted install the map files are measured on.
+or-title.workspace = true

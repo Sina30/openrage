@@ -1,0 +1,35 @@
+[package]
+name = "or-source"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The folders an asset is edited as and compiled back from: asset.json, the textures, models, fragment and metadata sources, and recooking one saved asset"
+
+[dependencies]
+# `bc7-encode` is the one native link (Intel's ISPC kernels, shipped prebuilt). It is named here
+# so that a `textures.json` which asks for BC7 compiles in every build that holds this crate,
+# whatever else the workspace happens to enable.
+or-io = { workspace = true, features = ["authoring", "bc7-encode", "meta"] }
+# A model source is a glb, which this reads and writes.
+or-interchange.workspace = true
+# The layout a particle list is laid out in before it is written as a source or compiled from one.
+or-particle.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The JSON Schemas of asset.json, textures.json, drawable.json and dictionary.json.
+schemars.workspace = true
+# The SHA-256 an `origin` states, and the digest a recook compares an asset's inputs by.
+sha2 = "0.10"
+# The random bytes of an asset's id.
+getrandom = "0.3"
+
+[dev-dependencies]
+or-test-support.workspace = true
+tempfile.workspace = true
+# The images the tests write; `or-io`'s `authoring` turns on every decoder, and this the encoders.
+image = { workspace = true, features = ["tga", "tiff", "exr", "hdr"] }
+# Writes the one FBX the import suite reads.
+fbxcel = { version = "0.9", features = ["writer"] }

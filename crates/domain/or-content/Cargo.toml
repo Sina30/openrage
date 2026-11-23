@@ -1,0 +1,23 @@
+[package]
+name = "or-content"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The kinds of content this build knows, listed once: what the editor and the command line plan, adopt and start a project's content with"
+
+[dependencies]
+or-project.workspace = true
+or-wardrobe.workspace = true
+or-addonped.workspace = true
+or-weapons.workspace = true
+or-particles.workspace = true
+or-maps.workspace = true
+# The manifest of a source, which says whether it is the game's own file.
+or-source.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+or-test-support.workspace = true

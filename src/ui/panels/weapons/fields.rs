@@ -1,0 +1,368 @@
+//! The rows of the weapon editor: every member the family types of a weapon's info, under the engine's name for it and in the group the member belongs to.
+//!
+//! The name of a row is the engine's, never translated: a person who edits a weapon's damage looks for `Damage`. A member of a
+//! structure the info holds is named by the path the file spells it (`Fx/FlashFxScale`). The members the family does not type stay in the file as they
+//! came and are not rows (the Weapon panel says how many).
+
+use or_io::decl::{Vec2, Vec3};
+use or_io::meta::typed::weapon::CWeaponInfo;
+
+/// What a row is edited with.
+pub(super) enum Cell<'a> {
+    Float(&'a mut f32),
+    Int(&'a mut i32),
+    Flag(&'a mut bool),
+    Text(&'a mut String),
+    Vec2(&'a mut Vec2),
+    Vec3(&'a mut Vec3),
+}
+
+/// The groups the rows are laid out in, in the order the panel lists them.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(super) enum Group {
+    Identity,
+    Damage,
+    Firing,
+    Aiming,
+    FirstPerson,
+    Cameras,
+    Effects,
+    Feedback,
+    Hud,
+    Other,
+}
+
+impl Group {
+    pub(super) const ALL: [Group; 10] = [
+        Group::Identity,
+        Group::Damage,
+        Group::Firing,
+        Group::Aiming,
+        Group::FirstPerson,
+        Group::Cameras,
+        Group::Effects,
+        Group::Feedback,
+        Group::Hud,
+        Group::Other,
+    ];
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Group::Identity => tr!("Identity"),
+            Group::Damage => tr!("Damage and force"),
+            Group::Firing => tr!("Firing and reloading"),
+            Group::Aiming => tr!("Aiming and accuracy"),
+            Group::FirstPerson => tr!("First person"),
+            Group::Cameras => tr!("Cameras"),
+            Group::Effects => tr!("Effects"),
+            Group::Feedback => tr!("Controller feedback"),
+            Group::Hud => tr!("Display on the HUD"),
+            Group::Other => tr!("Other values"),
+        }
+    }
+}
+
+pub(super) struct Row<'a> {
+    pub group: Group,
+    pub name: &'static str,
+    pub cell: Cell<'a>,
+}
+
+/// One row: its group, its name as the file spells it, how it is edited and the member it edits.
+macro_rules! row {
+    ($group:ident, $name:literal, $cell:ident, $member:expr) => {
+        Row {
+            group: Group::$group,
+            name: $name,
+            cell: Cell::$cell(&mut $member),
+        }
+    };
+}
+
+/// Every row of `w`, borrowed to be edited in place.
+// A table of one row to a line: rustfmt would give each a block of its own and the table would outgrow its file.
+#[rustfmt::skip]
+pub(super) fn rows(w: &mut CWeaponInfo) -> Vec<Row<'_>> {
+    let mut rows = vec![
+        row!(Aiming, "AccuracyOffsetShakeHash", Text, w.accuracy_offset_shake_hash),
+        row!(Aiming, "AccuracySpread", Float, w.accuracy_spread),
+        row!(Aiming, "AccurateModeAccuracyModifier", Float, w.accurate_mode_accuracy_modifier),
+        row!(Firing, "AiPotentialBlastEventRange", Float, w.ai_potential_blast_event_range),
+        row!(Firing, "AiSoundRange", Float, w.ai_sound_range),
+        row!(Cameras, "AimCameraHash", Text, w.aim_camera_hash),
+        row!(Aiming, "AimOffsetEndPosMaxFPSIdle", Vec3, w.aim_offset_end_pos_max_fps_idle),
+        row!(Aiming, "AimOffsetEndPosMaxFPSLT", Vec3, w.aim_offset_end_pos_max_fpslt),
+        row!(Aiming, "AimOffsetEndPosMedFPSIdle", Vec3, w.aim_offset_end_pos_med_fps_idle),
+        row!(Aiming, "AimOffsetEndPosMedFPSLT", Vec3, w.aim_offset_end_pos_med_fpslt),
+        row!(Aiming, "AimOffsetEndPosMinFPSIdle", Vec3, w.aim_offset_end_pos_min_fps_idle),
+        row!(Aiming, "AimOffsetEndPosMinFPSLT", Vec3, w.aim_offset_end_pos_min_fpslt),
+        row!(Aiming, "AimOffsetMax", Vec3, w.aim_offset_max),
+        row!(Aiming, "AimOffsetMaxFPSIdle", Vec3, w.aim_offset_max_fps_idle),
+        row!(Aiming, "AimOffsetMaxFPSLT", Vec3, w.aim_offset_max_fpslt),
+        row!(Aiming, "AimOffsetMaxFPSRNG", Vec3, w.aim_offset_max_fpsrng),
+        row!(Aiming, "AimOffsetMaxFPSScope", Vec3, w.aim_offset_max_fps_scope),
+        row!(Aiming, "AimOffsetMedFPSIdle", Vec3, w.aim_offset_med_fps_idle),
+        row!(Aiming, "AimOffsetMin", Vec3, w.aim_offset_min),
+        row!(Aiming, "AimOffsetMinFPSIdle", Vec3, w.aim_offset_min_fps_idle),
+        row!(Aiming, "AimOffsetMinFPSLT", Vec3, w.aim_offset_min_fpslt),
+        row!(Aiming, "AimOffsetMinFPSRNG", Vec3, w.aim_offset_min_fpsrng),
+        row!(Aiming, "AimOffsetMinFPSScope", Vec3, w.aim_offset_min_fps_scope),
+        row!(Aiming, "AimProbeLengthMax", Float, w.aim_probe_length_max),
+        row!(Aiming, "AimProbeLengthMin", Float, w.aim_probe_length_min),
+        row!(Aiming, "AimProbeRadiusOverrideFPSIdle", Float, w.aim_probe_radius_override_fps_idle),
+        row!(Aiming, "AimProbeRadiusOverrideFPSIdleStealth", Float, w.aim_probe_radius_override_fps_idle_stealth),
+        row!(Aiming, "AimProbeRadiusOverrideFPSLT", Float, w.aim_probe_radius_override_fpslt),
+        row!(Aiming, "AimProbeRadiusOverrideFPSRNG", Float, w.aim_probe_radius_override_fpsrng),
+        row!(Aiming, "AimProbeRadiusOverrideFPSScope", Float, w.aim_probe_radius_override_fps_scope),
+        row!(Aiming, "AimingBreathingAdditiveWeight", Float, w.aiming_breathing_additive_weight),
+        row!(Aiming, "AimingLeanAdditiveWeight", Float, w.aiming_lean_additive_weight),
+        row!(Firing, "AirborneAircraftLockOnMultiplier", Float, w.airborne_aircraft_lock_on_multiplier),
+        row!(Firing, "AlternateWaitTime", Float, w.alternate_wait_time),
+        row!(Cameras, "AlternativeOrScopedCameraHash", Text, w.alternative_or_scoped_camera_hash),
+        row!(Firing, "AmmoDiminishingRate", Int, w.ammo_diminishing_rate),
+        row!(Firing, "AnimReloadRate", Float, w.anim_reload_rate),
+        row!(Damage, "ArmouredVehicleGlassDamageOverride", Float, w.armoured_vehicle_glass_damage_override),
+        row!(Cameras, "AssistedAimingCameraHash", Text, w.assisted_aiming_camera_hash),
+        row!(Cameras, "AssistedAlternativeOrScopedCameraHash", Text, w.assisted_alternative_or_scoped_camera_hash),
+        row!(Identity, "Audio", Text, w.audio),
+        row!(Identity, "AudioCollisionHash", Text, w.audio_collision_hash),
+        row!(Aiming, "BatchSpread", Float, w.batch_spread),
+        row!(Aiming, "BulletBendingFarRadius", Float, w.bullet_bending_far_radius),
+        row!(Aiming, "BulletBendingNearRadius", Float, w.bullet_bending_near_radius),
+        row!(Aiming, "BulletBendingZoomedRadius", Float, w.bullet_bending_zoomed_radius),
+        row!(Other, "BulletDirectionOffsetInDegrees", Float, w.bullet_direction_offset_in_degrees),
+        row!(Other, "BulletDirectionPitchHomingOffset", Float, w.bullet_direction_pitch_homing_offset),
+        row!(Other, "BulletDirectionPitchOffset", Float, w.bullet_direction_pitch_offset),
+        row!(Firing, "BulletsInBatch", Int, w.bullets_in_batch),
+        row!(Firing, "BulletsPerAnimLoop", Int, w.bullets_per_anim_loop),
+        row!(Cameras, "CameraFov", Float, w.camera_fov),
+        row!(Cameras, "CinematicShootingAlternativeOrScopedCameraHash", Text, w.cinematic_shooting_alternative_or_scoped_camera_hash),
+        row!(Cameras, "CinematicShootingCameraHash", Text, w.cinematic_shooting_camera_hash),
+        row!(Firing, "ClipSize", Int, w.clip_size),
+        row!(Cameras, "CoverCameraHash", Text, w.cover_camera_hash),
+        row!(Cameras, "CoverReadyToFireCameraHash", Text, w.cover_ready_to_fire_camera_hash),
+        row!(Damage, "Damage", Float, w.damage),
+        row!(Damage, "DamageFallOffModifier", Float, w.damage_fall_off_modifier),
+        row!(Damage, "DamageFallOffRangeMax", Float, w.damage_fall_off_range_max),
+        row!(Damage, "DamageFallOffRangeMin", Float, w.damage_fall_off_range_min),
+        row!(Damage, "DamageTime", Float, w.damage_time),
+        row!(Damage, "DamageTimeInVehicle", Float, w.damage_time_in_vehicle),
+        row!(Damage, "DamageTimeInVehicleHeadShot", Float, w.damage_time_in_vehicle_head_shot),
+        row!(Damage, "DamageType", Text, w.damage_type),
+        row!(Cameras, "DefaultCameraHash", Text, w.default_camera_hash),
+        row!(Firing, "DropForwardVelocity", Float, w.drop_forward_velocity),
+        row!(Damage, "EnduranceDamage", Float, w.endurance_damage),
+        row!(Firing, "ExpandPedCapsuleRadius", Float, w.expand_ped_capsule_radius),
+        row!(Firing, "ExplosionShakeAmplitude", Float, w.explosion_shake_amplitude),
+        row!(Cameras, "FireCameraHash", Text, w.fire_camera_hash),
+        row!(Firing, "FireType", Text, w.fire_type),
+        row!(Aiming, "FiringBreathingAdditiveWeight", Float, w.firing_breathing_additive_weight),
+        row!(Aiming, "FiringLeanAdditiveWeight", Float, w.firing_lean_additive_weight),
+        row!(FirstPerson, "FirstPersonAimFovMax", Float, w.first_person_aim_fov_max),
+        row!(FirstPerson, "FirstPersonAimFovMin", Float, w.first_person_aim_fov_min),
+        row!(FirstPerson, "FirstPersonAsThirdPersonIdleOffset", Vec3, w.first_person_as_third_person_idle_offset),
+        row!(FirstPerson, "FirstPersonAsThirdPersonLTOffset", Vec3, w.first_person_as_third_person_lt_offset),
+        row!(FirstPerson, "FirstPersonAsThirdPersonRNGOffset", Vec3, w.first_person_as_third_person_rng_offset),
+        row!(FirstPerson, "FirstPersonAsThirdPersonScopeOffset", Vec3, w.first_person_as_third_person_scope_offset),
+        row!(FirstPerson, "FirstPersonAsThirdPersonWeaponBlockedOffset", Vec3, w.first_person_as_third_person_weapon_blocked_offset),
+        row!(FirstPerson, "FirstPersonBulletBendingFarRadius", Float, w.first_person_bullet_bending_far_radius),
+        row!(FirstPerson, "FirstPersonBulletBendingNearRadius", Float, w.first_person_bullet_bending_near_radius),
+        row!(FirstPerson, "FirstPersonBulletBendingZoomedRadius", Float, w.first_person_bullet_bending_zoomed_radius),
+        row!(FirstPerson, "FirstPersonDofMaxNearInFocusDistance", Float, w.first_person_dof_max_near_in_focus_distance),
+        row!(FirstPerson, "FirstPersonDofMaxNearInFocusDistanceBlendLevel", Float, w.first_person_dof_max_near_in_focus_distance_blend_level),
+        row!(FirstPerson, "FirstPersonDofSubjectMagnificationPowerFactorNear", Float, w.first_person_dof_subject_magnification_power_factor_near),
+        row!(FirstPerson, "FirstPersonDrivebyIKOffset", Vec3, w.first_person_driveby_ik_offset),
+        row!(FirstPerson, "FirstPersonLTOffset", Vec3, w.first_person_lt_offset),
+        row!(FirstPerson, "FirstPersonLTRotationOffset", Vec3, w.first_person_lt_rotation_offset),
+        row!(FirstPerson, "FirstPersonRNGOffset", Vec3, w.first_person_rng_offset),
+        row!(FirstPerson, "FirstPersonRNGRotationOffset", Vec3, w.first_person_rng_rotation_offset),
+        row!(FirstPerson, "FirstPersonReticuleStyleHash", Text, w.first_person_reticule_style_hash),
+        row!(FirstPerson, "FirstPersonScopeAttachmentFov", Float, w.first_person_scope_attachment_fov),
+        row!(FirstPerson, "FirstPersonScopeAttachmentOffset", Vec3, w.first_person_scope_attachment_offset),
+        row!(FirstPerson, "FirstPersonScopeAttachmentRotationOffset", Vec3, w.first_person_scope_attachment_rotation_offset),
+        row!(FirstPerson, "FirstPersonScopeFov", Float, w.first_person_scope_fov),
+        row!(FirstPerson, "FirstPersonScopeOffset", Vec3, w.first_person_scope_offset),
+        row!(FirstPerson, "FirstPersonScopeRotationOffset", Vec3, w.first_person_scope_rotation_offset),
+        row!(Damage, "Force", Float, w.force),
+        row!(Damage, "ForceFalloffMin", Float, w.force_falloff_min),
+        row!(Damage, "ForceFalloffRangeEnd", Float, w.force_falloff_range_end),
+        row!(Damage, "ForceFalloffRangeStart", Float, w.force_falloff_range_start),
+        row!(Damage, "ForceHitFlyingHeli", Float, w.force_hit_flying_heli),
+        row!(Damage, "ForceHitPed", Float, w.force_hit_ped),
+        row!(Damage, "ForceHitVehicle", Float, w.force_hit_vehicle),
+        row!(Damage, "ForceMaxStrengthMult", Float, w.force_max_strength_mult),
+        row!(Damage, "FragImpulse", Float, w.frag_impulse),
+        row!(Identity, "Group", Text, w.group),
+        row!(Identity, "GunFeedBone", Text, w.gun_feed_bone),
+        row!(Damage, "HeadShotDamageModifierAI", Float, w.head_shot_damage_modifier_ai),
+        row!(Damage, "HeadShotDamageModifierPlayer", Float, w.head_shot_damage_modifier_player),
+        row!(Damage, "HitLimbsDamageModifier", Float, w.hit_limbs_damage_modifier),
+        row!(Hud, "HudAccuracy", Int, w.hud_accuracy),
+        row!(Hud, "HudCapacity", Int, w.hud_capacity),
+        row!(Hud, "HudDamage", Int, w.hud_damage),
+        row!(Hud, "HudRange", Int, w.hud_range),
+        row!(Hud, "HudSpeed", Int, w.hud_speed),
+        row!(Identity, "HumanNameHash", Text, w.human_name_hash),
+        row!(Aiming, "IkRecoilDisplacement", Float, w.ik_recoil_displacement),
+        row!(Aiming, "IkRecoilDisplacementScaleBackward", Float, w.ik_recoil_displacement_scale_backward),
+        row!(Aiming, "IkRecoilDisplacementScaleVertical", Float, w.ik_recoil_displacement_scale_vertical),
+        row!(Aiming, "IkRecoilDisplacementScope", Float, w.ik_recoil_displacement_scope),
+        row!(Feedback, "InitialRumbleDuration", Int, w.initial_rumble_duration),
+        row!(Feedback, "InitialRumbleDurationFps", Int, w.initial_rumble_duration_fps),
+        row!(Feedback, "InitialRumbleIntensity", Float, w.initial_rumble_intensity),
+        row!(Feedback, "InitialRumbleIntensityFps", Float, w.initial_rumble_intensity_fps),
+        row!(Feedback, "InitialRumbleIntensityTrigger", Float, w.initial_rumble_intensity_trigger),
+        row!(Damage, "KillshotImpulseScale", Float, w.killshot_impulse_scale),
+        row!(Damage, "KnockdownCount", Int, w.knockdown_count),
+        row!(Aiming, "LeftHandIkOffset", Vec3, w.left_hand_ik_offset),
+        row!(Damage, "LightlyArmouredDamageModifier", Float, w.lightly_armoured_damage_modifier),
+        row!(Firing, "LockOnRange", Float, w.lock_on_range),
+        row!(Identity, "MPPickupHash", Text, w.mp_pickup_hash),
+        row!(Damage, "MaxHeadShotDistanceAI", Float, w.max_head_shot_distance_ai),
+        row!(Damage, "MaxHeadShotDistancePlayer", Float, w.max_head_shot_distance_player),
+        row!(Damage, "MeleeDamageMultiplier", Float, w.melee_damage_multiplier),
+        row!(Damage, "MeleeRightFistTargetHealthDamageScaler", Float, w.melee_right_fist_target_health_damage_scaler),
+        row!(Damage, "MinHeadShotDistanceAI", Float, w.min_head_shot_distance_ai),
+        row!(Damage, "MinHeadShotDistancePlayer", Float, w.min_head_shot_distance_player),
+        row!(Aiming, "MinTimeBetweenRecoilShakes", Int, w.min_time_between_recoil_shakes),
+        row!(Identity, "Model", Text, w.model),
+        row!(Identity, "MovementModeConditionalIdle", Text, w.movement_mode_conditional_idle),
+        row!(Identity, "Name", Text, w.name),
+        row!(Damage, "NetworkHeadShotPlayerDamageModifier", Float, w.network_head_shot_player_damage_modifier),
+        row!(Damage, "NetworkHitLimbsDamageModifier", Float, w.network_hit_limbs_damage_modifier),
+        row!(Damage, "NetworkPedDamageModifier", Float, w.network_ped_damage_modifier),
+        row!(Damage, "NetworkPlayerDamageModifier", Float, w.network_player_damage_modifier),
+        row!(Identity, "NmShotTuningSet", Text, w.nm_shot_tuning_set),
+        row!(Damage, "Penetration", Float, w.penetration),
+        row!(Identity, "PickupHash", Text, w.pickup_hash),
+        row!(Identity, "PlayerDamageOverTimeWeapon", Text, w.player_damage_over_time_weapon),
+        row!(Cameras, "PovTurretCameraHash", Text, w.pov_turret_camera_hash),
+        row!(Damage, "ProjectileForce", Float, w.projectile_force),
+        row!(Aiming, "RecoilAccuracyMax", Float, w.recoil_accuracy_max),
+        row!(Damage, "RecoilAccuracyToAllowHeadShotAI", Float, w.recoil_accuracy_to_allow_head_shot_ai),
+        row!(Damage, "RecoilAccuracyToAllowHeadShotPlayer", Float, w.recoil_accuracy_to_allow_head_shot_player),
+        row!(Aiming, "RecoilErrorTime", Float, w.recoil_error_time),
+        row!(Aiming, "RecoilRecoveryRate", Float, w.recoil_recovery_rate),
+        row!(Aiming, "RecoilShakeAmplitude", Float, w.recoil_shake_amplitude),
+        row!(Aiming, "RecoilShakeHash", Text, w.recoil_shake_hash),
+        row!(Aiming, "RecoilShakeHashFirstPerson", Text, w.recoil_shake_hash_first_person),
+        row!(Firing, "ReloadTimeMP", Float, w.reload_time_mp),
+        row!(Firing, "ReloadTimeSP", Float, w.reload_time_sp),
+        row!(Aiming, "ReticuleHudPosition", Vec2, w.reticule_hud_position),
+        row!(Aiming, "ReticuleHudPositionOffsetForPOVTurret", Vec2, w.reticule_hud_position_offset_for_pov_turret),
+        row!(Aiming, "ReticuleMinSizeCrouched", Float, w.reticule_min_size_crouched),
+        row!(Aiming, "ReticuleMinSizeStanding", Float, w.reticule_min_size_standing),
+        row!(Aiming, "ReticuleScale", Float, w.reticule_scale),
+        row!(Aiming, "ReticuleStyleHash", Text, w.reticule_style_hash),
+        row!(Identity, "RotateBarrelBone", Text, w.rotate_barrel_bone),
+        row!(Identity, "RotateBarrelBone2", Text, w.rotate_barrel_bone2),
+        row!(Feedback, "RumbleDamageIntensity", Float, w.rumble_damage_intensity),
+        row!(Feedback, "RumbleDuration", Int, w.rumble_duration),
+        row!(Feedback, "RumbleDurationFps", Int, w.rumble_duration_fps),
+        row!(Feedback, "RumbleIntensity", Float, w.rumble_intensity),
+        row!(Feedback, "RumbleIntensityFps", Float, w.rumble_intensity_fps),
+        row!(Feedback, "RumbleIntensityTrigger", Float, w.rumble_intensity_trigger),
+        row!(Aiming, "RunAndGunAccuracyMaxModifier", Float, w.run_and_gun_accuracy_max_modifier),
+        row!(Aiming, "RunAndGunAccuracyMinOverride", Float, w.run_and_gun_accuracy_min_override),
+        row!(Aiming, "RunAndGunAccuracyModifier", Float, w.run_and_gun_accuracy_modifier),
+        row!(Cameras, "RunAndGunAlternativeOrScopedCameraHash", Text, w.run_and_gun_alternative_or_scoped_camera_hash),
+        row!(Cameras, "RunAndGunCameraHash", Text, w.run_and_gun_camera_hash),
+        row!(Identity, "Slot", Text, w.slot),
+        row!(Firing, "Speed", Float, w.speed),
+        row!(Firing, "SpinDownTime", Float, w.spin_down_time),
+        row!(Firing, "SpinTime", Float, w.spin_time),
+        row!(Firing, "SpinUpTime", Float, w.spin_up_time),
+        row!(Identity, "StatName", Text, w.stat_name),
+        row!(Aiming, "StealthAimingBreathingAdditiveWeight", Float, w.stealth_aiming_breathing_additive_weight),
+        row!(Aiming, "StealthAimingLeanAdditiveWeight", Float, w.stealth_aiming_lean_additive_weight),
+        row!(Aiming, "StealthFiringBreathingAdditiveWeight", Float, w.stealth_firing_breathing_additive_weight),
+        row!(Aiming, "StealthFiringLeanAdditiveWeight", Float, w.stealth_firing_lean_additive_weight),
+        row!(Identity, "TargetSequenceGroup", Text, w.target_sequence_group),
+        row!(Firing, "TimeBetweenShots", Float, w.time_between_shots),
+        row!(Other, "TimeLeftBetweenShotsWhereShouldFireIsCached", Float, w.time_left_between_shots_where_should_fire_is_cached),
+        row!(Aiming, "TorsoAimOffset", Vec2, w.torso_aim_offset),
+        row!(Aiming, "TorsoCrouchedAimOffset", Vec2, w.torso_crouched_aim_offset),
+        row!(Aiming, "TorsoIKAngleLimit", Float, w.torso_ik_angle_limit),
+        row!(Firing, "VehicleAttackAngle", Float, w.vehicle_attack_angle),
+        row!(Damage, "VehicleDamageModifier", Float, w.vehicle_damage_modifier),
+        row!(Firing, "VehicleReloadTime", Float, w.vehicle_reload_time),
+        row!(Identity, "VehicleWeaponHash", Text, w.vehicle_weapon_hash),
+        row!(Firing, "VerticalLaunchAdjustment", Float, w.vertical_launch_adjustment),
+        row!(Firing, "WeaponFlags", Text, w.weapon_flags),
+        row!(Firing, "WeaponRange", Float, w.weapon_range),
+        row!(Identity, "WheelSlot", Text, w.wheel_slot),
+        row!(Aiming, "ZoomFactorForAccurateMode", Float, w.zoom_factor_for_accurate_mode),
+        row!(Effects, "Fx/EffectGroup", Text, w.fx.effect_group),
+        row!(Effects, "Fx/FlashFx", Text, w.fx.flash_fx),
+        row!(Effects, "Fx/FlashFxAlt", Text, w.fx.flash_fx_alt),
+        row!(Effects, "Fx/FlashFxAltChance", Float, w.fx.flash_fx_alt_chance),
+        row!(Effects, "Fx/FlashFxAltFP", Text, w.fx.flash_fx_alt_fp),
+        row!(Effects, "Fx/FlashFxChanceMP", Float, w.fx.flash_fx_chance_mp),
+        row!(Effects, "Fx/FlashFxChanceSP", Float, w.fx.flash_fx_chance_sp),
+        row!(Effects, "Fx/FlashFxEmptyShot", Text, w.fx.flash_fx_empty_shot),
+        row!(Effects, "Fx/FlashFxFP", Text, w.fx.flash_fx_fp),
+        row!(Effects, "Fx/FlashFxFPAlt", Text, w.fx.flash_fx_fp_alt),
+        row!(Effects, "Fx/FlashFxLightCastsShadows", Flag, w.fx.flash_fx_light_casts_shadows),
+        row!(Effects, "Fx/FlashFxLightEnabled", Flag, w.fx.flash_fx_light_enabled),
+        row!(Effects, "Fx/FlashFxLightFalloffMinMax", Vec2, w.fx.flash_fx_light_falloff_min_max),
+        row!(Effects, "Fx/FlashFxLightIntensityMinMax", Vec2, w.fx.flash_fx_light_intensity_min_max),
+        row!(Effects, "Fx/FlashFxLightOffsetDist", Float, w.fx.flash_fx_light_offset_dist),
+        row!(Effects, "Fx/FlashFxLightRGBAMax", Vec3, w.fx.flash_fx_light_rgba_max),
+        row!(Effects, "Fx/FlashFxLightRGBAMin", Vec3, w.fx.flash_fx_light_rgba_min),
+        row!(Effects, "Fx/FlashFxScale", Float, w.fx.flash_fx_scale),
+        row!(Effects, "Fx/GroundDisturbFxDist", Float, w.fx.ground_disturb_fx_dist),
+        row!(Effects, "Fx/GroundDisturbFxEnabled", Flag, w.fx.ground_disturb_fx_enabled),
+        row!(Effects, "Fx/GroundDisturbFxNameDefault", Text, w.fx.ground_disturb_fx_name_default),
+        row!(Effects, "Fx/GroundDisturbFxNameDirt", Text, w.fx.ground_disturb_fx_name_dirt),
+        row!(Effects, "Fx/GroundDisturbFxNameFoliage", Text, w.fx.ground_disturb_fx_name_foliage),
+        row!(Effects, "Fx/GroundDisturbFxNameSand", Text, w.fx.ground_disturb_fx_name_sand),
+        row!(Effects, "Fx/GroundDisturbFxNameWater", Text, w.fx.ground_disturb_fx_name_water),
+        row!(Effects, "Fx/MuzzleOverrideOffset", Vec3, w.fx.muzzle_override_offset),
+        row!(Effects, "Fx/MuzzleSmokeFx", Text, w.fx.muzzle_smoke_fx),
+        row!(Effects, "Fx/MuzzleSmokeFxDecPerSec", Float, w.fx.muzzle_smoke_fx_dec_per_sec),
+        row!(Effects, "Fx/MuzzleSmokeFxFP", Text, w.fx.muzzle_smoke_fx_fp),
+        row!(Effects, "Fx/MuzzleSmokeFxIncPerShot", Float, w.fx.muzzle_smoke_fx_inc_per_shot),
+        row!(Effects, "Fx/MuzzleSmokeFxMinLevel", Float, w.fx.muzzle_smoke_fx_min_level),
+        row!(Effects, "Fx/MuzzleUseProjTintColour", Flag, w.fx.muzzle_use_proj_tint_colour),
+        row!(Effects, "Fx/PedDamageHash", Text, w.fx.ped_damage_hash),
+        row!(Effects, "Fx/ShellFx", Text, w.fx.shell_fx),
+        row!(Effects, "Fx/ShellFxFP", Text, w.fx.shell_fx_fp),
+        row!(Effects, "Fx/TracerFx", Text, w.fx.tracer_fx),
+        row!(Effects, "Fx/TracerFxChanceMP", Float, w.fx.tracer_fx_chance_mp),
+        row!(Effects, "Fx/TracerFxChanceSP", Float, w.fx.tracer_fx_chance_sp),
+        row!(Effects, "Fx/TracerFxIgnoreCameraIntersection", Flag, w.fx.tracer_fx_ignore_camera_intersection),
+        row!(Firing, "FrontClearTestParams/CapsuleLength", Float, w.front_clear_test_params.capsule_length),
+        row!(Firing, "FrontClearTestParams/CapsuleRadius", Float, w.front_clear_test_params.capsule_radius),
+        row!(Other, "FrontClearTestParams/ForwardOffset", Float, w.front_clear_test_params.forward_offset),
+        row!(Other, "FrontClearTestParams/HorizontalOffset", Float, w.front_clear_test_params.horizontal_offset),
+        row!(Other, "FrontClearTestParams/ShouldPerformFrontClearTest", Flag, w.front_clear_test_params.should_perform_front_clear_test),
+        row!(Other, "FrontClearTestParams/VerticalOffset", Float, w.front_clear_test_params.vertical_offset),
+    ];
+    rows.retain(|row| row.name != "Name");
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_group_has_a_row_and_the_name_is_edited_by_the_header_and_not_here() {
+        let mut weapon = CWeaponInfo::default();
+        let rows = rows(&mut weapon);
+        for group in Group::ALL {
+            assert!(
+                rows.iter().any(|r| r.group == group),
+                "{group:?} has no row"
+            );
+        }
+        assert!(!rows.iter().any(|r| r.name == "Name"));
+        assert!(rows.iter().any(|r| r.name == "Damage"));
+        assert!(rows.iter().any(|r| r.name == "Fx/FlashFxScale"));
+        let mut names: Vec<_> = rows.iter().map(|r| r.name).collect();
+        let held = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), held, "a name is a row once");
+    }
+}

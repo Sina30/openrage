@@ -1,0 +1,11 @@
+pub mod gta6;
+#[cfg(feature = "gta6")]
+pub mod gta6_grow;
+#[cfg(feature = "gta6")]
+pub mod gta6_grow_tree;
+#[cfg(feature = "gta6")]
+pub mod gta6_ids;
+pub mod header;
+pub mod reader;
+pub mod schema;
+pub mod writer;

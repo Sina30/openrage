@@ -1,0 +1,13 @@
+{
+  "id": "cloth-painter",
+  "name": "Cloth painter",
+  "abi": 0,
+  "wants": [
+    "cap.read_file_bytes",
+    "cap.write_file_bytes",
+    "cap.add_panels",
+    "cap.add_commands",
+    "cap.add_settings",
+    "cap.draw_overlays"
+  ]
+}

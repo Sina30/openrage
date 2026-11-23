@@ -1,0 +1,471 @@
+# Source format design
+
+How OpenRage turns a game file into a source a person can edit and a build can compile back: the folder and its manifest, the layout per format, and the rules for textures and models.
+
+Status: proposal of 2026-10-07; wave A of [Workbench_Plan.md](Workbench_Plan.md) built the textures part, in `or-source`, wave G its rules (channel packing, re-encoding only the blocks an edit changed, BC7), wave I the edit mode of the models part, wave P3 the import of a game file into a project ([how an import writes](#how-an-import-writes)), wave P9 the loop around a model source ([the edit loop](#the-edit-loop)), wave P10 the fragment and the metadata kinds ([fragments and metadata](#fragments-and-metadata)) and wave P11 the rules a texture states ([what a rule may ask](#what-a-rule-may-ask)), the schemas of the source files ([schemas](#schemas)) and the comparison with other formats ([formats compared](#formats-compared)), wave P12 the values `drawable.json` states of a base and the pairing of a glb by what it calls things ([what wave P12 built](#what-wave-p12-built)), wave P43 the source of a `.ypt` ([what wave P43 built](#what-wave-p43-built)), and the text below says where the build differs from the proposal. The owner agreed in conversation that a model is stored as glTF and imported from glTF, GLB or FBX, and that a texture is stored as an exact DDS and compiled from DDS or image sources with no convert button. The owner also agreed to the neutral kind word with no platform letter and to live reload, and gave go to [Workbench_Plan.md](Workbench_Plan.md), which takes the rest of the recommendations below as defaults except those it lists as held back. [R39](Roadmap.md#r39-textures) and [R48](Roadmap.md#r48-projects) stand until a wave rewrites them.
+
+## Verdict
+
+Decompile each game file into a folder whose parts a person can open in their own tools, and compile it back with rules the folder states. Two choices carry most of the design:
+
+- **A texture is stored as its exact DDS.** A person who wants to edit it exports an image from their own editor and drops it beside the DDS; the build compiles from the image. OpenRage has no convert button.
+- **A model is stored as glTF plus a small JSON file** for what glTF cannot say. FBX and CodeWalker XML are import adapters, not storage.
+
+The build is a cooking pipeline: source, cook, verify, package. The explorer still edits a game file directly for a quick change; inside a project a file is decompiled and cooked. The cook is conservative: a source that did not change is copied exactly, the output is deterministic, and every file written is reloaded and checked.
+
+## The folder and the manifest
+
+A decompiled asset is a folder `<name>.<kind>.src/`, where the kind is a word and not the game's extension, because the first letter of that extension names a platform: `y` is Win64, `o` is PS4, `x` is Xbox 360. The folder of a drawable dictionary is `<name>.drawables.src`. The `.src` suffix keeps a glob such as `*.ydd` from ever matching a folder, and no kind collides with a game extension. Every folder holds `asset.json`, which is small, static and conflict-free: nothing in it changes when the payload changes.
+
+```json
+{
+  "format": "openrage-source",
+  "schema": 1,
+  "kind": "drawables",
+  "id": "7c1e2b0a-5d1f-4e7a-9b3c-2a6f0d8e4c11",
+  "name": "jbib_012_u",
+  "target": "gen8",
+  "platform": "win64",
+  "origin": {
+    "how": "extracted",
+    "from_game": true,
+    "virtual_path": "x64v.rpf/…/jbib_012_u.ydd",
+    "game_build": "…",
+    "sha256": "9f2c…",
+    "cooked_sha256": "4be1…"
+  },
+  "compile": { "mode": "edit", "base": "9f2c…" },
+  "created_with": "openrage 0.1.0",
+  "notes": ""
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `format`, `schema` | The file's identity and the layout version, for migrations |
+| `kind` | What the folder holds, as a word with no platform letter; it chooses the compiler. A word is lowercase letters and nothing else, and any other kind is refused as data when the folder is read, since an import names its copy `<name>.<kind>.src` |
+| `id` | A stable identifier generated once at creation and never changed. Modules, outputs and links point at it, so renaming or moving the folder breaks nothing. It lives in this file so it travels with the folder; a copied folder is given a new one, and two folders with one id are refused when the project loads. The shadow folder is named by it, so an id is one plain file name, which a UUID is |
+| `name` | One plain file name: the folder is `<name>.<kind>.src` and the cook writes `<name>.ytd`. A name or an id with a separator, a dot name, a reserved character or a trailing dot or space is refused as data when the folder is read or extracted, and the cook refuses an output that is not one file in one folder of the shadow |
+| `target` | The RSC7 layout it was extracted from and compiles to by default; an output can retarget it |
+| `platform` | The platform the file came from, `win64` by default. A build writes the extension of the platform it targets, so a PS4 `.otd` extracts to a `textures` folder and compiles back to `.otd`; [R36](Roadmap.md#r36-console-and-platform-variants) owns the console layouts |
+| `origin.how` | Extracted, authored or imported |
+| `origin.from_game` | True when the content is the game's. It drives the generated `.gitignore`, the warning before a push, and the rule that a build leaves out a source that is still the game's file ([unchanged from the game](#how-a-build-cooks)) |
+| `origin.sha256` | The hash of the compiled original, to detect that the game's file changed after an update |
+| `origin.cooked_sha256` | Written by an import of the game's file and by nothing else: the hash of what the cook of the source made the moment it was imported, since a cook writes OpenRage's own form of a file and not the bytes the game ships. A build takes a cook with this hash, like one with `origin.sha256`, for the game's file |
+| `compile.mode` | Edit (the glb replaces the geometry of a base) or author (glb, JSON and presets). Models only |
+| `created_with` | Written once at creation and never rewritten, so a save is quiet in a diff |
+
+| Game format (Win64) | Kind | Folder |
+|---|---|---|
+| `.ytd` | textures | `<name>.textures.src` |
+| `.ydr` | drawable | `<name>.drawable.src` |
+| `.ydd` | drawables | `<name>.drawables.src` |
+| `.yft` | fragment | `<name>.fragment.src` |
+| `.ymt`, `.ymap`, `.ytyp` | metadata | `<name>.metadata.src` |
+| `.ybn` | bounds | `<name>.bounds.src` |
+| `.yld` | cloth | `<name>.cloth.src` |
+| `.ycd` | clips | `<name>.clips.src` |
+| `.ypt` | particles | `<name>.particles.src` |
+| `.awc` | audio | `<name>.audio.src` |
+
+The file holds no hash of its payload, no timestamp, no absolute path and no user name. JSON files are canonical: keys sorted, two-space indent, LF, integers as integers, flags as named lists with a raw fallback, hashes as `"0x…"` strings. A text source is a folder too, such as `name.metadata.src` holding `metadata.xml`: a bare `name.ymap.xml` would have no `asset.json`, so no `id`, no `origin.sha256` to tell the same file again, and no `from_game` for the ignore rules, and the explorer, the build and the live recook all find a source by its folder.
+
+### Identity
+
+Inside a project an asset is its `id`, and the name the game sees is a property that rules compute. A garment's game name comes from its slot and its position, so reordering, deleting or reserving a slot changes it, and the same garment carries another name in another output. A name cannot be the identity of something that is renumbered. The id is what lets a build diff say that a garment moved from one position to another, what keeps the references of outputs and links valid across a rename, and what a redirect table maps from. The game itself keys on the hash of a name, so where a source replaces a game file the name or path is still its key. Inside a glb, nodes and materials stay identified by name, because 3D tools keep names.
+
+### Recognising a source
+
+OpenRage knows a source by three signals together and never by the extension alone:
+
+1. **The folder.** The `.src` suffix marks everything inside as ours.
+2. **A fixed name inside it.** `asset.json` is the root marker and the other files have fixed names (`textures.json`, `drawable.json` and so on).
+3. **The header.** `asset.json` carries `"format": "openrage-source"` and the layout version, and that header decides, so a file that was renamed or copied elsewhere is still recognised.
+
+The files stay plain `.json`, which keeps syntax colouring, `jq`, hosted previews and schema validation in the editors people already use. JSON Schemas ship with the repository ([schemas](#schemas)), and an editor binds them by path, such as `**/*.src/*.json`, which needs no special extension. A file that can live outside a `.src` folder, such as a shareable template, carries an extension of its own, `.openrage-template`, because position cannot mark it. The project file keeps its own extension, `.openrage-proj`, as the root file the application opens. Unreal and Unity use their own extensions for JSON-based roots (`.uproject`, `.asmdef`) and a sidecar next to an asset (`.meta`), CodeWalker a compound extension (`.ydr.xml`), and Cargo and npm a fixed name; this takes the fixed name and the header from the last, and the marker folder from the sidecar convention.
+
+### Schemas
+
+`crates/domain/or-source/schemas/` holds a JSON Schema (2020-12) for each file of a source that a person may edit: `asset.schema.json`, `textures.schema.json`, `drawable.schema.json`, `dictionary.schema.json` and, for a clothing module, `wardrobe.schema.json`. They are generated from the types that read and write the files (`or_source::schemas`, with `schemars`) and never written by hand. A test holds each file to what the types generate, and another holds every key a document writes to a property of its schema, so a field cannot be added to a type without one: adding a field fails to compile the sample document of the second, and a type that changes with no new schema fails the first (`every_schema_on_disk_is_what_the_types_generate`, `every_key_a_source_file_writes_is_a_property_of_its_schema`, and for the Wardrobe `every_key_wardrobe_json_writes_is_a_property_of_its_schema`). `OPENRAGE_WRITE_SCHEMAS=1` writes the files again after a type has changed on purpose.
+
+An editor binds a schema by the path of the file, which needs no special extension. The general bind is `**/*.src/*.json`, which reaches every JSON file of a source folder, and each schema is the one its file's name states:
+
+| Schema | Binds |
+|---|---|
+| `asset.schema.json` | `**/*.src/asset.json` |
+| `textures.schema.json` | `**/*.textures.src/textures.json` |
+| `drawable.schema.json` | `**/*.drawable.src/drawable.json`, `**/*.drawables.src/drawables/*/drawable.json` and `**/*.fragment.src/drawable/drawable.json` |
+| `dictionary.schema.json` | `**/*.drawables.src/dictionary.json` |
+| `wardrobe.schema.json` | `**/wardrobe.json` |
+
+In VS Code each is an entry of `json.schemas` in the settings, `{ "fileMatch": ["**/*.textures.src/textures.json"], "url": "<an OpenRage checkout>/crates/domain/or-source/schemas/textures.schema.json" }`. `the_globs_an_editor_binds_the_schemas_by_are_in_this_document` holds the table to the code. A schema says what a file may hold and not what a build accepts: the header of a texture, for one, is a Legacy or an Enhanced one by the generation the source compiles to, so a schema lets both through and the compile refuses the one that is not its generation's.
+
+## Layout per format
+
+| Format | In the source folder | Compile |
+|---|---|---|
+| `.ytd` | `textures/` (DDS, or an image beside it) and `textures.json` | See [textures](#textures) |
+| `.ydr` | `model.glb`, `drawable.json` and `base.ydr`; `textures/` only in author mode | Edit mode (built): the glb replaces the geometry of the base. Author mode: glb, JSON and presets |
+| `.ydd` | `dictionary.json`, `base.ydd` and `drawables/<name>/`, each with `model.glb` and `drawable.json` | Edit mode (built): each drawable's glb replaces the geometry of its entry in the base dictionary |
+| `.yft` | `base.yft` and `drawable/` (`drawable.json`, `model.glb`); later `parts/<child>/`, `physics.json`, `bounds/` | Built (wave P10): the glb replaces the geometry of the common drawable of the base, and the physics, the extra and cloth drawables, the bounds and the glass come from the base |
+| `.ymt`, `.ymap`, `.ytyp` | `metadata.xml` and `base.<ext>` in a `<name>.metadata.src` folder | Built (wave P10): OpenRage's canonical XML, imported back through the type table of the base by the conversion of [R37](Roadmap.md#r37-metadata-and-xml-at-parity), for a file whose XML reaches the canonical fixed point; an edit made to the typed root of a source goes back through `or_source::metadata::replace` (wave P44), which writes the canonical XML of the edited bytes only when that XML compiles back to itself through the same table, and leaves the source as it was when it does not ([what the maps content does with it](Workbench_Views_Design.md#what-wave-p44-built-for-maps)) |
+| `.ybn` | `bounds.glb` (named nodes) and `bounds.json` | Later |
+| `.yld` | `cloth.json` | Later |
+| `.ycd` | `clips/<clip>.glb` (bone tracks) and `clips.json` | Later |
+| `.ypt` | `particles.json`, the DDS of `textures/` with `textures.json`, and `models.ypt` when its particles draw models | Built (wave P43): the rules and the textures are compiled back and the list is the one that was made a source; see [what wave P43 built](#what-wave-p43-built) |
+| `.awc` | WAV and `streams.json` | Later |
+
+## Textures
+
+### What is on disk
+
+The textures folder holds one exact DDS per texture and `textures.json`, which carries what a DDS cannot: the texture's header words and the encode rules below. A DDS export keeps the stored payload exactly, and `or_source::textures::compile` copies it block for block. The import of a DDS in `crates/io/or-io/src/authoring/texture_import.rs` decodes mip 0 and recompresses, and is not on that path.
+
+The header words are named as `or-io` declares them, which is the engine's naming, and not by CodeWalker's `usage` and `usage flags`: a Legacy texture states `resource_type_and_conversion_flags`, `template_type`, `extra_flags`, `handle_index`, `info_bits` without its sRGB bit and `stereo_rt_mode`, and an Enhanced one `flags`, `usage_data`, `anti_alias_type` and `tile_mode`. A word that is absent is zero, and an extraction states every word that is not. A word of flag bits is a list: the names the engine gives its bits, then one `0x…` string for every bit it gives none, and a number reads as well, as every source written before the lists was. The names are computed from `or-io`'s declarations: `processed` for the conversion flag a processed texture states, and `owns_backing_store`, `has_been_deleted`, `dynamic` and `dirty` for the bits of the DX11 info byte above sRGB. Nothing else is named, because nothing measured names it: over the 290 Legacy and 26 Enhanced textures of the sibling corpus, `extra_flags`, `handle_index`, the info bits past sRGB and `stereo_rt_mode` are zero in every one, the conversion word is 0x80 in 284, 0x30 in five and 0 in one, and the template type and the Enhanced `usage_data` take values no declaration explains, so they are stated raw (`header_words_are_named_lists_with_a_raw_fallback_and_an_integer_still_reads`). An Enhanced `tile_mode` is the name `or-io` declares for it, or its number. A texture with no `header` is a new one and takes a processed Legacy texture's defaults. A texture a DDS cannot hold whole, one with a cut mip, a depth, layers, an image type or an Enhanced dimension other than 2D, is refused at extraction by name.
+
+### Choosing the source
+
+A texture's source is the first of these that exists:
+
+1. The `pack` the texture's entry in `textures.json` names, or else the `source` it names. An entry that names both is refused.
+2. An image file in `textures/` with the texture's name and a supported extension.
+3. The DDS.
+
+There is no convert button. A person opens the DDS in their editor, or exports it as an image, saves a PNG or a TGA beside it, and the next build uses the image. The CLI exports a texture with `openrage-cli texture export`. Two images with the same stem are refused with a message and not guessed between. A DDS or an image that no entry names is a texture of its own, and a `source` may name a DDS, which is copied exactly as the texture's own is. A file that an entry names, as its `source` or as a channel of its `pack`, is that entry's input and is not also a texture of its own. When an image is the source, the DDS stays as the base: it is what unchanged blocks are copied from and what the original mips come from. The texture's inspector shows which file is in use and offers to reveal the folder.
+
+### Inputs
+
+| Input | When | How |
+|---|---|---|
+| DDS | First | Blocks copied exactly when it is valid and the rules ask for nothing else |
+| PNG, TGA, TIFF, BMP, JPG | First | Decoded to 8-bit RGBA by the image crate OpenRage already uses |
+| Several images packed into channels | Wave G | The `pack` rules below |
+| PSD | P11 | The flattened image Photoshop stores after its layers, 8 or 16 bits, grayscale or RGB, raw or run-length packed; layer compositing is not attempted |
+| 16-bit images | P11 | PNG, TIFF or PSD with 16 bits a channel compiles with a `clamp` that windows it, the whole range being `clamp: [0, 1]`, which is stated for it when it is put into a source ([what a rule may ask](#what-a-rule-may-ask)) |
+| EXR, HDR, a float TIFF | P11 | Floating-point light, refused until a `clamp` or a `tonemap` says how it comes down to 8 bits ([what a rule may ask](#what-a-rule-may-ask)) |
+| Substance Painter and Designer projects | Never | Export PNG, TGA or EXR from them, as engines expect |
+
+### Rules
+
+`textures.json` states how an image becomes a DDS. A texture states only what differs from the defaults, which follow the format and the colour space of the DDS it replaces.
+
+```json
+{
+  "textures": [
+    {
+      "name": "jbib_diff_012_a_uni",
+      "header": { "resource_type_and_conversion_flags": ["processed"], "template_type": ["0x20000054"] },
+      "encode": { "format": "DXT5", "mips": "to-4x4", "filter": "box",
+                  "quality": "normal", "colour_space": "srgb" }
+    },
+    {
+      "name": "jbib_spec_012",
+      "pack": { "r": { "file": "intensity.tga", "channel": "r" },
+                "g": { "file": "falloff.tga", "channel": "r" },
+                "b": { "file": "fresnel.tga", "channel": "r" } },
+      "encode": { "format": "DXT1", "colour_space": "linear" }
+    }
+  ]
+}
+```
+
+The second entry is channel packing. Each of `r`, `g`, `b` and `a` names one channel of one image in `textures/`; the images may be PNG, TGA, TIFF, BMP or JPG and must all be one size, and the texture takes that size. A channel the pack leaves out is 0, and an alpha it leaves out is opaque. The pack is the texture's pixels, so a DDS beside it only says what the rules leave out, and a pack with no DDS is linear, because its channels are measures and not colour. A build refuses a rule it has no code for, so a map is never compiled with a rule skipped: a word `encode` does not know is a fault of `textures.json` that names it, and a rule a texture cannot keep (below) is refused with the rule and the reason.
+
+| Rule | Why it is stated |
+|---|---|
+| Format | BC1 to BC5, BC7 and the uncompressed formats. BC7 is `or-io`'s `bc7-encode`, the one native link, which `or-source` turns on for itself so that a rule naming BC7 compiles in every build that holds the crate |
+| Colour space | An albedo is sRGB, a normal map or a mask is linear; a wrong choice resamples the mips through a gamma curve that was never in the data. No shipped Legacy texture states sRGB, so the default, which is the DDS's flag, is linear for every one of them, and a diffuse edited through an image states `srgb` until a table of usages exists to default it by. A texture with no DDS is sRGB |
+| Alpha | `alpha`, straight (what an image is unless it says) or premultiplied, and `alpha_coverage`, the cutoff a cutout is tested against, whose share of texels reaching it every mip keeps from the top level ([the alpha rule](#what-a-rule-may-ask)) |
+| Mips | Until the shorter side is four texels, where shipped files stop (`to-4x4`, the default); `to-1x1` goes on to one |
+| Filter and quality | Box or Lanczos, and the encoder's effort |
+| Normal map convention | Whether the green channel is flipped, as `flip_green`. Shipped maps point green down the image, so an image made from a DDS is taken as it is, and a map authored with green up takes `flip_green: true` ([measured](#the-normal-map-convention)) |
+| Channel packing | A specular map holds three separate measures in its channels, and artists author them as separate images |
+| Clamp | A 16-bit image or floating-point light has more range than 8 bits hold, so a window of it is chosen and not guessed |
+| Tone map | Light brighter than 1 is brought down by a curve the person picks, after an exposure stated in stops |
+
+### What a rule may ask
+
+A rule is taken or refused by name and never skipped, so a person who states one is told when it cannot be honoured. A fault in a rule is a problem of `textures.json` that names the texture and the rule.
+
+- **A DDS with no image beside it is copied block for block.** A rule that would change a block is refused: a `format` other than the DDS's own, a `mips` count other than the one it holds, `flip_green`, and the three rules below for images of more than 8 bits. A rule it can honour is taken: a `format` or a `mips` that states what the DDS already is, a `filter` or a `quality`, which act only where blocks are encoded and are kept for the image that may come, and `colour_space`, which is a flag of the header and moves no block (`a_rule_a_dds_alone_cannot_honour_is_refused_by_name_and_one_it_can_is_taken`).
+- **An image of 16 bits a channel** (a PNG, a TIFF or a PSD) compiles only with a rule that says how it comes down, since the game's formats hold 8 and how much of the range is kept is a choice and not a guess. `clamp: [min, max]` keeps a window of the range: the fraction of 65535 from `min` to `max` is stretched over the byte, and what lies outside is cut. The whole range is `clamp: [0, 1]`, which is the rule a 16-bit picture is **given the moment it is put into a source** (`or_source::create::author_textures`, the Wardrobe's drop and the watched folders write it into `textures.json` for the texture, where the inspector shows it with the rest of the entry's rules); a source whose entry does not state it is refused, with a sentence that names the file and the rule that compiles it. Alpha is coverage, which a window leaves alone (`a_16_bit_image_comes_down_by_its_full_range_and_a_clamp_rule_windows_it`, `a_16_bit_picture_put_into_a_source_is_given_the_whole_range_as_a_stated_rule_that_is_shown`).
+- **Floating-point light** (an EXR, an HDR or a float TIFF) is refused until a rule says how it comes down. `clamp` takes a window of the light itself, and `tonemap: "reinhard"` brings `x / (1 + x)` of the light after `exposure` stops, which multiply it by two to that power. The result is encoded with the sRGB curve when the texture is stored sRGB, since light is linear and an sRGB texture holds colour already encoded; a linear texture, such as a normal map or a mask, keeps it as it is. A clamp with a tone map is refused, as is an exposure with no tone map (`floating_point_light_compiles_only_with_a_rule_that_says_how_it_comes_down`).
+- **An image of 8 bits** has nothing to bring down, so `clamp`, `tonemap` and `exposure` are refused for it (`a_rule_for_more_than_8_bits_is_refused_for_a_source_that_has_8`). The window a 16-bit picture was given is taken back by the 8-bit picture that comes into its place through the same doors, so that a bit depth toggled in an editor does not leave a source that refuses to compile (`a_picture_of_8_bits_put_after_one_of_16_takes_the_window_back_and_the_source_compiles`). In a `pack` the rules apply to each channel image that has more than 8 bits.
+- **A PSD** is read for the image Photoshop stores after its layers, in grayscale or RGB at 8 or 16 bits, raw or run-length packed, with the channel after the colour as alpha. A negative layer count (in the layer info, or in the `Lr16` block a 16-bit document keeps it in) is how Photoshop marks that channel as the merged image's transparency, and such a file stores its colour blended against white: the reader takes the white back out of every texel that is not opaque, so that the colour is straight (`a_psd_with_transparency_has_its_white_taken_back_out`, `a_16_bit_psd_keeps_its_layer_count_in_the_lr16_block_and_is_unmatted_too`). An extra channel in a file whose count is not negative is a saved channel in the format's description and not transparency, and ImageMagick does not read it as alpha (checked on files this build wrote); it is read as straight alpha here all the same, so that a texture which keeps its alpha in a saved channel compiles with it (`an_extra_channel_of_a_file_with_no_negative_count_is_straight_alpha`). A file of another colour mode, of 32 bits, of zip compression or in the large format is refused with what it is (`a_psd_this_build_does_not_read_says_what_it_is`).
+- **Alpha.** The mips are always made from colour weighted by alpha, so that a texel that is not there adds none: `alpha: "premultiplied"` says the image holds colour already multiplied by its alpha (as an exporter that premultiplies writes it), so that each texel is taken out of its alpha before the average and put back into it after, and every mip is stored premultiplied. `alpha_coverage: 0.5` is the cutoff of a cutout (above 0 and at most 1): an average of boxes takes the thin edges of leaves and fences below it, so each mip is given the alpha scale that makes the share of its texels that reach the cutoff the share the top level has, with the straight colour of each texel kept, and the top level is the artist's (`a_premultiplied_cutout_keeps_its_coverage_through_the_mips`, `a_cutout_keeps_its_coverage_down_the_chain_only_when_the_rule_says_so`). A rule the texture cannot keep is refused by name, with the format that cannot: `alpha_coverage` needs a format with alpha (BC1's one bit counts), `premultiplied` needs eight bits of it (BC2, BC3, BC7 or an uncompressed format), a cutoff outside 0 to 1 is not one, and a DDS with no image beside it is copied as it is, so `alpha_coverage` would change the alpha of every mip and is refused while `alpha` only states what the DDS is (`an_alpha_rule_the_build_cannot_honour_is_refused_by_name_and_never_skipped`, `a_dds_alone_cannot_keep_a_coverage_and_says_so_and_a_statement_of_its_mode_moves_no_block`). A texture with either rule is encoded afresh whole, since its whole chain differs from the DDS's (`an_image_made_from_its_dds_keeps_every_block_unless_an_alpha_rule_asks_for_a_new_chain`).
+
+Tried on real files on 2026-10-09, which the tests above cannot say: `Naruto 4.psd`, a 134 MB file of 5333×3000, and `uffizi-large.exr`, 2400×1200, were decoded and looked at, and came out as a coherent illustration and a coherent light probe of a courtyard; four Photoshop files were then compared texel for texel with ImageMagick 7.1.2 (`magick file.psd[0] -depth 8 rgba:`). Two opaque ones (1,000,000 and 2,094,009 texels) came out byte for byte the same. Two with transparency, whose layer counts are negative, came out the same once the white was taken back out, 7,625 of 2,051,576 texels and 777,931 of 8,294,400 having partial alpha; before it 5,343 and 770,968 of those texels differed, all in colour and none in alpha. The 16-bit path agrees with ImageMagick to one level of 65,535, with 8 of 4,096 texels off by that level, on a file this build wrote with its count in an `Lr16` block. Not measured: a 16-bit file with transparency saved by Photoshop (the only 16-bit file at hand was CMYK, which is refused); a PSD saved without Photoshop's Maximize Compatibility, whose merged image may be a placeholder (no such file was at hand, and this reader does not look for one); a layered file with 32 bits; and a decode on a release build (the 16 Mpx PSD took 4 to 5 seconds on the Cranelift test profile).
+
+### Which file a texture compiles from
+
+A texture's source is, in order, the `pack` or the `source` its entry names, an image of its name beside the DDS, then the DDS. `or_source::textures::inputs_of` says which file that is for each texture of a source, from the names and the rules and with no file read: the file used, what it wins over (the DDS beside an image only says what the rules leave out, a second image of the name is not used), and the rules the entry states, as a sentence the Project workspace's Properties shows as *Compiles from* (`the_inspector_says_which_file_wins_when_a_dds_and_an_image_share_a_name`, `the_inspector_says_which_file_a_texture_compiles_from_and_what_that_file_wins_over`). Two images of one name, with no `source` to say which, are said to be unclear, and the compile refuses the source.
+
+### Maps made from a diffuse
+
+`or_source::maps` makes a normal map and a specular map of a diffuse texture (a name with the word `diff`, or the textures a request names) and writes them as **new pictures of the source**, never over what is there: `jbib_diff_000_a_uni` gets `jbib_normal_000_a_uni.png` and `jbib_spec_000_a_uni.png`, each with an entry that states it DXT1 and linear, and a map the source has is left and said so (`the_maps_of_a_diffuse_are_listed_before_and_written_as_new_pictures_beside_it`). The normal map reads the brightness of the diffuse as a height and tilts by a strength times the slope (the Sobel gradient over eight, the picture wrapping at its edges), with green pointing down the picture as the shipped maps do; a flat diffuse makes a flat map (`a_normal_map_slopes_with_the_diffuse_and_a_flat_diffuse_makes_a_flat_one`). The specular map's red rises with the brightness up to 60 percent, and its falloff and Fresnel are the same everywhere (`a_specular_map_follows_the_brightness_of_the_diffuse`). They are estimates from a picture that holds colour and not shape, which an artist's own maps replace by name; a ped component's own normal and specular maps are embedded in its model, so these pictures are for a pack whose materials bind them. The Wardrobe makes them in a copy of the source ([Clothing_Tool_Design.md](Clothing_Tool_Design.md)).
+
+### Budgeting a textures source
+
+`or_source::budget` gives each DDS texture a ladder of choices from what it is down to the cheapest, with the PSNR of each against the texture as it is, and chooses across as many sources as are asked. A rung is a size (a power-of-two fraction, down to a shortest side) and a format; a BC3 or BC2 texture with no alpha is offered as BC1 at the same size with its alpha blocks dropped and no pixel changed, and a halving that keeps the format drops the top levels and keeps the others as they are. The choice gives up the least PSNR per byte saved until the textures fit the target, then gives back the dearest step that still fits, so that the plan stops below the target by less than the saving of its last step (`a_dry_run_fits_the_target_with_the_least_lost_and_changes_no_byte`). The bytes are those of the mips. A rung is measured at fast quality and written at normal, so the PSNR the plan states is a floor of the picture written (`the_psnr_of_a_choice_is_the_one_a_smaller_picture_measures_against_the_original`). Measuring and choosing write nothing; applying writes exactly the rung chosen for each texture, refuses a texture that is no longer as it was measured, and compiles the source once at the end (`an_accepted_plan_is_written_as_the_dry_run_said_and_meets_the_target`). A texture made from a picture is left, as it is for the optimiser.
+
+### Re-encoding
+
+Three rules keep an edit from costing more than it changes.
+
+1. **No change, no encode.** A texture whose source is unchanged copies its blocks.
+2. **Only the changed blocks.** Compression works in independent 4×4 blocks. An image derived from the DDS is compared with the decode of the DDS block by block, the original block is kept wherever the pixels are equal, and only the blocks that differ are encoded. A mip block is encoded only when the area it covers changed, so the original mips survive outside the edit.
+3. **Otherwise a full encode** with the rules, which is what a new image or a changed format or size needs.
+
+As built in `or-source`: an image is made to its DDS when it has the DDS's size, the DDS's format (or the one the rules name) and the DDS's number of mips (or the count the `mips` rule gives). The decode of the DDS's mip 0 and the image each make a mip chain, with the texture's filter in its colour space, and a block is encoded afresh when any pixel of it, in a channel its format keeps, differs between the two chains. Every other block is copied from the DDS, so a block an edit never reached keeps the bytes the file shipped with in every mip. The blocks that change are encoded together as one strip, which gives the bytes a full encode gives them, and a level that is not a whole number of blocks across is encoded whole when anything in it moved. An image of another size, a rule naming another format or mip count, or a DDS that cannot be decoded is a full encode, whose mips follow the `mips` rule and default to the 4×4 level. A `colour_space` rule on an untouched image changes the flag and no block (`a_save_with_no_change_changes_no_byte`, `an_edit_changes_only_the_blocks_it_covers` and `a_rule_the_dds_cannot_honour_is_a_full_encode_of_the_image`).
+
+### What was measured
+
+Measured on 2026-10-07 with `openrage-cli texture export`, `texture import` and `texture psnr` over the sibling corpus, on a debug build. The samples are small: two textures for the cycles, two for Git, 42 for the format sizes and 125 for the PNG-to-DDS ratio.
+
+Ten decode-and-encode cycles of one 1024×1024 texture each, with the same encoder and settings:
+
+| | DXT1 | DXT5 |
+|---|---|---|
+| Cycle 1 against the original, dB | 52 | 60 |
+| Cycle 2, bytes changed from cycle 1 | 4125 | 26031 |
+| Cycle 3, bytes changed from cycle 2 | 140 | 3910 |
+| Cycles 4 to 10, bytes changed | 0 | 0 |
+| Drift of every later cycle against cycle 1, dB | 67 | 80 |
+
+In the same measurement of 2026-10-07 a texture settled to a fixed point after three cycles, and an area left untouched while the rest was edited every cycle stayed at that same drift. The first re-encode of a texture the game shipped changes 15 % of the bytes of a 256×256 DXT1 and 47 % of a DXT5, and regenerated mips differ from the shipped ones by about 31 dB on the DXT1 and by 29 dB down to 7 dB across the DXT5's levels.
+
+The same pixels in other lossless formats on 2026-10-07, over 42 textures, mip 0 only except the DDS rows:
+
+| Format | MB |
+|---|---|
+| PNG, as OpenRage exports it | 65.5 |
+| PNG, maximum compression | 49.5 |
+| QOI | 50.9 |
+| TIFF, zip | 45.4 |
+| JPEG XL, lossless | 28.5 |
+| WebP, lossless | 23.7 |
+| DDS, exact, all mips | 35.4 |
+| DDS through xz | 15.3 |
+
+What one local edit costs in a Git repository on 2026-10-07, a 160×100 rectangle painted on two big textures:
+
+| | First commit, MB | One edit, KB |
+|---|---|---|
+| DDS | 2.2 and 2.0 | 2.7 and 3.0 |
+| PNG | 6.0 and 3.6 | 5267 and 3145 |
+| WebP, lossless | 3.3 and 1.7 | 3226 and 1708 |
+
+A compressed stream changes entirely after an edit and Git stores a whole new copy, while an edit to raw blocks touches only the blocks it covers. A DDS edit is therefore cheaper in history by three orders of magnitude, and a change to the whole image costs a full copy in any format.
+
+### Cropping a textures source
+
+Wave P30 of [Workbench_Plan.md](Workbench_Plan.md) adds a fourth thing an edit may do to a DDS that no image decodes: cut it to a part of itself (`or_source::crop`). The part is a *window*, a power-of-two fraction of the width and of the height that lies where such a fraction does (`or_interchange::doctor::uv::Window`: the smallest one that holds the texture coordinates a mesh uses), so on a power-of-two texture it is whole blocks of every level of the mips down to four texels. The crop is then a copy: each level of the cropped texture is the part of the same level of the source that the window covers, in the same format and colour space, with the levels the cropped size has under the convention shipped textures follow, which stop at four texels (`each_level_of_a_cropped_texture_is_the_part_of_the_same_level_the_window_covers`, over DXT1, DXT5 and an uncompressed format, held to the decoded pixels and failing when the origin is wrong). A texture with a side of four texels or fewer is left as it is and listed, since a part of it is none a crop can make; a window too small for another texture (under four pixels a side) refuses the whole source and writes nothing; and a texture made from pictures, or from the channels of pictures, is refused by name, since its pixels are in the pictures (`a_texture_of_four_texels_or_fewer_on_a_side_is_left_and_listed`, `a_window_too_small_for_a_texture_refuses_the_whole_source_and_writes_nothing`, `a_texture_made_from_a_picture_is_refused_by_name`). Like the optimiser, it writes into the folder it is given, so a caller that must keep the folder as it was crops a copy; the Wardrobe crops a copy of each texture source of a garment and the garment names the copy. It also crops the maps embedded in a model, which a ped component keeps its normal and specular maps in and which are read with the same coordinates as its colour texture, by writing the embedded dictionary out as a textures source, cropping it and compiling it back, so that a crop of a garment cuts every texture its coordinates read or none (`the_coordinates_move_into_the_part_they_use_every_texture_is_cut_to_it_and_every_vertex_still_samples_its_pixel`). ⚠ A pixel at the very edge of the window is sampled with the texture's own repeat, where the whole texture had a neighbour; coordinates that touch the window's edge are the only ones this reaches.
+
+### The stride a texture states
+
+284 of 284 compressed Legacy textures in the staged `.ytd` files state `mip_stride` as a quarter of their row of blocks, which is the bytes of one row of texels, and the 6 others state their row (`every_shipped_compressed_texture_states_its_stride_per_row_of_texels`, over the sibling corpus at `effa090f`; `markers.ytd`, at an RSC7 version no layout declares, is left out). `GrcTextureFormat::legacy_mip_stride` is that word, and `GrcTexture::set_pixels`, `GrcTexture::from_png` and `or-source` write it.
+
+### The normal map convention
+
+A normal map made from a height field has a gradient with no curl: the row slope of red and the column slope of green are one mixed second derivative of the height, so they move together when green points down the image (the DirectX convention) and against each other when it points up (OpenGL). Over the 67 staged Legacy textures named `_n` or `_normal`, the correlation of the two slopes puts green down in 55, up in 5, and 7 are too noisy to say, where a map counts when the correlation is at least 0.2 either way (`the_green_channel_of_shipped_normal_maps_points_down_the_image`, over the sibling corpus at `effa090f`). The five that point up are two cropland ground textures, a deck light and two weapon parts. Blue is at least 240 everywhere in 59 of the 67, so a shipped map holds its slope in red and green and nothing in blue. RAGE wants green down, so no default flips an image, and `flip_green` is the rule for a map authored the other way up.
+
+## Models
+
+A model's source is `model.glb` for the geometry, the skin and the materials, and `drawable.json` for what glTF cannot say: shader names and parameters, LOD distances, flags, bone tags and bounds (built in edit mode, [below](#what-wave-p12-built)), and the vertex layout as a named preset (held back with author mode). The geometry file is imported from `.glb`, `.gltf` or `.fbx`; an FBX is converted to `.glb` with a report of what was dropped. The CodeWalker XML that Blender's Sollumz writes is the exchange format the community uses, and importing it would need the owner to reopen the ruling of 2026-09-22, which covered metadata XML.
+
+| Limit of glTF | Answer |
+|---|---|
+| Materials are PBR, with no RAGE shaders | The JSON holds the shader and its parameters; a material is named after its shader |
+| Blender drops per-primitive data and merges triangles per material | Identify by name, let the JSON decide (built: [the names a glb goes by](#what-wave-p12-built)), and re-split at import by the palette and vertex limits with a report (built for a mesh that overflows them; two geometries Blender merged into one are still refused) |
+| No collision | Nodes named by prefix and `bounds.json` |
+| A ped component's skinning names a skeleton in another file | Embed the reference skeleton in the glTF |
+| Animation is translation, rotation and scale | A route for bone tracks; the JSON holds the other tracks |
+| Textures are PNG or JPEG | DDS beside the glb, referenced by name |
+
+Tools keep names best, then custom properties on a node, a mesh or a material, then data per primitive, and extensions last. The JSON, which no tool touches, is the authority.
+
+### What wave I built
+
+Edit mode, for a `.ydr` and a `.ydd` of either target, in `or_source::models`. Author mode, the shipped presets and CodeWalker XML stay held back, and a fragment's source is [its own kind](#fragments-and-metadata).
+
+- **The base is kept.** An extraction writes the file it was given beside the glb, as `base.ydr` or `base.ydd`, and `asset.json` states `compile.base`, its hash. A compile replaces the geometry of that file and nothing else, so a folder compiles with no install and the shaders, textures, skeleton, boxes and LOD distances stay the base's. (Wave P12 reversed the rest of that line: `drawable.json` now states them and a compile sets the ones an edit changed, [below](#what-wave-p12-built); a source that states none of them keeps the base's.) A base whose hash is not the stated one is refused, as is any `compile.mode` but `edit`. The folder holds the geometry twice, once as the base and once as the glb, and a `from_game` source is not committed by default.
+- **Every level of detail is in the glb**, so an edit to any of them lands. A model's pairing with the base is by name where the glb names its meshes and its materials, and positional within a level as the fallback, checked against the address each primitive of an OpenRage glb states ([the names](#what-wave-p12-built)); a count the base does not have is refused with both counts, because adding or removing a geometry is authoring.
+- **`drawable.json`** holds `import`, the two rules a compile reads (`fill_missing`, off, because a filled channel is data nobody stated; `keep_skinning`, on, which applies only to a skinned geometry the glb states no weights for); `skeleton`, the bones the base binds to by name in palette order; and `base`, what the base holds for a person editing the glb (the channels each geometry needs, its material and counts, where the skeleton came from), which no compile reads; wave P12 added the values the base states ([below](#what-wave-p12-built)), which a compile does read. A key this build has no code for is refused by name.
+- **A dictionary** keeps `dictionary.json`, which lists each drawable by its hash and its folder. A drawable's own name is the folder where it is one plain name no other entry shares, and `entry_<hash>` otherwise: the shipped `ig_claypain_p.ydd` holds two drawables that state one name. A drawable with no geometry has no folder and stays as the base has it.
+- **A ped component** skins against a skeleton in another file. Given the ped's skeleton (`reference_skeleton` reads it from a `.yft`), an extraction embeds it in the glb, and the glb then states the weights. Without one, the weights stay the base's, and a glb that states a skin is refused, because `drawable.json` then has no bone names to bind its joints by and a tool's own bone order would bind every weight to the wrong bone (`a_skin_imported_into_a_source_extracted_without_the_skeleton_is_refused_and_not_bound_by_position`). Either way every staged ped component keeps its skinning through the round trip (`every_corpus_ydd_extracts_and_compiles_back_to_the_same_meshes`). A glb whose skin lists its bones in another order than `skeleton` does is bound by name, and a weight on a bone the skeleton has no name for is refused naming it.
+- **An extraction compiles what it wrote** before it keeps it, so a drawable the import would refuse never becomes a source that fails at its first build.
+- **A protected asset is refused by what it is.** A `.ydd` that opens with `FXAP` and not an RSC7 header is a protected asset, and an extraction says so in those words instead of failing on a header word (`a_protected_asset_is_refused_with_a_message_that_says_what_it_is`). No staged file is one, so the check is held by bytes the suite writes.
+- **Import** takes a glb, a glTF or an FBX into a source. A glb is stored as it came; a glTF or an FBX is converted to one whose primitives state the addresses the base would pair them with. The file's own materials, textures and animations are counted in a report, and nothing is written unless the source compiles with the model in it. FBX is read by `or_interchange::fbx` ([Mesh_Interchange.md](../features/Mesh_Interchange.md#fbx-in)): `fbxcel`, MIT OR Apache-2.0, reads binary files of 7.4 and later, and 7.1 to 7.3 are read as 7.4. An ASCII FBX is refused, and no FBX is ever written.
+- **Textures are the base's.** The glb carries the drawable's own textures as PNG only where the extraction is asked for them, to be looked at, and a compile ignores them; no `textures/` folder is written.
+- **Live recook** covers models: saving a glb, a rule file or the base recooks that one drawable into the shadow folder as `<name>.ydr` or `<name>.ydd`.
+
+### What wave P12 built
+
+Wave P12 of [Workbench_Plan.md](Workbench_Plan.md) answered ruling R21 of [the audit's waves file](../audit/workbench-waves-2026-10-08.json) with a yes for the fields below and for pairing by name and re-splitting, and kept the vertex-layout presets, author mode and CodeWalker's XML held back. It is edit mode still: the base is kept, and the geometry, the shader and the vertex declaration of each geometry are the ones it states.
+
+- **`drawable.json` states what the base holds.** An extraction writes, besides `import`, `skeleton` and `base`, these keys, each the engine's name in the engine's casing: `materials` (one per shader of the base, in its order, with `name`, `shader`, `draw_bucket`, `draw_bucket_mask`, a Legacy shader's `flags` and `user_flags`, and its `parameters`), `models` (one per model, by `at` such as `lod0/model1`, with its `name` in the glb, `flags` and `mask`), `lod_distances`, `bucket_masks`, `bounds_sphere`, `bounds_box` and `bones` (the `tag` of each bone of the drawable's own skeleton, which is its `bone_id`). A parameter is a constant, one row of up to four numbers per register, or the name of the texture it binds: that name is the DDS the base uses, and an empty one is an unbound slot. Its key is the name the shader database gives it where that name hashes back to the parameter, else `0x` and the eight digits of its hash (`drawable_json_states_what_the_base_holds`). Numbers are written as the shortest text that reads back as the same `f32`. A value that is not finite, which a shipped drawable's box can carry, is left out of the file, so the base's stays.
+- **A compile sets what differs and nothing else.** After the geometry is replaced, each value the file states that the base states otherwise is set, and the report names it (`drawable.json: material 0 (…) set: …`). A value equal to the base's is not written, so a source that states the base's own values compiles to the bytes of one that states none (`an_unedited_drawable_json_changes_no_byte`, and over every staged `.ydr` and `.ydd` of both targets, `every_corpus_ydr_states_its_values_and_takes_an_edited_parameter` and its three siblings). Editing one parameter changes that parameter in the file and nothing else (`editing_a_shader_parameter_changes_that_parameter_and_nothing_else`: the compiled bytes equal the unedited compile with that one number moved and saved by the same code; over the corpus, a source with one number moved and compiled describes, when extracted again, what it did and the edit and nothing more). The same holds for a texture's name (`rebinding_a_texture_names_the_dds_the_material_uses`) and for the distances, masks, bounds, flags and tags (`distances_masks_bounds_flags_and_bone_tags_are_set_where_they_differ`). A source written before these keys existed states none of them and keeps the base's.
+- **What it refuses, by name.** A different `shader` (`a_shader_drawable_json_changes_is_refused_by_name`: it would mean choosing a vertex declaration and a parameter set, which are the presets still held back); a parameter, material, model or bone the base does not have, and a list of another length; a constant of another shape; two bones sharing a tag, since the table that finds a bone by its tag could reach only one; a bone renamed; `flags` or `user_flags` on an Enhanced shader, which has neither; and the rebinding of a texture on an Enhanced material, whose reference states the size and format of its texture, which a name cannot say. `flags` and `mask` of a model and the masks of a level are carried as the numbers the base holds: nothing measured names their bits.
+- **A glb is paired with the base by what it calls things.** Meshes come first: a mesh answers to the model its name ends in (`…_lod1_model0`, which is how an export names it) or to the name `models` states for it, so a file that lists its nodes in another order, as a modelling tool does (it sorts `model10` before `model2`), puts each mesh in its own model (`meshes_a_file_reorders_are_paired_to_their_models_by_name`). Then a primitive answers to the geometry that draws with a shader of its material's name, whatever its order in the mesh, and a copy suffix such as `.001` is ignored (`primitives_are_paired_to_geometries_by_the_name_of_their_material`). The `models` and `materials` names are what the glb calls them, so a person who renames a mesh or a material in a modelling tool states the new name there (`a_glb_whose_meshes_are_renamed_and_reordered_pairs_by_the_names_drawable_json_states`). A mesh whose name no model answers to takes the model nothing named, in order; a level none of whose meshes is named is paired by position exactly as before; two geometries that share a material name are told apart by their order, and the address an OpenRage glb states is still held to it (`two_primitives_of_one_material_keep_the_order_their_export_stated`). A name decides over a stated address, and the count of geometries a mesh brings has to be the model's. A model with no geometry has no mesh in an export, so none is owed for it and none is paired with it (`a_model_with_no_geometry_beside_full_ones_is_not_owed_a_mesh`, `a_mesh_named_for_no_model_never_takes_a_model_with_no_geometry`); meshes that keep one model's name, as a tool does that separates an object by material (`…_model0`, `…_model0.001`), are that model's geometries in the file's order, and a copy of a whole model among them is still a count the model does not have (`meshes_a_tool_split_from_one_model_keep_pairing_with_it`, `a_copy_of_a_model_is_still_refused_as_authoring`). The level of a mesh comes from its node's extras and, where a tool dropped them, from the `lodN` of its name. An export is unchanged by any of this, so the glb that the behaviour baseline recorded is still the glb.
+- **A mesh that overflows a geometry is cut and the report says so.** `vertices_count` is a `u16` with the index payload 16 bit beside it, and a `Binding` lane addresses the palette with one byte, so a geometry holds 65,535 vertices and reaches 256 bones. A paired mesh past either is cut by triangle, in the file's order, into geometries that keep the shader and the vertex declaration of the one they replace, each with its own palette, and `lod0/model0/geometry0: 70002 vertices past the 65535 a geometry holds, so it is split into 2 geometries` is listed (`a_mesh_past_the_sixteen_bit_ceiling_is_split_into_geometries_and_reported`, `a_mesh_weighted_past_the_palette_ceiling_is_split_by_bones_and_reported`, and through a source `a_mesh_past_the_vertex_limit_is_split_by_an_import_and_the_report_says_so`). A vertex no triangle names is not carried into a piece. This is the one way a model's geometries come to outnumber the base's: a mesh with more primitives than the model has geometries, or fewer, is still refused, because choosing a material for a new geometry is authoring. A mesh over the limit with no triangle has nothing to cut and is refused as before (`a_mesh_past_the_sixteen_bit_ceiling_with_no_triangle_is_still_refused`). A cut changes where the slots of a model's boxes fall, so the fourth lanes a shipped box carries for the engine move with the slot they sat in.
+- **Measured.** Over the staged corpus at `b577829b`: 13 Legacy `.ydr` with 63 materials, 339 drawables of Legacy `.ydd` with 557 and 5 Enhanced `.ydr` with 12, 2 of Enhanced `.ydd` with 4 state their shaders as the base draws with, compile to the same bytes with the values unedited, and take one edited parameter of a constant (48, 13, 5 and 2 sources); the Enhanced ones are the only measure of the constants of an Enhanced shader. Nothing was run in the game.
+
+### What wave P43 built
+
+Wave P43 of [Workbench_Plan.md](Workbench_Plan.md) made the source of a `.ypt`, which the owner ruled on 2026-10-20 ("a source form, and a kind") and which [the views design](Workbench_Views_Design.md#particles) had first left as a compiled file. It is `or_source::particles`, a kind of source like the others: `<name>.particles.src`, recognised by its header, cooked live into the shadow folder, and the one row `ypt` of the door's table (`or_source::game_import::KINDS`) makes every door that decompiles a game file decompile a `.ypt` too.
+
+```text
+<name>.particles.src/   asset.json  particles.json
+                        textures.json  textures/<texture>.dds     (when the list holds textures)
+                        models.ypt                                (when its particles draw models)
+```
+
+- **`particles.json` states every member the declaration shows, by its names.** The list's `name` and its `effect_rules`, `emitter_rules` and `particle_rules`, each in the order of its dictionary, which is the order of the hash of its name; an effect holds its `timeline` of events, a particle rule its behaviours, its shader variables and the models it draws, each by the engine's name in the engine's casing (`PtxEffectRule`'s `num_loops`, a behaviour's `class` as `ptxu_Acceleration`). A member that is the declaration's own default is left out, and one a document does not state reads as the default. A hash is `"0x…"`, a vector one text of its four floats, a float the shortest decimal that reads back as the same float, and one no decimal holds exactly (a NaN with a payload) its bits. `every_member_the_declaration_shows_is_stated_or_left_out_by_name_and_no_name_is_made_up` holds the lists of members to the declaration, so a member added to a record fails it.
+- **What follows from the rest is not stated.** The five lists that name a rule's behaviours (they follow from the classes), the map of an evolution list's values (it follows from the values), and the pointers an event or a spawner holds at the rule it names (they follow from the name) are laid out by `or_particle::list::canonical` when the list is made, as the editor lays them out on every open.
+- **What is not carried.** What the declaration holds only as runtime words: the virtual-table addresses (`PgBase`, `PgBaseRefCounted`, every behaviour), runtime pointers and flags, reference counts, the `Back` pointer of an effect rule that the file held null, and padding. The engine's own declaration of a technique descriptor ignores its three padding bytes, and 182 of the sampled descriptors hold a `1` in them. The one word of the declaration that is data and had no name, the two numbers of a camera evolution behaviour (`settings`, 1 or 3 and then 2 in the 129 shipped), was private and is public now, so a source states it.
+- **The textures are the source of a `.ytd`.** An extraction makes the textures source of the list's dictionary and moves its `textures/` and `textures.json` in, so a texture is edited as a DDS or an image beside it and compiled with the rules [textures](#textures) states, for either edition.
+- **The models are kept whole.** A particle draws a `rmcDrawable`, which the `.ydr` source (a `GtaDrawable` with its glb) does not hold, so the models of a list are kept as `models.ypt`, a particle list that holds only them. The owner is asked whether they should become glTF.
+- **An extraction compiles what it wrote and compares.** The compile reads `particles.json`, the textures and `models.ypt` into a list, lays it out, saves it and opens the saved file again, and the extraction refuses a list whose compile does not state the same rules (as documents), the same textures (by the DDS and header words a source holds) and the same models (by the bytes of the file that keeps them), naming the first rule that differs. A list whose dictionaries are not filed under the hash of each rule's name, or one that holds a behaviour or a shader variable of a class no layout is declared for, is refused with its sentence too (`a_member_the_text_does_not_know_a_wrong_value_and_a_class_with_no_layout_are_refused_with_their_place`). Nothing of a refused file is kept: the row does not keep a compiled file instead.
+- **A save goes into the source.** An effect edited in the Particle workspace on the file a source cooks to is saved into the source (`or_source::particles::write_back`): the rules are written again, the textures and the models only when they differ from what the source compiles to, so a picture a person put beside a DDS keeps its rules, and `asset.json` keeps its id and origin (`an_effect_edit_is_one_step_of_undo_and_a_save_goes_into_the_source`).
+- **Measured.** On the owner's Legacy install, 1246 `.ypt` files (596 different contents, since a pack, its `hi` and `lo` twins and a DLC patch hold the same bytes) and on its Enhanced install 1577 (944 different) each become a source (436 and 554 of them hold textures, 405 and 488 hold models), compile, and import again to the same source: `particles.json`, `textures.json`, every DDS and `models.ypt` are the same bytes the second time, and none is refused (`every_ypt_of_a_legacy_install_becomes_a_source_that_compiles_and_imports_to_the_same_source` and its Enhanced twin, install-gated: they read `OPENRAGE_GAME_ROOT`, and the skip ledger names them when none is set). The source is larger than the file: 232 KB of rules for a 13 KB file, 550 KB for a 115 KB file and 36 MB for the 12 MB `core.ypt`, which takes about 75 seconds to import on the test profile; the editor builds with the release profile. Not measured: whether the game plays what a compile writes, and the clash of two effects of one name in two files.
+
+## Formats compared
+
+The studies of 2026-10-07 chose glTF plus a JSON file for a model and an exact DDS for a texture, and named CodeWalker's XML and OpenIV's open formats as the alternatives a modder already holds. This is what was measured of them on 2026-10-09, so the choice rests on figures; it reopens nothing: importing CodeWalker's XML for drawables stays held back ([Workbench_Plan.md](Workbench_Plan.md#held-back)).
+
+### CodeWalker XML
+
+Measured on the files that exist on the owner's machine: ten `.ydd.xml` exports of the freemode ped components (five of `mp_f_freemode_01` and five of `mp_m_freemode_01`, 177 KB to 951 KB each, beside Blender rigs and the DDS files of their textures) and ten `.ydr.xml` of props (20 KB to 1.9 MB); two `.ytd.xml` and one `.yft.xml` were read for what they hold. The files are not in the corpus, so no suite holds these figures; they were read with a script and a throwaway test, and the method is the one named in each row.
+
+| Measured | Result | How |
+|---|---|---|
+| Bytes a vertex, whole file | 214 to 263 over the ten ped components; 208 to 413 over the ten props | file size over the number of lines of each `VertexBuffer`'s `Data` |
+| Share of the file that is vertex data | 78 to 91 % in the ped components | the bytes of those lines |
+| Compressed | gzip -9 gives 17 to 31 % of the file, xz -9e 13 to 23 % | the tools on each file |
+| The same kind of file as an OpenRage glb | 80 to 136 bytes a vertex in the glb | `models::extract_drawables` on ten corpus ped components (`jbib_003_u` and nine more); other drawables than the XML's, and the glb holds the geometry channels while the skin weights stay in the base, so it understates a glb with a skin |
+| Precision | at most nine significant digits in a vertex number in the ped components | what an `f32` needs to be told apart; a round trip is not measured |
+| One vertex moved, in a Git pack after `git gc --aggressive` | 220 bytes for the XML of `jbib_000_u` (264,640 bytes, a pack of 63,536), 217 bytes for the glb of `jbib_003_u` (364,480 bytes, a pack of 139,819) | one number edited in the first, one `f32` of the glb's position accessor in the second |
+| What it holds | 68 distinct element names in the ten ped files: the geometry channels, the shader of each material with its parameters, the skeleton, LOD distances and flags, bounds, and the textures with their format, size and the DDS file that holds the pixels | the element names of the files |
+| Names the format has no name for | 7 element names spell an unknown word: `Unk32`, `Unknown1`, `Unknown1C`, `Unknown50`, `Unknown54`, `Unknown58` and `TransformUnk` | the same inventory |
+
+What it gives: one self-contained text file with what glTF cannot say, so no sidecar; a diff a person can read, where a glb is `Binary files differ`, at the same cost in Git for a small edit; and the exchange the Blender tools already use, so such files exist in the wild. What it costs: about 2.3 times the bytes of a glb for each vertex at the median (224 against 99), and a Git pack of a quarter of the file at best; names that are CodeWalker's and not the engine's, seven of them for words it could not name, of the kind D15 ([OR_IO_Specification.md](OR_IO_Specification.md)) refuses in OpenRage's declarations; and a reader and a writer OpenRage does not have for drawables.
+
+The texture XML is a precedent for what `textures.json` states: it lists each texture's name, size, mips, format and the DDS file beside it, as a source does, and it names the header words its own way: the conversion word is `Unk32` (128, the `processed` bit of [the header words](#what-is-on-disk)), and the template type is a `Usage` and a list of `UsageFlags` such as `X64, Y512, UNK24`, a named list with a raw fallback by bit. OpenRage names only the bits the engine's declarations name and states the rest raw, so a name is never one this build invented.
+
+### OpenIV's open formats
+
+Unmeasured. No `.odr`, `.odd`, `.otd` or `.oft` file exists on the owner's machine: a search of the work folder and of the Downloads, Documents and Desktop folders found none. Nothing is therefore known here of their size, their precision, what they hold beyond a drawable's geometry, whether a person can read their diff, or whether OpenRage could read or write them; the only fact is that OpenIV writes them. A measurement needs a few files exported by OpenIV from the same drawables as a `.ydd.xml` above, which is a request to the owner.
+
+### What is not measured of either
+
+- Whether CodeWalker or Sollumz reads back what OpenRage would write, or the XML of a file made by one tool in the other: OpenRage has no importer of the XML of a drawable.
+- Whether the XML round-trips a binary file bit for bit, or a vertex through an `f32`.
+- The time to read or write either format, and the differences between Sollumz releases.
+- Anything about a `.yft.xml`, `.ymap.xml` or `.ytyp.xml` beyond the element names of the one `.yft.xml` read.
+
+## Commit policy
+
+Studios keep a lossless source in version control and treat the GPU format as derived data that the build produces and caches, from general knowledge of Unreal, Unity and CryEngine pipelines. A project keeps that split: the commit holds sources, `build/` is ignored, and a source with `from_game` set is not committed by default. A texture extracted from a game or a third-party pack has no richer source than its DDS, so the DDS is its source. Git LFS stores a whole file per version with no deltas, so it suits PSD and PNG art and not the DDS.
+
+As built in `or_source::git`, the project's `.gitignore` and `.gitattributes` each carry one block between two marker lines, which OpenRage rewrites and nothing else of the file: every other line stays, with the line ends the file already uses, and rewriting a block that is already right changes no byte. A project made in the New project dialog writes both files when it is created, and a folder adopted there or by the banner's Make this a project only when it has neither; a project made by `openrage-cli project create` or `adopt`, or by Save project from a session that has none, gets them with its first import, which writes any block that is missing. The ignore block names `/build/`, `/vfs/` and every source under `sources/` whose `asset.json` states `from_game`; the attributes block marks the DDS, the glb, the base files and the images as `binary`. Git LFS is for the images only and only when the person turns it on, and an import keeps that choice. A block that lost its end marker is refused, naming the file, and neither file is written.
+
+### How an import writes
+
+`or_source::game_import` turns a game file into a source, and is what `openrage-cli project import` and the app's Import game files… and Import into project call, the app on a worker with a report and Undo import ([open, import and add](Workbench_UX_Design.md#open-import-and-add)). It is the one place that decides where a source goes and what happens when the place is taken.
+
+- **A table of kinds.** A `.ytd` becomes a `textures` source, a `.ydr` a `drawable`, a `.ydd` a `drawables` and a `.yft` a `fragment` source, and a `.ymt`, `.ymap` or `.ytyp` a `metadata` source. Every other extension, a text `.meta` among them, is a compiled file with no source form yet: it is copied as it is under `files/` at its own folder path, named in the report, and never dropped. So is a `.yft` or a metadata file whose source could not be made (a fragment whose common drawable holds no geometry, a metadata file whose XML does not come back to a fixed point), with the reason in the line of the report; a `.ydr` or a `.ydd` that cannot be extracted is refused. The report also says which kinds it kept, as `Kept as compiled files, not sources: 2 .ybn, 1 .ycd`. Another kind of source is one more row of `KINDS`.
+- **What it takes.** Bytes with the name they have in the game (an archive entry), a file, or a folder walked recursively. A walk leaves out `build/`, `vfs/`, hidden files and folders, source folders and project files, refuses a source folder given as the input itself, reads 8 levels of folders and 10,000 files at most, and lists, with a note, what those bounds left out. An archive (`.rpf`) found in a walk is listed the same way and never copied: `files/` keeps a file whole and an archive is gigabytes, so the way in is the files inside it. Every file is found before the first is made, so `import_watched` can tell a `Watch` how many files there are and which one it is on, and stop between two files when the watch says so.
+- **Where it writes.** `sources/<name>.<kind>.src` beside the project file. The source is extracted into a hidden staging folder and renamed into place only when the extraction succeeded, so a failure leaves nothing, and an import never writes into a folder that exists. A name that a source with another origin has taken gets `_2`, `_3` on the folder; `name` in `asset.json` stays the game's, because the cook writes the file the game expects.
+- **Same file, same source.** A file whose bytes (`origin.sha256`) and archive path (`origin.virtual_path`) match a source of the project is reported as already a source and writes nothing; a loose file has no archive path, so its bytes alone decide. `origin.how` is `extracted` for the game's files and `imported` for any other, and `origin.game_build` is what the caller knew.
+- **The report.** One line per file (made, already a source, kept or refused, each with a sentence), the paths it made with a digest of each, and what a bound left out. `bounds` is the walk's bounds when a folder was walked, so a report always says how far it went. An import that was stopped keeps every source it had made (each is whole or absent), sets `cancelled`, and lists the files it did not reach, with a note of how many. A caller takes back exactly what an import made while its digest still matches, and nothing a person has since edited (`Created::undo`).
+- **What a save does.** `Source::save` writes `asset.json` and every other JSON file of the folder canonically and touches only a file whose text changes, so saving a source nobody edited changes no byte. `notes` in `asset.json` is for a person and no recook reads it, and so is `credit` (wave P37): `author`, `url` and `licence`, each only where somebody wrote it, which says who made the asset and on what terms it may be used. A credits file of a build lists them, a package carries them with the source, and the digest of a source leaves them out, so stating one is no change of the asset. `reid` gives a copied folder an id of its own.
+
+### How a build cooks
+
+`or_project` knows no kind of source, so the editor and `openrage-cli project build` say what each folder cooks to (`or_source::cook::describe`) and hand in the cook (`or_source::cook::cook_source`, the `Cooker::recook` that the live recook runs). The plan and the build do the rest.
+
+- **Which folders.** Every `.src` folder a project holds, as a member or under its folder by the scan's rules (`or_project::find_sources`: not `build/`, `vfs/`, a hidden folder or inside another source; a walk a bound cut stops the build, since a source left out unsaid would ship less than the project holds). The Files content holds them: each is the file `stream/<name>.<ext>`, with `name` the one `asset.json` states, so `bark_set_2.textures.src` that states `bark_set` cooks `bark_set.ytd`. The folder itself, and every file inside it, never ships. Two folders that cook one file are a problem that names both; the plan does not renumber the manifest name.
+- **What it refuses.** A kind but `textures`, `drawable`, `drawables`, `fragment` and `metadata`, and any platform but `win64`, are one sentence of the plan and stop the build before anything is written.
+- **When it cooks.** Before any write, each source into a hidden `.<resource>.cook` folder beside the build, which is removed whatever happens. One that fails (a broken image, a rule the compile refuses) stops the build with every failure named by its folder, the last build as it was and the failure as a problem. A cooked file then goes through the same write, read back and swap as any other.
+- **Unchanged from the game.** A source with `from_game` set is still the game's file while its cook is one of the two files its manifest names: `origin.sha256`, the game's own bytes, or `origin.cooked_sha256`, what the cook of the source made when it was imported. A build then leaves it out, whatever its kind, and lists it as unchanged from the game: shipping a vanilla file re-distributes game content. An output's `ship_unchanged` key ships it anyway, as a pack that replaces the game's file needs. A pack registers each file and a package names each in its manifest, so what they leave out is taken out of the registrations and the manifest, which are written again from what remains, and the plan says in a sentence how many sources it may leave out (`a_dlc_and_an_oiv_leave_out_a_source_that_is_still_the_games_own`); a pack or a package that would be left with nothing is refused with the way out. ⚠ A cook writes OpenRage's canonical form, not the bytes the game ships: none of 18 corpus files (6 `.ytd`, 6 `.ydr`, 6 `.ydd`, imported with `from_game`) cooked back to its original's bytes, so `origin.sha256` alone never matched a real game file, which is why the import records the cook. `a_corpus_file_taken_from_the_game_is_the_games_file_to_a_build_until_it_is_edited` imports corpus files and asserts that an untouched one cooks to a recorded hash and an edited one (an image saved beside a DDS, a vertex moved in the glb) does not, and `corpus_files_taken_from_the_game_are_left_out_of_a_build_until_they_are_edited` builds them. The compare is on the cook's bytes, so a source imported by an OpenRage whose canonical form has since changed cooks to other bytes and ships; a compare on a digest of the source's inputs would not have that ceiling.
+- **The target.** An Enhanced output moves the cooked file as it moves a copied one (`Origin::Retarget`): it is copied exactly when it is in that layout already, and a file that cannot move stops the build.
+
+The Build tab's steps are plan, cook what changed, write to a fresh folder, read back and swap in. A build never says that the game loads what it wrote: it says that every file it wrote reloads through the readers.
+
+## Live reload
+
+OpenRage watches the `.src` folders of the open project. Saving an image beside a DDS, or a glb, recooks that one asset through the same cook as a build, into the shadow folder the viewport reads, and every open preview of the file it wrote refreshes without a manual build. Only the changed asset is cooked. A failure goes to the problems list and leaves the previous preview in place, and the watcher ignores what OpenRage wrote itself.
+
+### What the reload does
+
+Wave P8 of [Workbench_Plan.md](Workbench_Plan.md) built the one hook a recook publishes through and a preview subscribes to. It adds no watcher: the cook's worker already answers, and `took_recook` hands the path it wrote to `reload_open_file`.
+
+- **Every tab of the file is read again in place.** A Texture or a Model tab (any kind but a `.ypt`, which has its own watcher) keeps its id and its place, and the decoded previews drawn from it are dropped, so a saved image changes the pixels of a tab that stays open. The tab is then saved at the head of its history, as the file now holds it.
+- **What is drawn from another tab's file is built again.** `AppState::recooked` counts the recooks that read a tab again, and the viewport's mesh key holds it, so a model whose textures come from that dictionary (the variant of a garment, a dictionary a model opened for itself) is built again with the new pixels. A preview that is not the viewport subscribes the same two ways: it keys on `Document::payload_epoch` of the tab, which a reload moves, or on `recooked`. The dressed ped of the Wardrobe subscribes the second way: it reads a pack's files again when their size or time changes, and all of them again when `recooked` moves. The texture of a variant is a `.textures.src` folder of the pack, so an image saved in it is cooked by the source's cook like any other and the Wardrobe has no cook of its own.
+- **The steps go, except those that hold nothing of the old contents.** A step that holds a value the tab held before the recook (a patch of the old image by offset, which is what a value changed in a grid is, a whole texture, a whole payload from Replace from glTF) would write that value over the freshly cooked one on an undo, and a Save would write it into the cooked file, which a source whose input has not changed never cooks again. These go, and so do the images the other steps hold; what stays is a move of a shader by index, which undoes against the new contents or says why it cannot, and the pose layer, which is not in the file. A tab read again therefore has next to nothing to undo, and an undo never shows the pixels of an earlier cook (`a_plugin_is_served_the_file_a_reload_left_and_not_the_one_before` holds the same for the file a plugin reads).
+- **Unsaved edits are not replaced.** A tab with edits asks first, with the question a `.ypt` asks, and Keep leaves it as it is; the question words a file that OpenRage recooked itself as refreshed from the source, and not as changed by somebody else (`a_file_a_recook_wrote_is_asked_about_as_refreshed_and_not_as_changed_by_somebody_else`).
+- **A failure leaves the tab as it was.** A failed cook reads nothing again, so the tab keeps the pixels of the last good cook and Problems lists the cook's reasons. A cooked file that a tab's reader refuses leaves the tab as it was, and the source's row reads Failed with a Problems line that says which file could not be read again.
+- **The read is on the thread that polls the workbench,** like the open of a dictionary a model asks for; a very large dictionary stalls one frame. A model that was open before its textures were first cooked asks for them again when a cook lands, though the project is asked once for each model otherwise (`a_cook_that_lands_lets_a_model_ask_the_project_for_its_textures_again`).
+
+### The edit loop
+
+Wave P9 of [Workbench_Plan.md](Workbench_Plan.md) put a model into a source from the app and from the command line, checks a source against the game on request, and settled what "mounted" means for a cooked model.
+
+- **Replace geometry…** (Assets row menu, Properties and the palette) and `openrage-cli source import-model <source> <file> [--entry NAME]` call `or_source::models::import`, so the glb, the refusal and the report are one computation. The report is `Imported::lines`: what the compile did, then `not carried: N what` for each thing the file held that a drawable has no place for, the words `openrage-cli mesh import` prints for the same loss. The app imports on a worker, then asks the cook that is already watching the project for a recook, and a window lists the lines or, when the source refused the model, why and that the source is as it was. A dictionary with several drawables asks which one first (`models::entries`). The command is not offered on a source of another kind, and the CLI refuses it.
+- **Check against the game** (`or_source::origin_check`) compares `origin.sha256` with the install's file at `origin.virtual_path`, once, when a person asks for one source: no scan, build or recook reads the install. A source that is not the game's, or records no hash or no place (a loose file picked from disk has none), compares nothing and says why. The install's file is found by `or_title::install::read_virtual_file`, which reads a path the way the explorer writes it, archives as folders, from the install's root and then without its first folder, since an explorer opened above the install writes `GTAV/x64/…`. ⚠ A path from an explorer opened *below* the install leads nowhere and is said to be missing, and the check compares the archive entry at that path, so a title update that overrides it from `update.rpf` is not seen. A changed original is a warning in Problems and the row's state reads The game's original changed; the source still builds as it is.
+- **The cook is the model's preview.** A model source opens as its cook in `vfs/<id>/`, and a recook reads every tab of that file again ([what the reload does](#what-the-reload-does)), so the Model workspace draws the new geometry after a save (`a_model_put_into_a_source_is_cooked_again_and_the_model_workspace_draws_the_cook`). The textures of that model are found in the same folder by name, as before. `or_title::mount_shadow` serves a folder named for a VFS mount, and an id folder names none, so the cook is not served at the game path it replaces: Open still shows the game's file where it is ([open, import and add](Workbench_UX_Design.md#open-import-and-add)).
+
+## Fragments and metadata
+
+Wave P10 of [Workbench_Plan.md](Workbench_Plan.md) gave a `.yft` a source kind of its own and made the flat metadata files sources too, both in `or_source` and both through the table of kinds of [an import](#how-an-import-writes), the cook of [a build](#how-a-build-cooks) and the live recook.
+
+### A fragment
+
+`or_source::fragment` writes `<name>.fragment.src` holding `base.yft` and `drawable/` (`drawable.json` and `model.glb`), the first version of the layout in [the table above](#layout-per-format). The glb is the **common drawable** of the fragment, extracted and compiled as a drawable's is (`models::model_of`, `models::replaced`), and **everything else the fragment states stays the base's**: the extra drawables, the cloth drawable, the physics children with their own drawables, the bounds, the glass and the lights. So a fragment compiles with no install, `compile.base` in `asset.json` is the hash of `base.yft`, and an edit to a vehicle's body never touches its wheels.
+
+- **A `.yft` is never a `.ydr` or a `.ydd`.** The table of kinds has its own row, the drawable readers refuse a fragment by its RSC7 version (`a .ydr at RSC7 version 162 is not a layout OpenRage declares`) and `fragment::extract` refuses a drawable or a dictionary the same way, so neither is routed to the other (`a_yft_is_refused_by_the_drawable_readers_and_a_drawable_by_the_fragment_reader`, `a_yft_has_a_kind_of_its_own_and_is_never_a_drawable_or_a_dictionary`).
+- **A fragment is a model source for the app.** `models::fixed_file` and `models::output_name` answer for it, so the Assets list reads it as a model whose cook is `<name>.yft`. Replace geometry… is not offered on it yet and the CLI's `source import-model` refuses it by name; the glb is edited in a modelling tool and saved.
+- **What it extracts.** Every staged fragment of both targets (`every_corpus_yft_extracts_and_compiles_back_to_the_same_drawable`): 63 Legacy and 5 Enhanced `.yft`, each source compiling back to the same positions, indices, skinning and drawable box in the common drawable, and to the same number of drawables, physics children and cloths in the whole. A fragment whose common drawable holds no geometry, or that has no common drawable, is not made a source: the import keeps it under `files/` as it kept every `.yft` before, with the reason in the report line (`a_yft_with_no_source_form_is_kept_as_a_compiled_file_and_the_report_says_why`).
+- **Not built.** The drawables of the physics children (`parts/<child>/`), `physics.json` and the bounds are the base's until a later wave edits them.
+
+### Metadata
+
+`or_source::metadata` writes `<name>.metadata.src` holding `metadata.xml` and `base.<ext>`, the file as it came. The XML is OpenRage's own canonical XML (`or_io::meta::canonical`, [R37](Roadmap.md#r37-metadata-and-xml-at-parity)): the types are the struct definitions', a pointer states its target type, and a name the public table of `or_io::meta` does not give is spelled `hash_XXXXXXXX` and read back to its hash. It is not CodeWalker's XML, which stays out of scope, so the ruling of 2026-09-22 stands (ruling R19 of the second plan, in [the audit's waves file](../audit/workbench-waves-2026-10-08.json), asked and answered that).
+
+- **A folder and not a flat file.** The plan and the layout table above said `name.ymap.xml` in `sources/`. A bare file has no `asset.json`, so no `id`, no `origin.sha256` (the same file twice would be two sources), and no `from_game`, which is how the generated `.gitignore` keeps the game's content out of a repository. The live recook, the build's scan and the id check all find a source by its folder. And a bare XML could not compile in a clean checkout: importing XML needs struct definitions, which only a donor's type table, an install's or a schema snapshot state, so the original is kept as `base.<ext>` and **is** the donor.
+- **What compiles it.** `canonical::import` through the type table of the base, with an empty schema library, and **every name spelled from the public table alone** (`hash_index::with_public_names_only`, around both the export and the compile), whatever schema snapshot the host installed. A name the snapshot gives is spelled `hash_XXXXXXXX` in the XML, because the importer finds a member by the name its type table spells and that spelling is the host's: XML written with a snapshot's names was refused on a machine with none (`naOcclusionInteriorMetadata is missing field hash_B7E5D57C`) when this was measured. So one file gives the same XML and the same bytes with a snapshot installed and without (`a_host_with_a_schema_snapshot_makes_the_same_sources_as_one_without`), and the price is that a person reads the world metadata by its public names and the rest by their hashes; the typed metadata editor still shows a snapshot's names.
+- **Only a file that comes back becomes a source.** The same withholding rule as `openrage-cli meta to-xml`: `canonical::converge` has to reach the fixed point (`import(export(C1)) == C1`) with no value moved, and the XML that is kept has to compile to that `C1`. Any other file is kept as a compiled file with the reason (`the second export differs from the first`, `no struct definition`), and the report says so in its line and names the kind: `Kept as compiled files, not sources: 1 .ymap`.
+- **The first export is not the original's bytes.** The ruling is `C1 == C2` and never `C1 == O`. A source's cook is the canonical form, so an import of a game file says in its report line whether it differs (`its XML is OpenRage's canonical form, so the first export differs from the original's bytes`) or is the same (`its first export is the original's bytes`), and an unedited source still counts as the game's file to a build through `origin.cooked_sha256`, as any imported source does.
+- **A text `.meta` is no row of the table.** A FiveM data file such as `handling.meta` is registered in the manifest by its own path, and a cooked source ships at `stream/<name>.<extension>` with its folder gone, so an import keeps a `.meta` under `files/` at its own folder path, as it did before this kind existed (`a_data_meta_is_kept_under_files_at_its_own_folder_path_not_made_a_stream_source`). The module still compiles a source whose base is a text document, which is its own XML kept exactly as written and compiled to the bytes it came from, and **an edit of its XML that is no XML document is refused** with the reason, by the compile, the build and the live recook alike (`an_edit_that_leaves_a_text_meta_no_xml_document_is_refused_by_the_compile_and_the_cook`); a row would restore the import once the owner rules where such a source ships. Ruled (V3 of [the views design](Workbench_Views_Design.md#rulings-the-draft-asks-of-the-owner)) and built for one content (wave P42): a Weapons content makes a text weapon file a `<name>.metadata.src` (`or_weapons::import`) and ships it at its own `data/` folder, registered by that path; the general import still keeps a `.meta` of any other content under `files/`. A `.ymt`, `.ymap` or `.ytyp` is a binary file, and a text file under one of those names is kept, not made a source. A streaming request list (`.srl`) has no XML source yet.
+- **What the corpus says.** Every one of the 4,268 staged `.ymt` (1,727 PSO, 2,338 RBM and 203 RBF) became a source when the suite was first written over all of them, each compiled to the same bytes twice and, made a source in its turn, to itself, and none was kept; the PSO and the RBM compile to other bytes than the staged file (all 1,727 and all 2,338), and the RBF, which is XML to begin with, to the same (all 203). The suite takes one in 16 now (267 documents), which is under a minute, and `xml_converges_without_a_snapshot` in `or-io-verify` holds the conversion itself over every document.
+- **Outside it.** The corpus holds no `.ymap`, `.ytyp` or text `.meta`: a `.ymap` and a `.ytyp` are the same RBM container as the staged `.ymt` of that kind and go through the same code, and the synthetic ones the suite writes (`a_ymap_in_each_binary_container_becomes_xml_and_an_edit_to_the_xml_compiles_into_it`) are all it checks them with. ⚠ A build puts every cooked source at `stream/<name>.<extension>`, which is where a map goes. ⚠ An output with a `target` ships a cooked metadata file as it is, and tells it is unchanged from the game as an output with none does, since the layout of a file is compared only when its extension has a declared layout (`a_metadata_file_taken_from_the_game_is_left_out_of_an_enhanced_build_too`). A metadata source states `gen8` as its target because a metadata container has none of its own, so Properties reads Legacy for it.
+
+## Plan
+
+Superseded for ordering by [Workbench_Plan.md](Workbench_Plan.md); this table stays as the study's reasoning. Each wave ends on a check that can fail ([Documentation_Standard.md](../guides/Documentation_Standard.md#evidence)).
+
+| Wave | Content | Size | Ends on |
+|---|---|---|---|
+| 1 | The textures source folder with its `id`, the block-exact DDS import, image inputs, the source choice, rule defaults, mips down to 4×4 and live reload of a saved image | Small | Extracting and compiling every corpus `.ytd` returns the same pixel bytes; replacing one image changes only that texture; saving an image refreshes that texture's preview |
+| 2 | Channel packing | Medium | A packed specular map equals the one built by hand from the same three images |
+| 3 | Re-encoding only the changed blocks; a BC7 encoder | Medium | A save with no change changes no byte; an edit changes only the blocks it covers |
+| 4 | Model extraction to glb and JSON; FBX, glTF and GLB import | Large | Extracting and compiling every corpus drawable returns the same meshes. Built as wave I, in edit mode; [what it built](#what-wave-i-built) |
+| 5 | Author mode and presets | Large | A ruling that reverses the non-goal in [Mesh_Interchange.md](../features/Mesh_Interchange.md) |
+| P11 | PSD, 16-bit, EXR and HDR sources with the rules that bring them to 8 bits, the rules a DDS alone refuses, header words as named lists, the JSON Schemas of the source files and the comparison with other formats | Medium | The rule a texture cannot honour fails the build by its name; every key a source file writes is in its schema |
+| P12 | The values of a base in `drawable.json` (shaders and their parameters, distances, flags, bounds, bone tags), a glb paired by its names, and a mesh over the limits split with a report | Large | Editing a parameter changes that parameter in the compiled file and nothing else; a glb with renamed or reordered parts pairs by name; an over-limit mesh is split and reported; every staged drawable states its values and compiles to the same bytes with them unedited |
+| P43 | The source of a `.ypt`: its rules as one JSON document, its textures as exact DDS and its models kept whole | Large | Every `.ypt` of the owner's Legacy and Enhanced installs becomes a source, compiles, and imports to the same source; a particle file the form cannot hold is refused with the sentence that says why. Built; [what it built](#what-wave-p43-built) |
+| Later | The sources of `.ybn`, `.yld`, `.ycd` and `.awc` | | |
+
+## Decisions asked of the owner
+
+1. **The folder convention.** `<name>.<kind>.src/` with a word for the kind and no platform letter, and `asset.json`.
+2. **JSON for sidecars,** with XML kept for the game's own metadata, and the three signals above for recognising a source.
+3. **Importing CodeWalker XML** for drawables, which reopens the ruling of 2026-09-22.
+4. **Author mode.** It is the large piece and reverses a documented non-goal.
+5. **The presets that ship**, for shaders and vertex layouts, drawn from [the shader database](../features/Shader_Definition_Database.md).
+6. **The normal map convention** RAGE expects, to be checked on a shipped texture before a default is set. Measured: [the normal map convention](#the-normal-map-convention).
+7. **A stable `id` in every `asset.json`**, with the identity rule above.
+
+## Sources
+
+The measurements above, and what OpenRage's own documents say: [Mesh_Interchange.md](../features/Mesh_Interchange.md) for the glTF limits, [BCn_Encoding_And_Mipmaps.md](../features/BCn_Encoding_And_Mipmaps.md) for the encoder, and [Project_Model_Design.md](Project_Model_Design.md) for the project that holds these folders. How the CodeWalker XML looks and what it costs was read from exports on the owner's machine ([formats compared](#formats-compared)); no file of OpenIV's open formats exists there, so none is measured and nothing here depends on their syntax.

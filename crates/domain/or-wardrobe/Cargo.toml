@@ -1,0 +1,43 @@
+[package]
+name = "or-wardrobe"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Wardrobe engine: a freemode clothing pack as a model, its name resolver, slot allocator, rules, the plan it contributes to a build and the verifier, with no UI"
+
+[dependencies]
+# The metadata the plan writes (CPedVariationInfo, CCreatureMetaData) and the readers it checks the
+# game's files with.
+or-io = { workspace = true, features = ["meta"] }
+# The mesh doctor: levels of detail, a mirror, the rig and the weights of a drawable.
+or-interchange.workspace = true
+# The contract through which content reaches a plan.
+or-project.workspace = true
+# Puts an image into a variation's texture dictionary, as the compile of a saved source does.
+or-source.workspace = true
+# The scratch folder a texture is made in.
+tempfile.workspace = true
+# How far a drop of many files has got, and the flag that stops it.
+or-job.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The schema of wardrobe.json, generated from the types that read and write it.
+schemars.workspace = true
+quick-xml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# The digest of a garment's content, which the diff of two builds compares.
+sha2 = "0.10"
+# The zip a grzyClothTool project file is once its bytes are XORed back; such a zip is deflated, which the workspace's own use of the crate (a stored `.oiv`) leaves off.
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
+
+[dev-dependencies]
+# The images a test drops: TGA and Radiance HDR on top of the PNG, JPEG and BMP the workspace turns on.
+image = { workspace = true, features = ["tga", "hdr"] }
+# The shared corpus and the metadata corpus the checks read.
+or-test-support.workspace = true
+# The pack and the package a test reads a build back from.
+or-title.workspace = true

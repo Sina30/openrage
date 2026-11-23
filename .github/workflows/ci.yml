@@ -1,0 +1,412 @@
+name: CI
+
+# ⚠ **Hosted CI is the cheap fast signal, not the full suite, and that is the
+# owner's decision rather than an oversight.** Measured 2026-09-20..23 through
+# the billing API, the previous shape — the whole workspace on `windows-latest`
+# for every push, plus the library crates on Linux — cost $151.65 in three
+# days, $124.47 of it Windows, and hit the spending limit so that for seventeen
+# hours nothing ran at all. Windows minutes bill at 2x Linux.
+#
+# What a pull request gets here is Linux: fmt, the two lints, clippy over every
+# target and the whole test suite, the doc gates among them. The full Windows
+# suite runs on every tip of `main` in `main-tip.yml` on the self-hosted
+# runner, and once a week here on a clean hosted Windows machine. See the CI
+# section of AGENTS.md before moving anything back.
+
+on:
+  # Every pull request, not only the ones targeting `main`.
+  #
+  # With `branches: [main]` here, a PR stacked on another PR matched no
+  # trigger and ran nothing. `gh pr checks` answered "no checks reported"
+  # for all three open stacked PRs at once — which reads as nothing wrong,
+  # and is the same failure as a step that passes without measuring.
+  # Review of a stack is exactly where the board most needs to be honest.
+  #
+  # `ready_for_review` because a draft runs nothing here (the self-hosted
+  # `layouts` job still runs for it): marking one ready is the event that has to
+  # run it.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Only to refresh the dependency cache pull requests read, which is keyed on
+  # exactly these files. `main-tip.yml` is what checks every landed commit.
+  push:
+    branches: [main]
+    paths:
+      - Cargo.lock
+      - "**/Cargo.toml"
+      - rust-toolchain.toml
+      - .github/workflows/ci.yml
+  # The clean-machine Windows run.
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: Also run the full Windows suite on a hosted runner
+        type: boolean
+        default: false
+      macos:
+        description: Also run the macOS suite on a hosted runner
+        type: boolean
+        default: false
+
+# ⚠ **Everything here cancels its predecessor, `main` included.** Every landing
+# is a squash onto the tip, so a newer `main` commit's tree contains the older
+# one's changes and checking it covers both; only attribution is lost. A pull
+# request is keyed on its number, anything else on its ref.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  # `.cargo/config.toml` turns incremental on for the edit loop, where it is
+  # worth 105 s -> 26 s on a one-file rebuild. A runner builds once and throws
+  # the tree away, so here it buys nothing and costs 7.4 GB of cache.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  linux:
+    name: Linux (fmt, clippy, tests)
+    if: >
+      github.event_name != 'schedule' &&
+      github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    env:
+      # ⚠ **The workspace's own crates at `opt-level = 0` here, not the 1
+      # `[profile.dev]` asks for.** That 1 is for the `.ycd` corpus suites'
+      # runtime, and this runner has no corpus, so they skip. Measured at two
+      # CPUs with dependencies warm: the test targets compile in 231 s at 0
+      # against 597 s at 1, and every test passes at both. Dependencies keep
+      # their `opt-level = 1` through `[profile.dev.package."*"]`. Overflow
+      # checks and debug assertions are on at either level.
+      CARGO_PROFILE_DEV_OPT_LEVEL: 0
+
+    # The shell a step gets when it does not ask for one is `bash -e {0}`:
+    # `errexit` but no `pipefail`, so the left-hand side of a pipe fails
+    # invisibly. Asking for `bash` by name gets GitHub's
+    # `bash --noprofile --norc -eo pipefail {0}` instead.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # ⚠ **The whole workspace in test mode does not fit on this runner's disk
+      # as it comes.** Measured on the branch that introduced this job:
+      # `rustc-LLVM ERROR: IO failure on output stream: No space left on
+      # device`, 27 minutes in, with no cache restored at all. The Android SDK,
+      # .NET and GHC are preinstalled and nothing here uses them. Deleted in the
+      # background, so it overlaps the steps that compile nothing; the process
+      # outlives this step and the runner reaps it at the end of the job.
+      - name: Free disk space
+        run: sudo nohup rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL > /dev/null 2>&1 &
+
+      # Depth 2 reaches both parents of the pull request's merge commit.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # Whether anything outside `docs/**` and `*.md` changed. A pull request
+      # is diffed against its merge commit's first parent, which is the base it
+      # will land on.
+      #
+      # ⚠ **It fails towards running everything.** Only an explicit `false`
+      # trims the job, and anything but a pull request is always `true`: an
+      # empty diff or a quoted non-ASCII path counts as code. `--no-renames`
+      # lists a renamed file under both names, so moving a source file into
+      # `docs/` is not a docs change.
+      - name: Classify the diff
+        id: classify
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            files=$(git diff --name-only --no-renames HEAD^1 HEAD)
+            printf '%s\n' "$files"
+            if [ -n "$files" ] && ! grep -qvE '^docs/|\.md$' <<<"$files"; then code=false; fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then
+            echo "Documentation only: the lints and every test that reads a document ran; the rest was skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The pin in rust-toolchain.toml, not `stable`.
+      #
+      # Building CI on `stable` while developers build on a pin means the two
+      # drift, and the drift surfaces as a red build nobody can reproduce
+      # locally.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "nightly-2026-10-08"
+          components: rustfmt, clippy, rustc-codegen-cranelift-preview
+          targets: wasm32-unknown-unknown
+
+      # The three checks that compile nothing run first: 25 runs in the
+      # measured window failed one of them after 763 Windows minutes of build.
+
+      # ⚠ `cargo fmt --all` rather than `cargo xtask fmt`, which is what
+      # `just fmt` and the pre-commit hook run. Not an oversight, and
+      # not to be "aligned": it is the one check that the chunked path does not
+      # cover *less* than `--all` does, which no test in this repository can
+      # be. On Linux the 32,766-character Windows command-line limit that made
+      # the script necessary does not apply, so this cannot hit os error 206.
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      # Tracked game content (fatal), leak patterns in the crates that move
+      # into or-io (fatal, R66b), and references to the leaked source tree
+      # everywhere else (advisory). Game content fails either way: that half
+      # exits before `$Strict` is read. It is keyed on extension because
+      # `.gitignore` paths once went stale in a crate move and 414 MB of game
+      # content went in unnoticed.
+      - name: Provenance
+        run: cargo xtask lint-provenance
+
+      # Mojibake and UTF-8 BOMs, which render back as themselves in most diff
+      # viewers, so review does not catch them.
+      - name: Encoding
+        run: cargo xtask lint-encoding
+
+      # `rodio` plays through `cpal`, which links ALSA on Linux, so building the
+      # `openrage` package needs its headers; the sound output is on every
+      # platform and the image ships none of them. `mesa-vulkan-drivers` is
+      # lavapipe, a software Vulkan adapter, which `or-renderer`'s `wgsl_compile`
+      # suite asks for and a bare runner lacks; `libvulkan1` is the loader that
+      # finds it.
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev mesa-vulkan-drivers libvulkan1
+
+      # Dependencies only, saved from anything but a pull request and read by
+      # every pull request. Workspace crates are always built from source.
+      #
+      # ⚠ This job used to cache `~/.cargo/registry` alone, because an
+      # `actions/cache` of all of `target/` with a `restore-keys` fallback
+      # restored a whole stale tree, built a second one beside it and ran out
+      # of disk four runs out of four. This action strips the workspace crates'
+      # artifacts before saving, and the first step makes the room.
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      # ⚠ `--all-targets`, matching `just lint`. Without it clippy skips every
+      # test, bench and example target and every `cfg(test)` module.
+      - name: Clippy
+        if: steps.classify.outputs.code != 'false'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # A Linux contributor's recipes, which need no PowerShell: each is a call
+      # to cargo or to `cargo xtask`. Every other step calls cargo directly;
+      # this one checks only that the recipes start here. After the step above
+      # `just lint` rebuilds nothing, and `just fmt` is the chunked formatter.
+      # No nextest: CI never installs it.
+      - name: Install just
+        if: steps.classify.outputs.code != 'false'
+        uses: taiki-e/install-action@just
+
+      - name: Recipes on Linux
+        if: steps.classify.outputs.code != 'false'
+        run: |
+          just fmt
+          just lint
+
+      # The `openrage` package and its doc gates included: its Windows-only
+      # dependencies are behind `cfg(windows)` and the one system library its
+      # Linux build needs, ALSA, is installed above.
+      #
+      # `or-renderer` is tested here too: its `wgsl_compile` suite needs a
+      # software adapter, which lavapipe is, and where none is found it skips
+      # through the ledger and does not panic. The tests that need a real
+      # adapter stay `ignore`d behind `gpu-tests`.
+      - name: Tests
+        if: steps.classify.outputs.code != 'false'
+        run: cargo test --workspace
+
+      # `bc7-encode` is off by default, so neither the build, the tests nor
+      # clippy above compiles it, and `intel_tex_2`'s prebuilt ISPC kernels, the
+      # workspace's one native link, would be linked only on Windows.
+      - name: BC7 encoder (optional feature)
+        if: steps.classify.outputs.code != 'false'
+        run: cargo test -p or-io --features bc7-encode --lib authoring::encode
+
+      # Draws every panel and workspace through real egui frames with no window
+      # and no GPU, so it needs no display; it exits non-zero on a panic, a
+      # panel that paints nothing or a run that wrote no preferences.
+      - name: Self-check
+        if: steps.classify.outputs.code != 'false'
+        run: cargo run -q -p openrage --bin openrage -- --self-check
+
+      # `or-io` is the crate a web viewer and a WASM plugin link, so a
+      # dependency that stops building for the browser is caught per push.
+      - name: or-io on wasm32
+        if: steps.classify.outputs.code != 'false'
+        run: cargo build -p or-io --target wasm32-unknown-unknown
+
+      # ⚠ **A documentation-only change still runs every test that reads a
+      # document.** `src/doc_counts.rs`, `src/doc_citations.rs` and
+      # `src/doc_comments.rs` are in the `openrage` package; the other three
+      # read `docs/reference/Plugin_ABI.md`, `docs/reference/CLI_Server_Protocol.md` and
+      # `AGENTS.md`. A new test that reads a document belongs here too.
+      - name: Documentation gates (docs-only change)
+        if: steps.classify.outputs.code == 'false'
+        run: cargo test -p openrage
+
+      - name: Plugin ABI document (docs-only change)
+        if: steps.classify.outputs.code == 'false'
+        run: cargo test -p or-plugin --test how_anything_crosses_the_boundary
+
+      - name: CLI protocol document (docs-only change)
+        if: steps.classify.outputs.code == 'false'
+        run: cargo test -p or-cli --test the_external_surface_is_what_it_documents
+
+      - name: Toolchain pin in AGENTS.md (docs-only change)
+        if: steps.classify.outputs.code == 'false'
+        run: cargo test -p or-test-support --test toolchain_pin
+
+      # What the run above did not check.
+      #
+      # This runner has no corpus, so the fixture suites skip — and a skip is
+      # a pass, printed into a buffer libtest throws away. The ledger totals them across every test binary
+      # and says so in the log, as a warning annotation and in the job summary.
+      # It cannot be a red build — a runner without the game is the normal case
+      # and a permanent red teaches people to ignore red.
+      - name: Report suites that did not run
+        run: cargo run -q -p or-test-support --bin skip-ledger
+
+  # The full Windows suite on a machine nobody has used before.
+  #
+  # `main-tip.yml` runs the same suite on every tip of `main`, but on the
+  # owner's desktop, whose target directory and toolchain persist between runs.
+  # This is the check that a clean Windows checkout still builds: weekly, and
+  # on request. About 45 hosted Windows minutes a run.
+  windows:
+    name: Windows full suite (clean machine)
+    if: github.event_name == 'schedule' || inputs.windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "nightly-2026-10-08"
+          components: rustfmt, clippy, rustc-codegen-cranelift-preview
+          targets: wasm32-unknown-unknown
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Provenance
+        run: cargo xtask lint-provenance
+
+      - name: Encoding
+        run: cargo xtask lint-encoding
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Report suites that did not run
+        run: cargo run -q -p or-test-support --bin skip-ledger
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # `bc7-encode` is off by default, so neither the build, the test run
+      # nor clippy above ever compiles it. It also proves intel_tex_2's
+      # prebuilt ISPC kernels link, which is the workspace's only native
+      # dependency.
+      - name: BC7 encoder (optional feature)
+        run: cargo test -p or-io --features bc7-encode --lib authoring::encode
+
+      # The `or-renderer` tests that need a real adapter, `ignore`d by default
+      # since one held `cargo` for 25 minutes inside a pre-commit hook. On a
+      # step of its own because acquisition can hang rather than fail.
+      - name: Renderer GPU tests (optional feature)
+        timeout-minutes: 10
+        run: cargo test -p or-renderer --lib --features gpu-tests
+
+      # Every feature on its own, and none of them. `--each-feature` rather
+      # than the powerset: depth 1 catches the failure that actually happens,
+      # a module that only compiles because something else was on.
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: Feature combinations
+        run: cargo hack check --workspace --each-feature --no-dev-deps
+
+      # One command per step: a `pwsh` step exits with the *last* command's
+      # status and has no `pipefail`, which is how a failing launch check was
+      # green for weeks. `--bin` because the package has a second binary.
+      - name: Shader-tool CLI launches
+        run: cargo run --release -p or-shader-tool --bin or-shader-tool -- --help
+
+      - name: Shader-tool tests
+        run: cargo test -p or-shader-tool --release
+
+  # The workspace on a Mac, which no other job builds.
+  #
+  # Weekly and on request, as the Windows job is. The cost decision at the top of this file is about
+  # Windows, so this cadence is a default and not a ruling (Roadmap, Appendix B, item 6): a hosted
+  # macOS minute bills at ten times a Linux one.
+  # Apple silicon, because that is the Mac a contributor has; the renderer's
+  # `wgsl_compile` suite skips there, Metal having no software adapter.
+  macos:
+    name: macOS (clean machine)
+    if: github.event_name == 'schedule' || inputs.macos
+    runs-on: macos-14
+    env:
+      CARGO_PROFILE_DEV_OPT_LEVEL: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "nightly-2026-10-08"
+          components: rustfmt, clippy, rustc-codegen-cranelift-preview
+          targets: wasm32-unknown-unknown
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check formatting
+        run: cargo xtask fmt --check
+
+      - name: Provenance
+        run: cargo xtask lint-provenance
+
+      - name: Encoding
+        run: cargo xtask lint-encoding
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Report suites that did not run
+        run: cargo run -q -p or-test-support --bin skip-ledger
+
+      - name: BC7 encoder (optional feature)
+        run: cargo test -p or-io --features bc7-encode --lib authoring::encode
+
+      - name: Self-check
+        run: cargo run -q -p openrage --bin openrage -- --self-check

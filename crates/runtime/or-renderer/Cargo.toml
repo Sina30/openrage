@@ -1,0 +1,67 @@
+[package]
+name = "or-renderer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "GPU rendering for GTA V particle effects preview"
+
+[features]
+# The tests that need a real GPU adapter. Off by default.
+#
+# Off because a device-acquiring test does not merely *fail* without a GPU — it
+# can **hang**. Measured: one held `cargo` for 25 minutes inside a pre-commit
+# hook, and the file lock it left then failed the *next* commit's link with
+# `LNK1104` — a spurious error that reads as the committer's own change.
+#
+# ⚠ Skipping cannot fix that, and every one of these tests already skips.
+# `request_adapter` returns `Err` when there is no adapter and they all return
+# early on it; the hang is *inside* acquisition, so the guard never runs.
+#
+# They are `ignore`d rather than `cfg`d out, deliberately: without the feature
+# they still **compile** on every build, so one cannot rot behind a flag nobody
+# sets. Run them with
+#
+#     cargo test -p or-renderer --features gpu-tests
+gpu-tests = []
+
+[dependencies]
+# `ShaderSource::Naga` takes the game's modules as they are, with no WGSL between.
+wgpu = { workspace = true, features = ["naga-ir"] }
+# The game's shaders arrive as `naga::Module`s: the same naga wgpu links.
+naga = { workspace = true, features = ["wgsl-in", "spv-in"] }
+raw-window-handle.workspace = true
+pollster.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+rayon.workspace = true
+
+# The particle rule types the material binder reads: pure data, since the
+# renderer never opens a file.
+or-particle.workspace = true
+# The scene a drawable extracts to, which `game_shaders::drawable` turns into the surfaces the game's passes draw.
+or-interchange.workspace = true
+# A texture of a scene is a PNG.
+image.workspace = true
+# The shader pack manifest schema and the shader-name lookups, and
+# `half_to_f32` for the tests that read back half-float render targets.
+or-io.workspace = true
+
+# Pre-flighting WGSL before wgpu sees it, since wgpu answers a bad module with
+# a panic rather than an error. Shared with the shader baker so both ends of
+# the pipeline reject the same set — see the crate docs.
+
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Writing a module as SPIR-V, so a test can make the pack a baked one would be.
+naga = { workspace = true, features = ["spv-out"] }
+# Finds the shared corpus and records what a device-less run skipped.
+or-test-support.workspace = true
+# Scratch folders the tests remove when they end, a failed test's too.
+tempfile.workspace = true

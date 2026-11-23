@@ -1,0 +1,30 @@
+[package]
+name = "or-particles"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The particles engine: the particle effects of a project as content, with their rules, the plan they contribute and the verifier, with no UI"
+
+[dependencies]
+# The reader of a particle list, which a new empty one is written by.
+or-io.workspace = true
+# The contract through which content reaches a plan.
+or-project.workspace = true
+# The particles source of a `.ypt`, what one cooks to, and a game file's way in.
+or-source.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The digest of an effect pack's content, which the diff of two builds compares.
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true
+or-test-support.workspace = true
+# The editor's calls that make the small lists the suites build sources from.
+or-particle.workspace = true
+# The mounted install the particle files are measured on.
+or-title.workspace = true

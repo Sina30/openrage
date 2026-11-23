@@ -1,0 +1,36 @@
+[package]
+name = "or-plugin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "What a plugin may ask for, and what the host refuses"
+
+[dependencies]
+# The pack contract (`or_io::desc`), its diagnostics and its write path
+# (`or_io::write`). ⚠ A WASM plugin cannot take a Rust type across the
+# boundary, so the host's whole vocabulary is the pack's — a described tree,
+# offsets and widths. That is why this crate names `or-io` and nothing that
+# knows what a drawable is, and adding a runtime must not change it. Refusals
+# are diagnostics, with a stable key so a host's log is greppable and a test can
+# assert on the key rather than on the wording. A plugin patches and never
+# rebuilds, so this crate reaches `patch` and must never reach `build` —
+# `the_host_patches_and_never_builds` is that line.
+or-io.workspace = true
+# ⚠ **wasmi rather than wasmtime, measured:** 17 unique crates against 189, on a
+# workspace that already takes 2m41s to `cargo check`. wasmi is an interpreter, so
+# it gives up JIT throughput — and a plugin here draws panes and reads described
+# fields rather than running hot loops. If one ever needs to, `Runtime` is the
+# seam to swap behind.
+wasmi = "2.0"
+
+[dev-dependencies]
+# Guest fixtures are written as WAT in the tests, so what is being executed is
+# readable beside the assertion rather than a byte array.
+wat = "1"
+# The sample emitter's catalogue is read as JSON.
+serde_json.workspace = true
+# The measurement of a file's bytes in a guest reads staged `.ydd` and `.ytd`.
+or-test-support.workspace = true

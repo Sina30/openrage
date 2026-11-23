@@ -1,0 +1,27 @@
+[package]
+name = "or-simulation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Particle simulation engine for RAGE engine particle effects"
+
+[dependencies]
+or-transport.workspace = true
+or-particle.workspace = true
+or-io.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+# Finds the shared corpus. The two dump tests read `core.ypt` out of it;
+# they used to reach it by a relative path that went stale when a crate
+# moved, and skipped silently for months.
+or-test-support.workspace = true
+or-io.workspace = true

@@ -1,0 +1,160 @@
+# Build settings the edit loop depends on.
+#
+# Committed rather than left to each machine because the two measured settings
+# — `incremental` and the linker — are properties of this workspace's shape,
+# 205 test binaries over 21 crates, and not of anybody's taste. Both were
+# measured on `main` at 90a0bf2 with `[profile.dev] opt-level = 1` applied,
+# editing one file in a low-layer crate and rebuilding every test binary.
+
+[build]
+# ⚠ **This overrides a user-level `incremental = false`.** That setting exists
+# so `sccache` can cache local crates, and sccache cannot cache an incremental
+# compilation; but it passes one through, so this costs the registry crates
+# nothing in a lane (see `rustc-wrapper` below) and only the local crates, which
+# never hit another lane's entries anyway (their absolute paths reach the key).
+#
+# What it is worth here: the one-file rebuild is 105 s without incremental and
+# 26 s with it, measured on `main` at 90a0bf2 with `[profile.dev] opt-level = 1`.
+#
+# The cost is disk. The incremental directory is 7.4 GB for a target dir that
+# is 5.3 GB without it, and it is per worktree — which is what grew one
+# earlier checkout's `target/debug/incremental` to 108 GB across 5,493 session
+# directories. `cargo clean` on a lane that is finished is the whole remedy.
+#
+# ⚠ Only worth it above `opt-level = 0`. At `opt-level = 0` the same rebuild
+# is 47 s without incremental and 41 s with it, because there is barely any
+# codegen to reuse and the time is in the link.
+incremental = true
+
+# ⚠ **An empty wrapper turns off a user-level `rustc-wrapper = "sccache"` for the
+# checkout.** sccache aborts at its first `rustc -vV` probe when
+# `CARGO_INCREMENTAL=1` is in the environment, which is how this file once had to
+# pick one of the two. It does not abort on `incremental = true` from this file,
+# so a lane keeps the wrapper: the justfile sets `RUSTC_WRAPPER` there, and the
+# environment outranks this file. Neither `CARGO_TARGET_DIR` nor
+# `CARGO_INCREMENTAL` may be exported, since sccache hashes every `CARGO_*`
+# variable into its key.
+rustc-wrapper = ""
+
+# A parallel rustc frontend, nightly only. Measured 2026-10-08 on 16 cores and 32
+# threads: a cold build of the app's tests 129 s -> 117 s alone, 66 s -> 45 s with
+# Cranelift. It does not touch an edit rebuild, which is incremental analysis and
+# the link.
+rustflags = ["-Zthreads=8"]
+
+# `cargo xtask <task>`: the repository's own tasks, in Rust, so they run the
+# same on every OS.
+[alias]
+xtask = "run --quiet --package xtask --"
+
+[unstable]
+codegen-backend = true
+feature-unification = true
+
+# ⚠ Features are unified over the whole workspace whatever is selected, so
+# `-p or-anim` builds the `or-io` that `--workspace` builds. Without it a run
+# scoped to the packages a change touches compiles a second copy of every crate
+# whose features differ (`or-io`: 9 features for `-p or-anim`, 18 for the
+# workspace), which is what kept every gate on `--workspace`.
+[resolver]
+feature-unification = "workspace"
+
+# ⚠ **The dev and test profiles generate code with Cranelift, not LLVM.** A cold
+# build of the app's tests is 146 s -> 45 s with this and `-Zthreads`; release
+# and every other profile stay on LLVM. The cost: Cranelift emits unoptimised
+# code (`opt-level` in `Cargo.toml` is ignored by it), so a hot loop runs slower,
+# and it cannot compile some x86 SIMD intrinsics (`llvm.x86.sse2.psrl.w is not yet
+# supported`) and aborts the process when one runs.
+[profile.dev]
+codegen-backend = "cranelift"
+
+# These stay on LLVM. First, the crates the dev profile builds at `opt-level = 3`
+# for the loops every corpus suite runs on each file (`Cargo.toml`).
+[profile.dev.package.zlib-rs]
+codegen-backend = "llvm"
+[profile.dev.package.crc32fast]
+codegen-backend = "llvm"
+[profile.dev.package.adler2]
+codegen-backend = "llvm"
+[profile.dev.package.miniz_oxide]
+codegen-backend = "llvm"
+[profile.dev.package.sha1]
+codegen-backend = "llvm"
+[profile.dev.package.texture2ddecoder]
+codegen-backend = "llvm"
+[profile.dev.package.bcdec_rs]
+codegen-backend = "llvm"
+[profile.dev.package.texpresso]
+codegen-backend = "llvm"
+[profile.dev.package.nanomp3-core]
+codegen-backend = "llvm"
+[profile.dev.package.or-media]
+codegen-backend = "llvm"
+[profile.dev.package.nanomp3]
+codegen-backend = "llvm"
+
+# Second, the crates that use an x86 SIMD intrinsic Cranelift lacks and the
+# crates that call them: a generic or `#[inline]` wrapper is compiled by its
+# caller. `fearless_simd` and `safe_arch` are the users, `vello_common`,
+# `vello_cpu` and `wide` their callers; `zmij` and `aho-corasick` have the same
+# wrappers. A new dependency with its own SIMD can add to this list, and the
+# symptom is `is not yet supported` followed by `non-unwinding panic`.
+[profile.dev.package.fearless_simd]
+codegen-backend = "llvm"
+[profile.dev.package.vello_common]
+codegen-backend = "llvm"
+[profile.dev.package.vello_cpu]
+codegen-backend = "llvm"
+[profile.dev.package.safe_arch]
+codegen-backend = "llvm"
+[profile.dev.package.wide]
+codegen-backend = "llvm"
+[profile.dev.package.zmij]
+codegen-backend = "llvm"
+[profile.dev.package.aho-corasick]
+codegen-backend = "llvm"
+[profile.dev.package.rusty_mp3]
+codegen-backend = "llvm"
+[profile.dev.package.ropus]
+codegen-backend = "llvm"
+
+
+# The editor built to be used runs no Cranelift code at all (`Cargo.toml`).
+# ⚠ The interface's crates are optimised only here: egui or epaint on LLVM beside
+# Cranelift callers crashed at random with an access violation.
+[profile.editor]
+codegen-backend = "llvm"
+
+[target.x86_64-pc-windows-msvc]
+# The linker is on the critical path of the *edit* loop, not the release
+# build: one edit to a low-layer crate relinks every test binary that depends
+# on it.
+# Measured: cold build of every test binary 424 s -> 355 s, one-file rebuild
+# 119 s -> 105 s.
+#
+# `rust-lld.exe` ships inside the pinned toolchain, so this adds no install
+# step and no CI setup. rustc resolves the bare name out of its own sysroot.
+linker = "rust-lld.exe"
+
+# Cranelift cannot unwind a panic out of the Kraken port, which panics on a stream it cannot read, so
+# `container::rpf::oodle` could not turn that into an error.
+[profile.dev.package.or-kraken]
+codegen-backend = "llvm"
+[profile.dev.package.oozextract]
+codegen-backend = "llvm"
+
+# Third, the wasm interpreter every plugin test runs a guest on, at the `opt-level = 1` a dependency gets:
+# the test that sends every staged `.ydd` through the sample guest is 190 s on Cranelift and 9 s on this.
+# A registry crate, so a lane takes it from sccache.
+#
+# ⚠ Not at `opt-level = 3`: a test thread's stack overflows. The workspace crates the corpus suites run in
+# halve the whole run on LLVM and stay on Cranelift for the cold build of a lane; the figures are in
+# `docs/guides/Development_Workflow.md`.
+[profile.dev.package.wasmi]
+codegen-backend = "llvm"
+[profile.dev.package.wasmi_core]
+codegen-backend = "llvm"
+[profile.dev.package.wasmi_ir]
+codegen-backend = "llvm"
+[profile.dev.package.wasmi_collections]
+codegen-backend = "llvm"

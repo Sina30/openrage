@@ -1,0 +1,239 @@
+# Does the tip of `main` compile, and do its own tests pass?
+#
+# # ⚠ Why this is a second workflow and not another step in `local-gate.yml`
+#
+# Two pull requests merged green and left `main` unable to compile: one imported
+# two constants that the other had moved behind an envelope, and neither
+# branch's own run contained both halves. `local-gate.yml` already triggered on
+# `push` to `main`, so the missing piece was never the trigger. Measured over the
+# run history, it was three things at once:
+#
+#   * **Every `main` run was cancelled by the next merge.** `local-gate`'s
+#     concurrency group is keyed on the ref, and every push to `main` shares
+#     one. Merges arrive in batches seconds apart — three landed within fifteen
+#     seconds — so each run killed its predecessor. The runs for #50, #51, #53
+#     and #56 were cancelled after 10s, 6m50s, 8s and 1m56s. Not one finished.
+#   * **The compile check was last.** `local-gate` stages a pack, runs pack
+#     conformance, the canary and the corpus suites before it reaches
+#     `cargo test --workspace` — so the one step that would have seen this break
+#     sits about forty minutes in, behind everything.
+#   * **One runner, and a deep queue.** Pull-request runs were queued 35 minutes
+#     to 1h50m, and a `main` push waits behind them.
+#
+# So the fix is not a trigger. It is a job that is **cheap and first**:
+# `cargo check --workspace --all-targets` costs 2m41s on a cold target
+# directory and 0.8s on a warm one, against the ~40 minutes it was queued
+# behind. The break above was visible in the first of those two numbers.
+#
+# # ⚠ It is also where the full Windows suite runs now
+#
+# Hosted CI stopped running Windows per push, on the owner's decision, because
+# it was $124.47 of $151.65 in three days (see `ci.yml`). What stands in for it
+# is this job: after the compile check and the tests, the rest of what the
+# hosted Windows job did — clippy, BC7, the GPU tests, every feature on its
+# own, and the shader-tool smoke. That is load on the owner's desktop that it
+# did not carry before, which is why a newer tip cancels an older one.
+#
+# ⚠ **This is detection, not a gate.** It cannot block a merge because it runs
+# after one, and that is deliberate: the runner serialises, so a required check
+# on one machine would stall a queue of five branches. What it buys is that a red
+# `main` announces itself within a run instead of at the next agent's first
+# build.
+#
+# ⚠ It deliberately asks **nothing** that needs the pack or the corpus. Those are
+# `local-gate.yml`'s, they are what makes that job slow, and a compile break does
+# not need them.
+name: Main tip
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# ⚠ **A newer tip cancels an older one**, on the owner's decision. Every landing
+# is a squash onto the tip, so history is linear and a newer commit's tree
+# contains the older one's changes: checking the tip covers both. What is lost
+# is attribution — if the tip goes red, which superseded commit broke it takes
+# one more check to settle. The guarantee is that every tip not superseded
+# before its run finishes gets the full suite, so no break survives past the
+# next completed run.
+#
+# The original failure — every `main` run cancelled, none finishing — came from
+# `local-gate` sharing one group between a merge and its pull request, and from
+# its compile check sitting forty minutes in. Neither is true of this job.
+concurrency:
+  group: main-tip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiles:
+    runs-on: [self-hosted, openrage-corpus]
+    # A cold target directory and a release build of the shader tool. A run
+    # that reaches this has hung.
+    timeout-minutes: 90
+
+    env:
+      # ⚠ Not the directory `local-gate` uses. Sharing one would mean this job
+      # and that one invalidate each other's incremental state every time they
+      # alternate, which turns two warm 0.8s checks into two cold 2m41s ones.
+      CARGO_TARGET_DIR: ${{ vars.OPENRAGE_RUNNER_ROOT }}\_cargo-target-tip
+      CARGO_TERM_COLOR: never
+      # What the hosted Windows job built with, so a warning in Windows-only
+      # code fails here as it failed there.
+      RUSTFLAGS: "-Dwarnings"
+      # ⚠ On this machine the default `-j` fails at link time with
+      # `rust-lld: undefined symbol: anon.*.llvm.*`; four jobs do not. Stale
+      # incremental state in this target directory causes the same error:
+      # when no job runs, delete its `debug\incremental` and rerun the job.
+      CARGO_BUILD_JOBS: 4
+
+    steps:
+      # ⚠ Plain git rather than `actions/checkout`, for the reason
+      # `local-gate.yml` records at length: that action copies the user's
+      # `.gitconfig` into a temporary HOME and deletes it again, and on this
+      # machine the delete fails because the agents sharing the box hold git
+      # handles open. The token goes in an `http.extraheader` passed with `-c`
+      # so it is never written to `.git/config`, which matters because the work
+      # directory survives between jobs.
+      - name: Check out the commit under test
+        shell: powershell
+        run: |
+          $dir = $env:GITHUB_WORKSPACE
+          if (-not (Test-Path "$dir\.git")) { git init -q -b main $dir }
+          Set-Location $dir
+          git remote remove origin 2>$null
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          $basic = [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes("x-access-token:${{ github.token }}"))
+          git -c http.extraheader="AUTHORIZATION: basic $basic" `
+              fetch --no-tags --force --depth 1 origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "fetch failed" }
+          git checkout -q --force --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "checkout failed" }
+          git clean -xdfq -e /target
+          $at = (git rev-parse HEAD).Trim()
+          if ($at -ne $env:GITHUB_SHA) { throw "checked out $at, wanted $env:GITHUB_SHA" }
+          "checked out $at"
+
+      # ⚠ **First, and on its own.** `--all-targets` is what makes it see a test
+      # file, which is where the break that caused this workflow lived: a library
+      # that compiles and a test target that does not is still a red `main`, and
+      # a plain `cargo check` says nothing about it.
+      #
+      # The failure is summarised rather than left in the log. A notification
+      # that says "Main tip failed" sends somebody to open a job; one that names
+      # the error tells them whether it is theirs.
+      #
+      # ⚠ **`cmd /c` merges the streams, not PowerShell.** Under Windows
+      # PowerShell a native `2>&1` turns each stderr line into an error record,
+      # and the runner's `$ErrorActionPreference = 'Stop'` makes the first one —
+      # `Compiling quote` — terminate the step. Measured 2026-09-20..23: 107 of
+      # 108 runs of this workflow failed that way within a second, whatever the
+      # tip contained.
+      - name: Does the tip compile
+        shell: powershell
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "check.txt"
+          cmd /c "cargo check --workspace --all-targets 2>&1" | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $first = (Select-String -Path $log -Pattern "^error" -Context 0,6 |
+                      Select-Object -First 3 |
+                      ForEach-Object { $_.Line; $_.Context.PostContext }) -join "`n"
+            @(
+              "## main does not compile at ``$env:GITHUB_SHA``"
+              ""
+              "Two green pull requests can break ``main`` together. This is that,"
+              "or a merge that was not rebased."
+              ""
+              '```'
+              $first
+              '```'
+            ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 1
+          }
+          "the tip compiles" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      # The cheap tier, in the state a clean checkout is in: no corpus.
+      # `local-gate` owns the corpus-gated half, and asking it here is what
+      # would make this slow.
+      - name: Do its own tests pass with no pack and no corpus
+        shell: powershell
+        run: |
+          $empty = Join-Path $env:RUNNER_TEMP "empty-corpus"
+          New-Item -ItemType Directory -Force -Path $empty | Out-Null
+          $env:OPENRAGE_FIXTURES = $empty
+          $log = Join-Path $env:RUNNER_TEMP "test.txt"
+          cmd /c "cargo test --workspace 2>&1" | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $failed = (Select-String -Path $log -Pattern "^(test .* FAILED|failures:|error)" |
+                       Select-Object -First 20 |
+                       ForEach-Object { $_.Line }) -join "`n"
+            @(
+              "## main is red at ``$env:GITHUB_SHA``"
+              ""
+              "It compiles. These failed with no pack and no corpus staged:"
+              ""
+              '```'
+              $failed
+              '```'
+            ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 1
+          }
+          "the tip is green with no pack and no corpus" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      # The rest of the full Windows suite, cheapest first. One command per
+      # step: a PowerShell step exits with its *last* command's status, which
+      # is how a failing shader-tool launch check was green for weeks.
+
+      # ⚠ `--all-targets`, matching `just lint`: without it clippy skips every
+      # test target and every `cfg(test)` module.
+      - name: Clippy
+        shell: powershell
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+          exit $LASTEXITCODE
+
+      # `bc7-encode` is off by default, so nothing above compiles it, and it is
+      # the workspace's only native link.
+      - name: BC7 encoder (optional feature)
+        shell: powershell
+        run: |
+          cargo test -p or-io --features bc7-encode --lib authoring::encode
+          exit $LASTEXITCODE
+
+      # `ignore`d by default because acquiring a device can hang rather than
+      # fail, so on a step of its own with its own timeout.
+      - name: Renderer GPU tests (optional feature)
+        timeout-minutes: 10
+        shell: powershell
+        run: |
+          cargo test -p or-renderer --lib --features gpu-tests
+          exit $LASTEXITCODE
+
+      # ⚠ Installed under the runner's own directory rather than into the
+      # owner's `~/.cargo/bin`, and built once: the binary survives between
+      # jobs, and its build does not touch this job's target directory.
+      - name: Feature combinations
+        shell: powershell
+        run: |
+          $tools = "${{ vars.OPENRAGE_RUNNER_ROOT }}\_tools"
+          if (-not (Test-Path "$tools\bin\cargo-hack.exe")) {
+            cargo install cargo-hack --locked --root $tools --target-dir (Join-Path $env:RUNNER_TEMP "cargo-hack-build")
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $env:PATH = "$tools\bin;$env:PATH"
+          cargo hack check --workspace --each-feature --no-dev-deps
+          exit $LASTEXITCODE
+
+      - name: Shader-tool CLI launches
+        shell: powershell
+        run: |
+          cargo run --release -p or-shader-tool --bin or-shader-tool -- --help
+          exit $LASTEXITCODE
+
+      - name: Shader-tool tests
+        shell: powershell
+        run: |
+          cargo test -p or-shader-tool --release
+          exit $LASTEXITCODE

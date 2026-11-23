@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  // YLD: CodeWalker under-reads LOD slot 3 in clothController.m_Cloth,
+  // phMorphController.m_MapData, and each clothBridgeSimGfx atRangeArray
+  // group (LOD_COUNT is 4). A clean YLD XML compare is necessary but not
+  // sufficient for those offsets — rely on yld_roundtrip.rs structural /
+  // fixed-point gates. See tools/cw-compare/README.md § YLD.
+  //
+  // YCD: two known CodeWalker defects, both from its own source comments.
+  //
+  // 1. A kLinear channel is exported with the type label of a QuantizeFloat:
+  //    "TODO - FIX!  temporary: just export this as a quantize float"
+  //    (Clip.cs). Its read path also carries "reader.Position -= 16; //TODO:
+  //    fix this?". Channel-type differences on linear channels are therefore
+  //    CodeWalker's, not ours.
+  // 2. crAnimation::m_Name is discarded: CodeWalker models offsets 0x20..0x38
+  //    as six unknown uints, the first two of which are the name pointer.
+  //    Animation names never appear in its XML, so ours cannot be compared
+  //    against it.
+  //
+  // Neither is expressible as a path pattern, because both are field-level
+  // rather than file-level. They are recorded here so the next person reading
+  // a YCD diff does not spend a day on them; the real YCD gates are in
+  // ycd_roundtrip.rs. See docs/YCD_File_Structure_Specification.md.
+  //
+  // META (.ymt / .ymf / .pso): no allowed divergences, but two things to know
+  // before reading a diff.
+  //
+  // 1. RBM (RSC7-wrapped) files are re-compressed on write, so the file bytes
+  //    differ from the original by construction — the payload does not. The
+  //    XML compare is unaffected, since it runs on the decoded tree, but
+  //    `openrage-cli meta roundtrip` reports RBM against its payload rather
+  //    than the file for exactly this reason.
+  // 2. CodeWalker resolves hashes against its own JenkIndex, which is seeded
+  //    differently from our bundled PSC corpus. Names it cannot resolve appear
+  //    as `hash_HHHHHHHH` and ours as the same, but the *sets* of resolvable
+  //    names differ, so name-only differences on hash-valued fields are a
+  //    dictionary difference rather than a decode difference.
+  "entries": []
+}

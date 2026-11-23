@@ -1,0 +1,925 @@
+{
+  "$defs": {
+    "AlternateSet": {
+      "additionalProperties": false,
+      "description": "Switches and the garments that cause them.",
+      "properties": {
+        "id": {
+          "description": "Stable for as long as the set exists.",
+          "type": "string"
+        },
+        "name": {
+          "description": "A name for people; the game never sees it.",
+          "type": "string"
+        },
+        "ped": {
+          "$ref": "#/$defs/Ped"
+        },
+        "sources": {
+          "description": "What changes them while it is worn.",
+          "items": {
+            "$ref": "#/$defs/Asset"
+          },
+          "type": "array"
+        },
+        "switches": {
+          "description": "The drawables that change.",
+          "items": {
+            "$ref": "#/$defs/Switch"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ped"
+      ],
+      "type": "object"
+    },
+    "Asset": {
+      "anyOf": [
+        {
+          "description": "A garment of the pack, by its stable id.",
+          "properties": {
+            "garment": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "garment"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/Outside",
+          "description": "An asset of another collection, as the file states it."
+        }
+      ],
+      "description": "A drawable or prop: a garment of the pack, or one the pack does not hold."
+    },
+    "Carried": {
+      "additionalProperties": false,
+      "description": "A file the manifest registers with the shop and that is carried unchanged.",
+      "properties": {
+        "directive": {
+          "description": "The manifest line that registered it: its directive (`data_file`, or a server's own) and its type (`SHOP_PED_APPAREL_SPAK_FILE`).",
+          "type": "string"
+        },
+        "file": {
+          "description": "The file, as a path inside the module's folder.",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "directive",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Dummies": {
+      "additionalProperties": false,
+      "description": "What a pack does with a dummy, a garment that holds a place and ships no model.",
+      "properties": {
+        "leave_on_delete": {
+          "description": "A garment taken out of a slot leaves a dummy at its place, so the garments after it keep theirs.",
+          "type": "boolean"
+        },
+        "replace_on_add": {
+          "description": "A garment added to a slot takes the place of the first dummy there, and the dummy goes.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Expression": {
+      "additionalProperties": false,
+      "description": "An entry of the creature metadata a garment adds: the tracks that drive an expression of its drawable.",
+      "properties": {
+        "components": {
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "ids": {
+          "items": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "index": {
+          "description": "`pedCompExpressionIndex` or `pedPropExpressionIndex`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tracks": {
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "types": {
+          "items": {
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "index",
+        "tracks",
+        "ids",
+        "types",
+        "components"
+      ],
+      "type": "object"
+    },
+    "Garment": {
+      "additionalProperties": false,
+      "description": "One drawable of a slot, or a place held for one.",
+      "properties": {
+        "alternates": {
+          "description": "The drawables the game shows in place of the model, `<model>_1.ydd` and on, which `numAlternatives` counts.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cloth": {
+          "description": "The `.yld`, as a path inside the module's folder: the cloth the game simulates for a component's drawable, shipped under the model's own name. A garment has cloth when one is linked, and `ownsCloth` is written from that.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expressions": {
+          "description": "The entries it adds to the creature metadata of the pack, such as the expression of a heel.",
+          "items": {
+            "$ref": "#/$defs/Expression"
+          },
+          "type": "array"
+        },
+        "group": {
+          "description": "The one named set a person keeps it in, beside its ped and slot; the game never sees it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Stable for as long as the garment exists and never reused: a rename, a renumbering or an edit keeps it.",
+          "type": "string"
+        },
+        "label": {
+          "description": "A name for people; the game never sees it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta"
+        },
+        "missing_cloth": {
+          "description": "An import found the metadata stating `ownsCloth` and no cloth file for it. Never set by hand: linking a cloth or unlinking clears it, and while it stands the garment is missing its cloth.",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "The `.ydd`, as a path inside the module's folder with `/`; none for a place held, which the game sees as a drawable with no model.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ped": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ped"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ped it dresses, none while nobody has said."
+        },
+        "position": {
+          "description": "Where it sits among the drawables of its slot, when somebody decided; it takes the lowest free place otherwise.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "skin": {
+          "$ref": "#/$defs/Skin"
+        },
+        "slot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Slot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "description": "Words a person files the garment under, for finding it again; the game never sees them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "variations": {
+          "items": {
+            "$ref": "#/$defs/Variation"
+          },
+          "type": "array"
+        },
+        "wind_scale": {
+          "description": "The wind scale the build writes into every cloth of the linked `.yld`, in place of the one the file states; none ships the file as it is ([`crate::wind`]).",
+          "format": "float",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "Level": {
+      "description": "How serious a finding is, as `wardrobe.json` spells it.",
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "description": "What the engine's metadata states of a garment beyond its textures, under the engine's names; a value left out is the one the engine writes for a new record.",
+      "properties": {
+        "audioId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exclusions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "expressionMods": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "maxItems": 5,
+          "minItems": 5,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "firstPersonAlternate": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "flags": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "inclusions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "numAlternatives": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pedXml_audioID": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pedXml_audioID2": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pedXml_expressionMods": {
+          "items": {
+            "format": "float",
+            "type": "number"
+          },
+          "maxItems": 5,
+          "minItems": 5,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "pedXml_flags": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pedXml_vfxComps": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "propFlags": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "propMask": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "renderFlags": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stickyness": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Outside": {
+      "additionalProperties": false,
+      "description": "An asset outside the pack.",
+      "properties": {
+        "dlc": {
+          "description": "The collection it is in, none for the game's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slot": {
+          "$ref": "#/$defs/Slot"
+        }
+      },
+      "required": [
+        "slot",
+        "index"
+      ],
+      "type": "object"
+    },
+    "Ped": {
+      "description": "A freemode ped, by the model name the game knows it by",
+      "enum": [
+        "mp_m_freemode_01",
+        "mp_f_freemode_01"
+      ],
+      "type": "string"
+    },
+    "Replace": {
+      "additionalProperties": false,
+      "description": "What one ped's files of a pack replace of the game.",
+      "properties": {
+        "dlc": {
+          "description": "The collection of the game the files replace, as the game names it (`male_freemode_beach`); none for the drawables of the ped itself.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SavedQuery": {
+      "additionalProperties": false,
+      "description": "A query a pack keeps under a name: its text, read again each time it is asked.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "query"
+      ],
+      "type": "object"
+    },
+    "Setting": {
+      "additionalProperties": false,
+      "description": "What a project says of one rule; a word left out is the rule's own.",
+      "properties": {
+        "on": {
+          "description": "`false` switches the rule off, so it finds nothing.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "description": "Where the rule's limit stands, in the unit the rule lists it in.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Settings": {
+      "additionalProperties": false,
+      "description": "The rules of one pack.",
+      "properties": {
+        "dummies": {
+          "$ref": "#/$defs/Dummies",
+          "description": "What the pack does with the places its dummies hold."
+        },
+        "freeze": {
+          "description": "Whether a build that goes through freezes the drawables it shipped in `wardrobe.lock.json`; it does unless this says no.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "replace": {
+          "additionalProperties": false,
+          "description": "The peds whose files replace the game's own instead of adding a collection: a DLC collection of the game, or the ped itself. Such files are written with no metadata, and a build says so, and that nobody has seen the game load them.",
+          "properties": {
+            "mp_f_freemode_01": {
+              "$ref": "#/$defs/Replace"
+            },
+            "mp_m_freemode_01": {
+              "$ref": "#/$defs/Replace"
+            }
+          },
+          "type": "object"
+        },
+        "settings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Setting"
+          },
+          "description": "What the project changed, by the code of the rule.",
+          "type": "object"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Target"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The edition the pack is built for, where it is built for one: a limit that depends on it holds only for that edition. Both when it says none."
+        }
+      },
+      "type": "object"
+    },
+    "Shop": {
+      "additionalProperties": false,
+      "description": "How the pack's shop metadata is written, and what an import kept of a shop's own.",
+      "properties": {
+        "carried": {
+          "description": "Files a resource's manifest registers with the shop that this engine does not read, carried unchanged.",
+          "items": {
+            "$ref": "#/$defs/Carried"
+          },
+          "type": "array"
+        },
+        "durty_hashes": {
+          "description": "Name each entry that states no id as Durty Cloth Tool names it (`CLO_DCT_TOP_0_0_M`), so a script, a shop table or a package keyed on its names still finds the entries after a move to OpenRage; off, an entry is named for its collection, slot, position and texture.",
+          "type": "boolean"
+        },
+        "unplaced": {
+          "description": "Entries an import read that point at no garment, kept as they were stated and written back with the rest.",
+          "items": {
+            "$ref": "#/$defs/Stated"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ShopEntry": {
+      "additionalProperties": false,
+      "description": "What a shop's metadata states of one entry, kept as written.",
+      "properties": {
+        "cost": {
+          "description": "The `value` of its `cost`, as written; the plan writes 0 where none is stated.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry": {
+          "description": "Which entry of that file it was, counting from 0 through the components and then the props.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fields": {
+          "description": "Every other element the entry states (`forcedComponents`, `restrictionTags`), as XML in the order stated.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from": {
+          "description": "The file it was read from, as the import saw its path; empty for an entry made here.",
+          "type": "string"
+        },
+        "id": {
+          "description": "`uniqueNameHash` exactly as the file wrote it: a name the game hashes, or a literal value, never read as a number because it need not fit 32 bits. Empty for an entry a person made by editing the price or the tags of a texture no file stated, which the build names.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entry"
+      ],
+      "type": "object"
+    },
+    "Skin": {
+      "description": "u for a drawable that fits every skin tone, r for one with a texture for each",
+      "enum": [
+        "u",
+        "r"
+      ],
+      "type": "string"
+    },
+    "Slot": {
+      "description": "A slot a garment fills: a component by its file-name word, or a prop by its anchor",
+      "enum": [
+        "head",
+        "berd",
+        "hair",
+        "uppr",
+        "lowr",
+        "hand",
+        "feet",
+        "teef",
+        "accs",
+        "task",
+        "decl",
+        "jbib",
+        "p_head",
+        "p_eyes",
+        "p_ears",
+        "p_mouth",
+        "p_lhand",
+        "p_rhand",
+        "p_lwrist",
+        "p_rwrist",
+        "p_lhip"
+      ],
+      "type": "string"
+    },
+    "Stated": {
+      "additionalProperties": false,
+      "description": "An entry of a shop file that points at no garment of the pack, with the place it points at.",
+      "properties": {
+        "drawable": {
+          "description": "`localDrawableIndex` or `localPropIndex`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entry": {
+          "$ref": "#/$defs/ShopEntry"
+        },
+        "kind": {
+          "description": "`eCompType` or `eAnchorPoint` as written.",
+          "type": "string"
+        },
+        "ped": {
+          "$ref": "#/$defs/Ped"
+        },
+        "prop": {
+          "description": "Whether it was in the props of the file; the components otherwise.",
+          "type": "boolean"
+        },
+        "textureIndex": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ped",
+        "kind",
+        "drawable",
+        "textureIndex",
+        "entry"
+      ],
+      "type": "object"
+    },
+    "Switch": {
+      "additionalProperties": false,
+      "description": "A drawable that wears alternate `alt` of its model while a set's garments are worn.",
+      "properties": {
+        "alt": {
+          "description": "The number after the model's name: `hair_000_u_1.ydd` is alternate 1.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/Asset"
+        }
+      },
+      "required": [
+        "target",
+        "alt"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "description": "The game a pack is built for, which decides the limits that depend on it.",
+      "enum": [
+        "legacy",
+        "enhanced"
+      ],
+      "type": "string"
+    },
+    "Variation": {
+      "additionalProperties": false,
+      "description": "One texture of a garment.",
+      "properties": {
+        "distribution": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "exclusionId": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "exclusions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "inclusionId": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "inclusions": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "shop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShopEntry"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The shop entry an import read for this texture: its id is the one a build writes."
+        },
+        "shop_id": {
+          "description": "An id somebody chose for this texture's shop entry, which wins over the one an import read.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "texId": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "texture": {
+          "description": "The `.ytd`, as a path inside the module's folder; none for a texture held for a place with no file.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tint": {
+          "description": "The word a component texture's name ends with; `uni` or `whi` by the garment's skin where it states none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Waiver": {
+      "additionalProperties": false,
+      "description": "A rule the pack does not hold itself to, with the reason.",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "garment": {
+          "description": "The garment it concerns, by id; every garment where none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "reason"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A pack of clothing for the freemode peds.",
+  "properties": {
+    "alternates": {
+      "description": "The drawables that wear an alternate model while garments of the pack are worn ([`crate::alternate`]).",
+      "items": {
+        "$ref": "#/$defs/AlternateSet"
+      },
+      "type": "array"
+    },
+    "collections": {
+      "additionalProperties": false,
+      "description": "The collection each ped's garments are in, as the game resolves it; `mp_m_<pack>` and `mp_f_<pack>` where a ped has none.",
+      "properties": {
+        "mp_f_freemode_01": {
+          "type": "string"
+        },
+        "mp_m_freemode_01": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "format": {
+      "type": "string"
+    },
+    "garments": {
+      "items": {
+        "$ref": "#/$defs/Garment"
+      },
+      "type": "array"
+    },
+    "pack": {
+      "description": "The name of the pack: the folder of its streamed files, the stem of its collections and of its creature metadata.",
+      "type": "string"
+    },
+    "queries": {
+      "description": "The queries the pack keeps by name, which the list offers as smart groups ([`crate::query`]).",
+      "items": {
+        "$ref": "#/$defs/SavedQuery"
+      },
+      "type": "array"
+    },
+    "rules": {
+      "$ref": "#/$defs/Settings",
+      "description": "What the project changed of the rules the pack is held to: the edition it is built for, and for a rule that can change, whether it is on, how serious it is and where its limit stands."
+    },
+    "schema": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "shop": {
+      "$ref": "#/$defs/Shop",
+      "description": "How the shop metadata is written; the default is OpenRage's."
+    },
+    "waivers": {
+      "items": {
+        "$ref": "#/$defs/Waiver"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "format",
+    "schema",
+    "pack",
+    "garments"
+  ],
+  "title": "Wardrobe",
+  "type": "object"
+}

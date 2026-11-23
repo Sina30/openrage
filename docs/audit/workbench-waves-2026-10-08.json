@@ -1,0 +1,1379 @@
+{
+ "generated": "2026-10-08",
+ "summary": "1. The audit stands (625 requirements: 288 done, 198 partial, 124 missing, 11 diverged, 4 unverifiable): the engine is sound, the front door is not. Nothing calls the extractors, a build never cooks a source, Open versus Import is on no screen.\n2. Gap level is complete: every non-done requirement except five superseded or unverifiable ones is named by a gap (checked by script). Wave level was not: briefs left out the origin.how write, a byte-identical source save, .gitattributes, a hover step in the shots machinery, Restore original, and the explorer-menu and archive files an Import wave must edit.\n3. Order was wrong for rule (c): engine, cook and reload came first, the screens a user meets (start page, New project, the five major project defects) came after import and cook. Now P1 front door, P2 project majors and P3 import engine start together after L; H3 follows P2; the Import UI (P4) follows P2 and P3.\n4. Size: nine waves bundled 5 to 7 unrelated items (old P2, P3, P5, P7, P8, P9, P11, P12, P13). The plan is now 32 waves, each one subsystem. The claim that P2, P3 and P5 could run together was false (P5 needed P2).\n5. Missing: the owner's last two steps (re-verify, then draft weapon, particle, map and other views) had no wave: P31 and P32. Shots could not draw drop hover, a running job or four project screens: folded into P1.\n6. Wrongly parked as author mode: five diverged requirements (the model JSON should say what glTF cannot, re-split with a report, DDS beside the glb). Not all of it is held back: P12 builds it behind ruling R21 and leaves vertex-layout presets out.\n7. Held back: the LOD decimator adds a geometry, a non-goal in Mesh_Interchange.md, so P30 needs a ruling; P29 (cap default, replace mode) and P12 too. Nothing else depends on them.\n8. Duplicates fixed: old P4 and H2 both refreshed a preview after a recook (now P8, which H2 uses); ReplaceTexture repeated H2's drop (P20 exposes it); the clothes dump repeated L's emitter kind; the rules reuse L's rule shape.\n9. Import is not two meanings but five (Import Texture, Import glTF, Import File, the archive drop hint, the drop undo label): P4 renames the other four.\n10. Concurrency checked by script on the file lists: no two waves that may run together share a file, except one registration line in workbench/mod.rs between H3 and P4 (read H3's lane diff first; H3 and H2 lists are guessed from their briefs).",
+ "waves": [
+  {
+   "id": "P1",
+   "title": "Front door: start page, New project, open and close, and shots that can see them",
+   "closes": [
+    "G28",
+    "G27",
+    "G22",
+    "G20",
+    "G58"
+   ],
+   "dependsOn": [
+    "L"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/start_page.rs",
+    "src/ui/panels/new_project.rs",
+    "src/ui/panels/adopt_banner.rs",
+    "src/ui/panels/empty_state.rs",
+    "src/state/front_door/mod.rs",
+    "src/state/front_door/new_project.rs",
+    "src/state/front_door/adopt.rs",
+    "src/state/front_door/cards.rs",
+    "src/state/project_io.rs",
+    "src/state/closing.rs",
+    "src/state/project.rs",
+    "src/ui/panels/hierarchy/navigation.rs",
+    "src/ui/commands/front_door.rs",
+    "src/self_check/shots.rs",
+    "src/self_check/front_door.rs",
+    "crates/domain/or-project/src/template.rs",
+    "crates/domain/or-project/src/adopt.rs",
+    "docs/direction/Workbench_UX_Design.md (front door section)",
+    "docs/guides/Development_Workflow.md (screenshots section)"
+   ],
+   "brief": "Read first: Workbench_UX_Design.md (flows, start page, New project, Make this a project), the audit entries for the start page and New project (audit-screens-project.json), src/state/front_door/*, project_io.rs, closing.rs, src/self_check/{shots,front_door}.rs, and what L changed in front_door (adopt.rs, cards.rs, new_project.rs). Build in this order. (1) Shots: a hover step that sends hovered_files, a hook that holds a cook or build running for a frame, and steps that open the screens the audit could not draw (Make this a project banner over an opened folder, the dropped-project question, the Open in new window question, the status-bar project menu with several recents); describe them in Development_Workflow screenshots. (2) Start page: equal-height goal cards with buttons pinned to the bottom; a recent card's path truncated with a hover tip and a reserved width for the right cluster; Back works with no document open. (3) New project: right-aligned buttons with a filled primary, Escape cancels, one size at every step, a placeholder tree before a folder is chosen, the message under the field at fault, a preview in the form's type size with real plurals and no backticks; the Clothing path says 'clothing pack' and shows no project, content or build words. (4) Open and close: the here-or-new-window question on every path (Places menu, empty state); Close Project asks when the project changed; reading a project is a status-bar job; the saved active tab is restored; adoption analyses on a worker; a file opened in a project marks the title changed; built-in templates record their name and the Opens on fact is true. (5) Only if ruling R8 is yes: a project holding more than one kind of content opens on Project, not on a task screen. Do not edit src/state/workbench.",
+   "checks": "Each seen failing first: Escape cancels New project; the dialog rect is the same at every step; Close Project with a pending change asks; the Places menu and the empty state ask here or new window; a reopened project returns to its saved tab; a recent card's path never overprints its age label at 1100 px; all goal cards share one height; the four new screens are drawn. Shots before and after at 1600x900, 1100x800 and 700x600.",
+   "doesNot": "Import (P4), a dropped project folder (P5), Save writing the workspace only when changed and History (P16), help and tips (P17), anything under src/state/workbench."
+  },
+  {
+   "id": "P2",
+   "title": "Project screens: the five major defects and the dialogs",
+   "closes": [
+    "G19",
+    "G23",
+    "G27"
+   ],
+   "dependsOn": [
+    "L"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/project/assets.rs",
+    "src/ui/panels/project/content.rs",
+    "src/ui/panels/project/problems.rs",
+    "src/ui/panels/project/properties.rs",
+    "src/ui/panels/project/questions.rs",
+    "src/ui/panels/project/mod.rs",
+    "src/ui/commands/project.rs",
+    "src/state/workbench/scan.rs",
+    "src/state/workbench/findings.rs",
+    "src/state/workbench/commands.rs",
+    "docs/direction/Workbench_UX_Design.md (project panels section)"
+   ],
+   "brief": "Read first: audit-screens-project.json (the five majors and the dialog entries), Workbench_UX_Design.md (Assets, Problems, Content), src/ui/panels/project/*, src/state/workbench/{scan,findings,commands}.rs and what L changed in them. Build: (1) A Clothing content's garments are Assets rows (state from the worst finding, double-click opens the Wardrobe), so a 10-garment pack no longer reads 'holds no files yet'; a loose file shows its Target. (2) A failed build is an Error row in Problems naming the build and the reason; Problems no longer reads 'No problems' after one. (3) Escape closes every question: move it into question(). (4) Open on a row no workspace takes (a Lua file) says why or hands it to the system editor; right-click 'Open in' lists every workspace, on Assets rows and on Content rows. (5) Every Problems row names its content or build. Then the dialogs: Add build is prefilled and focused with its error held until the first edit, and its Kind and Edition combos are named for a screen reader; Clean is marked destructive and states file count and size.",
+   "checks": "Each seen failing first: a clothing project with 10 garments lists 10 rows; a failed build puts an Error in Problems; Escape closes Clean and Add build; Open on a .lua row yields a message or an external-open request; every Problems row has a content name; the control-name gate also draws the project workspaces with a project open. Shots at 1600x900 and 900x700, before and after.",
+   "doesNot": "Plurals, quick look, filter, narrow windows, landing hints, Locate and Remove for missing members (P13); the Build tab and status bar (P14); Import (P4); the Wardrobe's own sentences (P18)."
+  },
+  {
+   "id": "P3",
+   "title": "Import engine: a game file becomes a source on disk",
+   "closes": [
+    "G02",
+    "G03",
+    "G07",
+    "G08",
+    "G25"
+   ],
+   "dependsOn": [
+    "L"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-source/src/game_import.rs",
+    "crates/domain/or-source/src/git.rs",
+    "crates/domain/or-source/src/asset.rs",
+    "crates/domain/or-source/src/lib.rs",
+    "crates/domain/or-source/tests/game_import.rs",
+    "crates/tools/or-cli/src/import.rs",
+    "crates/tools/or-cli/src/lib.rs",
+    "docs/direction/Source_Format_Design.md (commit policy section)",
+    "docs/reference/Crate_Reference.md"
+   ],
+   "brief": "Read first: Source_Format_Design.md (folder and manifest, Layout per format, Commit policy), or-source asset.rs, textures.rs extract, models.rs extract_drawable and extract_drawables, or-project adopt.rs (the bounded walk to copy), or-cli project.rs and what L changed in or-cli. Build with no UI, in or-source module game_import and suite tests/game_import.rs: (1) A kind table from extension to source kind with rows for .ytd textures, .ydr drawable, .ydd drawables and nothing else; any other extension yields Kept{reason} and the engine can copy a Kept file unchanged under <project>/files/ (R3), so P10 adds rows rather than reshaping this. (2) import(project_root, input): bytes plus a virtual name plus origin facts (from_game, virtual_path, game_build), or a file path, or a folder walked recursively (skip build/, vfs/, hidden folders, nested *.src and *.openrage-proj; adopt's file and depth bounds; say what a bound left out). (3) Extract into a staging folder and rename to sources/<name>.<kind>.src only on success; never write into an existing folder: a name taken by another origin gets _2, _3 (R1); the same origin.virtual_path plus sha256 (or the same sha256 for a loose file) reports AlreadyASource and writes nothing; never modify the input; record origin.how (extracted or imported), origin.sha256 and game_build. (4) Return a per-file Report (Made, AlreadyASource, Kept, Refused, each with a reason sentence), the created folders and a digest of each tree, so a caller can undo exactly them while untouched. (5) git.rs: a managed .gitignore block (build/, vfs/, every from_game source) and a .gitattributes block marking source binaries as binary (Git LFS only if the person opts in), each between markers, idempotent, other lines untouched. (6) In asset.rs: keep notes out of the recook digest, add reid(folder) giving a copied source a new id, and Source::save rewriting every JSON file canonically so a save of an unchanged source is byte-identical. (7) openrage-cli project import <project> <paths> [--from-game] [--json] in a new import.rs prints the report.",
+   "checks": "Each seen failing first: import of a corpus .ytd, .ydr and .ydd compiles back to the same pixels per mip and the same meshes as a direct extract; importing the same bytes twice reports AlreadyASource and writes nothing; two different files with one name get _2 and the first is untouched; the input and its mtime are unchanged, also for bytes from an archive entry; an extraction failing halfway leaves no folder; the walk skips build/, vfs/, hidden, nested .src and project files and reports its bound; editing notes leaves recook Unchanged; Source::save of an unchanged source changes no byte; the ignore blocks are idempotent and keep user lines; the CLI prints JSON. Say which corpus suites ran and which skipped.",
+   "doesNot": "Any app command, drop, panel or Undo (P4, P5); cooking in a build (P6); fragments, flat metadata and other kinds (P10); reading the install or an archive (the caller hands bytes in)."
+  },
+  {
+   "id": "P4",
+   "title": "Open and Import in the app: one word, commands, report, Undo",
+   "closes": [
+    "G01",
+    "G02",
+    "G60",
+    "G07",
+    "G24"
+   ],
+   "dependsOn": [
+    "P2",
+    "P3"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/commands/project.rs",
+    "src/ui/commands/files.rs",
+    "src/ui/commands/mod.rs",
+    "src/ui/panels/hierarchy/files_menu.rs",
+    "src/ui/panels/hierarchy/rpf.rs",
+    "src/ui/panels/project/assets.rs",
+    "src/ui/panels/project/content.rs",
+    "src/ui/panels/import_report.rs",
+    "src/ui/panels/mod.rs",
+    "src/ui/panels/menu.rs",
+    "src/state/workbench/commands.rs",
+    "src/state/workbench/imports.rs",
+    "src/state/workbench/scan.rs",
+    "src/state/workbench/mod.rs (one registration line)",
+    "src/state/gltf.rs",
+    "src/state/os_drop.rs",
+    "src/platform/file_dialogs.rs",
+    "src/state/every_add_lands_where_the_tree_shows_it.rs",
+    "src/state/every_edit_undoes.rs",
+    "docs/direction/Workbench_UX_Design.md (open and import section)"
+   ],
+   "brief": "Read first: Source_Format_Design.md (verdict), Workbench_UX_Design.md (flows, Assets), src/ui/commands/{project,files}.rs, src/ui/panels/hierarchy/{files_menu,rpf}.rs, src/state/workbench/{commands,scan}.rs, P3's Report. Vocabulary first, written in the UX design as one Open-versus-Import table: Open looks at or edits a game file or archive entry where it is; Import decompiles it into a source in the open project; Add puts files into a project or pack. Rename the other four Imports so the word means one thing: Import Texture and Import glTF over a model become 'Replace from image' and 'Replace from glTF', Import File and its archive drop hint become 'Copy into archive', and the drop's undo label becomes 'Add n file(s)'; update the tests that assert them. Build: (1) Commands, each a table action in the palette and menu: Project > Import Game Files (picker, several files), Import into Project on a selected file, archive entry or folder in the explorer's context menu, and a button in the Assets empty state; each disabled with 'Open or create a project first' and a New project offer. Archive entries pass their bytes, virtual path and the mounted install's build as game_build, from_game true. A command 'Add images as a textures source' writes origin.how authored. (2) The import runs as a status-bar job on the worker the Wardrobe uses; the first import writes P3's .gitignore block. (3) A report window, not a toast: per file Made, Already a source, Kept as a file (added to the Files content), Refused with the reason; Show in Assets; Undo import removes exactly the folders it created and refuses if one's digest changed; one History line. (4) scan.rs gives drawable and drawables sources their own kind and output name (.ydr, .ydd), registers new folders with the existing Cooks without editing cook.rs, and an imported source appears in Assets without a refresh and opens in its workspace.",
+   "checks": "Each seen failing first: with a project open, importing a corpus .ytd from the picker creates sources/<name>.textures.src and its row appears and opens in the Texture workspace; the explorer context menu offers Import into Project while Open still opens in place; every new command is in the palette (existing gate); with no project the command is disabled with its reason; Undo removes only the created folders and refuses an edited one; an archive-entry import leaves the archive byte-identical; no label says Import except the game-file action (a test scans the command table); a drawable source shows a .ydr output. Before and after shots: Project menu, Assets empty state, report.",
+   "doesNot": "Folder recursion UI, drops and cancellable bulk jobs (P5); kinds with no extractor (P10); cooking in a build (P6); Assets table polish (P13); the start page (P1); Wardrobe garment import (P22)."
+  },
+  {
+   "id": "P5",
+   "title": "Drops and bulk import: folders, progress, cancel",
+   "closes": [
+    "G03"
+   ],
+   "dependsOn": [
+    "P1",
+    "P4"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/state/os_drop.rs",
+    "src/ui/os_drop.rs",
+    "src/state/workbench/imports.rs",
+    "src/state/front_door/mod.rs",
+    "src/ui/panels/import_report.rs",
+    "src/ui/commands/files.rs",
+    "docs/direction/Workbench_UX_Design.md (drops section)"
+   ],
+   "brief": "Read first: Workbench_UX_Design.md (drops), src/state/os_drop.rs and src/ui/os_drop.rs, P4's job and report, P1's hover step. Rulings R2 and R4 apply. Build: (1) Import Folder (recursive) with the walk's bounds shown in the report, progress by file and a Cancel that keeps what was already made. (2) Drops: a drop on the Project workspace's panels imports and its hint says Import; a drop anywhere else opens and its hint says Open in OpenRage; on the Wardrobe it still adds clothes. (3) A dropped project folder or .openrage-proj goes to open_folder with the Make this a project offer instead of a load error. (4) Dropping .ydd or .ytd where no Wardrobe exists asks to make Clothing content.",
+   "checks": "Each seen failing first: a drop on Content imports and the same drop on the explorer opens; a folder with 40 corpus files shows progress and Cancel keeps the finished ones and reports the rest; a dropped project folder shows the banner, not a load error; dropping a .ydd on a project with no Clothing content offers it; the hint text differs by target (shots with the hover step). Bounds are named in the report.",
+   "doesNot": "The single-file commands and the report window (P4); kinds with no extractor (P10); Wardrobe import resolution (P22)."
+  },
+  {
+   "id": "P6",
+   "title": "A build cooks sources",
+   "closes": [
+    "G04",
+    "G08",
+    "G25"
+   ],
+   "dependsOn": [
+    "P3",
+    "L"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-project/src/plan.rs",
+    "crates/domain/or-project/src/contribution.rs",
+    "crates/domain/or-project/src/build.rs",
+    "crates/domain/or-project/src/merge.rs",
+    "crates/domain/or-project/src/container.rs",
+    "crates/domain/or-source/src/cook.rs",
+    "src/state/workbench/builds.rs",
+    "src/state/workbench/build_cooker.rs",
+    "crates/tools/or-cli/src/project.rs",
+    "docs/direction/Project_Model_Design.md (build plan section)"
+   ],
+   "brief": "Read first: Project_Model_Design.md (what the build plan builds), Source_Format_Design.md (cook, commit policy), or-project plan.rs, contribution.rs, build.rs, merge.rs, or-source cook.rs, src/state/workbench/{builds,cook}.rs and what L merged into or-project. or-project takes no dependency on or-source: the app and the CLI hand in the cooker. Build: (1) A Files content contributes each .src source (a member, or one found under the project folder with the scan's rules: not build/, vfs/, hidden, nested) as Origin::Cook{source, kind, name} at stream/<name>.<ext>; the executor cooks it through the handed-in function (the app's adapter goes in a new build_cooker.rs and calls the same or_source function Cooks calls, without editing cook.rs) into the fresh folder; the .src folder never ships. (2) An unchanged source is copied exactly, not re-encoded; a from_game source whose cooked bytes equal origin.sha256 is not shipped and the plan lists it as 'unchanged from the game' (R5), with a per-build switch to ship unchanged originals for replace-mode packs. (3) An Enhanced build retargets the cooked file as Origin::Retarget does; any platform but win64 is refused with one sentence. (4) openrage-cli project build cooks too; the plan gains the step 'cook what changed', making five.",
+   "checks": "Each seen failing first: a build over an imported .textures.src ships a .ytd that reads back with the same pixels; an image saved beside the DDS is used by the next build; an unchanged from_game source is not shipped and is listed; two builds of one project are byte-identical; the .src folder never ships; a broken image fails the cook, leaves the previous build and shows as a problem. Say which corpus suites ran.",
+   "doesNot": "Verification data, sentences and CLI verbs (P7); any panel (P14); the clothing contribution of a .src (P20); clothing DLC file types (P25)."
+  },
+  {
+   "id": "P7",
+   "title": "Verification as data, plain build sentences and CLI verbs",
+   "closes": [
+    "G05",
+    "G20",
+    "G25"
+   ],
+   "dependsOn": [
+    "P6"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-project/src/plan.rs",
+    "crates/domain/or-project/src/build.rs",
+    "crates/domain/or-project/src/merge.rs",
+    "crates/domain/or-project/src/container.rs",
+    "crates/domain/or-project/src/dlc.rs",
+    "crates/domain/or-project/src/diff.rs",
+    "src/state/workbench/builds.rs",
+    "crates/tools/or-cli/src/project.rs",
+    "docs/reference/CLI_Server_Protocol.md",
+    "docs/direction/Project_Model_Design.md (verification section)"
+   ],
+   "brief": "Read first: Workbench_UX_Design.md (Build tab: plan, diff, verification), or-project diff.rs, build.rs, merge.rs, dlc.rs, CLI_Server_Protocol.md (read by a test). Build the data P14 draws: (1) Verification: the reload through the readers uncapped with a count, metadata counts, a positive name-clash line, on request a second build into a scratch folder compared byte for byte (Reproducible: ran or not run), and estimated memory against the stored ceiling. (2) Sentences in plan.rs, merge.rs, container.rs, build.rs and the build commands say Content and Build, never module or output (a test scans the strings); the 19 near-identical DLC file-type errors become one problem with a count and three names. (3) CLI: verbs for clean, add content, add build, remove build and the redirect map (written from the previous build's record); create writes sources/ and records the game; --output stays as a hidden alias of the new name and CLI_Server_Protocol.md documents it.",
+   "checks": "Each seen failing first: a deliberately unreproducible cook reports Reproducible: no; the reloaded list is not capped at 20; no plan, container or build string contains 'module' or 'output'; 19 untyped files give one DLC problem row; the new verbs round trip a project through the CLI alone; the protocol test passes with the new verbs.",
+   "doesNot": "The Build tab layout (P14), the builds editor (P15), the Wardrobe's rule sentences (P18)."
+  },
+  {
+   "id": "P8",
+   "title": "Live reload: a recook refreshes every open preview",
+   "closes": [
+    "G06"
+   ],
+   "dependsOn": [
+    "H3"
+   ],
+   "effort": "S",
+   "needsRuling": false,
+   "files": [
+    "src/state/file_watcher.rs",
+    "src/state/workbench/cook.rs",
+    "src/ui/panels/texture_preview.rs",
+    "docs/direction/Source_Format_Design.md (live reload section)"
+   ],
+   "brief": "Read first: Source_Format_Design.md (Live reload), src/state/workbench/cook.rs (Cooks), src/state/file_watcher.rs, the test a_change_on_disk_keeps_the_undo_steps_beside_it, and the watcher H3 merged (reuse its debounce; add no second notify watcher). Build the one mechanism the source edit loop and H2 both need: a recook publishes the cooked path; every open Texture or Model tab and the viewport's textures for a model that show that file reload in place with their undo steps kept; a failed cook leaves the old pixels and a Problems row. H2's texture-variant refresh must use this hook: amend H2's dependsOn to include this wave.",
+   "checks": "Each seen failing first: saving an image beside the DDS changes the pixels of an open Texture tab without reopening it; a failing cook leaves the old pixels and adds a Problems row; undo steps survive the reload.",
+   "doesNot": "Replace geometry and the check against the game (P9); the quick look picture (P13); the Wardrobe preview itself (H2)."
+  },
+  {
+   "id": "P9",
+   "title": "Source edit loop: replace geometry, check against the game, mount the cooked model",
+   "closes": [
+    "G14",
+    "G04",
+    "G02"
+   ],
+   "dependsOn": [
+    "P4",
+    "P7",
+    "P8"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/state/workbench/commands.rs",
+    "src/ui/commands/project.rs",
+    "src/ui/panels/project/assets.rs",
+    "crates/tools/or-cli/src/source.rs",
+    "crates/tools/or-cli/src/lib.rs",
+    "crates/domain/or-source/src/origin_check.rs",
+    "crates/domain/or-source/src/lib.rs",
+    "crates/domain/or-source/src/models.rs"
+   ],
+   "brief": "Read first: Source_Format_Design.md (What wave I built, Live reload), or-source models::import, P8's hook. Build: (1) Replace geometry on a drawable or drawables source from glTF, GLB or FBX: an Assets row action and openrage-cli source import-model, both showing the report of what was dropped. (2) Check against the game, on demand and never per scan: origin_check compares origin.sha256 with the install file at origin.virtual_path and the row says 'the game's original changed'. (3) The cooked .ydr and .ydd in vfs/<id>/ are mounted for the viewport and the Model workspace, so an imported model's textures and mesh draw from the cook.",
+   "checks": "Each seen failing first: a corpus glb replaces a drawable's geometry and the report lists what had no place; check against the game flags a source whose original bytes were mutated and passes an untouched one; the Model workspace draws the cooked .ydr after a save.",
+   "doesNot": "Wardrobe texture drop (H2), the preview refresh itself (P8), build changes (P6), the model JSON's new fields (P12)."
+  },
+  {
+   "id": "P10",
+   "title": "Fragment source kind and flat metadata sources",
+   "closes": [
+    "G09",
+    "G10"
+   ],
+   "dependsOn": [
+    "P9"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-source/src/fragment.rs",
+    "crates/domain/or-source/src/metadata.rs",
+    "crates/domain/or-source/src/game_import.rs",
+    "crates/domain/or-source/src/cook.rs",
+    "crates/domain/or-source/src/lib.rs",
+    "docs/direction/Source_Format_Design.md (layout section)"
+   ],
+   "brief": "Read first: Source_Format_Design.md (Layout per format, Decisions), Mesh_Interchange.md, or-source models.rs, the metadata XML conversion of R37 in or-io and or-cli convert.rs. Build: (1) The fragment kind <name>.fragment.src (first version: drawable/ plus base.yft, physics from the base): extract, compile, cook, recook, a kind-table row in P3's game_import, and a test that a .yft is never routed as .ydr or .ydd. (2) Flat canonical XML sources for .ymt, .ymap, .ytyp and .meta (name.ymap.xml in sources/, OpenRage's own canonical XML, not CodeWalker's; unresolved names spelled hash_XXXXXXXX), compiled back by the existing conversion, only if the corpus round trip holds the canonical fixed point; the import report says the first export differs from the original bytes; otherwise they stay Kept with the reason (R19). Unbuilt kinds (.ybn, .yld, .ycd, .ypt, .awc) stay Kept.",
+   "checks": "Each seen failing first: every corpus .yft extracts and compiles back to the same drawable; a .yft routed as .ydd is refused; a corpus .ymap round trips to its canonical fixed point or is Kept with the reason; the import report names the kinds it kept. Name suites that skip without a corpus.",
+   "doesNot": "Author mode, CodeWalker XML, presets, other platforms, sources for .ybn, .yld, .ycd, .ypt and .awc."
+  },
+  {
+   "id": "P11",
+   "title": "Texture rules, schemas and the recorded format comparison",
+   "closes": [
+    "G12",
+    "G13"
+   ],
+   "dependsOn": [
+    "P10"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-source/src/textures.rs",
+    "crates/domain/or-source/src/cook.rs",
+    "crates/domain/or-source/schemas/ (new)",
+    "crates/io/or-io-verify/tests/the_install_testimony_holds.rs",
+    "docs/guides/Oracle_Testimony.md",
+    "docs/direction/Source_Format_Design.md (textures section)"
+   ],
+   "brief": "Read first: Source_Format_Design.md (Rules, Inputs, Decisions), or-source textures.rs. Build: (1) The alpha rule is implemented or keeps being refused by name; an encode rule a DDS-only texture cannot honour is refused as data instead of silently skipped; header words and flags are named lists with a raw fallback; PSD flattened, 16-bit with an explicit clamp rule, EXR and HDR with an explicit tone-map rule where the image crate allows, else report the gap. (2) JSON Schemas for asset.json, textures.json, drawable.json, dictionary.json and wardrobe.json generated from the types, a test that fails when a field has none, and a note on binding **/*.src/*.json. (3) Record in Source_Format_Design the measured pros and cons of CodeWalker XML and OpenIV .odr/.otd/.oft and state what is unmeasured; correct the stale '.or.json' sentence (the shareable template is .openrage-template). (4) Remove the stale mp_eye_colour.ytd entry from REFUSED and fix Oracle_Testimony.md; ask the owner to stage the file, since a lane writes nothing outside its root.",
+   "checks": "Each seen failing first: a rule the texture cannot honour fails the build with its name; every field of the manifests is in its schema; the testimony test no longer lists a file that reads. Name suites that skip without a corpus.",
+   "doesNot": "Model JSON fields (P12), Wardrobe texture tools (P25), a convert-to-PNG button (ruled out)."
+  },
+  {
+   "id": "P12",
+   "title": "Model JSON says what glTF cannot (edit mode)",
+   "closes": [
+    "G11"
+   ],
+   "dependsOn": [
+    "P11",
+    "P9"
+   ],
+   "effort": "L",
+   "needsRuling": true,
+   "files": [
+    "crates/domain/or-source/src/models.rs",
+    "crates/domain/or-interchange/src/import.rs",
+    "crates/domain/or-interchange/src/extract.rs",
+    "crates/domain/or-source/src/cook.rs",
+    "docs/direction/Source_Format_Design.md (models section)"
+   ],
+   "brief": "Waits for ruling R21: it reverses the line in 'What wave I built' that shaders, LOD distances and boxes stay the game's. Read first: Source_Format_Design.md (Models, What wave I built), Mesh_Interchange.md, or-source models.rs, or-interchange import.rs. Build, in edit mode only and keeping the base: (1) drawable.json carries each material's shader and parameters, LOD distances, flags, bone tags and bounds as read from the base, and a compile applies an edited value to the base. (2) Nodes, meshes and materials are paired by name where the glb states names, by position only as the fallback, and a materials/textures list names the DDS the base uses. (3) An import whose geometry overflows the palette or vertex limits is re-split with a report instead of refused. Out of scope and still held back: vertex-layout presets, adding or removing a geometry, CodeWalker XML.",
+   "checks": "Each seen failing first: editing a shader parameter in drawable.json changes that parameter in the compiled .ydr and nothing else; a glb with renamed primitives pairs by name; an over-palette import re-splits and reports; every corpus drawable still extracts and compiles back to the same meshes. Name suites that skip without a corpus.",
+   "doesNot": "Author mode, vertex-layout presets, shipped presets, CodeWalker XML (R10)."
+  },
+  {
+   "id": "P13",
+   "title": "Project panels: counts, quick look, filter, missing members, ids, narrow windows",
+   "closes": [
+    "G26",
+    "G30",
+    "G22",
+    "G07",
+    "G23",
+    "G06"
+   ],
+   "dependsOn": [
+    "P4",
+    "H3",
+    "P9"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/project/assets.rs",
+    "src/ui/panels/project/content.rs",
+    "src/ui/panels/project/problems.rs",
+    "src/ui/panels/project/properties.rs",
+    "src/ui/panels/project/questions.rs",
+    "src/ui/panels/project/mod.rs",
+    "src/state/workbench/scan.rs",
+    "src/state/workbench/findings.rs",
+    "src/state/workbench/strip.rs",
+    "src/ui/every_control_has_a_name_a_screen_reader_can_speak.rs",
+    "docs/direction/Workbench_UX_Design.md (assets and problems section)"
+   ],
+   "brief": "Read first: audit-screens-project.json, Workbench_UX_Design.md, src/ui/panels/project/*, src/state/workbench/{scan,findings,strip}.rs, and what H3 merged in findings.rs. Build: (1) One counting rule and real plurals across the card, the panel and Properties; the problem count labelled. (2) The quick look shows only what Properties lacks, a picture for a texture (a decoded mip) and the file used (DDS, image or pack) for a source, and never covers Properties' buttons; Properties states which file a texture compiles from. (3) A filter with a Clear button and a 'no match' line. (4) Problems wraps messages with one alignment. (5) The empty landing has real buttons in normal type (Add files, Add clothing, Import game files); the linked banner says it once. (6) A missing member is a Problems row with Locate (a missing .src member picks a replacement folder) and Remove; the toast stays as a summary; Remove content has Undo. (7) Two folders sharing an id are an Error with a Fix calling reid; a source copied by hand is told apart by origin. (8) Narrow windows break paths at a separator and show a cue for hidden columns. (9) The control-name gate also draws Workspace::ALL with a project open.",
+   "checks": "Each seen failing first: two folders with one id give a finding and the Fix gives one a new id; a missing .src member is a Problems row and Locate repairs it; a filter with no match shows its line; the quick look never overlaps the Open button at 900x700; the gate fails before the names are added. Shots at 1600x900, 1100x800, 900x700, 700x600 and 480x600, before and after.",
+   "doesNot": "Build tab and status bar (P14), builds editor (P15), History (P16), Wardrobe sentences (P18)."
+  },
+  {
+   "id": "P14",
+   "title": "Build tab, status bar, edit-mode banner, Jobs and the Project menu",
+   "closes": [
+    "G05",
+    "G29",
+    "G24",
+    "G36"
+   ],
+   "dependsOn": [
+    "P7",
+    "P13",
+    "P1"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/project/build_tab.rs",
+    "src/ui/panels/status_bar.rs",
+    "src/ui/panels/edit_mode.rs",
+    "src/ui/panels/jobs.rs",
+    "src/ui/panels/menu.rs",
+    "src/ui/commands/project.rs",
+    "src/self_check/shots.rs",
+    "docs/direction/Workbench_UX_Design.md (build tab section)"
+   ],
+   "brief": "Read first: Workbench_UX_Design.md (Build tab, status bar), P7's data, audit entries for the Build tab, status bar, Jobs and edit-mode banner. Build: (1) Build tab: a header line (files, size, problems, diff counts), collapsible sections in the order plan, what changed, verification, human labels for figures, the five steps with the running one highlighted, per-slot figures, the reloaded list in full. (2) Status bar: the dot inside the Build button with a word and tooltip ('Built', 'Failed', '19 problems'); the recent-project entries as table actions; the hint on project workspaces is the project's ('Drop clothes here, or Add clothes'), not 'No document open'. (3) The corner banner shows nothing in a project workspace with no document and 'Project: editable' over a project file or a Wardrobe being edited (never 'Read only'). (4) Jobs: aligned spinner, the running step, progress. (5) Unlink content, Save Project and Close Project in the Project menu; Undo wording unified between Edit and Project.",
+   "checks": "Each seen failing first: the banner is empty with no document and never reads Read only over a Wardrobe; the Build button's state is readable without colour; every new entry is in the palette; a held cook (P1's hook) shows the running step. Shots before and after.",
+   "doesNot": "The builds editor (P15), History (P16), the Wardrobe screen (P18)."
+  },
+  {
+   "id": "P15",
+   "title": "Builds editor and links",
+   "closes": [
+    "G15",
+    "G16"
+   ],
+   "dependsOn": [
+    "P14",
+    "P6"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/project/builds_editor.rs",
+    "src/ui/panels/project/questions.rs",
+    "src/state/workbench/builds.rs",
+    "src/state/workbench/commands.rs",
+    "crates/domain/or-project/src/container.rs",
+    "crates/domain/or-project/src/split.rs",
+    "crates/domain/or-project/src/links.rs",
+    "crates/tools/or-cli/src/project.rs",
+    "docs/direction/Project_Model_Design.md (builds section)"
+   ],
+   "brief": "Read first: Project_Model_Design.md (outputs, combining and splitting, links), Workbench_UX_Design.md, P6 and P7 data. Build: (1) A builds editor replacing the Add build question: choose the contents a build takes, kind, edition, name; edit, rename and remove a build; budgets, split ceiling and file_types settable (CLI setters too); a split for update cadence is two builds over different contents; the contents-by-builds matrix appears only from two contents or two builds, with a locked cell and a reason where a kind cannot ship (scripts in a DLC). (2) Link a whole project or its Files content (add_link accepts Files); a project made only of links builds; a link is not followed into the linked project's links, and the banner says so.",
+   "checks": "Each seen failing first: a build over two chosen contents contains exactly their files; the matrix is absent with one content and one build; a linked Files content's files land in the resource and read back; a project of links only builds; budgets set in the editor change the plan; every new entry is in the palette. Shots before and after.",
+   "doesNot": "Project History (P16), new content kinds, installing a build, tag-based inclusion (G17)."
+  },
+  {
+   "id": "P16",
+   "title": "Project History, rollback and a Save that does not churn Git",
+   "closes": [
+    "G21",
+    "G08",
+    "G22"
+   ],
+   "dependsOn": [
+    "P15",
+    "P1"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/state/workbench/project_history.rs",
+    "src/state/workbench/commands.rs",
+    "src/state/workbench/mod.rs",
+    "src/ui/panels/history.rs",
+    "src/state/project_io.rs",
+    "crates/domain/or-project/src/project.rs",
+    "crates/domain/or-project/src/snapshot.rs"
+   ],
+   "brief": "Read first: Workbench_UX_Design.md (History, Undo), state/workbench/{commands,mod}.rs, ui/panels/history.rs, project_io.rs, or-project project.rs. Build: (1) Add or remove content or build, link, unlink and locate are undoable and redoable, and P4's import step joins the same stack. (2) History persists per project in .openrage/history (git-ignored) as a snapshot of the project file per change, with rollback to any step; the snapshot store (or-project snapshot.rs) is also what P19 uses for packs. (3) Save writes the project file's workspace only when the person changed it (no Git churn) and never writes a machine's absolute path into a shared project file (the build copy folder stays in preferences). (4) Close Project never waits for a running build: it finishes and either stands or leaves the previous build.",
+   "checks": "Each seen failing first: Undo of Add content restores the project file bytes; Redo reapplies; Save with no workspace change leaves the file byte-identical; a rollback restores an earlier step; a project file carries no absolute path of this machine.",
+   "doesNot": "Wardrobe history (P19), the guide and the sharing check (P17), new templates."
+  },
+  {
+   "id": "P17",
+   "title": "Sharing safely, and help for a Durty user",
+   "closes": [
+    "G08",
+    "G31",
+    "G32",
+    "G20"
+   ],
+   "dependsOn": [
+    "P16",
+    "P3",
+    "P1"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/state/front_door/new_project.rs",
+    "src/state/front_door/adopt.rs",
+    "src/state/shader_pack.rs",
+    "crates/domain/or-project/src/check.rs",
+    "docs/Workbench_Guide.md",
+    "src/ui/panels/start_page.rs",
+    "docs/direction/Workbench_UX_Design.md (help section)"
+   ],
+   "brief": "Read first: Source_Format_Design.md (Commit policy), Workbench_UX_Design.md, P3's git blocks. Build: (1) A new or adopted project writes P3's .gitignore and .gitattributes blocks. (2) Project > Check before sharing lists machine paths in the project file and every from_game source (R22: no git hook; the app cannot see a push). (3) A test zips a project with content, builds and a clothing pack and opens the copy under another path with the same plan. (4) docs/Workbench_Guide.md for a Durty user (open a pack, fix, build, install), goal cards and start-page tooltips link to it, first-run tips. (5) Only if R12 is yes: ask once before the shader-tool download at launch and remember the answer.",
+   "checks": "Each seen failing first: a new project has the ignore blocks and a second run changes nothing; Check before sharing flags a from_game source and an absolute path; the zipped project opens elsewhere with an identical plan; the guide's backticked paths and names pass the doc gates; with R12 yes, no download starts before the answer.",
+   "doesNot": "Interface languages (R13), translation, a sample project (fixtures hold game content)."
+  },
+  {
+   "id": "P18",
+   "title": "Wardrobe screen: the majors and the polish",
+   "closes": [
+    "G36",
+    "G37",
+    "G49",
+    "G54",
+    "G20",
+    "G30",
+    "G24"
+   ],
+   "dependsOn": [
+    "H2",
+    "P13",
+    "P1"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/wardrobe/list.rs",
+    "src/ui/panels/wardrobe/garment.rs",
+    "src/ui/panels/wardrobe/mod.rs",
+    "src/ui/panels/wardrobe/words.rs",
+    "src/ui/panels/empty_state.rs",
+    "src/ui/the_wardrobe_on_screen.rs",
+    "src/ui/theme.rs",
+    "src/ui/commands/wardrobe.rs",
+    "src/state/workbench/wardrobe.rs",
+    "src/state/workbench/findings.rs",
+    "crates/domain/or-wardrobe/src/rules.rs",
+    "crates/domain/or-wardrobe/src/plan.rs",
+    "docs/Wardrobe_Parity.md (new)",
+    "docs/direction/Clothing_Tool_Design.md"
+   ],
+   "brief": "Read first: audit-screens-wardrobe.json, the Wardrobe chapter of Workbench_UX_Design.md, the code H3 and H2 merged. Do not touch the Cloth, Shop, flag or preview sections they own. Build, by value: (1) Garments labelled by the part the pack does not repeat; a missing texture or cloth gets Locate, Remove and Waive as fixes; Fix, Waive and every edit is one step of the existing Undo stack with a label naming the change; a second add of identical models skips them and says how many; the empty Wardrobe is one drop area with one sentence and a primary Add clothes; 'Add clothing' and 'Add clothes' get distinct labels. (2) Problems sentences are plain, without rule codes, backticks, repeated names or module and output words (rules.rs, plan.rs); Garment lays findings out vertically and texture rows take one line; checkbox, radio and drop outlines reach 3 to 1 (theme.rs only); the whole row is the click target and a right click selects it; the header keeps the build chooser and Build together; plurals; contents named by pack; 'Add a build' is a button; the strip shows the problem count and ceilings from the plan; the drop toast names the first left-out file and why; removal says which garments moved; the needs-attention chip covers errors and duplicates, with a duplicate chip; Tops comes first. (3) docs/Wardrobe_Parity.md: each incumbent yes row as present, planned in a named wave, or excluded by a recorded owner ruling, with the seven drawbacks of the project approach and their answers. (4) Record in Clothing_Tool_Design the accurate-field-names constraint.",
+   "checks": "Each seen failing first: Undo after Fix on a duplicate restores it; dropping one folder twice adds the garments once; a missing texture row offers Locate; no Problems sentence matches a rule-code prefix or contains a backtick (a test over the rules); the three outlines measure at least 3 to 1; the Wardrobe has no 'Read only' (P14 owns the banner, assert it). Shots at 1600x900, 1280x720 and 1024x640, before and after.",
+   "doesNot": "Redo, backups, rollback and the lock (P19); new edit operations (P20); new rules (P23); the edit-mode banner (P14)."
+  },
+  {
+   "id": "P19",
+   "title": "Wardrobe edits are recoverable: redo, backups, rollback, lock, originals",
+   "closes": [
+    "G38"
+   ],
+   "dependsOn": [
+    "P18",
+    "P16"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/state/workbench/wardrobe.rs",
+    "src/state/workbench/project_history.rs",
+    "crates/domain/or-wardrobe/src/edit.rs",
+    "crates/domain/or-wardrobe/src/model.rs",
+    "crates/domain/or-wardrobe/src/backup.rs",
+    "src/ui/panels/wardrobe/mod.rs",
+    "src/ui/panels/wardrobe/garment.rs",
+    "src/ui/commands/wardrobe.rs"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md (safety, history), or-wardrobe edit.rs, P16's snapshot store, P18's Undo labels. Build: (1) Redo. (2) A pack keeps a rotating set of backups of wardrobe.json (an autosave never overwrites the manifest) and a pack that does not parse shows a state card with Restore the last good version and Reveal. (3) Rollback to a step on P16's store, and of one garment's entry or one variation. (4) A lock so a second window reads and cannot write a pack another window edits. (5) Pristine originals: the first time a garment's model or texture file is replaced, the original is kept under .openrage/originals with its hash and Restore original brings it back.",
+   "checks": "Each seen failing first: Redo after Undo restores a Fix; a corrupt wardrobe.json shows the card and Restore brings the last good pack; a rollback of one garment leaves the others; a second window cannot write a locked pack; Restore original returns the exact bytes.",
+   "doesNot": "New edit operations (P20), new rules (P23)."
+  },
+  {
+   "id": "P20",
+   "title": "Wardrobe edit operations: replace, duplicate, reorder, variations, bulk",
+   "closes": [
+    "G39"
+   ],
+   "dependsOn": [
+    "P19"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/edit.rs",
+    "crates/domain/or-wardrobe/src/model.rs",
+    "crates/domain/or-wardrobe/src/facts.rs",
+    "src/ui/panels/wardrobe/garment.rs",
+    "src/ui/commands/wardrobe.rs",
+    "src/state/workbench/wardrobe.rs"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md (feature matrix), or-wardrobe edit.rs, and how H2 replaces a texture by dropping an image on its variant: ReplaceTexture is H2's operation exposed from a file picker and the row menu, not rebuilt. Build, engine first, each with Undo: ReplaceModel and ReplaceTexture keeping the settings; DuplicateTo another ped with textures and flags; Reorder (the id changes and the build diff says so); variation add, remove, rename letter or tint, reorder, export; bulk delete, ped, slot and export over a selection (the engine takes a list). A garment may name a .drawables.src folder for its model, which P6's cook builds; follow H2's texture choice.",
+   "checks": "Each seen failing first: ReplaceTexture keeps tint and flags and Undo restores the old file; DuplicateTo makes a female copy with its textures; Reorder changes the id and the diff reports a moved id; a bulk delete of 3 garments is one Undo step; a garment naming a .src ships the cooked file.",
+   "doesNot": "Selection UI, keyboard and search (P21); image import (P22); anything H2 or H3 owns."
+  },
+  {
+   "id": "P21",
+   "title": "Wardrobe list ergonomics: select, keys, search, tags, thumbnails",
+   "closes": [
+    "G39"
+   ],
+   "dependsOn": [
+    "P20"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/wardrobe/list.rs",
+    "src/ui/panels/wardrobe/mod.rs",
+    "src/ui/commands/wardrobe.rs",
+    "src/state/workbench/wardrobe.rs",
+    "crates/domain/or-wardrobe/src/facts.rs",
+    "crates/domain/or-wardrobe/src/thumbs.rs"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md, P18's list and P20's bulk operations. Build: multi-select (Ctrl, Shift) driving P20's bulk edits; keyboard navigation (Up, Down, Del, F2, Enter) and Space quick look reusing the Assets quick look; the row menu gains copy name, copy game name, copy path and Show in file manager; fuzzy search over position, slot, name and game name; tags and groups on a garment (a Meta field the engine carries); variation thumbnails and a hover preview from a decoded mip, cached.",
+   "checks": "Each seen failing first: Shift-click selects a range and Del removes it as one step; Space opens the quick look; a fuzzy query finds a garment by a game-name fragment; a thumbnail is decoded once; every new control has a name the gate speaks.",
+   "doesNot": "Image import (P22), the query bar and saved queries (G50)."
+  },
+  {
+   "id": "P22",
+   "title": "Wardrobe import breadth: images, name resolution, duplicates, mass add",
+   "closes": [
+    "G40"
+   ],
+   "dependsOn": [
+    "P21",
+    "P11"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/import.rs",
+    "crates/domain/or-wardrobe/src/resolve.rs",
+    "crates/domain/or-wardrobe/src/names.rs",
+    "src/ui/panels/wardrobe/resolve.rs",
+    "src/ui/panels/wardrobe/mod.rs",
+    "src/state/workbench/wardrobe.rs"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md (what users hit), or-wardrobe import.rs, resolve.rs, names.rs, P11's texture rules. Build: images (PNG, JPG, TGA, BMP, DDS) dropped with no existing variant to land on become a texture dictionary through or-source compile (H2 owns a drop onto an existing variant); unreadable names open a resolution dialog that applies to the selection; the dlc^ streaming prefix is read; duplicate detection adds texture and type to model bytes; an FXAP file is listed by name with its reason; mass add past 20,000 files with progress.",
+   "checks": "Each seen failing first: a dropped PNG becomes a .ytd entry; the dialog resolves 3 selected unreadable files at once; dlc^ files get their slot; two garments with equal models and different textures are not duplicates; an FXAP file is named in the left-out list.",
+   "doesNot": "Menyoo and foreign project import (P26, R16), shop metadata (H3)."
+  },
+  {
+   "id": "P23",
+   "title": "Wardrobe rules and limits: texture, mesh, game limits, configuration",
+   "closes": [
+    "G41",
+    "G55",
+    "G56"
+   ],
+   "dependsOn": [
+    "P22"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/rules.rs",
+    "crates/domain/or-wardrobe/src/facts.rs",
+    "crates/domain/or-wardrobe/src/verify.rs",
+    "crates/domain/or-wardrobe/src/model.rs",
+    "src/state/workbench/strip.rs",
+    "src/ui/panels/project/problems.rs",
+    "src/ui/panels/wardrobe/garment.rs"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md (validation, game limits), or-wardrobe rules.rs, facts.rs, and L's rule shape in or-project content/rule.rs (use it, add no second shape). Build: (1) Rules as data with code, severity, waivability and threshold: texture size, power of two, mip count, format, DX10-unsafe BC7, skin tones not 512, dictionary over 16 MB; mesh: missing LOD, medium under half the high, low over 500 vertices, polycount ceiling; limits: per-slot cap (current value kept until R7), props, hats, 160 alternates, TxdStore, YMT files per ped by game build; missing diffuse sampler, unused or misnamed embedded textures, illegal characters. (2) Per-project configuration (on or off, severity, thresholds) kept in wardrobe.json and a target game build selector. (3) The Problems list: filter, sort, group and export of findings, and an export of the rule list. (4) The strip's meter gets metadata size, shop entries, archive entries and a memory estimate. (5) Scale: a persistent content-hash cache and a measured 5,000-garment scan.",
+   "checks": "Each seen failing first: each rule fires on a corpus file built to break it and not on a clean one; a disabled rule is silent; the exported rule list equals RULES; a 5,000-garment pack scans within a stated time (name the measurement).",
+   "doesNot": "Fixes (P24), outputs (P25), capacity and the cap default (P29), what H3 owns."
+  },
+  {
+   "id": "P33",
+   "title": "Only sources in a project: create or import, and references for what stays outside",
+   "closes": [],
+   "dependsOn": [
+    "P23"
+   ],
+   "effort": "XL",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-project/src/reference.rs",
+    "crates/domain/or-project/src/container.rs",
+    "crates/domain/or-project/src/links.rs",
+    "crates/domain/or-project/src/build.rs",
+    "crates/domain/or-wardrobe/src/images.rs",
+    "crates/domain/or-wardrobe/src/import.rs",
+    "crates/domain/or-wardrobe/src/edit.rs",
+    "src/state/workbench/imports.rs",
+    "src/state/workbench/references.rs",
+    "src/ui/panels/project/picker.rs",
+    "src/ui/panels/project/create.rs",
+    "src/ui/panels/wardrobe/garment.rs"
+   ],
+   "brief": "Owner ruling of 2026-10-09, to build and not to reopen. A project holds no compiled game file. A game file that enters a project, by any door (the Project view's Add, a drop, the Wardrobe, Replace model or texture, a folder), is decompiled at once into its source, and a source is platform-free: the build compiles it for the platform or platforms the build states. There are two ways in. CREATE: right-click in Content offers New for each kind (a texture dictionary among them), an empty source that is then filled. IMPORT: a game file (a .ytd is decompiled), an asset.json, a source folder such as a .textures.src taken as it is, or a folder scanned recursively. The one place a file that is not a source of this project may be named is a REFERENCE: something a content needs and does not own, for example the cloth (.yld) of a garment, a model or a texture. A reference is one of three things: a file of this project (a source), a file of another project (a popup asks 'Import this file into the project, or only reference it?'), or an id typed by hand (a name or hash) for a file the user does not have. It is chosen through a custom picker with a good UX (this project's contents first, search, recent files, Browse for another project or a file, a field for an id). The rule is for every kind, not only textures and garments, and every later view (weapons, particles, maps) uses it. Read first: Workbench_UX_Design.md (Import, Content, the Wardrobe), Project_Model_Design.md and the links module of or-project (a link is a whole folder; a reference is one member), the import engine of P3 and the report of P4, and the P22 section (a picture dropped on a garment was compiled to a Legacy .ytd at the drop: that is the defect this wave removes). Start with an audit in the pull request: for each door list what it stores today (compiled file kept, or source), and for the Wardrobe what its pack holds. Build in order: (1) one rule at the door in the import engine: every file with a source form is decompiled; a kind with no source form yet stays in Files and is named in the report; no door writes a compiled file into a project. (2) Create commands per kind in Content's menu and the command palette, with an empty source that validates. (3) A reference as data in the project file, with its three forms, resolved when the plan is made: a reference to a source of this project follows a rename, a reference to another project is stored by path as links are, an id-only reference is written into the build as the id and the plan says in a sentence that the file is not in the project; an unresolved reference is a Problem with Locate. (4) The picker as a reusable dialog (egui, keyboard first, narrow windows), its two popups (import or only reference; the id field), and the Link cloth and Replace model buttons of the Wardrobe using it. (5) The Wardrobe: a picture dropped on a garment becomes an authored textures source of the garment (no DDS until it compiles, the build compiles it for each platform it states), the TARGET constant of images.rs goes, and a garment's model, textures and cloth are sources or references; where the pack's compiled files are still read in place (a pack adopted from disk), say so in the pull request and keep that path read-only. Report what the Wardrobe still keeps compiled and why, as the follow-up list for P24.",
+   "checks": "Each seen failing first: a .ytd added by each door (Add, drop, Wardrobe drop, Replace texture) leaves a source folder and no compiled file in the project; Create makes an empty textures source that validates and compiles to a dictionary on build; an asset.json folder, a .textures.src and a folder with nested sources import in one step with the count; a reference to another project's file asks the question, and each answer leaves the project as the answer says; an id-only reference builds with the id and a plain sentence, and a missing referenced file is a Problem with Locate; the same garment built for Legacy and Enhanced from one source; the picker is reachable by keyboard and draws at 800 px wide (before and after screens).",
+   "doesNot": "Weapon, particle and map views (P32 drafts them), a package registry or a project that depends on another project at build time beyond the three reference forms, a cloth editor, changes to the format of a source folder."
+  },
+  {
+   "id": "P34",
+   "title": "Wardrobe screen gaps: props worn on the ped, light, wind, shop fields, clear Open and Import",
+   "closes": [
+    "WAR-140",
+    "PRO-150",
+    "WAR-115",
+    "WAR-127",
+    "WAR-40",
+    "WAR-45",
+    "WAR-98",
+    "WAR-19",
+    "WAR-180",
+    "WAR-57",
+    "WAR-148",
+    "WAR-146"
+   ],
+   "dependsOn": [
+    "P28"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/wardrobe/",
+    "src/state/workbench/dressed/",
+    "crates/domain/or-wardrobe/src/dress.rs",
+    "crates/domain/or-wardrobe/src/shop.rs",
+    "crates/domain/or-wardrobe/src/cloth",
+    "src/ui/commands/wardrobe.rs",
+    "src/state/workbench/strip.rs"
+   ],
+   "brief": "Read first: docs/direction/Workbench_Plan.md (\"What every wave does\" is the procedure), then the entries of docs/audit/workbench-open-2026-10-19.json for the ids below (print only those entries with a small node command): each holds the owner's quote, the statement, and what the verification of 2026-10-19 found still missing on main. The ids: WAR-140, PRO-150, WAR-115, WAR-127, WAR-40, WAR-45, WAR-98, WAR-19, WAR-180, WAR-57, WAR-148, WAR-146. Build in order: (1) prop garments (hats, glasses, watches) are drawn on the ped at their anchor bones (the anchors table of P27) in the dressed preview, with the same Level, Draw and Bones tools; (2) a light control in the preview (direction and strength through the viewport's own lighting, tint stays) and the tangent and vertex-colour draw modes, with the viewport's time of day where the viewport already offers it; the alternate-variation model is shown when an alternate is chosen; (3) the cloth wind setting is editable in the Cloth section of the Garment panel and written, with a check that reads it back; (4) shop metadata is editable per garment and texture: price, lock hash, restriction tags, forced and variant components and outfits as far as the staged shop documents state them (name only what was measured, keep the rest raw), each an Undo step; (5) Add clothes... can pick a folder in its dialog; Undo clothes change names the change it undoes in the Project menu and the palette too; the Wardrobe labels its two ways in (Add clothes... says it imports and decompiles to the project, Enter on a model says Open in place, both with the same words as the Project panel); the Wardrobe workspace leaves for the Project workspace when the last clothing content goes (Undo brings it back); the strip meter splits slots and props and shows the streaming memory of the heaviest outfit; reopening a built pack runs the validators and puts what is broken in its report.",
+   "checks": "Each seen failing first: a hat on the ped is drawn at its anchor and moves with the Level tool; the wind value round-trips through the written cloth setting; a shop price edit is one Undo step and reads back from the built shop metadata; Add clothes picks a folder; Undo names the change in all three places; the Wardrobe leaves when clothing goes; every new control has a name a screen reader speaks; before and after screens at 800 points wide.",
+   "doesNot": "Hide ears and the hat cut value (nothing in the engine or the staged files states them), the TimeCycle modifier per texture (location unmeasured), tattoos, cloth physics beyond the setting."
+  },
+  {
+   "id": "P35",
+   "title": "Texture and import fidelity: alpha rule, skin-tone and 16-bit rules, normal and specular generation, budgeting, material auto-fix",
+   "closes": [
+    "IMP-104",
+    "IMP-107",
+    "WAR-71",
+    "WAR-87",
+    "IMP-102",
+    "IMP-117",
+    "WAR-83",
+    "WAR-84",
+    "WAR-85",
+    "WAR-86",
+    "WAR-80",
+    "IMP-125",
+    "IMP-200",
+    "PRO-173"
+   ],
+   "dependsOn": [
+    "P33",
+    "P24"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-source/src/textures",
+    "crates/domain/or-source/src/optimise.rs",
+    "crates/domain/or-source/src/game_import.rs",
+    "crates/domain/or-wardrobe/src/rules",
+    "crates/domain/or-wardrobe/src/textures.rs",
+    "crates/io/or-io/src/authoring",
+    "crates/tools/or-cli/src",
+    "src/ui/panels/texture",
+    "docs/direction/Source_Format_Design.md"
+   ],
+   "brief": "Read first: docs/direction/Workbench_Plan.md (\"What every wave does\" is the procedure), then the entries of docs/audit/workbench-open-2026-10-19.json for the ids below (print only those entries with a small node command): each holds the owner's quote, the statement, and what the verification of 2026-10-19 found still missing on main. The ids: IMP-104, IMP-107, WAR-71, WAR-87, IMP-102, IMP-117, WAR-83, WAR-84, WAR-85, WAR-86, WAR-80, IMP-125, IMP-200, PRO-173. Build in order: (1) the alpha rule of the textures sidecar (straight or premultiplied, and whether a cutout keeps its coverage across the mips), honoured by the compile and refused by name where a build has no code for it; (2) the rule for skin-tone textures not 512 by 512 and the size the game forces, and a 16-bit image that compiles only with an explicit rule (the default rule is named, written in the sidecar and shown); (3) the texture inspector says which file wins when a DDS and an image share a name; (4) normal and specular maps generated from a diffuse texture (a plan step with a before and after, written as new images of the source, never in place); (5) texture budgeting: pick size and format per texture to fit a memory target of the project, measure PSNR per choice and show before and after side by side, as a dry run that changes nothing until accepted; (6) a watch folder that can be bound to a slot (diffuse, specular, normal) refreshes the preview when the external editor saves; (7) shader-parameter auto-fix of a material in bulk (a finding with a Fix), and the optimiser reaches the textures embedded in a drawable; (8) the game-import door and the CLI extract embed the reference skeleton of a ped component so the glb has its skin; (9) openrage-cli verbs to compile a single source and the history, remove and recook actions the workspace has. Every output is a source, never a compiled file.",
+   "checks": "Each seen failing first: a premultiplied cutout keeps its coverage through the mips and a build refusing an unknown rule names it; a 16-bit image without a rule is refused with a sentence and with the rule it compiles; the generated normal map differs from a flat one and Undo takes it away; the budget dry run changes no byte and the accepted plan meets the target within a stated tolerance; a ped component imported by the door has a skin; the new verbs run headless over a staged project.",
+   "doesNot": "A painter in the app, Gen9 import in the Texture workspace (its own wave), console variants (declined)."
+  },
+  {
+   "id": "P36",
+   "title": "Project polish: plain words, missing files in Problems, one next action, rebuild check, ids, plugins, onboarding",
+   "closes": [
+    "PRO-16",
+    "PRO-187",
+    "PRO-41",
+    "PRO-34",
+    "PRO-101",
+    "PRO-93",
+    "IMP-064",
+    "IMP-191",
+    "WAR-99",
+    "PRO-128",
+    "IMP-157",
+    "PRO-181",
+    "PRO-164",
+    "PRO-188",
+    "WAR-160",
+    "WAR-198",
+    "WAR-200",
+    "WAR-159",
+    "WAR-237",
+    "PRO-87",
+    "WAR-17"
+   ],
+   "dependsOn": [
+    "P33",
+    "P28"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/project/",
+    "src/state/workbench/",
+    "src/state/front_door/",
+    "crates/domain/or-project/src",
+    "crates/domain/or-source/src/textures.rs",
+    "crates/domain/or-source/src/models.rs",
+    "crates/domain/or-plugin/src",
+    "docs/guides/Workbench_Guide.md"
+   ],
+   "brief": "Read first: docs/direction/Workbench_Plan.md (\"What every wave does\" is the procedure), then the entries of docs/audit/workbench-open-2026-10-19.json for the ids below (print only those entries with a small node command): each holds the owner's quote, the statement, and what the verification of 2026-10-19 found still missing on main. The ids: PRO-16, PRO-187, PRO-41, PRO-34, PRO-101, PRO-93, IMP-064, IMP-191, WAR-99, PRO-128, IMP-157, PRO-181, PRO-164, PRO-188, WAR-160, WAR-198, WAR-200, WAR-159, WAR-237, PRO-87, WAR-17. Build in order: (1) wording: the Rules window and the waivers list say the rule's plain sentence and not its kebab-case code (the code stays in a tooltip and in the export), and every sentence a user reads says Legacy and Enhanced, never Gen8 or Gen9 (the two Problems sentences of or-source and the Display of Generation); (2) opening a project that names missing files lists them in Problems with Locate and Remove and raises no toast; after Create the landing offers one next action in the middle; (3) the Build tab can run the second byte-identical rebuild (a Verify option on the build, off by default) and says whether it ran; a template applied later is a step of History; (4) a project stores its members, contents and links by id as well as path so that moving a source folder is not a missing member (the path stays the fallback and Locate remains); a dropped folder or an addon ped proposes the content that fits it; the project remembers its workspace; the quick look may list the facts the Properties panel shows (if a test forbids the duplicate, change the test and say why); (5) the owner-facing choice of what to commit (sources, or the build, or game-derived sources) in the project settings writing the managed Git block, and Check before sharing as it is; (6) a control inventory: one table in the UX design of every control of the project screens with its place and its reason, and a test that fails when a button of those screens has no row; (7) Redo over an import remakes its sources; a second window opening a project that another holds is told so and is read only; (8) a target game build selector that adjusts the thresholds of the rules that depend on the build; (9) a plugin is installed from a file or folder through the plugin manager, a plugin write keeps the undo history and a multi-file change is one transaction, and a validator's findings can be waived and fixed like rules; (10) a sample project the start page can open (made of synthetic content) with a short guided tour that ends on the guide. Say in the report what stays by design.",
+   "checks": "Each seen failing first: no kebab-case code appears as a label in the screens (a test over the drawn text); the words Gen8 and Gen9 appear nowhere a user reads; opening a project with a missing file shows it in Problems and raises no toast; moving a .src folder keeps its member; the second rebuild runs when asked and the tab says so; the control inventory test fails when a button has no row; a plugin installed from a folder is listed and a plugin write keeps Undo; before and after screens at 800 points wide.",
+   "doesNot": "Translating the interface (a mechanism needs an owner ruling), the power features (P37), new content kinds."
+  },
+  {
+   "id": "P37",
+   "title": "Power features: query bar, saved queries, dry-run bulk edits, review mode, credits, pack package",
+   "closes": [
+    "WAR-52",
+    "WAR-53",
+    "WAR-22",
+    "PRO-162",
+    "WAR-182",
+    "WAR-183",
+    "WAR-184",
+    "WAR-218",
+    "WAR-219"
+   ],
+   "dependsOn": [
+    "P34"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/search.rs",
+    "crates/domain/or-wardrobe/src/package.rs",
+    "crates/domain/or-project/src",
+    "src/ui/panels/wardrobe/list.rs",
+    "src/ui/panels/project/",
+    "docs/direction/Wardrobe_Parity.md"
+   ],
+   "brief": "Read first: docs/direction/Workbench_Plan.md (\"What every wave does\" is the procedure), then the entries of docs/audit/workbench-open-2026-10-19.json for the ids below (print only those entries with a small node command): each holds the owner's quote, the statement, and what the verification of 2026-10-19 found still missing on main. The ids: WAR-52, WAR-53, WAR-22, PRO-162, WAR-182, WAR-183, WAR-184, WAR-218, WAR-219. Ruling R18 is taken on 2026-10-19 by the orchestrator: build the query bar, saved queries, dry-run bulk edits, review mode, credits and the pack package; do not build the memory-budget solver. Build in order: (1) a query bar over the pack (tag, slot, ped, polygon count, missing level of detail, duplicate-of, problem code, text) whose result is the list, with saved queries that act as smart groups; (2) a bulk edit that acts on a query, shows a dry run (what changes in how many garments) first and is one Undo step; (3) review mode: a read-only diff of two revisions of a project (the History snapshots) listing garments, textures and settings added, changed and removed, with the pictures of the two sides taken by the Pictures tool; (4) per-asset provenance and licence fields on a source (in its asset.json, names measured against the existing manifest) carried into a credits output file of a build; (5) a whole pack exported and imported as one shareable package (a single file, sources and settings, no compiled file); (6) a build takes contents and inclusion rules by tag (for example a tag singleplayer), and a dependency graph and per-build size map show what a pack references and what it costs, ranked by content, garment or slot.",
+   "checks": "Each seen failing first: a query selects exactly the garments the staged pack states and a saved query keeps its result after a rebuild; a bulk edit on a query shows its dry run and one Undo restores all; the review diff names the garment edited between two revisions; the credits output lists the sources with licence; a pack package imports to an equal pack; an inclusion rule by tag leaves untagged contents out of a build; the size map totals equal the build's files.",
+   "doesNot": "The memory-budget solver, per-garment files for Git merges (record the idea in the design), 3D A/B between revisions beyond the Pictures of the two sides."
+  },
+  {
+   "id": "P24",
+   "title": "Wardrobe Fix all safe and the texture optimiser",
+   "closes": [
+    "G43"
+   ],
+   "dependsOn": [
+    "P23",
+    "P33"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/fix.rs",
+    "crates/domain/or-wardrobe/src/textures.rs",
+    "crates/domain/or-wardrobe/src/edit.rs",
+    "crates/domain/or-wardrobe/src/rules.rs",
+    "crates/domain/or-source/src/reencode.rs",
+    "src/ui/panels/wardrobe/garment.rs",
+    "src/ui/commands/wardrobe.rs",
+    "crates/tools/or-cli/src/wardrobe_fix.rs"
+   ],
+   "brief": "Wave P33 has made every project content a source and removed the platform from the Wardrobe's pictures; P24 works on what P33 leaves and on the follow-up list its pull request ends with. Read first: Clothing_Tool_Design.md (Fix all safe), BCn_Encoding_And_Mipmaps.md, the lossless repair policy in or-io, P23's rules. Build in order: (1) Fix all safe: a pipeline (repair, textures, order) with a report per step and one History step, composing per-finding remedies; model-unreadable gets a Fix that runs the lossless repair on request and keeps its report; an FXAP file is refused by name. (2) The texture optimiser, per garment or pack, in bulk with progress and cancel: BC1 or BC3 by alpha, refuse DX10-unsafe formats, mips, power of two, downscale by ratio or target, through or-source compile so unchanged blocks survive; Gen9 texture import enabled if the encoder allows. A CLI verb in a new wardrobe_fix.rs.",
+   "checks": "Each seen failing first: Fix all safe on a corpus pack with a missing LOD, a non-power-of-two texture and a reorderable slot clears the findings it can and the second run changes no byte; the optimiser leaves unchanged blocks byte-identical; an FXAP file is refused by name.",
+   "doesNot": "LOD generation and the mesh doctor (P30), author mode, an in-app texture painter."
+  },
+  {
+   "id": "P25",
+   "title": "Server outputs: clothes dump, singleplayer DLC and .oiv, build options",
+   "closes": [
+    "G46"
+   ],
+   "dependsOn": [
+    "P23",
+    "P7",
+    "P15"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/plan.rs",
+    "crates/domain/or-wardrobe/src/dump.rs",
+    "crates/domain/or-project/src/dlc.rs",
+    "crates/domain/or-project/src/oiv.rs",
+    "crates/tools/or-cli/src/wardrobe_dump.rs",
+    "src/ui/panels/project/builds_editor.rs",
+    "docs/features/Dlc_Pack_Creation.md"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md (outputs), Dlc_Pack_Creation.md, or-project dlc.rs and oiv.rs, L's emitter kind (the clothes dump is a first-party emitter on it: plan in, files out), the owner's server pack through OPENRAGE_REFERENCE_PACK (read only, never copied; R15). Build: (1) A clothes dump for server scripts (clothes_dump.json shaped like the reference pack's, and a Lua table). (2) A clothing pack in a singleplayer DLC and an .oiv: the clothing contribution states its own file types and data_file entries, a pack over 65,535 entries divides, hats and props build. (3) Build options (sub-folders per type, no extra YMT, no alternate-variation entries, the collection prefix) shown in P15's builds editor, author, version and description in the FiveM manifest, per-target overrides, real progress and cancel of a build.",
+   "checks": "Each seen failing first: the dump of the reference pack matches its shape; a clothing pack builds a dlc.rpf that reopens through the readers and an .oiv that lists its files; 70,000 entries divide into two packs; options change the output as stated. Skipped suites are named.",
+   "doesNot": "Durty's sealed formats, alt:V and RageMP, any claim that a build loads in game."
+  },
+  {
+   "id": "P26",
+   "title": "Reopen a built pack, exchange formats, headless parity",
+   "closes": [
+    "G47",
+    "G57"
+   ],
+   "dependsOn": [
+    "P25",
+    "P1",
+    "P22"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-wardrobe/src/adopt.rs",
+    "crates/domain/or-wardrobe/src/import.rs",
+    "crates/domain/or-project/src/adopt.rs",
+    "crates/tools/or-cli/src/wardrobe_exchange.rs",
+    "crates/tools/or-cli/src/serve.rs",
+    "docs/reference/CLI_Server_Protocol.md",
+    "justfile"
+   ],
+   "brief": "Read first: Clothing_Tool_Design.md, Dlc_Pack_Creation.md, or-project adopt.rs, CLI_Server_Protocol.md. Build: (1) Reopen a built singleplayer DLC or .oiv as a project, listing what could not be placed. (2) A garment exported and imported as one package with models, textures and settings. (3) Only if R16 says so: read grzy's .gctproject (a zip XORed with 0x2B holding a resource). (4) Headless: a just recipe runs wardrobe validate and build over staged files; the plan emitter's JSON is documented and tested; the CLI reads a split output back resource by resource; wardrobe verbs for add, set, fix and waive as serve routes (new file wardrobe_exchange.rs); a test that no file of the reference pack enters the repository.",
+   "checks": "Each seen failing first: a built DLC reopens as a project with the unplaced files listed; a packaged garment imports to an equal garment; a split build is read back in the CLI; a scripted add and fix over a staged pack changes the pack as stated. Skipped suites are named.",
+   "doesNot": "Durty's sealed formats, Menyoo, any claim that a build loads in game."
+  },
+  {
+   "id": "P27",
+   "title": "Wardrobe metadata depth: alternates, flags, audio, first person",
+   "closes": [
+    "G48"
+   ],
+   "dependsOn": [
+    "P26",
+    "P24"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/io/or-io/src/gta5/ (alternate-variations root)",
+    "crates/domain/or-wardrobe/src/model.rs",
+    "crates/domain/or-wardrobe/src/metadata.rs",
+    "crates/domain/or-wardrobe/src/import.rs",
+    "crates/domain/or-wardrobe/src/names.rs",
+    "src/ui/panels/wardrobe/garment.rs",
+    "docs/direction/Clothing_Tool_Design.md"
+   ],
+   "brief": "Read first: OR_IO_Specification.md (D15, D16), New_Format_Implementation_Guide.md, the typed ped roots of wave B, the Meta fields of or-wardrobe, the owner's server pack and its alternate-variations file through OPENRAGE_REFERENCE_PACK. D15 names only, every field measured. Build: (1) A typed alternate-variations root with a writer, and hair alternation (_1, _2, _3 models) for hats, hoodies and the duffel-bag fix. (2) Named, editable behaviour flags (Bulky, Armoured, helmets, remove in vehicle, hat physics) from the raw flags number with a raw fallback; audio presets by drawable type measured from staged packs; first-person alternates and mask models; prop render flags, stickyness and propMask once measured; the four unused prop anchors; a time-cycle modifier per texture only if its location is measured. (3) The hat cut value and hair scale beside H2's hide hair and hide ears, and read-back verification of hair and hat behaviour from the written metadata. (4) A re-encode test of the variation files against what Durty writes.",
+   "checks": "Each seen failing first: typed reads of the reference pack's alternates hold the canonical fixed point; a hat with an alternation model writes the entry and reads back equal; each named flag round-trips its bit; the raw number survives an unknown bit; Garment draws the sections with names a screen reader speaks. State which fields were measured and which stay raw.",
+   "doesNot": "Cloth physics (L), shop sections (H3), the dressed preview (H2), tattoos and overlays."
+  },
+  {
+   "id": "P28",
+   "title": "Wardrobe preview tools: LODs, wireframe, skeleton, animation, thumbnails",
+   "closes": [
+    "G45"
+   ],
+   "dependsOn": [
+    "P27"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/ui/panels/viewport.rs",
+    "src/ui/panels/wardrobe/mod.rs",
+    "src/platform/offscreen.rs"
+   ],
+   "brief": "Read first: Viewport_Shading_Modes.md, Animation_Preview.md, H2's preview code. Build on the viewport the app has: per-LOD counts and LOD switching, wireframe, skeleton and grid, debug render modes, hot-swap of a drawable or texture after a replace, editable base components, animation playback (presets, a custom .ycd, speed) through the existing animation machinery, and catalogue thumbnails and a turntable batch through an offscreen readback (src/platform/offscreen.rs).",
+   "checks": "Each seen failing first: switching LOD changes the drawn counts; a hot-swap shows the replaced model without reopening; a turntable batch writes one thumbnail per garment and the files differ; the self-check with the viewport draws each mode.",
+   "doesNot": "Cloth simulation, tattoos and overlays, the dressed ped itself (H2)."
+  },
+  {
+   "id": "P29",
+   "title": "Capacity: cap default, automatic split, freeze, dummies, replace modes",
+   "closes": [
+    "G42"
+   ],
+   "dependsOn": [
+    "P28"
+   ],
+   "effort": "L",
+   "needsRuling": true,
+   "files": [
+    "crates/domain/or-wardrobe/src/alloc.rs",
+    "crates/domain/or-wardrobe/src/layout.rs",
+    "crates/domain/or-wardrobe/src/plan.rs",
+    "crates/domain/or-wardrobe/src/model.rs",
+    "crates/domain/or-project/src/split.rs",
+    "src/ui/panels/wardrobe/list.rs",
+    "src/state/workbench/strip.rs"
+   ],
+   "brief": "Waits for rulings R7 (cap default 128 against 255; it changes shipped behaviour) and R20 (replace mode). Read first: Clothing_Tool_Design.md (game limits, replace modes), or-wardrobe alloc.rs, layout.rs, plan.rs, or-project split.rs. Build: (1) The per-slot cap as a setting with the ruled default; existing packs past it warn instead of failing. (2) Automatic split of an over-full slot into <name>, <name>_1 collections or resources. (3) Freeze positions after the first shipped build (a lockfile; a renumbering is refused unless waived). (4) Dummy options (replace a dummy on add, fill, resort, leave one when a garment is deleted). (5) Replace mode for a game DLC collection or the base game with the install's DLC list, marked unverified in game.",
+   "checks": "Each seen failing first: a pack with 130 garments in a slot splits per the cap; a frozen pack refuses a renumbering and a waiver lets it through; the dummy options change positions as stated; a replace-mode build names the collection it replaces.",
+   "doesNot": "Any claim that a build loads in game; fixes (P24); outputs (P25)."
+  },
+  {
+   "id": "P30",
+   "title": "Mesh doctor: LOD generation, rig validation and repair, UV crop, mirror",
+   "closes": [
+    "G44"
+   ],
+   "dependsOn": [
+    "P28",
+    "P12"
+   ],
+   "effort": "L",
+   "needsRuling": true,
+   "files": [
+    "crates/domain/or-wardrobe/src/mesh.rs",
+    "crates/domain/or-interchange/src/ (decimation, mirror, rig)",
+    "src/ui/panels/wardrobe/garment.rs",
+    "src/ui/panels/viewport.rs"
+   ],
+   "brief": "Waits for ruling R17: decimation adds a geometry, which Mesh_Interchange.md lists as a non-goal. Read first: Clothing_Tool_Design.md (mesh doctor, what it will not build), Mesh_Interchange.md, or-interchange. In-house only, no Blender: LOD generation by a conservative decimator that copies the high LOD's own shader and vertex declaration and ships no preset; freemode rig validation (bone names, unnamed groups, weights) and repair, weight cleanup, heel-bone check, left and right mirror, and UV crop, each a plan step with before and after in the viewport. Normal and specular generation if room.",
+   "checks": "Each seen failing first: a decimated LOD has the requested ratio within a stated tolerance and the corpus ped components keep their skinning; rig repair fixes an unnamed group; mirror twice is the identity; the geometry count of the high LOD is unchanged.",
+   "doesNot": "Author mode, CodeWalker XML, shipped presets, a new material or vertex layout."
+  },
+  {
+   "id": "P31",
+   "title": "Re-verification against the owner's words",
+   "closes": [
+    "G59",
+    "G49"
+   ],
+   "dependsOn": [
+    "P17",
+    "P24",
+    "P26",
+    "P27",
+    "P28",
+    "P34",
+    "P35",
+    "P36",
+    "P37",
+    "P29",
+    "P30"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "docs/Wardrobe_Parity.md",
+    "docs/direction/Workbench_UX_Design.md (status section)"
+   ],
+   "brief": "The verification of 2026-10-19 (27 readers over the 638 requirements recovered from the first audit: 507 done, 88 partial, 31 missing, 7 diverged, 3 superseded, 2 unverifiable; the open ones are in docs/audit/workbench-open-2026-10-19.json) is done and P34 to P37 close most of what it found. This wave is the last pass: The owner's 'puis re verif'. Re-run this audit's checks against main: every requirement still partial, missing or diverged, every screen defect (shots at 1600x900, 1100x800, 900x700, 700x600, 480x600), every parity row. Walk two paths end to end as tests over the staged corpus and reference pack: Open versus Import (open a game file in place, import it, edit its source, build, check it on the ped) and the Durty user's short path (drop a folder, see the problems, Fix all safe, check on the ped, build, install). Update the parity matrix rows to present, planned in a named wave, or excluded by a recorded ruling. Fix what is smaller than a wave in the same pull request; record the rest as new gaps with owner questions.",
+   "checks": "Each seen failing first: both end-to-end tests fail on a tree where one step is stubbed; no parity row is left without a status; the list of still-open requirements is reported with ids. Say which suites skipped.",
+   "doesNot": "New features, view drafts (P32), the waves held for rulings (P12, P29, P30), which are re-verified only if merged."
+  },
+  {
+   "id": "P32",
+   "title": "Draft the weapon, particle, map and other project views",
+   "closes": [
+    "G59",
+    "G18"
+   ],
+   "dependsOn": [
+    "P31"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "docs/Workbench_Views_Design.md (new)"
+   ],
+   "brief": "The owner's last step, a design document and no code. Read first: Project_Model_Design.md (content kinds, workspaces), Workbench_UX_Design.md, the weapon, particle and world code in the tree (R58f particle packs, or-world), and the audit's content-kind rows. For each of Weapons, Particles, Maps (the neutral Project view versus a Map view and its empty state: Add Map content, or open a .ymap or .ytyp), then Vehicles, Props, Audio and Scripts: what the person sees, the content kind it needs (metadata, sources, templates), which existing panels it reuses, what it adds, the build kinds it can ship in, and its empty state; rank the others by value with the criterion stated; draw the screens as figures per Documentation_Standard; list the rulings it needs (R8 default workspace).",
+   "checks": "The document gates pass; each view names its content kind, template, workspace panels, empty state and builds; every claim about the tree cites a path or test that exists.",
+   "doesNot": "Any code or any content kind (G18 stays parked until the owner approves a draft)."
+  },
+  {
+   "id": "P38",
+   "title": "Preview parity and texture places: alternates, heels floor, first person, shadows, reserved texture places, sampler auto-fix",
+   "closes": [
+    "WAR-146",
+    "WAR-148",
+    "WAR-38",
+    "WAR-86"
+   ],
+   "dependsOn": [
+    "P31"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "src/state/workbench/dressed/",
+    "src/ui/panels/wardrobe/tools.rs",
+    "src/render/dressed.rs",
+    "crates/domain/or-wardrobe/src/dress.rs",
+    "crates/domain/or-wardrobe/src/dummies.rs",
+    "crates/domain/or-wardrobe/src/variations.rs",
+    "crates/domain/or-wardrobe/src/textures.rs",
+    "docs/direction/Wardrobe_Parity.md"
+   ],
+   "brief": "Read first: docs/direction/Wardrobe_Parity.md (the rows that say Present in part and the questions Q14 and Q18), docs/audit/workbench-open-2026-10-20.json (print the entries WAR-146, WAR-148, WAR-38, WAR-86), docs/direction/Workbench_UX_Design.md (the dressed ped, Props, light and views) and docs/direction/Wardrobe_Parity.md Q14. These are incumbent features the owner asked to equal ('tu liste toutes leurs features'), still partial after P31; the owner has not ruled them out, so build what can be built from what the tree and the staged files state, and name what cannot. Build in order: (1) the alternate-variation sets (P27) show in the preview: choosing a set swaps the models it names (hair with a hat) and the Model chooser says which set drives it; (2) a floor drawn under a ped wearing heels, at the height the heel flag raises it; (3) a first-person view (the camera at the head of the ped, the field of view the game's first-person camera uses where the tree states it, else a stated default), which also shows the first-person alternate of P27 where a garment has one; (4) a shadow toggle and a time-of-day control for the Shaded preview, using the viewport's own passes (add, do not rewrite: other sessions own the renderer); (5) reserved texture places: a dummy texture place can be made, filled, resorted and replaced on add the way drawable places are (P29 dummies), each an Undo step, written as a variation with no file that a build keeps as a place; (6) the material auto-fix also adds the samplers a material lacks when an install's shader database is loaded (P35), and says it needs one when not. Do not build the mesh-physics preview (cloth simulation: say what it would need) or anything a ruling excludes.",
+   "checks": "Each seen failing first: choosing an alternate set draws the swapped model (a count of drawn triangles changes); heels draw a floor at the raised height; the first-person camera sits at the head bone and the view differs from the orbit view; the shadow toggle changes the drawn pixels on the install-gated shot; a texture place filled then resorted keeps its number and is one Undo; a missing sampler is added and the second run changes nothing. Every new control has a row in the control inventory of Workbench_UX_Design.md and a name a screen reader speaks. Before and after screens at 1280x720.",
+   "doesNot": "Mesh-physics or cloth simulation previews, hide ears, hat cut, TimeCycle per texture (unmeasured), new content kinds, i18n."
+  },
+  {
+   "id": "P39",
+   "title": "DLC and .oiv leave out unchanged game sources, and the plugin ABI grows a transaction",
+   "closes": [],
+   "dependsOn": [
+    "P31"
+   ],
+   "effort": "M",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-project/src/build.rs",
+    "crates/domain/or-project/src/dlc.rs",
+    "crates/domain/or-project/src/oiv.rs",
+    "crates/domain/or-plugin/src",
+    "docs/reference/Plugin_ABI.md",
+    "crates/domain/or-plugin/tests"
+   ],
+   "brief": "Owner rulings of 2026-10-20 (the decision sheet): Q6 and Q10 accepted. Read first: docs/direction/Workbench_Plan.md (Rulings in force), docs/reference/Plugin_ABI.md, the build and cook code of or-project (how a FiveM resource already leaves an unchanged from_game source out and what ship_unchanged does), docs/audit/workbench-open-2026-10-20.json (IMP-151, WAR-100, WAR-159, WAR-200). Build: (1) a singleplayer DLC and an .oiv leave out a source whose origin.from_game is true and which the person did not change, as a FiveM resource does, with the build option to ship them anyway; the plan says in a sentence what it left out; a rebuild of the same project is byte-identical; (2) the plugin ABI gains a host function that writes several files as one transaction (all or nothing, one step of Undo), a validator plugin may read the pack as data and not only the build plan, and a finding may carry a suggested fix the person accepts with Fix like a rule; the ABI has a version number, a plugin built for the old one still loads (say so in the manager), Plugin_ABI.md and its test are updated; the cloth painter keeps working. Update the documents and the parity rows these change.",
+   "checks": "Each seen failing first: a DLC and an .oiv built from a project holding an unchanged game source do not ship it and ship it with the option; a transaction of three files with the third failing writes none; a validator that reads the pack returns a finding the person can Fix; a plugin of the old ABI version still loads and the new one is refused by an older host with a sentence; byte-identical rebuild; just ready-full if a declaration or format path changes.",
+   "doesNot": "Any new content kind, the translation mechanism, frameworks configs (Q12 unanswered)."
+  },
+  {
+   "id": "P40",
+   "title": "Task screens as a table: the Wardrobe moves onto it",
+   "closes": [],
+   "dependsOn": [
+    "P31"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "src/ui/dock.rs",
+    "src/state/workbench/strip.rs",
+    "src/ui/panels/project/content.rs",
+    "src/ui/commands",
+    "src/state/front_door",
+    "docs/direction/Workbench_Views_Design.md"
+   ],
+   "brief": "Owner ruling of 2026-10-20: V2 accepted (a table of task screens before a second one is built), V3 accepted (a data source ships at the path its content's table states). Read first: docs/direction/Workbench_Views_Design.md (what a view costs in the tree today: the places that match on ModuleKind::Clothing), docs/direction/Workbench_UX_Design.md. Build: one table of task screens, one row per screen, holding its workspace, its kind of content, the heading of its empty state and the action that adds that content, its dock layout, the word its count is said in, its template and its reachable commands; every place that matches on the Clothing kind today reads the table instead; the Wardrobe is the first row, moved onto it with NO visible change (a test draws every Wardrobe and Project screen before and after and compares text and rectangles, and the control inventory gate stays green); a second screen is then one row plus its panels. Also state in the table where a content kind's data sources ship (V3). Update the views design and the crate reference.",
+   "checks": "Each seen failing first: the table holds the Wardrobe row and every former match site reads it (a test that fails when a site still matches on ModuleKind::Clothing directly); a fake second row appears in Content, Open in, the start page, the strip and the palette without code elsewhere; the screens before and after are identical.",
+   "doesNot": "Any new content kind or screen, the translation mechanism."
+  },
+  {
+   "id": "P41",
+   "title": "Interface languages: the translation mechanism, French and English",
+   "closes": [],
+   "dependsOn": [
+    "P40",
+    "P39"
+   ],
+   "effort": "XL",
+   "needsRuling": false,
+   "files": [
+    "src/ui",
+    "src/state",
+    "src/i18n",
+    "src/ui/panels/settings.rs",
+    "docs/guides"
+   ],
+   "brief": "Owner ruling of 2026-10-20: Q8 accepted: start the interface languages now, the mechanism first, then French and English; others can follow. Read first: docs/direction/Workbench_UX_Design.md (words: Content, Builds, Open, Import, Legacy and Enhanced), the control inventory gate, the existing text gates. Build: (1) a small mechanism in the app: a catalog per language in a plain, diff-friendly text file embedded in the binary and also read from a languages folder in the config directory so a community can drop a file in; the English text is the key; a lookup that falls back to English; a language setting in Settings (system language by default) that applies at once; plurals and named arguments handled once; (2) wrap the strings of the project screens, the Wardrobe, the menus, the palette, the questions, toasts and the status bar; (3) French complete for what is wrapped, with the owner's words (Contenu, Builds, Ouvrir, Importer) and plain sentences; (4) gates: a test that fails when a catalog lacks a key that code uses or holds one nothing uses, and when a wrapped string drops an argument; the figure and wording gates keep working in both languages. Do it in a way that the next waves (Weapons, Particles, Maps) write their strings through the mechanism from the start; say how in the Crate reference. Record in the report which strings you left unwrapped (renderer, particle and animation editors, developer tools).",
+   "checks": "Each seen failing first: switching to French changes the drawn text of the Project, Wardrobe and menus at once; a missing key falls back to English with a log line; a catalog key nothing uses fails the gate; a French sentence with a dropped argument fails the gate; a community file in the languages folder is read; the screens at 1280x720 in French have no clipped control (before and after pictures).",
+   "doesNot": "Languages other than French and English, translating the game data, the developer tools."
+  },
+  {
+   "id": "P42",
+   "title": "Weapons: the typed weapon family, a Weapons content kind and its task screen",
+   "closes": [],
+   "dependsOn": [
+    "P40",
+    "P41"
+   ],
+   "effort": "XL",
+   "needsRuling": false,
+   "files": [
+    "crates/io/or-io/src/gta5",
+    "crates/domain/or-project/src/container.rs",
+    "crates/domain/or-weapons",
+    "src/ui/panels/weapons",
+    "src/state/workbench",
+    "docs/direction/Workbench_Views_Design.md"
+   ],
+   "brief": "Owner rulings of 2026-10-20: Q1 and V1 accepted (weapons first among the new kinds, each kind starts with its data before its screen), V7 accepted (the weapon's metadata, models, textures and components with their attachment points; effects, sounds and animations are references that open their own workspaces), Q2 and V3 accepted (the metadata source stays a .metadata.src folder, a text .meta row is added and ships at the path the content's table states). Read first: docs/direction/Workbench_Views_Design.md (the Weapons section is your design), docs/direction/OR_IO_Specification.md (D15, D16), docs/guides/New_Format_Implementation_Guide.md, the typed meta roots of or-io and or-addonped as the pattern. Build in this order, each step with its check: (1) DATA: measure the weapon metadata of the owner's Legacy install (read only, the game files stay on the machine; set OPENRAGE_GAME_ROOT) and declare a typed weapon family in or-io with D15 names and every field measured, canonical fixed point, no committed game content; (2) the text .meta as a source form of a Weapons content and the Weapons content kind in the project model (contents, rules as data, build cells derived by cannot_ship, template Weapon pack); (3) the Weapons task screen as a row of the task-screen table (P40): list of weapons, a typed editor of the selected weapon's metadata, its models and textures as sources, components with attachment points, the dressed preview of the weapon with the viewport's tools, an empty state with its one action; every string through the translation mechanism (P41); (4) the draft's questions answered inside the document. Say which fields you measured and which stay raw. A build is the owner's to judge in game: claim nothing about loading in game.",
+   "checks": "Each seen failing first: the typed family reads the install's weapon metadata to a canonical fixed point (install-gated, named); a weapon edit is one Undo step and round-trips; a project with a Weapons content opens on the Weapons screen and shows in Content, Open in and the start page through the table only; its empty state offers the one action; the control inventory and translation gates pass; screens at 1280x720 in both languages.",
+   "doesNot": "Effects, sounds and animations as content of the kind, vehicles, game-loading claims."
+  },
+  {
+   "id": "P43",
+   "title": "Particles: a source form, a Particles content kind and its task screen",
+   "closes": [],
+   "dependsOn": [
+    "P42"
+   ],
+   "effort": "XL",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-particle",
+    "crates/domain/or-source/src",
+    "crates/domain/or-project/src/container.rs",
+    "src/ui/panels/particle",
+    "src/state/workbench",
+    "docs/direction/Source_Format_Design.md",
+    "docs/direction/Workbench_Views_Design.md"
+   ],
+   "brief": "Owner ruling of 2026-10-20: V4 answered 'No: a source form, and a kind' (the owner overruled the draft's recommendation of a panel and a template with no kind and no source form): Particles get a source form AND a content kind. Q1 accepted (data before screen). Read first: docs/direction/Workbench_Views_Design.md (the Particles section), docs/features/Particle_Preview.md, docs/reference/Particle_Shader_ABI.md, Source_Format_Design.md (the planned .ypt row: JSON rules plus DDS), the or-particle crate and the particle workspace, ruling R3 of the second plan. Build in this order: (1) the source form of a .ypt: a folder <name>.particles.src with asset.json, the effects as plain JSON rules and the textures as exact DDS, decompiled at import by the same door as every game file (a project holds only sources), compiled back at build, with the fixed-point test over the staged particle files (install-gated) and D15 names; (2) the Particles content kind (rules as data, build cells derived by cannot_ship, template Particle pack); (3) the Particles task screen as a row of the task-screen table: the existing Particle workspace, an Effects panel listing the effects of the content, the live preview, the empty state with its one action, and a second saved dock layout for the project; strings through the translation mechanism. Measure the places a .ypt has in the packs of the install before a build cell says Yes. Claim nothing about loading in game.",
+   "checks": "Each seen failing first: a .ypt imports to a particles source and compiles back to a file the reader opens with the same effects (fixed point); a Particles content shows in Content, Open in and the start page through the table only; an effect edit is one Undo step; the old .ypt-as-compiled-file path is gone from the doors (a project holds only sources); gates and screens as for P42.",
+   "doesNot": "Shader baking changes, maps, weapons."
+  },
+  {
+   "id": "P44",
+   "title": "Maps: a Map content kind, its task screen and placement with a manipulator",
+   "closes": [],
+   "dependsOn": [
+    "P43"
+   ],
+   "effort": "XL",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-world",
+    "crates/domain/or-source/src",
+    "crates/domain/or-project/src/container.rs",
+    "src/ui/panels/map",
+    "src/state/workbench",
+    "docs/direction/Workbench_Views_Design.md"
+   ],
+   "brief": "Owner rulings of 2026-10-20: V5 answered 'Everything, placement with a manipulator too' (the owner overruled the draft's recommendation of leaving placement to a plugin): the Map view includes placing objects with a manipulator in OpenRage itself. Q1 and V6 accepted. Read first: docs/direction/Workbench_Views_Design.md (the Maps section), or-world and its tests, the typed ymap and ytyp roots, ruling R47 (the plugin route stays available but is no longer the only one), Source_Format_Design.md (.metadata.src). Build in this order: (1) DATA: the metadata sources of a map (.ymap, .ytyp, MLO) are already .metadata.src: measure what the staged and installed files state about entities, archetypes, rooms and portals and type them to D15 where untyped; (2) the Map content kind (rules as data: missing archetypes, duplicate entities, bounds; build cells derived by cannot_ship; template Map); (3) the Map task screen as a row of the task-screen table: a plan view and a 3D scene of the placed models from or-world, an entity list with a typed editor, inspection, creation and deletion of entities and archetypes, and packaging; (4) placement with a manipulator: pick an entity in the scene, move, rotate and scale it with a gizmo in the viewport, snap to ground and grid, each edit one step of Undo, written back to the ymap; (5) the empty state: Add Map content or open a .ymap or .ytyp; strings through the translation mechanism. Measure where a .ymap and a .ytyp live in the packs of the install before a build cell says Yes. Claim nothing about loading in game.",
+   "checks": "Each seen failing first: a ymap imports to a metadata source and builds back to a file that reads equal; moving an entity with the gizmo writes the new position and one Undo restores it; a Map content shows in Content, Open in and the start page through the table only; the rules fire on a map built to break them; gates and screens as for P42.",
+   "doesNot": "Terrain editing, collision authoring (.ybn), Menyoo import (its own ruling)."
+  },
+  {
+   "id": "P45",
+   "title": "Particles source form by rule, like the particle tool keeps its files, and a bound on a typed position",
+   "closes": [],
+   "dependsOn": [
+    "P43",
+    "P44"
+   ],
+   "effort": "L",
+   "needsRuling": false,
+   "files": [
+    "crates/domain/or-source/src/particles",
+    "crates/domain/or-particles",
+    "src/state/workbench/particles.rs",
+    "src/ui/panels/particles",
+    "crates/domain/or-maps/src/edit.rs",
+    "src/ui/panels/maps/entity.rs",
+    "docs/direction/Source_Format_Design.md",
+    "docs/extra"
+   ],
+   "brief": "Owner answer of 2026-10-21 on the decision sheet (N4, answered 'other'): the particle source JSON is 18 times larger than the .ypt (core.ypt 12 MB becomes 36 MB and takes about 75 s to import); the owner says to be inspired by how the game's own particle tool (RMPTFX) keeps its data: separate files by kind, such as .fxlist and emitter-rule files, and similar. Also N6 accepted: refuse a typed entity position beyond 100,000 m of the world's centre. Read first: docs/direction/Source_Format_Design.md (the Particles row and the .particles.src form built by P43), crates/domain/or-source/src/particles and or-particles, docs/features/Particle_Preview.md. The owner has a copy of the game's source tree on his machine (its location is given in the run's carry text and never written in a committed file): READ IT for the structure of the particle tool's files (the kinds of file it keeps, what each holds, how an effect list refers to effect rules, emitter rules, particle rules and keyframes). Facts you learn from it are allowed in code and in docs/extra (which is gitignored; link it with a Markdown link and never backtick a docs/extra path); NEVER commit a citation of that tree by path, file or line, nor a comment that says code came from it, nor any of its files or text: the provenance lint fails on it. Build: (1) restructure the .particles.src form from one particles.json to a folder of files by kind and rule, one file for each effect list, effect rule, emitter rule and particle rule (names are the engine's, D15), each small and diff-friendly, with a short index; the textures stay exact DDS and the models stay models.ypt; (2) the import (decompile) writes that form, the compile reads it, and the fixed point still holds over every .ypt of both installs (the install-gated suites of P43 keep passing: same counts, none refused); report the size of the source against the .ypt for core.ypt and the time to import, which must fall well below 75 s; (3) an edit of one rule changes one file (a test), so Git diffs and merges per rule; (4) a project made with the P43 single-file form is read once and rewritten in the new form (a migration with a report), because the form changed; (5) the Effects panel and the preview keep working unchanged for the person; (6) N6: the Maps entity editor and the manipulator refuse a typed position beyond 100,000 m of the centre with a sentence in both languages (a test). Every string through the translation mechanism with its French; the control inventory and screen-record gates stay green; claim nothing about a build loading in game.",
+   "checks": "Each seen failing first: every .ypt of the install (Legacy and Enhanced, install-gated) reaches the fixed point with the by-rule form; core.ypt imports in a stated fraction of the old time; a one-rule edit changes exactly one file; a P43 single-file source migrates once and a second open changes no byte; a typed position beyond 100,000 m is refused with a sentence; docs and gates.",
+   "doesNot": "The shader or preview rewrite, glTF models for particles, DLC cells for .ypt."
+  }
+ ],
+ "rulings": [
+  {
+   "question": "R1. Where does an import write, and what happens on a name clash?",
+   "recommended": "sources/<name>.<kind>.src at the project root (flat); a name taken by a different origin gets _2, _3; the same origin (virtual path plus sha256) is skipped and reported.",
+   "why": "The New project dialog already makes sources/, origin.virtual_path tells two same-named files apart, and 'an import only adds' needs a free name rather than a refusal."
+  },
+  {
+   "question": "R2. May the word Import mean only game file to project source, renaming the four other Imports (Import Texture, Import glTF over a model, Import File and its archive drop hint, the drop's undo label) to Replace from..., Copy into archive and Add n file(s)?",
+   "recommended": "Yes.",
+   "why": "Five meanings in one window defeat the contrast the owner asked for; the renames touch existing tests, which P4 updates."
+  },
+  {
+   "question": "R3. A compiled file with no source form yet (.ybn, .yld, .ycd, .ypt, .awc, and metadata until P10): refuse it, or keep it as a loose file?",
+   "recommended": "Keep it as a loose file copied under files/ and added to the Files content, and say 'kept as a compiled file' in the report.",
+   "why": "The owner said compiled files can always be imported and no file is dropped silently."
+  },
+  {
+   "question": "R4. A drop on the Project workspace imports; a drop anywhere else opens; a drop on the Wardrobe adds clothes.",
+   "recommended": "Yes, with the hint text saying which.",
+   "why": "Keeps the quick-look habit of Open and gives Import a clear target."
+  },
+  {
+   "question": "R5. Does a build ship an imported from_game source the person did not change?",
+   "recommended": "No: skipped and listed as 'unchanged from the game'; a per-build switch 'ship unchanged originals' for replace-mode packs.",
+   "why": "Shipping a vanilla file re-distributes game content and bloats the resource."
+  },
+  {
+   "question": "R6. Should contents, builds and links point at asset ids instead of paths?",
+   "recommended": "No: keep paths (the owner's ruling) and use the id to detect duplicates, moves and the build diff.",
+   "why": "Paths diff in Git and survive without a lookup table."
+  },
+  {
+   "question": "R7. Default drawable cap per slot: 128 as Durty, grzy and Vestium document, or 255 as the allocator has it?",
+   "recommended": "128 by default, a per-project setting up to 255; existing 255 packs warn, not fail.",
+   "why": "Three tools agree on 128 and nobody here can run the game to prove 255."
+  },
+  {
+   "question": "R8. Which workspace opens for a project holding several kinds of content?",
+   "recommended": "Project; the template's own screen when there is one kind.",
+   "why": "Add clothing on a Files project then stops forcing the Wardrobe. P1 builds it only on a yes."
+  },
+  {
+   "question": "R9. May a person record 'verified in game' per kind of build in the project file?",
+   "recommended": "Yes, as a note a person enters that the tool never sets; no wave until you say yes.",
+   "why": "Keeps the rule that a build never reports it loads in game."
+  },
+  {
+   "question": "R10. CodeWalker XML for drawables, author mode and shipped shader or vertex presets.",
+   "recommended": "Keep all three held back; creators drop the .ydd Sollumz exports.",
+   "why": "Each reverses a recorded ruling or non-goal."
+  },
+  {
+   "question": "R11. Approve the text edits to R44f and R46 (R46 narrowing to cloth physics) now that wave L is nearly merged?",
+   "recommended": "Yes, as part of L's or H3's documentation.",
+   "why": "The text will otherwise contradict the tree."
+  },
+  {
+   "question": "R12. The shader tools download silently at first launch (about 26 MB from GitHub). Ask first, or keep?",
+   "recommended": "Ask once, opt-in, remember the answer.",
+   "why": "The clothing design says no remote content at launch. P17 builds it only on a yes."
+  },
+  {
+   "question": "R13. Interface languages (Durty ships nine).",
+   "recommended": "Defer until after P31, then extract strings once.",
+   "why": "Screens are still changing; a string table now would be rewritten in every wave."
+  },
+  {
+   "question": "R14. With no install mounted, may the H2 preview show the garment alone?",
+   "recommended": "Yes, as the Model workspace already does.",
+   "why": "Durty refuses to start its preview without an install."
+  },
+  {
+   "question": "R15. Is the owner's server pack the reference pack to set OPENRAGE_REFERENCE_PACK to (the folder is named by the owner, never in a committed file)?",
+   "recommended": "Yes. You set the variable; agents read it, never copy from it, and say when a suite skipped.",
+   "why": "You answered 'like this?' (message 470) and nobody recorded it where H3, P25 and P27 read it."
+  },
+  {
+   "question": "R16. Which foreign project formats does the Wardrobe read?",
+   "recommended": "grzy .gctproject only; not Durty's sealed formats, not Menyoo.",
+   "why": "The first is cheap and public; P26 builds it only on a yes."
+  },
+  {
+   "question": "R17. Decimation adds a geometry to a drawable, which Mesh_Interchange.md lists as a non-goal. May the mesh doctor add LODs that copy the high LOD's shader and vertex declaration?",
+   "recommended": "Yes for the LODs the engine needs; no for new materials or layouts.",
+   "why": "The study rejects Blender and LOD generation is a high-value Durty row; P30 waits for this."
+  },
+  {
+   "question": "R18. The power-user catalogue (query bar, saved queries, review mode, memory-budget solver).",
+   "recommended": "Decide after P28 merges.",
+   "why": "None of the incumbents has them; best sized once the parity rows are done."
+  },
+  {
+   "question": "R19. Does a flat canonical XML source for .ymap, .ytyp, .ymt and .meta inside a project reopen the XML ruling of 2026-09-22?",
+   "recommended": "No: it is OpenRage's own canonical XML, which that ruling prescribes; CodeWalker's XML stays out.",
+   "why": "P10 builds it only if the corpus round trip holds the canonical fixed point."
+  },
+  {
+   "question": "R20. Allow replace mode (a pack replacing a game DLC collection or the base game)?",
+   "recommended": "Yes, in P29, marked unverified in game.",
+   "why": "Durty offers it and Vestium's first FiveM version needs it."
+  },
+  {
+   "question": "R21. May drawable.json carry shader names and parameters, LOD distances, flags, bounds and bone tags, applied to the base on compile in edit mode, reversing the 'stay the game's' line of Source_Format_Design (What wave I built)?",
+   "recommended": "Yes for those fields and for name-based pairing and re-split with a report; no for vertex-layout presets (R10).",
+   "why": "The owner accepted a JSON that says what glTF cannot (messages 236 to 244); wave I narrowed it. P12 waits for this."
+  },
+  {
+   "question": "R22. Warn before sharing game content with a Check before sharing in the app, or also install an opt-in git pre-push hook?",
+   "recommended": "App check only.",
+   "why": "A hook is persistent configuration the owner must approve and the app cannot see a push."
+  }
+ ],
+ "risks": [
+  "Hub files: src/state/workbench/{mod,commands,scan,findings,wardrobe}.rs are edited by L, H3, H2 and P2, P4, P13, P16, P18. The DAG serialises them (L, P2, then H3 and P4, P13 after H3, P18 after H2) and the file lists of concurrent waves were checked for overlap by script. One residual: P4 and H3 each add a registration line to workbench/mod.rs; merge one, rebase the other. H3's and H2's file lists are guessed from their briefs: read their lane diffs when they exist and add or drop edges.",
+  "Amendments to existing waves this plan needs, all recorded in the plan's table by the orchestrator: H3 depends on L and P2; H2 depends on H3 and P8 and consumes P8's reload hook; H2's texture drop is the operation P20 exposes, not rebuilds; P25's clothes dump uses L's emitter kind and P23 uses L's rule shape in or-project content/rule.rs.",
+  "The extractors in or-source have never been called from the app. Real corpus files, archive entries and the mp_eye_colour.ytd case may expose bugs that unit tests hid; P3 and P4 depend on corpus suites that skip on a machine without one, and a skipped suite has not passed.",
+  "Undo of an import deletes folders. It removes only the folders the import created, checks each tree's digest first and refuses when one was edited; a wrong delete loses a person's work.",
+  "Cooking inside a build costs time and memory and must be deterministic (two builds byte-identical) or the diff and the reproducibility line lie. Skipping unchanged from_game content relies on the exact-copy path coming first; a re-encoded texture never matches origin.sha256.",
+  "Renaming the four other Imports (P4) changes labels that tests assert (every_add_lands_where_the_tree_shows_it, every_edit_undoes, gltf_in_and_out_from_the_app); one wave does it so nothing is half renamed.",
+  "The Wardrobe line is serial (P18 to P23, then P24 and P25 in parallel, P26 to P30) because the waves share list.rs, garment.rs, edit.rs and model.rs. A delayed wave delays the rest; each brief orders items by value and the agent reports what is left. P12, P29 and P30 wait for rulings and nothing else depends on them except P30 on P12; P31 runs without them and says so.",
+  "Competitor facts (Durty, grzy, Vestium) come from documents and changelogs, not hands-on tests; the clothes dump shape, audio presets and flag bits must be measured on the owner's server pack before they are built, and OPENRAGE_REFERENCE_PACK is still unset (R15), so P25 and P27 checks skip until it is.",
+  "Many new buttons mean the existing gates (menu items in the palette, control names, text contrast, doc citations and figure anchors) fail until each wave adds its entries; CI is off, so just ready is the only guard. Shots machinery needs a repository edit (P1); native pickers still cannot be drawn.",
+  "Shared docs (Workbench_UX_Design.md, Source_Format_Design.md, Crate_Reference.md) are touched by many waves; each wave edits only its named section, and the lists were checked on that basis.",
+  "Flat XML metadata sources round trip to a canonical form, not the original bytes, and show hash names without a schema snapshot; P10 builds them only if the corpus holds the fixed point and the report says so.",
+  "No agent can run GTA V. Nothing here ticks 'loads in game'; a clothes dump, a singleplayer DLC, an .oiv or a replace-mode pack may still crash a client until a tester records it (R9)."
+ ],
+ "notCovered": [
+  "ADDED in this pass (was on no wave): the owner's last two steps, the re-verification pass and the drafts of weapon, particle, map and other views (message 474; PRO-180, WAR-220 to WAR-223): P31 and P32, gap G59.",
+  "ADDED: the shots machinery could not draw drop hover, a running job or four project screens the audits missed, so no before/after proof was possible for Import drops, Jobs or the banner: P1, gap G58.",
+  "ADDED: the diverged model requirements (IMP-121, IMP-122, IMP-123, IMP-127, WAR-96) were parked as author mode; the in-force part is wave P12 behind R21, gap G11.",
+  "ADDED: the word Import has five meanings, not two (Import Texture, Import glTF, Import File, the archive drop hint, the drop's undo label): P4, ruling R2 widened, gap G01.",
+  "ADDED: origin.how is never written and no command authors a textures source from images (IMP-053, IMP-100): P3 and P4, gap G60.",
+  "ADDED: Source::save byte-identical for an unchanged source (IMP-063), .gitattributes (parity row), Restore original (parity row), the explorer menu and archive files the Import wave edits, the recook-to-preview hook shared by H2 and the source edit loop (P8): in P3, P19, P4 and P8.",
+  "ADDED: R21 (model JSON authority) and R22 (no git hook), and the reading of R17 as the non-goal of Mesh_Interchange.md.",
+  "STILL UNCOVERED, by design and parked: message 211 'ultra pousse' power features (query bar, saved queries, review mode, memory-budget solver; G50, R18); tag-based inclusion and the size map (G17); Map, Weapons, Props, Vehicles, animation, sound and graphics content kinds (G18; P32 only drafts the views); an in-game test record (G52, R9); installing a build into the load order (G53, roadmap R50/R52); interface languages (R13).",
+  "STILL UNCOVERED, other work: messages 296 to 298 (Bink and MP3 support, roadmap R34/R35); messages 393 to 417 and 460 (schemas from the executable; separate research workflow), of which only the accurate-names constraint is kept (G54, P18); messages 278 and 281 (files that would not open, natives database, .ysc decompiler), roadmap rows R32b, R32c and R35c; message 293 pasted roadmap rows; messages 302 to 312 and 472 (Ghidra, lane cleanup, status requests); message 299 (instruction budget; cloth painter need unmeasured, left to L).",
+  "STILL UNCOVERED, other platforms: compiling or extracting PS4, PS5 or Xbox formats stays refused (inside G10)."
+ ]
+}

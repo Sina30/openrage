@@ -1,0 +1,242 @@
+//! The active GTA VI drawable for Shaded: the geometries and level of detail Solid draws, each with
+//! its shader's effect, its parameter block's constants and the textures its keys resolve to, named
+//! as the translated programs' bindings name them (`0x` and the +0x14 hash).
+
+use or_io::gta6::headerless::{Drawable, Geometry, Model, ParameterValue, Shader};
+use or_renderer::game_shaders::drawable::first_level;
+use or_renderer::game_shaders::mesh::{Image, Material, Surface};
+
+use crate::state::gta6_resource::{drawable_of, effect_name, texture_name};
+use crate::state::gta6_shaders::Status;
+use crate::state::{texture_resolution, AppState, DocPayload};
+
+/// The name hashes of the shaders of the active document's GTA VI drawable; `None` where the
+/// active document shows none.
+pub(crate) fn shader_hashes(state: &AppState) -> Option<Vec<u32>> {
+    let doc = state.active_document()?;
+    let DocPayload::Gta6Drawable(resource) = &doc.payload else {
+        return None;
+    };
+    let drawable = drawable_of(resource, state.selection.selected(doc.id))?;
+    Some(drawable.shaders.iter().map(|s| s.name_hash).collect())
+}
+
+/// The active GTA VI drawable as surfaces for the game's passes; `None` where it shows none.
+pub(crate) fn shaded_surfaces(state: &AppState) -> Option<Vec<(Surface, Material)>> {
+    let doc = state.active_document()?;
+    let DocPayload::Gta6Drawable(resource) = &doc.payload else {
+        return None;
+    };
+    let selection = state.selection.selected(doc.id);
+    let drawable = drawable_of(resource, selection)?;
+    let materials: Vec<Material> = (drawable.shaders.iter())
+        .map(|shader| material(state, selection, shader))
+        .collect();
+    let mut out = Vec::new();
+    for model in drawn_level(drawable, state.preview_scene.lod) {
+        for geometry in model.geometries.iter().flatten() {
+            let material = materials.get(usize::from(geometry.shader));
+            if let (Some(surface), Some(material)) = (surface(geometry), material) {
+                out.push((surface, material.clone()));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The models of level `lod`, or of the first level where that one has none, as Solid draws them.
+fn drawn_level(drawable: &Drawable, lod: usize) -> impl Iterator<Item = &Model> {
+    let held = |level: usize| {
+        (drawable.levels.get(level))
+            .and_then(Option::as_ref)
+            .filter(|models| !models.is_empty())
+    };
+    held(lod).or_else(|| held(0)).into_iter().flatten()
+}
+
+/// A geometry whose positions read, with each channel that holds a value for every vertex.
+fn surface(geometry: &Geometry) -> Option<Surface> {
+    let positions = geometry.positions.as_ref().ok()?;
+    let v = &geometry.vertices;
+    let count = positions.len();
+    let indices = (geometry.triangles.iter())
+        .filter(|t| t.iter().all(|i| (*i as usize) < count))
+        .flatten()
+        .copied()
+        .collect();
+    let whole = |len: usize| len == count;
+    Some(Surface {
+        positions: positions.clone(),
+        normals: if whole(v.normals.len()) {
+            v.normals.clone()
+        } else {
+            Vec::new()
+        },
+        tangents: if whole(v.tangents.len()) {
+            v.tangents.clone()
+        } else {
+            Vec::new()
+        },
+        uvs: (v.uvs.iter())
+            .filter(|(c, values)| (28..32).contains(c) && values.len() == count)
+            .map(|(c, values)| (u32::from(c - 28), values.clone()))
+            .collect(),
+        colours: (v.colours.iter())
+            .filter(|(c, values)| (24..28).contains(c) && values.len() == count)
+            .map(|(c, values)| (u32::from(c - 24), values.clone()))
+            .collect(),
+        indices,
+        ..Surface::default()
+    })
+}
+
+/// A shader's effect, each constant its parameter block sets in rows of four, and each texture its
+/// keys resolve to among the packs the app has, named by the parameter's +0x14 hash.
+fn material(state: &AppState, selection: Option<u64>, shader: &Shader) -> Material {
+    let mut material = Material {
+        effect: effect_name(shader.name_hash),
+        ..Material::default()
+    };
+    for parameter in &shader.parameters {
+        let name = format!("0x{:08X}", parameter.hash);
+        match &parameter.value {
+            ParameterValue::Constant { words, .. } => {
+                let rows = words
+                    .chunks(4)
+                    .map(|chunk| {
+                        let mut row = [0.0; 4];
+                        for (lane, word) in row.iter_mut().zip(chunk) {
+                            *lane = f32::from_bits(*word);
+                        }
+                        row
+                    })
+                    .collect();
+                material.vectors.push((name, rows));
+            }
+            ParameterValue::Texture { slot } => {
+                let key = shader
+                    .texture_keys
+                    .get(usize::from(*slot))
+                    .copied()
+                    .flatten();
+                if let Some(image) = key.and_then(|key| texture(state, selection, key)) {
+                    material.textures.insert(name, image);
+                }
+            }
+        }
+    }
+    material
+}
+
+/// The first level of the texture of `key`, found as the app finds it for a mesh.
+fn texture(state: &AppState, selection: Option<u64>, key: u64) -> Option<Image> {
+    let resolved = texture_resolution::resolve(state, None, selection, &texture_name(key))?;
+    first_level(&resolved.texture)
+}
+
+/// What the Shaded button says of the active GTA VI drawable: where its programs stand and, once
+/// translated, how many of `total` surfaces drew and why the first refused program is refused.
+pub(crate) fn said(status: &Status, drawn: usize, total: usize) -> String {
+    let (refused, first) = match status {
+        Status::NoSource => {
+            return tr!("Shaded — the game's own passes. No GTA VI effect container read so far holds this drawable's effects, so it draws as Material").to_string()
+        }
+        Status::Translating => {
+            return tr!("Shaded — the game's own passes. This drawable's GTA VI programs are being translated; until then it draws as Material").to_string()
+        }
+        Status::Done { refused, first } => (*refused, first),
+    };
+    let mut said = match drawn {
+        0 => tr!("Shaded — the game's own passes, translated from GTA VI's programs: none of its surfaces draws with them, so it draws as Material").to_string(),
+        _ => tr!(
+            "Shaded — the game's own passes, translated from GTA VI's programs: {drawn} of {total} surfaces drawn",
+            drawn = drawn,
+            total = total,
+        ),
+    };
+    if let Some(why) = first {
+        said.push('\n');
+        said.push_str(&tr_n!(
+            "{count} program is not translated: {why}",
+            "{count} programs are not translated; the first: {why}",
+            refused,
+            why = why,
+        ));
+    }
+    said
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shaded_button_names_the_first_refusal_and_how_many_there_are() {
+        let done = Status::Done {
+            refused: 3,
+            first: Some("no bitcode in it".into()),
+        };
+        let said = said(&done, 0, 5);
+        assert!(said.contains("none of its surfaces"), "{said}");
+        assert!(
+            said.ends_with("3 programs are not translated; the first: no bitcode in it"),
+            "{said}"
+        );
+        let partly = said_of(1, 2, 7);
+        assert!(partly.contains("2 of 7 surfaces drawn"), "{partly}");
+        assert!(
+            partly.ends_with("1 program is not translated: why"),
+            "{partly}"
+        );
+        let clean = Status::Done {
+            refused: 0,
+            first: None,
+        };
+        assert!(!super::said(&clean, 4, 4).contains('\n'));
+        assert_ne!(
+            super::said(&Status::NoSource, 0, 0),
+            super::said(&Status::Translating, 0, 0)
+        );
+    }
+
+    fn said_of(refused: usize, drawn: usize, total: usize) -> String {
+        let status = Status::Done {
+            refused,
+            first: Some("why".into()),
+        };
+        super::said(&status, drawn, total)
+    }
+
+    #[test]
+    fn a_surface_keeps_each_channel_that_holds_a_value_for_every_vertex() {
+        let positions = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.5], [0.0, 2.0, 0.25]];
+        let vertices = or_io::gta6::headerless::Vertices {
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            tangents: vec![[1.0, 0.0, 0.0, 1.0]; 2],
+            uvs: vec![
+                (28, vec![[0.5, 0.25]; 3]),
+                (29, vec![[0.75, 0.125]; 2]),
+                (30, vec![[0.0, 1.0]; 3]),
+            ],
+            colours: vec![(25, vec![[0.5, 0.5, 0.5, 1.0]; 3])],
+            ..Default::default()
+        };
+        let geometry = Geometry {
+            shader: 0,
+            vertex_count: 3,
+            channels: Vec::new(),
+            triangles: vec![[0, 1, 2], [0, 1, 3], [2, 1, 0]],
+            positions: Ok(positions.clone()),
+            vertices,
+        };
+        let surface = surface(&geometry).unwrap();
+        assert_eq!(surface.positions, positions);
+        assert_eq!(surface.indices, vec![0, 1, 2, 2, 1, 0]);
+        assert_eq!(surface.normals.len(), 3);
+        assert!(surface.tangents.is_empty());
+        assert_eq!(surface.uvs.keys().copied().collect::<Vec<_>>(), vec![0, 2]);
+        assert_eq!(surface.uvs[&2], vec![[0.0, 1.0]; 3]);
+        assert_eq!(surface.colours.keys().copied().collect::<Vec<_>>(), vec![1]);
+        assert!(!surface.skinned);
+    }
+}

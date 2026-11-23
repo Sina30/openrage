@@ -1,0 +1,87 @@
+use super::*;
+
+use crate::video::{PREVIEW_HEIGHT, PREVIEW_WIDTH};
+
+pub(super) fn draw_bik(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) {
+    let Some((bytes, header)) = state.document(doc_id).and_then(|d| match &d.payload {
+        DocPayload::Bik(bik) => Some((std::sync::Arc::clone(&bik.bytes), bik.header.clone())),
+        _ => None,
+    }) else {
+        return;
+    };
+    {
+        let Some(mut preview) = state.video_preview(doc_id) else {
+            return;
+        };
+        preview.tick(f64::from(ui.input(|i| i.stable_dt)));
+        draw_preview(ui, &mut preview, &bytes, header.as_ref());
+    }
+    // The speaker is the app's, so what the preview owes it is answered once its lock is let go.
+    state.sound_the_movie(doc_id);
+}
+
+fn draw_preview(
+    ui: &mut egui::Ui,
+    preview: &mut crate::video::Preview,
+    bytes: &std::sync::Arc<[u8]>,
+    header: Option<&crate::bink::Header>,
+) {
+    ui.heading("Bink Video");
+    ui.separator();
+    if let Some(header) = header {
+        grid(ui, "bik_header", |ui| {
+            let kind = if header.is_bink2() {
+                "Bink 2"
+            } else {
+                "Bink 1"
+            };
+            row(ui, "Format", &format!("{kind} ({})", header.revision()));
+            row(ui, "Size", &format!("{} × {}", header.width, header.height));
+            row(ui, "Frames", &header.frames.to_string());
+            let rate = header
+                .fps()
+                .map_or_else(|| "not stated".to_string(), |fps| format!("{fps:.3} fps"));
+            row(ui, "Frame rate", &rate);
+            row(ui, "Audio tracks", &header.audio_tracks.to_string());
+        });
+    }
+    if let Some(problem) = preview.problem() {
+        ui.colored_label(theme::WARNING, problem);
+    }
+    if let Some(texture) = preview.texture(ui.ctx()) {
+        let width = ui.available_width();
+        let height = width * PREVIEW_HEIGHT as f32 / PREVIEW_WIDTH as f32;
+        ui.image((texture.id(), egui::vec2(width, height)));
+    }
+
+    ui.horizontal(|ui| {
+        if preview.playing {
+            if ui.button(format!("{} Pause", ph::PAUSE)).clicked() {
+                preview.pause();
+            }
+        } else if ui.button(format!("{} Play", ph::PLAY)).clicked() {
+            preview.play(bytes);
+        }
+        let mut at = preview.position;
+        let end = preview.duration.unwrap_or(at).max(at);
+        let slider = ui.add_enabled(
+            preview.duration.is_some(),
+            egui::Slider::new(&mut at, 0.0..=end).suffix(" s"),
+        );
+        if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
+            preview.seek(bytes, at);
+        }
+    });
+    ui.label(
+        egui::RichText::new(preview.sound_note())
+            .small()
+            .color(theme::TEXT_SECONDARY),
+    );
+    if let Some(why) = preview.sound_problem() {
+        ui.colored_label(theme::WARNING, why);
+    }
+
+    if preview.busy() {
+        ui.ctx().request_repaint();
+    }
+}

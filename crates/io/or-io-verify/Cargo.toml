@@ -1,0 +1,37 @@
+[package]
+name = "or-io-verify"
+description = "Checks or-io against evidence it does not ship: the recorded testimony, a second description, the corpus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+or-io.workspace = true
+
+# Fingerprints a writer's output for the recorded testimony.
+sha1.workspace = true
+
+# The testimony's lookups, one a recorded field: SipHash was a tenth of a
+# `.ynv` pass. Already in the build as `hashbrown`'s default hasher.
+foldhash = "0.2"
+
+# The gates find the corpus and read the gzipped testimony.
+or-test-support.workspace = true
+flate2.workspace = true
+
+# The gates and the convergence suites share one corpus pass between the cores.
+rayon.workspace = true
+
+[dev-dependencies]
+# The metadata suites, `tests/meta/`, the target sample's `from_png`, and the
+# retarget suite's remap, built from the corpus's `.fxc`, and the GTA VI suite, `tests/ttpf.rs`.
+or-io = { workspace = true, features = ["authoring", "meta", "fxc", "gta6"] }
+# Scratch folders the tests remove when they end, a failed test's too.
+tempfile.workspace = true
+
+[[test]]
+name = "meta"
+path = "tests/meta/main.rs"

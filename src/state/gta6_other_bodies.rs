@@ -1,0 +1,463 @@
+//! The GTA VI bodies a scan names by their head, opened in the view the tree has for them or as
+//! the facts their reader reads.
+
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use or_io::gta6::move_network::{
+    condition_name, kind_name, Binding, MachineEntry, MoveBody, MoveCondition, MoveOutline,
+    MoveTransition, StopReason,
+};
+use or_io::gta6::other_bodies::{Gta6HeightGrid, Gta6HeightMap, OtherBody, SpanGrid};
+
+use super::document::DocPayload;
+use super::rpf9_scan::View;
+
+#[path = "gta6_move_nodes.rs"]
+pub(crate) mod nodes;
+
+/// What the scan's list calls the body.
+pub(crate) fn label(body: OtherBody) -> &'static str {
+    match body {
+        OtherBody::HeightMap => tr!("GTA VI height map"),
+        OtherBody::HeightGrid => tr!("GTA VI height grid, one array"),
+        OtherBody::SpanGrid => tr!("GTA VI span grid"),
+        OtherBody::MoveNetwork => tr!("GTA VI MoVE network"),
+        OtherBody::Gfx => tr!("Scaleform movie"),
+        OtherBody::Edup => tr!("EDUP, high entropy"),
+        OtherBody::ObjectTrees => tr!("GTA VI object trees"),
+    }
+}
+
+/// The view the body opens in, or why none shows it.
+pub(super) fn view(body: OtherBody) -> Result<View, String> {
+    match body {
+        OtherBody::Edup => Err(not_read()),
+        body => Ok(View::Identified(body)),
+    }
+}
+
+fn not_read() -> String {
+    tr!("This body starts with EDUP and its bytes after that are of high entropy with no structure found, so it is not read and no view shows it.").to_string()
+}
+
+/// The extension of the path the body opens under.
+pub(super) fn ext(body: OtherBody) -> &'static str {
+    match body {
+        OtherBody::HeightMap | OtherBody::HeightGrid => "hmap",
+        OtherBody::Gfx => "gfx",
+        _ => "txt",
+    }
+}
+
+/// The body's payload: GTA V's height map and Scaleform views, or the lines of its facts.
+pub(super) fn payload(path: &Path, body: OtherBody, bytes: &[u8]) -> Result<DocPayload, String> {
+    let refused = |e: or_io::IoError| {
+        tr!(
+            "The reader of this {what} does not read it: {e}",
+            what = label(body),
+            e = e
+        )
+    };
+    let facts = match body {
+        OtherBody::HeightMap => {
+            return Gta6HeightMap::open(bytes)
+                .map(|map| DocPayload::HeightMap(map.grid))
+                .map_err(refused)
+        }
+        OtherBody::Gfx => {
+            return or_io::gfx::GfxMovie::open(bytes)
+                .map(DocPayload::Gfx)
+                .map_err(refused)
+        }
+        OtherBody::Edup => return Err(not_read()),
+        OtherBody::HeightGrid => {
+            let grid = Gta6HeightGrid::open(bytes).map_err(refused)?;
+            return grid
+                .height_map()
+                .map(DocPayload::HeightMap)
+                .map_err(refused);
+        }
+        OtherBody::SpanGrid => span_lines(&SpanGrid::open(bytes).map_err(refused)?),
+        OtherBody::MoveNetwork => {
+            let outline = MoveOutline::open(bytes).map_err(refused)?;
+            let lines = move_lines(&outline);
+            nodes::keep(path, outline);
+            lines
+        }
+        OtherBody::ObjectTrees => super::gta6_object_trees::lines(bytes)?,
+    };
+    Ok(super::document_io::text_payload(
+        path,
+        facts.join("\n").into_bytes(),
+    ))
+}
+
+fn span_lines(grid: &SpanGrid) -> Vec<String> {
+    let word = if grid.word() == 0 {
+        tr!("Its kind is 0 and both its words are zero: the empty form, which covers no cell.")
+            .to_string()
+    } else {
+        tr!(
+            "Its kind is {kind} and its word at {at} is {word}: its low half is its high half's low byte with bit 7 set, as in every grid. The two planes hold data over land and do not follow its tile's heights; what they and the word's high half hold is not known.",
+            kind = grid.kind,
+            at = if grid.kind >= 2 { "0x14" } else { "0x18" },
+            word = format!("{:#010X}", grid.word()),
+        )
+    };
+    vec![
+        tr!(
+            "A GTA VI span grid of 128 by 128 cells: rows {first} to {end} hold two spans each, which cover {cells} cells of two byte planes.",
+            first = grid.first_row,
+            end = usize::from(grid.first_row) + grid.spans.len(),
+            cells = grid.planes[0].len(),
+        ),
+        word,
+        tr!("It lies on the height map tile of the same entry number in the nested archive beside its own; with no archive table, the scan's order of the two archives' bodies is their entry order.").to_string(),
+    ]
+}
+
+/// The network's head, how far its walk read, then its nodes as an outline from the root.
+fn move_lines(outline: &MoveOutline) -> Vec<String> {
+    let head = &outline.head;
+    let walk = if outline.stops.is_empty() {
+        tr!(
+            "Its {nodes} nodes tile the body from the root to its end, with {tails} tails no offset names between them. A kind's name is GTA V's at the same place in GTA V's list, which is not confirmed.",
+            nodes = outline.nodes.len(),
+            tails = outline.loose_tails,
+        )
+    } else {
+        tr!(
+            "The walk read {nodes} nodes and reached {stops} whose layout is not known, which it does not read past: the rest of the body is kept as stored. A kind's name is GTA V's at the same place in GTA V's list, which is not confirmed.",
+            nodes = outline.nodes.len(),
+            stops = outline.stops.len(),
+        )
+    };
+    let mut lines = vec![
+        tr!(
+            "A GTA VI MoVE network at version 0x13 whose name hash is hash_{hash}: lists of {a}, {b} and {d} entries, then a root node of type {kind}, index {index} and id {id}.",
+            hash = format!("{:08X}", head.name_hash),
+            a = head.list_a.len(),
+            b = head.list_b.len(),
+            d = head.list_d.len(),
+            kind = head.root_type,
+            index = head.root_index,
+            id = format!("{:#010X}", head.root_id),
+        ),
+        walk,
+        String::new(),
+    ];
+    outline_lines(outline, &mut lines);
+    lines
+}
+
+/// Machine to states, state to output and node to inputs, depth first; a node met again is named.
+fn outline_lines(outline: &MoveOutline, lines: &mut Vec<String>) {
+    let mut shown = BTreeSet::new();
+    let mut stack = vec![(outline.root, 0usize)];
+    while let Some((at, depth)) = stack.pop() {
+        let indent = "  ".repeat(depth);
+        let inner = "  ".repeat(depth + 1);
+        let node = node_label(outline, at);
+        let Some(read) = outline.node(at) else {
+            let line = match outline.stop(at) {
+                Some(stop) => tr!(
+                    "{node} at {at}, child {index}, word {word}: not read, as {why}",
+                    node = node,
+                    at = format!("{at:#X}"),
+                    index = stop.index,
+                    word = format!("{:#010X}", stop.word),
+                    why = why(stop.reason),
+                ),
+                None => tr!("{node}: not read", node = node),
+            };
+            lines.push(format!("{indent}{line}"));
+            continue;
+        };
+        if !shown.insert(at) {
+            lines.push(format!(
+                "{indent}{}",
+                tr!("{node}, shown above", node = node)
+            ));
+            continue;
+        }
+        let mut next = Vec::new();
+        match &read.body {
+            MoveBody::Machine(m) => {
+                let line = tr!(
+                    "{node}: states {states}, transitions {transitions}, entries {entries}, inputs {inputs}",
+                    node = node,
+                    states = m.states.len(),
+                    transitions = m.transitions.len(),
+                    entries = m.entries.len(),
+                    inputs = m.inputs.len(),
+                );
+                lines.push(format!("{indent}{line}"));
+                transition_lines(outline, &m.transitions, &inner, lines);
+                for entry in &m.entries {
+                    lines.push(format!("{inner}{}", entry_line(outline, entry)));
+                    for c in &entry.conditions {
+                        lines.push(format!("{inner}  {}", condition_line(c)));
+                    }
+                }
+                next.extend(&m.inputs);
+                next.extend(m.states.iter().map(|s| s.1));
+            }
+            MoveBody::State(s) => {
+                let line = tr!(
+                    "{node}, child {index}: children {children}, transitions {transitions}, bindings {bindings}",
+                    node = node,
+                    index = read.index,
+                    children = s.children,
+                    transitions = s.transitions.len(),
+                    bindings = s.bindings.len(),
+                );
+                lines.push(format!("{indent}{line}"));
+                transition_lines(outline, &s.transitions, &inner, lines);
+                for binding in &s.bindings {
+                    lines.push(format!("{inner}{}", binding_line(binding)));
+                }
+                next.push(s.output);
+            }
+            MoveBody::Leaf { inputs, .. } => {
+                let line = tr!(
+                    "{node}, child {index}: {size} bytes",
+                    node = node,
+                    index = read.index,
+                    size = read.size,
+                );
+                lines.push(format!("{indent}{line}"));
+                next.extend(inputs);
+            }
+        }
+        stack.extend(next.into_iter().rev().map(|at| (at, depth + 1)));
+    }
+}
+
+fn transition_lines(
+    outline: &MoveOutline,
+    transitions: &[MoveTransition],
+    indent: &str,
+    lines: &mut Vec<String>,
+) {
+    for t in transitions {
+        let line = tr!(
+            "transition to {target}, {size} bytes",
+            target = node_label(outline, t.target),
+            size = t.size,
+        );
+        lines.push(format!("{indent}{line}"));
+        for c in &t.conditions {
+            lines.push(format!("{indent}  {}", condition_line(c)));
+        }
+    }
+}
+
+/// A machine entry's state, size and flag.
+fn entry_line(outline: &MoveOutline, entry: &MachineEntry) -> String {
+    tr!(
+        "entry to {state}, {size} bytes, flag {flag}",
+        state = node_label(outline, entry.state),
+        size = entry.size,
+        flag = entry.flag,
+    )
+}
+
+/// A condition as GTA V's network view writes one, its hashes as `hash_` and a flag half of 1 named.
+fn condition_line(c: &MoveCondition) -> String {
+    let hash = |w: u32| format!("hash_{w:08X}");
+    let float = f32::from_bits;
+    let words: Vec<String> = c.words.iter().map(|w| hash(*w)).collect();
+    let test = match (c.kind, c.words.as_slice()) {
+        (0, [s, upper, lower, _]) => tr!(
+            "{signal} in [{lower}, {upper}]",
+            signal = hash(*s),
+            lower = float(*lower),
+            upper = float(*upper),
+        ),
+        (1, [s, upper, lower, _]) => tr!(
+            "{signal} outside [{lower}, {upper}]",
+            signal = hash(*s),
+            lower = float(*lower),
+            upper = float(*upper),
+        ),
+        (5..=8, [s, value]) => {
+            let op = match c.kind {
+                5 => ">",
+                6 => ">=",
+                7 => "<",
+                _ => "<=",
+            };
+            format!("{} {op} {}", hash(*s), float(*value))
+        }
+        (9, [t]) => tr!("time in state > {seconds} s", seconds = float(*t)),
+        (10, [t]) => tr!("time in state < {seconds} s", seconds = float(*t)),
+        (12, [s, value]) => format!("{} == {}", hash(*s), *value != 0),
+        _ => words.join(", "),
+    };
+    let kind = match condition_name(c.kind) {
+        Some(name) => format!("{} ({name})", c.kind),
+        None => c.kind.to_string(),
+    };
+    match c.flag {
+        1 => tr!("{kind}: {test}, flag 1", kind = kind, test = test),
+        _ => format!("{kind}: {test}"),
+    }
+}
+
+/// The hashes a state binds to one child, inputs from groups A and B.
+fn binding_line(binding: &Binding) -> String {
+    let inputs: Vec<[u32; 4]> = (binding.inputs_a.iter())
+        .chain(&binding.inputs_b)
+        .copied()
+        .collect();
+    tr!(
+        "child {child} binds inputs {inputs}, outputs {outputs} and events {events}, with operations {operations}",
+        child = binding.child,
+        inputs = hashes(&inputs),
+        outputs = hashes(&binding.outputs),
+        events = hashes(&binding.events),
+        operations = binding.operations.len(),
+    )
+}
+
+/// Each record's first word as a hash, or a dash for none.
+fn hashes<const N: usize>(records: &[[u32; N]]) -> String {
+    if records.is_empty() {
+        return "-".to_string();
+    }
+    (records.iter())
+        .map(|r| format!("hash_{:08X}", r[0]))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A node's kind and id, for a node read or reached; its offset for any other.
+fn node_label(outline: &MoveOutline, at: usize) -> String {
+    let (kind, id) = match (outline.node(at), outline.stop(at)) {
+        (Some(node), _) => (node.kind, node.id),
+        (None, Some(stop)) => (stop.kind, stop.id),
+        (None, None) => return tr!("the node at {at}", at = format!("{at:#X}")),
+    };
+    match kind_name(kind) {
+        Some(name) => format!("{name} hash_{id:08X}"),
+        None => format!("{} hash_{id:08X}", tr!("type {kind}", kind = kind)),
+    }
+}
+
+fn why(reason: StopReason) -> &'static str {
+    match reason {
+        StopReason::Keyed => tr!("its word at +0x08 picks a field schema the bytes do not state"),
+        StopReason::Unmeasured => tr!("no layout of this form of its type is measured"),
+        StopReason::WideCount => {
+            tr!("its count word has bytes 9 to 11 set, a form no layout is measured for")
+        }
+        StopReason::ClipContext => {
+            tr!("it is a clip of context 3, a form no body was seen to hold")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_edup_body_is_refused_by_name_and_the_others_open_in_a_view() {
+        let why = view(OtherBody::Edup).unwrap_err();
+        assert!(why.contains("EDUP"), "{why}");
+        assert_eq!(
+            view(OtherBody::SpanGrid),
+            Ok(View::Identified(OtherBody::SpanGrid))
+        );
+        assert_eq!(ext(OtherBody::HeightMap), "hmap");
+        assert_eq!(ext(OtherBody::HeightGrid), "hmap");
+    }
+
+    /// A network with every list empty whose root node is of `kind`, with `word` at its +0x08.
+    fn network(kind: u16, word: u32) -> Vec<u8> {
+        let mut bytes = b"MoVE\x13".to_vec();
+        bytes.extend_from_slice(&[0; 15]);
+        bytes.extend_from_slice(&0xCAFE_F00Du32.to_le_bytes());
+        // The length word, the zero word, then empty lists A and B, the word after B and list D.
+        bytes.extend_from_slice(&[0; 4 * 6]);
+        bytes.extend_from_slice(&[0; 10]);
+        bytes.extend_from_slice(&kind.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&7u32.to_le_bytes());
+        bytes.extend_from_slice(&word.to_le_bytes());
+        let length = (bytes.len() - 0x2E) as u32;
+        bytes[0x18..0x1C].copy_from_slice(&length.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn a_move_network_opens_as_its_outline() {
+        let outline = MoveOutline::open(&network(2, 0)).expect("opens");
+        let lines = move_lines(&outline);
+        assert!(lines[0].contains("hash_CAFEF00D"), "{}", lines[0]);
+        assert!(lines[0].contains("0x00000007"), "{}", lines[0]);
+        assert!(lines[1].contains("Its 1 nodes tile"), "{}", lines[1]);
+        assert_eq!(lines[3], "Tail hash_00000007, child 0: 12 bytes");
+    }
+
+    #[test]
+    fn a_condition_reads_as_gta_v_s_network_view_writes_one() {
+        let line = |kind: u16, flag: u16, words: &[u32]| {
+            let words = words.to_vec();
+            condition_line(&MoveCondition { kind, flag, words })
+        };
+        let range = [7, 2.0f32.to_bits(), 0.5f32.to_bits(), 0x1_0001];
+        assert_eq!(line(0, 0, &range), "0 (InRange): hash_00000007 in [0.5, 2]");
+        assert_eq!(
+            line(6, 0, &[7, 0.25f32.to_bits()]),
+            "6 (GreaterThanEqual): hash_00000007 >= 0.25"
+        );
+        assert_eq!(line(3, 1, &[0xAB]), "3 (OnFlag): hash_000000AB, flag 1");
+        assert_eq!(
+            line(12, 0, &[7, 1]),
+            "12 (BoolEquals): hash_00000007 == true"
+        );
+        assert_eq!(
+            line(14, 0, &[0xAB, 0xCD]),
+            "14: hash_000000AB, hash_000000CD"
+        );
+    }
+
+    #[test]
+    fn a_keyed_root_is_named_and_not_read() {
+        let outline = MoveOutline::open(&network(28, 0x0A)).expect("opens");
+        let lines = move_lines(&outline);
+        assert!(lines[1].contains("reached 1"), "{}", lines[1]);
+        assert!(
+            lines[3]
+                .starts_with("type 28 hash_00000007 at 0x3A, child 0, word 0x0000000A: not read"),
+            "{}",
+            lines[3]
+        );
+    }
+
+    #[test]
+    fn a_height_grid_opens_in_the_height_map_view_with_byte_0x28_where_no_span_is() {
+        let mut bytes = b"MHIU\x01\x00".to_vec();
+        for v in [2u16, 1, 0] {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [0.0f32, 0.0, -50.0, 512.0, 512.0, 500.0] {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        bytes.extend_from_slice(&(8u32 + 1).to_le_bytes());
+        bytes.extend_from_slice(&[4, 0x11, 0x22, 0x33]);
+        // One row: a cell at column 1, packed first.
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&(-1i32).to_le_bytes());
+        bytes.push(9);
+        let read = payload(Path::new("0x10.hmap"), OtherBody::HeightGrid, &bytes);
+        let Ok(DocPayload::HeightMap(map)) = read else {
+            panic!("a height map");
+        };
+        assert_eq!((map.num_cols, map.num_rows), (2, 1));
+        assert_eq!((map.max, map.min), (vec![4, 9], vec![4, 9]));
+    }
+}

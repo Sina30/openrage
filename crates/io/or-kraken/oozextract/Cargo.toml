@@ -1,0 +1,24 @@
+[package]
+name = "oozextract"
+description = "oozextract 0.5.5 (MIT), a pure-Rust port of ooz's Kraken decoder, with the fixes or-kraken needs"
+version = "0.5.5"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[features]
+verbose_errors = []
+x86_sse = []
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+bytemuck = "1"
+bytes = "1"
+futures = "0.3"
+log = "0.4"
+wide = "0.7"
+
+[lints.rust]
+unexpected_cfgs = "allow"

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CAmbientModelSet>
+  <m_Name>example_models</m_Name>
+  <m_Models>
+    <Item>
+      <m_Name>a_m_y_business_01</m_Name>
+      <m_Probability value="0.5"/>
+    </Item>
+    <Item>
+      <m_Name>a_m_y_business_02</m_Name>
+      <m_Probability value="1.0"/>
+    </Item>
+  </m_Models>
+</CAmbientModelSet>

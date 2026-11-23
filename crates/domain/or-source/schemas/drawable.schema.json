@@ -1,0 +1,299 @@
+{
+  "$defs": {
+    "BoneRule": {
+      "additionalProperties": false,
+      "description": "One bone of the skeleton the drawable carries.",
+      "properties": {
+        "name": {
+          "description": "The base's name for the bone, which a compile checks and never changes.",
+          "type": "string"
+        },
+        "tag": {
+          "description": "What an animation addresses the bone by (`bone_id` of `crBoneData`); no two bones share one.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "tag"
+      ],
+      "type": "object"
+    },
+    "Extent": {
+      "additionalProperties": false,
+      "description": "`spdAABB`: two corners. The fourth lane of each stays the base's.",
+      "properties": {
+        "max": {
+          "items": {
+            "$ref": "#/$defs/Real"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "min": {
+          "items": {
+            "$ref": "#/$defs/Real"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "ImportRules": {
+      "additionalProperties": false,
+      "description": "How a glb becomes the geometry of a base, under the names the importer gives its options.",
+      "properties": {
+        "fill_missing": {
+          "default": false,
+          "description": "A channel the base declares and the glb omits, such as a colour, takes a stated default\nand the report names it. Off: the compile is refused.",
+          "type": "boolean"
+        },
+        "keep_skinning": {
+          "default": true,
+          "description": "A skinned drawable whose weights the glb cannot state, as a ped component's cannot\nwithout its skeleton, keeps the ones the base holds, and is refused if the vertex count moved.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Material": {
+      "additionalProperties": false,
+      "description": "One shader of the base, with the values it states.",
+      "properties": {
+        "draw_bucket": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "draw_bucket_mask": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flags": {
+          "description": "A Legacy shader's own flag words; an Enhanced one has none.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "What a glb calls this material. An export names it for its shader, so two materials of one shader share a name.",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "default": {},
+          "description": "By the name the shader database gives a parameter, else `0x` and the eight digits of its hash.",
+          "type": "object"
+        },
+        "shader": {
+          "description": "The shader the base draws with, by name. A compile refuses a different one.",
+          "type": "string"
+        },
+        "user_flags": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "shader",
+        "draw_bucket",
+        "draw_bucket_mask"
+      ],
+      "type": "object"
+    },
+    "ModelRule": {
+      "additionalProperties": false,
+      "description": "One model of the base: the name its mesh goes by in the glb, and its words.",
+      "properties": {
+        "at": {
+          "description": "`lod0/model0`: the level and the model in it.",
+          "type": "string"
+        },
+        "flags": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mask": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "What the glb calls this model's mesh, which an import pairs it by.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "name",
+        "flags",
+        "mask"
+      ],
+      "type": "object"
+    },
+    "Parameter": {
+      "anyOf": [
+        {
+          "description": "The texture's name, which is the DDS a dictionary supplies; empty where the slot is unbound.",
+          "type": "string"
+        },
+        {
+          "description": "A constant, one row of up to four numbers per register.",
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Real"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "A parameter of a material: the name of the texture it binds, or its rows of numbers."
+    },
+    "Real": {
+      "description": "A number as the shortest text that reads back as the same `f32`, so a file a person edits is not full of `0.30000001192092896`.",
+      "format": "float",
+      "type": "number"
+    },
+    "Sphere": {
+      "additionalProperties": false,
+      "description": "`spdSphere`: the centre and the radius.",
+      "properties": {
+        "center": {
+          "items": {
+            "$ref": "#/$defs/Real"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "radius": {
+          "$ref": "#/$defs/Real"
+        }
+      },
+      "required": [
+        "center",
+        "radius"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`drawable.json`: what the base holds, for a person, and the rules a compile puts the glb back by.",
+  "properties": {
+    "base": {
+      "description": "Written at extraction and never read by a compile, so editing it changes nothing."
+    },
+    "bones": {
+      "description": "The tag of each bone of the drawable's own skeleton, in the base's order.",
+      "items": {
+        "$ref": "#/$defs/BoneRule"
+      },
+      "type": "array"
+    },
+    "bounds_box": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Extent"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "bounds_sphere": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sphere"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "bucket_masks": {
+      "description": "The render mask of each level (`bucket_masks` of `rmcLodGroup`).",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "import": {
+      "$ref": "#/$defs/ImportRules",
+      "default": {
+        "fill_missing": false,
+        "keep_skinning": true
+      }
+    },
+    "lod_distances": {
+      "description": "The distances the four levels of detail switch at.",
+      "items": {
+        "$ref": "#/$defs/Real"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "materials": {
+      "description": "Every shader of the base with its draw bucket, flags and parameters, in the base's order. A value\nthat differs from the base's is set in the compiled file, and the shader itself is refused if changed.",
+      "items": {
+        "$ref": "#/$defs/Material"
+      },
+      "type": "array"
+    },
+    "models": {
+      "description": "Each model of the base, by level, with the name its mesh goes by in the glb and its words.",
+      "items": {
+        "$ref": "#/$defs/ModelRule"
+      },
+      "type": "array"
+    },
+    "skeleton": {
+      "description": "The bones the drawable binds to, by name, in the order its palette indexes them. A glb that\nlists its skin's bones in another order, as a modelling tool may, is bound by these names.\nLeft out where the base has no skeleton to name, or two of its bones share a name.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "title": "drawable.json",
+  "type": "object"
+}

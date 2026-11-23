@@ -1,0 +1,436 @@
+//! Cancellation and progress for a job that runs long enough to need both.
+//!
+//! Two consumers: `openrage-cli`, which renders progress as a line on stderr,
+//! and the editor, which renders it as a bar in a frame. Neither can use the
+//! other's, so what is shared is the counting and the stopping rather than the
+//! drawing.
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// A flag something else sets when the user asks to stop.
+///
+/// ⚠ Shared between clones, because the thing that sets it is never the thing
+/// that reads it — a console handler, or a button in a frame, against a worker.
+#[derive(Clone, Default)]
+pub struct Cancel(Arc<AtomicBool>);
+
+impl Cancel {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// How far a job has got, readable while it runs.
+///
+/// ⚠ **Counters rather than a stream of events.** A frame needs the current
+/// numbers and nothing else, so a channel would make the reader drain thousands
+/// of messages to learn one of them, and would grow without bound if it did
+/// not.
+#[derive(Clone, Default)]
+pub struct Progress(Arc<Counters>);
+
+#[derive(Default)]
+struct Counters {
+    total: AtomicU64,
+    attempted: AtomicU64,
+    succeeded: AtomicU64,
+    skipped: AtomicU64,
+    failed: AtomicU64,
+    bytes: AtomicU64,
+    item: Mutex<String>,
+}
+
+impl Progress {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// What the job is working on now, for a reader that shows one line.
+    ///
+    /// Set by the work, not by [`run`]; a job with nothing useful to name
+    /// does not call this.
+    pub fn now_on(&self, item: impl Into<String>) {
+        if let Ok(mut slot) = self.0.item.lock() {
+            *slot = item.into();
+        }
+    }
+
+    /// Publish `done` of `total`, for a job that is no loop [`run`] counts, such as a copy in bytes.
+    pub fn reached(&self, done: u64, total: u64) {
+        self.0.total.store(total, Ordering::Relaxed);
+        self.0.attempted.store(done, Ordering::Relaxed);
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        let c = &self.0;
+        Snapshot {
+            total: c.total.load(Ordering::Relaxed),
+            attempted: c.attempted.load(Ordering::Relaxed),
+            succeeded: c.succeeded.load(Ordering::Relaxed),
+            skipped: c.skipped.load(Ordering::Relaxed),
+            failed: c.failed.load(Ordering::Relaxed),
+            bytes: c.bytes.load(Ordering::Relaxed),
+            item: c
+                .item
+                .lock()
+                .map(|s| s.clone())
+                .unwrap_or_else(|_| String::new()),
+        }
+    }
+
+    fn begin(&self, total: u64) {
+        self.0.total.store(total, Ordering::Relaxed);
+    }
+
+    fn record(&self, step: &Step) {
+        let c = &self.0;
+        c.attempted.fetch_add(1, Ordering::Relaxed);
+        match step {
+            Step::Done(bytes) => {
+                c.succeeded.fetch_add(1, Ordering::Relaxed);
+                c.bytes.fetch_add(*bytes, Ordering::Relaxed);
+            }
+            Step::Skipped => {
+                c.skipped.fetch_add(1, Ordering::Relaxed);
+            }
+            Step::Failed(_) => {
+                c.failed.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
+/// The counts at one moment.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Snapshot {
+    pub total: u64,
+    pub attempted: u64,
+    pub succeeded: u64,
+    pub skipped: u64,
+    pub failed: u64,
+    pub bytes: u64,
+    pub item: String,
+}
+
+impl Snapshot {
+    pub fn fraction(&self) -> f32 {
+        if self.total == 0 {
+            return 0.0;
+        }
+        (self.attempted as f32 / self.total as f32).clamp(0.0, 1.0)
+    }
+}
+
+/// What one item did.
+///
+/// ⚠ `Failed` carries a message rather than being an error the caller returns,
+/// because returning one is what makes a four-hour run die three hours in on
+/// the first malformed file.
+pub enum Step {
+    Done(u64),
+    Skipped,
+    Failed(String),
+}
+
+/// How many failure messages a report keeps.
+///
+/// ⚠ The *count* is not capped; the messages are. A run over 300,000 entries
+/// where most are unreadable would otherwise hold 300,000 strings to print
+/// twenty of.
+pub const FAILURES_KEPT: usize = 32;
+
+/// What a finished — or abandoned — job did.
+#[derive(Clone, Debug)]
+pub struct Report {
+    pub counts: Snapshot,
+    pub cancelled: bool,
+    pub failures: Vec<String>,
+    pub elapsed: Duration,
+}
+
+impl Report {
+    /// One sentence, for a toast or a terminal.
+    pub fn summary(&self) -> String {
+        let c = &self.counts;
+        let mut out = if self.cancelled {
+            format!(
+                "Stopped after {} of {} — {} written",
+                c.attempted, c.total, c.succeeded
+            )
+        } else {
+            format!("{} of {} written", c.succeeded, c.total)
+        };
+        out.push_str(&format!(" ({})", human_bytes(c.bytes)));
+        if c.skipped > 0 {
+            out.push_str(&format!(", {} skipped", c.skipped));
+        }
+        if c.failed > 0 {
+            out.push_str(&format!(", {} failed", c.failed));
+        }
+        out
+    }
+}
+
+pub fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// Run `each` over every item, counting what fails and stopping when asked.
+///
+/// ⚠ A per-item failure is **counted, never propagated**; an interrupt is
+/// checked **between items** and stops the run with the count so far. A naïve
+/// `?` in a loop gets both wrong — it dies on the first bad file and ignores
+/// Ctrl-C.
+///
+/// The iterator is `ExactSizeIterator` so the total comes from the work rather
+/// than from a caller who has to remember to declare it.
+pub fn run<I, T>(
+    items: I,
+    cancel: &Cancel,
+    progress: &Progress,
+    mut each: impl FnMut(T) -> Step,
+) -> Report
+where
+    I: IntoIterator<Item = T>,
+    I::IntoIter: ExactSizeIterator,
+{
+    let started = Instant::now();
+    let items = items.into_iter();
+    progress.begin(items.len() as u64);
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut cancelled = false;
+
+    for item in items {
+        // Before the item, not after: a run cancelled at the first check must
+        // do no work at all.
+        if cancel.is_set() {
+            cancelled = true;
+            break;
+        }
+        let step = each(item);
+        if let Step::Failed(why) = &step {
+            if failures.len() < FAILURES_KEPT {
+                failures.push(why.clone());
+            }
+        }
+        progress.record(&step);
+    }
+
+    Report {
+        counts: progress.snapshot(),
+        cancelled,
+        failures,
+        elapsed: started.elapsed(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_flag_is_shared_between_its_clones() {
+        let a = Cancel::new();
+        let b = a.clone();
+        assert!(!a.is_set());
+        b.set();
+        assert!(
+            a.is_set(),
+            "the handler holds a clone, so setting one must be visible through \
+             the other or the job never sees the interrupt"
+        );
+    }
+
+    #[test]
+    fn a_failing_item_is_counted_and_the_run_continues() {
+        let cancel = Cancel::new();
+        let progress = Progress::new();
+        let items: Vec<u32> = (0..7).collect();
+
+        let report = run(items.clone(), &cancel, &progress, |n| {
+            if n % 3 == 0 {
+                Step::Failed(format!("item {n} is malformed"))
+            } else {
+                Step::Done(10)
+            }
+        });
+
+        assert_eq!(
+            report.counts.attempted,
+            items.len() as u64,
+            "three of seven items failed and the run stopped early; a failure \
+             is counted, never propagated"
+        );
+        assert_eq!(report.counts.failed, 3);
+        assert_eq!(report.counts.succeeded, 4);
+        assert_eq!(report.counts.bytes, 40);
+        assert!(!report.cancelled);
+        assert_eq!(report.failures.len(), 3, "each failure states which item");
+    }
+
+    #[test]
+    fn cancelling_stops_the_run_and_reports_how_far_it_got() {
+        let cancel = Cancel::new();
+        let progress = Progress::new();
+        let stop_after = 4u64;
+
+        let report = run(0..50u32, &cancel, &progress, |_| {
+            if progress.snapshot().attempted + 1 >= stop_after {
+                cancel.set();
+            }
+            Step::Done(1)
+        });
+
+        assert!(report.cancelled, "the run must report that it was stopped");
+        assert_eq!(
+            report.counts.attempted, stop_after,
+            "the flag was set on item {stop_after}, so that many ran and no more"
+        );
+        assert!(
+            report.counts.attempted > 0,
+            "nothing ran at all, so this proves the cancel path and not the \
+             loop it is supposed to interrupt"
+        );
+        assert_eq!(report.counts.succeeded, stop_after);
+    }
+
+    #[test]
+    fn a_flag_already_set_does_no_work() {
+        let cancel = Cancel::new();
+        cancel.set();
+        let progress = Progress::new();
+        let mut ran = 0u32;
+        let report = run(0..10u32, &cancel, &progress, |_| {
+            ran += 1;
+            Step::Done(0)
+        });
+        assert_eq!(ran, 0, "an item ran after the job was already cancelled");
+        assert_eq!(report.counts.total, 10, "the total is still what was asked");
+        assert!(report.cancelled);
+    }
+
+    #[test]
+    fn many_failures_do_not_become_many_strings() {
+        let cancel = Cancel::new();
+        let progress = Progress::new();
+        let n = (FAILURES_KEPT * 4) as u32;
+
+        let report = run(0..n, &cancel, &progress, |i| {
+            Step::Failed(format!("item {i} would not read"))
+        });
+
+        assert_eq!(
+            report.counts.failed, n as u64,
+            "every failure is counted, whatever the cap on messages"
+        );
+        assert_eq!(
+            report.failures.len(),
+            FAILURES_KEPT,
+            "a report that kept one string per failure would hold {n} of them \
+             to print twenty"
+        );
+    }
+
+    #[test]
+    fn progress_is_readable_from_another_thread_while_the_job_runs() {
+        use std::sync::mpsc::channel;
+
+        let cancel = Cancel::new();
+        let progress = Progress::new();
+        let (release_tx, release_rx) = channel::<()>();
+        let (reached_tx, reached_rx) = channel::<()>();
+
+        let worker_progress = progress.clone();
+        let worker_cancel = cancel.clone();
+        let worker = std::thread::spawn(move || {
+            run(0..3u32, &worker_cancel, &worker_progress, |i| {
+                worker_progress.now_on(format!("item {i}"));
+                if i == 1 {
+                    let _ = reached_tx.send(());
+                    let _ = release_rx.recv();
+                }
+                Step::Done(100)
+            })
+        });
+
+        reached_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the worker must reach the second item");
+        let mid = progress.snapshot();
+        assert_eq!(
+            mid.total, 3,
+            "the total is published before the first item, or a bar has nothing \
+             to divide by for the whole run"
+        );
+        assert_eq!(
+            mid.attempted, 1,
+            "one item finished before the second began"
+        );
+        assert_eq!(mid.item, "item 1", "the reader sees what is in flight");
+
+        let _ = release_tx.send(());
+        let report = worker.join().expect("worker");
+        assert_eq!(report.counts.attempted, 3);
+        assert_eq!(report.counts.bytes, 300);
+    }
+
+    #[test]
+    fn a_job_no_loop_counts_publishes_how_far_it_has_got() {
+        let progress = Progress::new();
+        progress.reached(256, 1024);
+        let snap = progress.snapshot();
+        assert_eq!((snap.attempted, snap.total), (256, 1024));
+        assert_eq!(snap.fraction(), 0.25);
+    }
+
+    #[test]
+    fn a_fraction_of_nothing_is_not_a_division_by_zero() {
+        let progress = Progress::new();
+        let report = run(Vec::<u32>::new(), &Cancel::new(), &progress, |_| {
+            Step::Done(0)
+        });
+        assert_eq!(report.counts.fraction(), 0.0);
+        assert_eq!(report.counts.total, 0);
+        assert!(report.summary().contains("0 of 0"));
+    }
+
+    #[test]
+    fn a_stopped_run_says_so_in_its_summary() {
+        let cancel = Cancel::new();
+        let progress = Progress::new();
+        let report = run(0..8u32, &cancel, &progress, |i| {
+            if i == 2 {
+                cancel.set();
+            }
+            Step::Done(2048)
+        });
+        let summary = report.summary();
+        assert!(
+            summary.starts_with("Stopped after 3 of 8"),
+            "a cancelled run must not read like a finished one: {summary}"
+        );
+        assert!(summary.contains("6.0 KiB"), "{summary}");
+    }
+}

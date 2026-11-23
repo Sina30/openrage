@@ -1,0 +1,20 @@
+[package]
+name = "or-particle"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The particle editor's model: the effect / emitter / particle rule hierarchy"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+# Jenkins hashing lives below this crate now. `or_particle::rage` re-exports it so
+# existing callers are unaffected; see that module for why it moved.
+or-io.workspace = true
+
+[dev-dependencies]
+# Finds the shared corpus.
+or-test-support.workspace = true

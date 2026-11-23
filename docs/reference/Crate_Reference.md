@@ -1,0 +1,1433 @@
+# Crate reference
+
+Where each crate and each part of the app sits, what it is for, the rules
+between them, and the traps each one carries.
+
+This is the tree as it stands. GTA V's formats are declared in `or-io`, and
+the design is [OR_IO_Specification.md](../direction/OR_IO_Specification.md); what is left
+of the programme that built it is [R66](../direction/Roadmap.md#r66-the-or-io-crate). Building, testing, lanes and CI are
+[Development_Workflow.md](../guides/Development_Workflow.md).
+
+## Layers
+
+A crate's directory names its layer; the members are the root `Cargo.toml`'s
+list.
+
+| Layer | Directory | Crates | Holds |
+|---|---|---|---|
+| foundation | `crates/foundation/` | or-job, or-test-support, or-transport | building blocks that know no file format |
+| io | `crates/io/` | or-io, or-io-macros, or-io-verify, or-kraken, or-media | GTA V's containers, descriptions, canonical writer and `#[record]` declarations, and the decoders for the audio and video in them |
+| title | `crates/title/` | or-title | where the bytes live: editions, archives, DLC order, the VFS |
+| domain | `crates/domain/` | or-addonped, or-content, or-depends, or-editor, or-interchange, or-maps, or-particle, or-particles, or-plugin, or-project, or-source, or-wardrobe, or-weapons, or-world | the models of what is edited |
+| runtime | `crates/runtime/` | or-anim, or-simulation, or-renderer | what is evaluated, simulated or drawn |
+| tools | `crates/tools/` | or-cli, or-shader-front, or-shader-tool, xtask | programs over the lower layers, and the repository's own tasks |
+| app | `src/` | openrage | the desktop editor and the `openrage-cli` binary |
+
+Dependencies run one way: foundation → io → title → domain → runtime → app. Tools sit outside the chain, and only the app depends on them. Each crate
+imports the layer it needs by name and there is no facade crate, so a
+wrong-way edge shows in the diff; `cargo tree -p <crate> -e normal --depth 1`
+lists the edges.
+
+- **Placement.** Code that needs to know where a file lives goes in
+  `or-title`; code that needs only the bytes goes in `or-io`. Editing
+  code goes below the app when a second application would want it; the YPT
+  panels do not qualify.
+- **Absent edges.** `or-anim` → `or-particle` (the previews share the clock in
+  `or-transport`);
+  and any dev-dependency
+  pointing up, which is why `crates/title/or-title/tests/adding_a_title.rs`
+  stops one call short of `or_editor::Summary`.
+- **Edges that look wrong.** None points up the chain since `or-test-support`
+  dropped `or-io` (P64, #334). The app depends on `or-cli` (its
+  `or_cli::run` is all of `src/cli_main.rs`; `openrage-cli photo` draws with the
+  editor's renderer, so it starts the `openrage` beside it as `openrage --photo`,
+  `src/photo.rs`, rather than `or-cli` depending on a renderer) and on `or-shader-tool`, which
+  `src/state/game_pack.rs` drives so that no rendering crate depends on a
+  build tool. The app depends on every domain crate, `or-wardrobe` among them: the Wardrobe
+  workspace plans and edits clothing through it (`src/state/workbench/wardrobe.rs`), and it reads
+  `or-content` for the kinds of content to plan, adopt and start, so that it and `openrage-cli`
+  list them once. It embeds `or-editor`,
+  `or-particle` and `or-plugin`, and shares `or-depends`, `or-interchange`,
+  `or-world` and `or-project` with `openrage-cli`; it reads `or-project` for the
+  keys of its project file and for the plan, the build and the clean of the
+  Project workspace, where the CLI reads it for `openrage-cli project`. The app
+  and `openrage-cli` both depend on `or-source`: `src/state/workbench/cook.rs`
+  recooks a saved source with it, `src/state/workbench/scan.rs` finds the source
+  folders with it, `src/state/workbench/build_cooker.rs` and `openrage-cli project build`
+  hand a build the cook (`or_source::cook::cook_source`) and what each folder cooks to
+  (`or_source::cook::describe`), and `crates/tools/or-cli/src/import.rs` makes sources of game
+  files with it for `openrage-cli project import`, and `src/state/workbench/imports.rs`
+  makes them from the app's Import game files… and Import into project; `crates/tools/or-cli/src/source.rs` and
+  `src/state/workbench/geometry.rs` put a model into a source, and `src/state/workbench/originals.rs` checks a
+  source against the game with `or_title::install::read_virtual_file`.
+
+## Foundation crates
+
+**or-job.** `Cancel`, `Progress` and `or_job::run`, the loop both
+`openrage-cli` and the editor run a bulk job through. A per-item failure is
+counted and never propagated, and an interrupt is checked between items.
+Progress is counters a second thread reads rather than a channel, because a
+frame needs only the current numbers; a job that is no loop, such as the
+editor's defragment or overlay copy, publishes its own with `Progress::reached`.
+
+**or-test-support.** Corpus discovery (`Corpus`), target inference and the
+skip ledger for every suite; never hand-roll a `read_dir` over fixtures. A query
+without a target returns Gen8 files only, which matters because a Gen9 drawable
+read through a Gen8 reader returns plausible zeros rather than an error.
+Staging a corpus is `crates/io/or-io-verify/tests/fixtures/README.md`.
+
+**or-transport** is the previews' shared playback clock.
+
+## IO crates
+
+**or-io.** GTA V's file formats: the RSC7 and RPF7 containers, the description
+and canonical writer, and the declarations `#[record]` turns into owned values
+and views. [OR_IO_Specification.md](../direction/OR_IO_Specification.md) owns its design and
+[module tree](../direction/OR_IO_Specification.md#module-organisation), including the
+description model in `desc`
+([descriptions](../direction/OR_IO_Specification.md#descriptions)).
+R66c folded or-rage-core, or-rage-types,
+or-pack-build, or-pack-io, or-container and all of or-format-api except `names`,
+which went with that crate in P63 (#335), into its modules; comments and history still use those names. Its
+`bc7-encode` feature pulls in `intel_tex_2`, the workspace's one native link,
+so CI builds it in its own step, and `or-source` turns it on for itself. `or_io::dds`, `or_io::awc`, `or_io::rel` and
+`or_io::gfx` are ordinary code, not declarations, each behind a feature of its
+name; `gfx` keeps a Scaleform movie's tags as bytes and converts it to SWF and
+back. The binary world tables are ordinary code behind no feature:
+`or_io::height_map`, `or_io::distant_lights`, `or_io::water_map`,
+`or_io::world_blanket` and `or_io::nav_precalc`, and so are the streaming cache
+files, `metadata.dat` and the audio sector grid (`or_io::cache_loader`,
+`or_io::social_club_metadata`, `or_io::audio_world_sectors`) and the `.mrf` move
+networks (`or_io::mrf`). `gta5::script::decompile`
+turns a script's bytecode into C-like source over the same reader as its
+disassembler.
+
+`or_io::meta`, behind the `meta` feature, is PSO, RBM, RBF0 and XML metadata
+(`.ymt`, `.meta`, `.ymap`, `.ytyp`) in one `MetaInstance` tree. A writer
+encodes against the file's own type table (`binary::layout::MetaLayout`) or one
+`binary::synth` derives, and RBM round-trips only its decompressed payload.
+`.ymt` is three formats, so dispatch on the leading magic. XML returns through
+`or_io::meta::canonical`, a fixed point from the second cycle, never equality
+with the original. A clean checkout has no schema snapshot: it spells a name it
+cannot resolve `hash_XXXXXXXX` and imports PSO and RBM against the type tables
+documents carry (`crates/io/or-io/src/meta/README.md`). XML whose root type
+neither the snapshot nor the library declares reads as the tree its elements
+state (`instance::parse_schemaless`), and a binary `.srl` needs no schema
+(`meta::srl`). `meta::typed` declares by hand, over a document's own type
+table, the roots of the world family, of scenario regions and of the ped
+variation family (`CPedVariationInfo`, `CCreatureMetaData`). The ped family's types are also
+declared in code, in the PSC's dialect with the bytes no member names
+(`typed::ped_types`), and held member by member, offset, size and signature to the
+type tables of the 1,832 staged variation and 9 staged creature RBM documents
+(`every_declared_ped_class_is_the_table_the_documents_state`), so a record built
+from nothing saves with no snapshot and carries the table every shipped document
+does
+(`without_a_snapshot_an_array_grows_by_a_copy_and_a_record_built_here_saves`);
+the family's definition wins over a snapshot's, which leaves those bytes out. A
+save refuses a variation whose `numAvailTex` or `numAvailProps` is not what its
+arrays hold
+(`a_count_the_arrays_do_not_bear_out_is_refused_before_any_byte_is_written`).
+Creature metadata in RBF, whose tags carry no types, opens through an adapter
+that reads the tags into the shape the typed members read and writes the members
+back into the tags they came from (`typed::ped_rbf`): an untouched save is the
+file's bytes
+(`every_staged_rbf_creature_opens_typed_and_saves_byte_for_byte`) and a record
+built from nothing is an RBF document
+(`a_creature_built_from_nothing_writes_the_bytes_a_shipped_one_holds`).
+`meta::typed::weapon` declares the weapon family, the roots `CWeaponInfoBlob`, `CWeaponComponentInfoBlob` and
+`CWeaponModelInfo__InitDataList`, whose files the installs ship as XML text: its types are `typed::weapon_types`, a record keeps
+the value tree it was read from so that a member no type names (a `ref` to a named item, a null pointer, a shape that differs from
+file to file) arrives in a save as it came, and a save is the canonical XML
+(`every_weapon_file_of_the_install_opens_saves_and_arrives_as_it_was`, install-gated). `weapon::reload` is what a build's reload
+calls for a text `.meta`.
+`gta5::formats::Format::open_declared` reads a declared format as its owned root
+where there is one, the one dispatch that a build's reload and `openrage-cli
+search --verify` share.
+The snapshot's
+path names its serialised shape (`SNAPSHOT_FORMAT`), because a tree with
+another type model cannot decode it: a change to anything it serialises stops
+`the_snapshot_format_names_every_shape` compiling until the shape is listed and
+the format raised. `or_io::meta::shipped` holds the types shipped files declare
+and the PSC corpus does not, and is additive: it never replaces a type the
+snapshot declares, so a file naming nothing in it types exactly as without it.
+Its suites are `or-io-verify`'s `meta` binary, and the layouts are the local
+[Meta_Binary_Formats_Specification.md](../extra/Meta_Binary_Formats_Specification.md).
+
+**or-io-macros** is `#[record]`: one declaration makes the owned struct, its raw
+layout, its description and its view, with the layout proved at compile time.
+
+**or-io-verify.** `publish = false`: the checks that read what `or-io` does not
+ship. `testimony` is the recorded testimony and its check
+([Oracle_Testimony.md](../guides/Oracle_Testimony.md)); `diff::structural` compares two
+descriptions by position, never by name; `census` counts instances off their
+natural alignment and what a save leaves null. The per-format gates are
+`crates/io/or-io-verify/src/gates.rs`, which `declared_gates!` writes as a
+format's tests. No other crate depends on this one, so `or-cli` and the app
+never build `or-test-support`. The compiled readers the gates once compared
+against went with `or-asset` in R66f; the checks that outlived them are the
+recorded testimony and the behaviour baselines
+([Oracle_Testimony.md](../guides/Oracle_Testimony.md)).
+
+**or-kraken.** Decodes Oodle Kraken, the compressor most of RDR2's larger bodies use, through the
+pure-Rust `oozextract` port of ooz, vendored in its `oozextract` directory with one fix. It is a crate of its own so that the port's panics end in it
+(`.cargo/config.toml` compiles it with LLVM, which unwinds, where the rest of a development build is
+Cranelift, which does not) and so that the port's unstated licence stays out of `or-io`, which
+reaches it only through its `oodle` feature. It hands the port one 256 KiB quantum at a time, since
+the port reads a stream's first eight literals only once, and refuses by name a chunk the port cannot
+read.
+
+**or-media.** Decodes audio and video behind one interface, in OpenRage's own Rust
+([recorded](../direction/Project_Context.md#every-media-format-is-decoded-in-rust-inside-the-tree-2026-10-05)).
+A `Source` opens from a movie's bytes (`or_media::open`) or from one stream of a parsed `.awc`
+(`or_media::awc::open`), states its `MediaInfo` (codec, channels, sample rate, frame size and rate,
+duration), and opens an `AudioStream` of interleaved `i16` or `f32` samples or a `VideoStream` of
+RGBA frames, each seekable where its format allows. `Decoders` is the one table from `Codec` to
+decoder: PCM16, RAGE ADPCM and MP3 are rows that call the decode `or-io` keeps, a codec with no row
+is refused by name (`MediaError::NoDecoder`) while its info still reads, and the first row for a
+codec decodes it, so a row an embedder adds with `Decoders::with` never outranks a built-in one.
+Bink 1, Bink 2 and Bink audio (DCT and RDFT) are rows too, decoded by the port of FFmpeg's decoders
+in `crates/io/or-media/src/bink`, and the port of NihAV's in `crates/io/or-media/src/bink2` with the
+in-loop filter and the clamp of a vector that RAD's `bink2w64.dll` shows (`crates/io/or-media/src/bink2/filter.rs`), over
+the container in `crates/io/or-media/src/bik.rs`:
+`bik::Pictures` yields a movie's planar 4:2:0 pictures, `bik::audio_track` the sound of any one of
+its tracks, and a `VideoStream` converts a picture to RGBA. XMA is a row, decoded by the port of
+FFmpeg's WMA Pro decoder in `crates/io/or-media/src/xma`. GTA VI's codec 2 is a row, `crates/io/or-media/src/spectra.rs`: an inverse FFT per block, each block's missing Nyquist term restored from the overlaps, and `or_media::spectra::replaced` writes one from a WAV. The app adds no row; a Bink 2 movie's
+sound is a Bink audio track and decodes through the Bink audio rows, except a `KB2n` movie's, which
+is refused before any row is asked. A multi-channel `.awc`
+stream's blocks stay `or-io`'s to de-interleave, so the table is only asked whether it decodes each
+channel's codec. ⚠ **The crate's licence is the strictest of any file in it**: AGPL-3.0-only
+today, for the Bink 2 port of NihAV's Rust, over the LGPL-2.1-or-later Bink 1 and XMA ports from FFmpeg n7.0, and the
+Bink 2 filter is derived from a proprietary DLL, which the review before publication weighs (owner, 2026-10-06).
+Each ported file opens with a header naming origin, upstream path, revision and licence, and
+`LICENSE-third-party.md` lists it; `or-io` stays MIT. It depends on `or-io`'s `awc` feature
+alone, and `or-io` never depends on it.
+
+## Title crate
+
+**or-title.** Where the bytes live.
+
+| Module | Answers |
+|---|---|
+| `game/` | which title and edition this is: profiles, the registry, `Game`, and what its game needs beside the executable to read the `mods` overlay |
+| `vfs/` | which bytes a `common:/…` path names |
+| `dlc/` | which packs exist, their override order, and writing one ([Dlc_Pack_Creation.md](../features/Dlc_Pack_Creation.md)) |
+| `mods/` | which mods an install holds, as `mods` and `mods_` hold them and in the game folder, what each writes, and which of two mods writing one path the load order resolves to |
+| `oiv.rs` | an `.oiv` package: the `assembly.xml` a build writes and reads back, and the stored zip it sits in |
+| `install/` | a table fetched from an install: clip regions, the materials palette, the shader archive, the names `install::names` indexes, and the file at a path the explorer writes (`virtual_file`, which reads archives as folders and goes into a nested archive) |
+| `archives.rs` | stock archive names and their NG key indices |
+
+Adding a title has [its own section](#adding-a-title).
+
+## Domain crates
+
+**or-addonped.** The addon ped engine, headless: ped models a person streams into the game and the
+data that defines them, as content of a project, whose design is
+[Project_Model_Design.md](../direction/Project_Model_Design.md#what-the-extension-and-the-second-kind-of-content-build).
+`model` is `addonped.json` (each ped with a stable id, the name the game resolves it by and the files
+it is made of, each with the place it lands in the resource when that is not where `layout` puts it,
+the data file that defines the peds, and the waivers); `rules` is the table of rules and `check` applies
+it to what `facts` read off the disk and to the names `metadata` read out of the data file; `plan` hands
+all of it to a build as one `Contribution` (the streamed files, the data file with the manifest line that
+registers it, each ped's name as a claimed name, the figures, and an item for each ped); `verify` reads a
+built resource back against the model; and `adopt` is the recogniser (`AddonPed`) that groups an adopted
+folder's `.yft` models that its `peds.meta` names and the files named for them, and `start_module`,
+which makes the folder of a new module. The data file is shipped as it was written and read for one thing, the `Name` of each entry, since
+no typed root declares the game's structure for a ped's data. It depends on `or-io` and `or-project` and on
+no renderer or UI, and `openrage-cli addonped` validates and verifies it.
+
+**or-content.** The kinds of content this build knows, listed once. A kind of content depends on
+`or-project`, so something above them lists them: `kinds` is that list (clothing, addon peds, weapons), and the
+functions here are `or_project::content`'s with it filled in (`plans`, `plans_given`, `plans_from`,
+`contributions`, `recognisers`, `start_module`), which the editor and `openrage-cli` call and so cannot
+disagree about. Adding a kind is a `Content` impl in its own crate and one line in `kinds`. `template::apply_template`
+adds what a template file states and a project lacks, and `sharing::concerns` lists what a project folder holds that is not
+the person's to send: Apply a template… and Check before sharing… of the editor and `openrage-cli project apply-template` and
+`check-sharing` use them, so a window and a command line say the same.
+
+**or-depends.** What an asset needs and where a model is placed, one graph
+over an install read in two directions: `Catalogue` turns a name into a file,
+`Resolver` an archetype into the files a streamer loads, and `PlacementIndex`
+reads placement backwards. `rules::RULES` records per format what it states and
+what only the install states (`every_classified_format_carries_a_ruling`).
+`ModelContents` reads what only a body says: the entries of a `.ydd`, whether
+a `.ydr` carries the bound a `physicsDictionary` points at, and a `.ybn`'s
+header box, from the front of its file alone (`Vfs::open_head`).
+`audio::AudioIndex` answers which `.awc` holds a sound: it crawls the install
+rather than mounting it, because Legacy keeps its wave banks in archives the
+mount does not hold, and joins each container to the `.rel` items naming its
+waves.
+
+⚠ A declared `drawableDictionary` outranks a loose file of the same stem, and
+`assetName` is then an entry inside that `.ydd`. Read as a filename, 76,898
+archetypes disagree; with the precedence right, 158,665 of 158,665 comparable
+archetypes agree with their own `assetType` (`what_a_dependency_index_derives`,
+a retail Legacy install, at `57c5b9a5`). `assetType` is not the dispatch, since
+with no schema snapshot it is a bare ordinal.
+
+**or-editor.** View models a panel shows without knowing what read the file:
+`Summary::of(pack, type, image, at)` is a property grid for any described type,
+and `Outline::of` with `PackPath` is the generic tree the Outline panel falls
+back to. A row may carry an `Edit`, which `src/state/pack_edit.rs` applies;
+`or-editor` writes nothing. `Summary::of_shown` takes which fields an owned
+type shows and marks the rest internal and read-only, with a count, padding and
+a pointer, and which fields its declaration types `Hash32` (`Reach::hash_fields`),
+which read as a hash whatever they are called; a row holds the scalar its bytes hold, which an edit starts from
+rather than its rounded `value`, an enum row its declared variants, and a row
+with no `Edit` the reason. A field whose value counts, sizes or lays out data
+elsewhere in the file, which `shapes_data` lists by type and field, draws
+read-only too, its reason naming where that data changes. An outline keeps a
+null slot at its index (`a_null_slot_keeps_its_index`) and says when it
+truncates. `Pointee::Many` and `Pointee::ManyPtr` fold together for display and
+must branch in a walker, because one is structs at a stride and the other
+addresses to follow.
+
+**or-interchange.** A drawable as a DCC tool sees it: `scene`, `extract`,
+`gltf`, `fbx`, `import` and `doctor`, with its refusals and traps in
+[Mesh_Interchange.md](../features/Mesh_Interchange.md). `doctor` is the mesh doctor's operations
+(`decimate`, `levels`, `mirror`, `rig` and `uv`, and `through_scene`, which reads a drawable's meshes, changes
+them and puts them back through `import`), with the guarantees of [the mesh doctor](../features/Mesh_Interchange.md#the-mesh-doctor). Export and import take either
+target and read and write each as itself; neither converts through the other.
+`fbx` reads a binary FBX of version 7.1 or later through `fbxcel` (MIT OR
+Apache-2.0, with `libflate`, `indextree` and `string-interner` beneath it) and
+never writes one; both readers say what a file held that a drawable has no
+place for in `Scene::dropped`. `import` pairs a file with a drawable by the names of its meshes and materials before it
+pairs by position (`ImportNames` states the names a caller knows), and cuts a mesh that overflows a geometry
+into several (`ImportReport::splits`).
+
+**or-maps.** The maps engine, headless: the map files a person streams into the game, as content of a project, whose design is [Workbench_Views_Design.md](../direction/Workbench_Views_Design.md#maps). It has the shape of `or-particles`. `model` is `maps.json`, the file of a maps content (each map set with a stable id, a name, the sources it is made of as folders of the module, and the names a person typed for the hashes a map keeps, with the waivers); `layout` says where a source lands in a resource (at `stream/`, the one place a FiveM resource has, and why a singleplayer DLC is not claimed); `facts` looks at each source (what it cooks to, what the map file places and the type file declares through `or-world`'s views of the typed roots `CMapData` and `CMapTypes`, with an interior's rooms and portals read off the document because no typed record names them); `rules` is the table `RULES` (twenty-one, each a code, a severity and whether a waiver can set a finding aside) and `check` applies it; `plan` hands a build one `Contribution` (the cooked `.ymap` and `.ytyp` files and the models and textures at `stream/`, the figures and an item for each map set); `verify` reads a built resource back against the model; `adopt` is the recogniser `MapPack` and its `start_module`; and `import` makes sources of game files (a `.ymap` or `.ytyp` as a metadata source, the rest through the general import), refusing with its reason a file no source form holds. Three modules are the placement: `edit` changes what an entity or an archetype says in its source (it cooks the source, opens the typed root, changes a member, saves the root and writes the canonical XML back through `or_source::metadata::replace`, which refuses an XML that does not compile back to itself; an entity or an archetype that is added is a copy, since the typed family builds no record from nothing), `scene` is a map set as the boxes its entities place, with `or-world`'s placement rules, and `gizmo` is the manipulator's maths with no renderer: a ray through a pixel, the handles, a drag that moves, turns or scales, the snaps, the pick of a box and the ground under it. `sample` writes small synthetic map and type files for tests, which hold no game content. It depends on `or-io`, `or-world`, `or-project` and `or-source` and on no renderer or UI, and `openrage-cli maps` lists, validates and verifies it.
+
+**or-particle** is the particle editor's half over the owned `.ypt` records in
+`or_io::gta5::particle`: behaviours, domains, keyframes and evolutions as the
+editor shows them, and `or_particle::list`, which finds rules by name, adds,
+renames and removes them, and lays a list out so each rule is held once before
+a save.
+
+**or-particles.** The particles engine, headless: the particle effects a person streams into the game, as content of a project, whose design is [Workbench_Views_Design.md](../direction/Workbench_Views_Design.md#particles). It has the shape of `or-weapons`. `model` is `effects.json`, the file of a particles content (each particle file with a stable id, an optional label, the folder of its source and the waivers); `layout` says where a source lands in a resource (at `stream/`); `facts` looks at each source (what it cooks to, whether its rules read, the effects it states and the rules and textures they name); `rules` is the table `RULES` (thirteen, each a code, a severity and whether a waiver can set a finding aside) and `check` applies it; `plan` hands a build one `Contribution` (the cooked `.ypt` files, the figures and an item for each particle file); `verify` reads a built resource back against the model; `adopt` is the recogniser `ParticlePack` and its `start_module`; and `import` makes sources of game files and of `.ypt` files a person adds, refusing with its reason a file the source form cannot hold. The source form itself is `or_source::particles`. It depends on `or-io`, `or-project` and `or-source` and on no renderer or UI, and `openrage-cli particles` lists, validates and verifies it.
+
+**or-plugin.** The in-app plugin host over a `wasmi` runtime. A guest cannot
+take a Rust type across the boundary, so the host speaks the description's vocabulary,
+and the host patches and never rebuilds (`the_host_patches_and_never_builds`); a
+guest that links `or-io` builds its own file and hands the bytes back, which the
+app reads back and saves before it keeps them
+([R44f](../direction/Roadmap.md#r44f-payload-and-gpu-access)). A `Session` keeps a guest loaded
+and calls it each frame, and `surface` is the vocabulary a guest registers and
+describes in: panels, commands, settings, widgets and the overlay it draws
+([R45](../direction/Roadmap.md#r45-the-plugin-sdk-and-registration-surface)). `extension` runs a validator or an
+emitter over the plan of a build: the plan goes in as JSON, findings and text files come out one call at
+a time, and nothing else crosses ([A plugin that extends a build](Plugin_ABI.md#a-plugin-that-extends-a-build)); a validator granted the pack reads the clothing as data and states a finding with a fix. `transaction` is several files of the project written together, all or none (`write_files`; the app applies a kept set as one step of the project's History, `src/state/plugins/transaction.rs`). The ABI has a version number and an older plugin still loads (`manifest`, [Versions](Plugin_ABI.md#versions-an-older-plugin-still-loads)).
+The contract is [Plugin_ABI.md](Plugin_ABI.md), the registries
+`plugins/README.md`.
+
+**or-project.** The project container, which the editor and `openrage-cli project`
+share: the `modules` and `outputs` keys of a `.openrage-proj` (`Container`), the
+path forms a project file stores (`store_path`, `resolve_member`), the plan of a
+build as data (`plan`, a pure function of the container and what the caller saw
+of each file), the paths of a project file that only one machine can use (`check`), the lock that makes a second window on a project read it and not write it (`lock`, on a file in a folder the caller names, beside the preferences and not in the project's folder, since Windows refuses to read a locked file and a zip of the project would stop), the steps of a file kept on disk for a history (`snapshot`: the bytes and label of each step, and what a step carries with it, in the `history` folder of `private_dir`, which is `.openrage/projects/<name of the project file>`; the newest 200, ignored by Git) and the executor (`build`, `verify`, and `build_watched`, which says through `watch` the file it is on and the bytes done and is stopped by a flag); `built` reads a file of a build by its path in the plan whether the build is a folder, a `dlc.rpf` or an `.oiv`, and `built::unpack` hands every file of a built pack or package to a function, the archives inside a pack opened and an archive that does not open handed over as the file it is, with the files an `.oiv` installs outside its pack told apart; what `verify` finds is data, `Verification`, which holds every file reloaded, the metadata read back, the names checked, the estimated streaming memory against the `memory` limit and, on request through `check_reproducible`, whether a second build writes the same bytes. A Files module holds the
+project's documents, so a file with no `modules` key reads as one and migrates
+when the editor saves it. A build writes a fresh hidden `.new` folder, reads
+every file back, byte for byte and through the declared reader where one reads
+the extension, swaps it in and keeps the replaced build as `.previous`; any
+failure removes the fresh folder and leaves the last build alone. A `.src` folder is
+planned as a file the build cooks (`Origin::Cook`, found by `find_sources`), through a cook the
+caller hands in, since this crate takes no dependency on `or-source`; the cook comes before any
+write; a source of the game's own content that is still the game's file is left out of every kind of output unless the build ships it, and a pack's registrations and a package's manifest are written again from what remains, a package whose pack is left with nothing installs no pack and ships the rest, and a build is refused only when it would add nothing (`left_out`). It deletes and
+replaces folders, so it refuses to put one where the project is, inside the
+project but for `build/`, or where a file it copies is, and to replace a folder
+a hidden `.<resource>.openrage-build` beside it does not say it built. `build_all` builds the
+resources of a split output and checks every one of them before it writes the
+first; a failure while one is written leaves the ones before it built. `clean` removes a resource, the build it replaced, the record of its items and the marker, and only where that marker says OpenRage built it; `built_resources` finds every resource in a build folder by its marker, which is how a clean reaches one that no output declares now, such as the build of a removed output or a split's `<name>_1`.
+
+`sizes` weighs the files of a plan by the content that wrote each (`Plan::made_by`, so a ranking adds up to the plan's totals, or to what a build wrote once it is given the sizes its cooked files came out at).
+
+Content reaches a plan through one contract, `Contribution`: the files and
+documents, manifest lines, claimed names, named figures and stable-id items
+that one module hands over. `plan` is `plan_with` over what the Files module
+contributes; `merge` holds the policy (a manifest key that describes the whole
+resource must agree, any other adds up, a name claimed twice is refused across
+the whole project even when an output splits, and figures add up against the
+output's `limits`); `plans` divides an output that declares `split` at content
+boundaries; `diff` and `since_last_build` say what moved, changed, was added or
+removed since the last build by id, and `Diff::redirect_map` exports the moves.
+A build records its items in a hidden `.<resource>.openrage-items.json` beside
+the resource.
+
+- A key this build does not know is carried, and a module or output of a type it
+  does not know is carried and refused by a plan, so an older build opens a newer
+  file (`an_older_build_carries_the_new_keys_and_a_newer_file_opens_in_this_one`).
+- ⚠ The editor's session (`workspace`, `open`, `active`) stays in
+  `src/state/project.rs`, which reads the container through this crate; a file
+  `Project::create` writes opens in the editor as an empty session. The editor writes
+  `workspace` as the file stated it and leaves the documents outside the project's folder
+  out of the shared file, in `src/state/project/machine.rs`.
+- `readers` reloads a written file by its extension: a declared RSC7 format through
+  `Format::open_declared`, a DDS, and a `.ymt` as the metadata document it is. The one
+  document a plan writes as text is `fxmanifest.lua`, from general knowledge of the
+  FiveM format, and a file whose bytes are not text is a `Generated` origin; nothing
+  here has run in game, and a build says only that its files read back.
+- A clothing or addon ped module is a kind this crate knows and keeps a folder for (`Module::path`), and
+  contributes nothing itself: the `Content` trait of `content` is what a kind implements to hand a plan
+  its modules' contributions, to be recognised in an adopted folder and to start an empty folder, and
+  `content::plans_given` takes the list of kinds from its caller, which is `or-content`. `content` also holds
+  what every such kind shares: `facts` looks at the files a module names (a listing for a crowded folder, a
+  digest remembered while a file is unchanged, and from `Depth::Measure` on what a measurer a kind hands it
+  counted in each file, remembered with the digest and handed from one session to the next as text by
+  `remembered_under` and `remember_from`), `rule` is the severity and the row of a rule with its limit where it has one, `check`
+  the lines a verifier reports, and `folder` the folder of a module, a new stable id, the lower case
+  name the game resolves and the atomic write of a model file.
+- `extension` is the plan as the JSON document a script or a plugin reads (`Plan::document`, the one
+  `openrage-cli wardrobe plan` prints and [Plan_Document.md](Plan_Document.md) describes, and `Plan::guest_document`, which a plugin is handed without
+  where on the disk each file is copied from) and `Plan::with_emitted`, which adds the text files an
+  emitter returned and says in the plan's problems what it cannot take.
+- `links` is a content whose folder is another project's (`Module::is_link`, the `link` key):
+  `add_link` and `remove_link` edit the container, `links` reads where each leads and which
+  project holds it (`Link::owner`), `refuse_write` is how anything that edits a pack is told it
+  may not write a linked one, and `refuse_member` says why a file has no place in the project.
+  `adopt` groups what a folder holds by what a `Recogniser` finds in it (`analyse`, `Adoption`),
+  and `template` is the file another project is made from (`Template`, `.openrage-template`);
+  `edit_container` rewrites the container of a project file and carries every other key. All
+  three are described in [what links, adoption and templates build](../direction/Project_Model_Design.md#what-links-adoption-and-templates-build).
+- `reference` is what a content needs and does not own, a `<name>.ref.json` in its folder in one of three
+  forms (`Reference::Here`, `Other`, `ById`) that `resolve` leads to a file, a source folder, an id alone or a sentence that
+  says where it looked, and `content::content_owning` says which content owns a source folder, so that the Files content
+  does not ship it ([what references build](../direction/Project_Model_Design.md#what-references-build)).
+- An output has a kind (`OutputKind`: a FiveM resource, a singleplayer DLC, an OIV package) and
+  may declare a `target` (`Target`, Legacy or Enhanced), in which case the plan marks each
+  `.ydr`, `.ytd`, `.ydd` and `.yft` as an `Origin::Retarget` and a build moves it through
+  `or_io::gta5::retarget::retarget_file`, or copies it when it is there already. `dlc` and
+  `oiv` (private) plan, write and read back the other two kinds; `build_with` and
+  `build_all_with` take the shader database a moved drawable is respelled through, and
+  `Built::losses` names what a file dropped. `build_observed` and `build_all_observed` are the
+  same builds telling a caller each `BuildStep` as it is entered, which the app's Build tab and
+  job show. The DLC and the package are written by
+  `or_title::dlc::build_pack` and `or_title::oiv`, so this crate depends on `or-title`.
+
+**or-source.** The folder an asset is edited as and compiled back from,
+`<name>.<kind>.src`, whose design is [Source_Format_Design.md](../direction/Source_Format_Design.md):
+`asset` reads and writes `asset.json` and knows a folder for a source by its header
+and not its name, `json::canonical` writes every file of one with keys sorted,
+two-space indent and LF, `textures` extracts a `.ytd` of either target into a folder
+of exact DDS files and a `textures.json` and compiles the folder back (channel
+packing, and a re-encode of only the blocks an edited image changed, in
+`reencode`), `optimise` plans and writes the format, the mips and the size of the textures of a textures source (a mip chain added under the level that is there, a halving that keeps the levels below the top, a re-encode only where the size or the format changes, and the DDS of a texture that needs nothing left byte for byte), `models` does the same for a `.ydr` or a `.ydd` as a glb, a
+`drawable.json` and the base it replaces the geometry of, and imports a glb, a glTF
+or an FBX into one (`drawable_values` is what that `drawable.json` states of the base, the shaders and their parameters, distances, bounds and bone tags, which a compile sets where they differ), `fragment` does it for the common drawable of a `.yft` with the rest of the
+fragment the base's, `particles` does it for a `.ypt` as one `particles.json` of its rules, the textures of its dictionary as a textures source and its models kept whole as `models.ypt` ([Source_Format_Design.md](../direction/Source_Format_Design.md#what-wave-p43-built)), `metadata` makes a `.ymt`, `.ymap` or `.ytyp` into canonical XML
+beside the file it came from and compiles it back through that file's type table
+(`or_io::meta::canonical`, `or-io`'s `meta` feature, which `or-source` turns on), and `cook::Cooker` recooks the one asset a saved path belongs to
+into a shadow folder, reporting a failure as `Problem` data and leaving the previous
+output in place; `textures::replace_image` puts one image into a `.ytd` by the same compile and
+`create` starts a source, empty or made of pictures (`new_source`, `author_textures`), and states no platform, `sample` writes the small valid game files a test drops at a door, `game_import::decompile` is the one door a game file's bytes enter a project by, a source folder or an `asset.json` comes in as it is, and `cook::cook_source` is that cook for one folder into a scratch folder, which a
+build calls, and `cook::describe` says what a folder will cook to. `game_import` turns a game file, an archive entry's bytes or a folder
+into sources under `sources/` (a table of kinds, a staging folder renamed into place, a
+numbered folder for a name another origin holds, a report with digests that undo exactly
+what it made, and for a game's file the hash of its own first cook in `asset.json`, `cook::cooked_sha256`, which is how a build tells the file is still the game's), and `git` keeps the managed blocks of a project's `.gitignore` and
+`.gitattributes` (`git::Commit` is what the owner chose a repository holds, the sources, the build or the sources taken from the game, stated by a `# commit:` line of the block that every rewrite keeps); `openrage-cli project import` calls them, and a taken-back import is kept aside and put back by `game_import::Created::copy_to` and `restore_from`, so that Redo makes it again. `origin_check` compares `origin.sha256` with the file an install reads at `origin.virtual_path`, once and when asked, and says the game's original changed; `models::import` puts a glb, a glTF or an FBX into a model source and `Imported::lines` is what `openrage-cli source import-model` and the app's Replace geometry… print or list. `crop` cuts a textures source to a window of its pictures by copying whole blocks of every mip, and refuses a texture made from pictures ([Source_Format_Design.md](../direction/Source_Format_Design.md#cropping-a-textures-source)). `maps` makes a normal map and a specular map of a diffuse texture as new pictures of the source ([Source_Format_Design.md](../direction/Source_Format_Design.md#maps-made-from-a-diffuse)), `budget` gives each DDS texture a ladder of sizes and formats with the PSNR of each and chooses across sources to fit a memory target ([Source_Format_Design.md](../direction/Source_Format_Design.md#budgeting-a-textures-source)), and `textures::inputs_of` says which file each texture compiles from. `schemas` generates the JSON Schema of `asset.json`, `textures.json`, `drawable.json` and `dictionary.json` from the types that read and write them, with `schemars`, and holds the files of `crates/domain/or-source/schemas/` to them; `or_wardrobe::model::schema` is that of `wardrobe.json`, kept in the same folder. It depends on `or-io` and
+`or-interchange` and has no UI and no watcher.
+
+- A source is a folder anyone can edit or clone, so what it states never chooses where a
+  build writes or how large a buffer is: the id and the name are each one plain file
+  name, and a DDS header's sides and mip count are bounded before a size is computed
+  from them.
+- A DDS is copied block for block into the texture it makes, and a rule that would change a block is
+  refused by name where it is stated and never skipped
+  (`a_rule_a_dds_alone_cannot_honour_is_refused_by_name_and_one_it_can_is_taken`). The decode-and-recompress
+  import in `or_io::authoring::texture_import` is not on that path. An image made to the
+  size, format and mip count of its DDS keeps every block it did not change
+  (`an_edit_changes_only_the_blocks_it_covers`), and any other image is encoded in full, as
+  the rules in `textures.json` say.
+- ⚠ A source drops what a DDS and the declared header words cannot say: bytes after
+  a texture's declared mips, and the words an Enhanced texture holds only in its
+  hidden `__carry`. A compiled Enhanced texture takes those at their declared defaults.
+- Shipped Legacy files state a compressed texture's `mip_stride` per row of texels, a
+  quarter of a row of blocks
+  (`every_shipped_compressed_texture_states_its_stride_per_row_of_texels`), and
+  `GrcTextureFormat::legacy_mip_stride` is that word for `or-source`, `GrcTexture::set_pixels`
+  and `GrcTexture::from_png`, and the retargeting between Legacy and Enhanced states and
+  reads it (`a_texture_keeps_the_mip_stride_every_shipped_one_states_through_both_targets`).
+  ⚠ The app's loose-DDS document still states a row of blocks.
+- No shipped Legacy texture states sRGB, so an image compiles in the colour space its
+  DDS states, which is linear, unless its rules say `srgb`.
+- `or_io::authoring::texture_import` is the one list of image inputs: PNG, JPEG, BMP, TGA, TIFF, a PSD
+  (its flattened image, read in `or-io`), Radiance HDR and OpenEXR, which the `authoring` feature turns on
+  through the `image` crate. Its `Levels` are the rule an image of more than 8 bits comes down by, which
+  `textures.json` states as `clamp`, `tonemap` and `exposure`; floating-point light is refused until one is
+  stated ([what a rule may ask](../direction/Source_Format_Design.md#what-a-rule-may-ask)). The header
+  words of a texture are named lists in `header` (`processed` and the DX11 info bits, from `or-io`'s
+  declarations, and every other bit as `0x…`).
+- An image or a DDS no entry names is a texture of its own, so an image left beside
+  nothing is compiled as one; a file an entry names as its `source` or a channel of its
+  `pack` is that entry's input and no texture.
+- BC7 is `or-io`'s `bc7-encode`, which `or-source` turns on in its own manifest, so a
+  `textures.json` that asks for BC7 compiles in every build that holds the crate. A
+  workspace build holds it, so it links the ISPC kernels, and a build of one crate that
+  leaves `or-source` out does not.
+- A cook gives each asset id one slot of the shadow: a second source with the same id is
+  refused while the first still states it. An id or a name that Windows reads as a device
+  (`CON`, `NUL`, `COM1` and the rest, with or without an extension) is refused.
+- A model source is edit mode only: the glb replaces the geometry of a base that the folder
+  keeps as `base.ydr` or `base.ydd`, so it compiles with no install, and `compile.base` in
+  `asset.json` is that file's hash. `drawable.json` also states the base's shader parameters and
+  texture names, draw bucket, flags, level distances, masks, bounds and bone tags, and a compile sets
+  the ones it states otherwise; a source that states none keeps the base's
+  ([Source_Format_Design.md](../direction/Source_Format_Design.md#what-wave-p12-built)).
+  An extraction compiles what it wrote before it keeps it
+  (`a_source_compiles_back_to_the_same_meshes`), a compile saves through the format's own
+  validation and reads the file back, and a recook cooks a model as it cooks a texture.
+- ⚠ A ped component's palette indexes a skeleton in another file, which a glTF cannot say, so an
+  extraction takes that skeleton (`reference_skeleton`, from the ped's `.yft`) and embeds it in
+  the glb, and `drawable.json` lists the bones by name: a glb whose skin lists them in another
+  order is bound by name (`a_glb_that_lists_the_bones_in_another_order_is_bound_by_the_bones_names`).
+  With no skeleton given, the weights stay the base's (`keep_skinning`), which holds only while
+  the vertex count does, and a glb that states a skin is refused, because there are no names to
+  bind it by (`a_skin_imported_into_a_source_extracted_without_the_skeleton_is_refused_and_not_bound_by_position`).
+- A drawable dictionary is keyed by hash and a drawable's own name is not a key: two entries of a
+  shipped `.ydd` state one name, so a folder is named by its drawable where that is one plain
+  name no other entry has, and by its code otherwise, and `dictionary.json` maps code to folder.
+- `drawable.json` and `dictionary.json` refuse a key this build has no code for, so author
+  mode's `shaders` are refused by name and not skipped. Its `base` block is for a person to read
+  and no compile reads it.
+- A fragment source is a model's in the app (`models::fixed_file` and `models::output_name` answer
+  for it) and its own kind in the cook: the glb goes into the common drawable of `base.yft`, and
+  a `.yft` is never read as a `.ydr` or a `.ydd`
+  (`a_yft_is_refused_by_the_drawable_readers_and_a_drawable_by_the_fragment_reader`).
+- A metadata source compiles with an empty schema library through the type table of its base, so
+  the bytes do not depend on the snapshot the host installed; only a file whose XML reaches the
+  canonical fixed point with no value moved becomes one, and any other is kept by the import as a
+  compiled file with the reason
+  (`a_sample_of_the_corpus_ymt_reaches_its_canonical_fixed_point_through_its_xml_or_is_refused_with_the_reason`).
+
+**or-wardrobe.** The Wardrobe engine, headless: a freemode clothing pack as data and
+everything a build of it needs, whose design is
+[Clothing_Tool_Design.md](../direction/Clothing_Tool_Design.md#what-the-engine-builds). `model` is
+`wardrobe.json`, the file of a clothing content (garments with a stable id, a ped, a slot, a
+pinned position or none, a model, variations, the metadata the engine states under its own
+names, expressions, and the waivers); `resolve` reads the ped, slot, position, skin and
+variation out of a file name, behind a streaming prefix such as `dlc^` or without one, takes an image
+for a texture by its extension, and lists what it could not read; `alloc` places each garment
+among the drawables of its slot, and cuts a slot past the cap of one collection into `<collection>_1` and on (the cap is the limit of the rule `slot-cap`, 128 unless the pack says another); `rules` is the table of rules (a code, a severity, whether a
+waiver can set a finding aside and, for some, a limit with its unit) and `check` applies it, the pack's
+`settings` (the `rules` of `wardrobe.json`: the edition it is built for and, for each rule a reason could
+set aside, whether it is on, how serious it is and where its limit stands) and its waivers to what `facts`
+read off the disk and `measure` counted in each model and texture dictionary; `cache` keeps what a session
+read of a pack in `.openrage/files.json`, so that the next reads only what changed; `metadata` writes each ped's variation `.ymt`, the creature `.ymt` the peds
+share and the shop metadata; `plan` hands all of it to a build as one `Contribution` (the
+files, copied to the layout the staged packs share, the generated documents, the manifest
+lines that register the collections, the collections as claimed names, the figures, and an
+item for each placed garment whose name is the one a saved outfit points at); `verify` reads a
+built resource back against the pack; `shop` reads the shop metadata a resource brings (the
+files its manifest registers as shop apparel data and any file whose root is `ShopPedApparel`),
+resolves each entry to the texture of a garment, keeps its id as written and carries the other
+files registered with the shop; `import` makes a pack of the files of an existing
+resource in place, shop metadata included; and `options` are what a build may change about the files of a pack (read from, and written to, the build's own entry), `dump` is the clothes dump a server's scripts read, `layout::Paths` names the folders and files of a pack in a FiveM resource or in a singleplayer DLC, and `adopt` is the recogniser (`Clothing`) that groups an adopted folder's
+clothing into a content and lists what it could not place, and `start_module`, which makes the
+folder of a template's clothing content with an empty pack; `dress` answers, with no renderer, which
+model and texture each component slot of a ped wears (the garments chosen, and the ped's own drawable 0
+in every other slot, named from the ped's variation metadata through `BaseOutfit`), and applies the sets of alternate variations in force (`Sets`: those a garment worn causes, none or one; the drawables they change are `Dressing::driven`) and the first person view (`Choice::first_person`: the garments flagged hidden there left out, the first person alternate worn, the ped's own head not drawn), `heels` names what a
+feet drawable states in expression 4, `flags`, `mask`, `hair` and `audio` name the rest of what a garment's metadata does by the engine's words (each held to the staged documents), `behaviour` is the change of any of them with the read-back of what a build wrote, `alternate` makes the sets of alternate variations and the `pedalternatevariations.meta` they write and read, `firstperson` the first person alternates, `variations` is the textures of a garment (add, move, remove, tint, and the places a texture can hold with no file: `reserve` and `resort`, with `replace::texture` to fill one), `follow` leads a name of the pack to a file, a source folder, a reference or an id alone, `intake` is the one door of a pack (a dropped game file or picture becomes a source of it) and `source_facts` looks at a source as the file it cooks to, `search` says what a garment is found by (its place, slot, name, the name the game gives its model, group and tags), `query` reads a line of terms over a pack (`tag:wool polys>5000`, each turned round by a `-`) and keeps the lines a pack names, `bulk` says what an edit to the garments of a query would change and makes it as one `Revision`, `changes` words what differs between two garments or two packs, `review` compares two versions of a pack by the garment's stable id, `credits` reads the `credit` of each source a pack names and writes the credits file of a build, `pack_package` writes a whole pack as one zip of sources and settings and unpacks it, `sizes` ranks the files of a plan by garment and by slot and lists what the garments name, and four modules make an edit recoverable. `backup` keeps the
+newest versions of `wardrobe.json` in `.openrage/versions` of the pack's folder through the store the
+project's History uses (`Snapshots::keeping`), puts the last version that reads in place of a
+`wardrobe.json` that does not, keeping the text that did not read, and puts one garment or one texture
+back to what a version held. `redo` is the `Redo` that every Undo of `edit` returns: the pack on both
+sides of the change and the files the Undo moved aside to `.openrage/held`, which `redo` returns and
+`purge_held` deletes. Nothing is written over, so nothing keeps an original or a copy of a file written over. `fix` is Fix all safe: the repair, textures, order and mask steps with a report for each and the findings that stand (`all_safe`), and the repair of one garment's model (`repair_garment`, over the private `repair`, which rewrites a compiled `.ydd`'s counts from their runs losslessly and refuses `FXAP` by name); `textures` is the optimiser of a pack, which copies a textures source that has something to change and has the garments name the copy (`optimise`, `safe_options`). `replace` puts a `.ydd`, a `.ytd`, an image or a `.drawables.src` folder in the place of a garment's model or of one of its textures, `duplicate` copies garments to a ped with files of their own, `variations` adds, takes out, moves and tints a garment's textures, and `export` writes a garment's files out under the names a build gives them; each but the last returns the `Revision` of `edit`. `reopen` makes a project of a built singleplayer DLC or `.oiv` (`reopen`, and `reopen_watched`, which counts the files of the pack it has read and, once the `Watch` it is given is asked to stop, makes nothing: the garments with everything their metadata states, each model and texture a source, a cloth compiled, and every file it could not place kept under `files/` and named), `gctproject` does the same for the one foreign project format read, grzyClothTool's (a zip with every byte XORed with `0x2B`, holding a resource), and `package` writes a garment as one folder of sources and settings (`garment.json`) and adds it to another pack as an equal garment, one `Revision` (`export`, `import`; a shop id the pack already writes is let go and said, and a reopened file whose staged name another file shares is kept under a folder of its own) `lock` is the system's advisory lock on `.openrage/lock`,
+which one window holds to write a pack. `freeze` is `wardrobe.lock.json`, the drawable of every garment as the last build that went through shipped it, which the rule `renumbered` holds a pack to (`keep_for` writes it for the contents a build took); `dummies` are the four choices over the garments that hold a place and ship no model (`take_out`, `replace_on_add`, `fill`, `resort`); and `replace_mode` is the plan's note, with its words, of a ped whose files replace the game's own, which the `rules` name by the game's collection. `mesh` is the mesh doctor over a garment (`examine`, which writes nothing, and `run` with an `Op`: levels of detail, the rig, the weights, a mirror and a crop of the texture coordinates, each a new drawables source that the garment names and one step of Undo; the crop is in `mesh/uvcrop.rs`, the optimiser of the textures embedded in a model in `mesh/embedded.rs` and the completion of a material's constants, `Op::Materials` and `run_many` over a whole pack, in `mesh/materials.rs`). `maps` and `budget` run the engines of `or-source` of the same names over the sources the garments name, each in a copy that the garments name and one step of Undo (`budget::plan` writes nothing), and `slots` binds a folder an external editor saves into to a slot of a texture and puts what is saved there into its source. `wind` reads the wind scale of each cloth of a `.yld` and states another in every cloth of one, and `Garment::wind_scale` is what the plan ships in place of the linked file's own; `shop_edit` edits the shop entry of one texture (the price, the restriction tags and the forced components typed, any other element kept as the XML it is written in); `outfit` takes the streaming pages of the heaviest outfit a pack can make; and `dress` also answers for props, one at each anchor (`Dressing::props`), and for the alternate model a garment is worn with (`Choice::alternates`). It depends on `or-io`, `or-interchange` (the mesh doctor's operations), `or-job` (the progress and the stop of a drop of many files), `or-project` and `or-source` and on
+no renderer or UI.
+
+- `openrage-cli wardrobe` validates, prints the plan as JSON, builds, diffs and imports, writes the list of rules (`wardrobe rules`) and the clothes dump of a pack (`wardrobe dump`), runs Fix all safe (`wardrobe fix`) and the texture optimiser (`wardrobe textures`, in `wardrobe_fix.rs`), makes maps, plans and applies a texture budget and binds a watched folder (`wardrobe maps`, `wardrobe budget`, `wardrobe slot`, in `wardrobe_maps.rs`), the mesh doctor (`wardrobe mesh`, in `wardrobe_mesh.rs`), reopens a built pack (`wardrobe reopen`), packages a garment and adds one (`wardrobe package`, `wardrobe add`), selects the garments of a query and edits them with a dry run first (`wardrobe query`, `wardrobe bulk`), reviews two versions, credits a garment, ranks the files of a build and packs and unpacks a whole pack (`wardrobe review`, `wardrobe credit`, `wardrobe sizes`, `wardrobe pack`, `wardrobe unpack`, in `wardrobe_power.rs`) and reads a build back resource by resource (`wardrobe verify`), all in `wardrobe_exchange.rs`, says how many drawables are frozen (`wardrobe freeze`) and fills or sorts the dummies of a slot (`wardrobe dummies`), in `wardrobe_places.rs`, which also freezes what a build shipped, which also holds the four routes of `serve` that change a pack (`wardrobe-add`, `wardrobe-set`, `wardrobe-fix`, `wardrobe-waive`; [CLI_Server_Protocol.md](CLI_Server_Protocol.md#routes-that-change-a-pack)), and
+  `openrage-cli project` plans clothing content through `or_content::plans`. The app plans it
+  through `or_content::plans_given`, with the contribution of each pack that its scan made once for the builds that state no clothing option, so what the
+  Wardrobe shows and what a build writes are one reading (`planned_with_model`); a build of another kind or with an option of its own is planned for itself (`planned_for`).
+- `edit` is every change a screen makes, so the screen holds no rule: `add_clothes` adds the garments
+  that dropped files state, makes the `.ytd` of each picture named as a texture through the compile of a textures source,
+  and copies the files in without replacing any; `add_clothes_watched` is the same with a `Watch` that
+  tells how far it has got and stops it with the pack as it was; `undo` takes a drop back and
+  removes only what it copied, and only the folders that drop made, `apply` sets what one garment
+  states, `take_out` and `put_back` remove a garment whole and return it where it was, `rename_pack`
+  names the pack, `remedy` is the fix of a finding
+  with the sentence that says what it changes, `waive` records a reason, and `create` makes a clothing
+  folder with an empty pack. `revise` is any other change made so that it can be taken back, keeping the pack as it was
+  and as the change left it, and `undo_revision` takes it back unless the pack has changed since;
+  `locate_texture` and `remove_texture` put right a texture that is not there, `moved` says which garments
+  took another place, and a drop leaves out a garment the pack holds, of the same ped and slot with the same model bytes and texture bytes (`Added::already_held`). `link_cloth`, `unlink_cloth` and `undo_cloth` link the `.yld` of a
+  garment (its child: `ownsCloth` is written from the link) and take that back, `set_shop_id` gives a
+  texture an id of its own, and `add_clothes` reads the shop metadata among what is dropped;
+  `shop.durty_hashes` names the shop entries that state no id as Durty Cloth Tool does. `apply_all` makes one edit to a list of garments, all or none, and `reorder` swaps a garment's place with its neighbour's in its slot.
+- A clothing content that is a link leads to a folder of another project: `module_folder`
+  follows the link, and `module_folder_to_edit` refuses it, because that project is its only
+  writer. Every write the Wardrobe workspace makes asks it first (`folder_to_edit` in
+  `src/state/workbench/wardrobe.rs`), so a linked pack is refused with a sentence that names its project.
+- A pinned garment keeps its place whatever happens around it, and an unpinned one takes
+  the lowest place no pin holds, so removing a garment renumbers the unpinned ones after it,
+  and the diff of two builds says so by id, with a redirect map
+  (`removing_a_garment_before_unpinned_ones_moves_them_and_the_diff_says_where`). A place is a
+  number in a slot of a ped; a collection holds as many as the cap, so `Placed::position` and `Placed::part`
+  are the drawable and the collection the files and the metadata name, and `Placed::place` is what a pin states.
+  A pack that has been built is frozen: a garment that would take another drawable is the error `renumbered`
+  until it is pinned back, a dummy holds its place, or a waiver says why. A place
+  nobody fills is a drawable with one texture, as the staged packs keep.
+- The planner is a pure function of the model and of what the disk said of its files; reading
+  those at `Depth::Digest` reads every byte of every file a garment names, so a pack of 3.8 GB
+  is read whole to be planned once. `facts` remembers the digest of a file by its size and time
+  and reads it again only when either changes, and never trusts a file written in the last two
+  seconds, so a scan that runs again while the Wardrobe is on screen finds nothing changed
+  without reading a byte (`a_file_not_touched_since_is_not_read_again_and_one_touched_just_now_always_is`). The same holds across sessions: `cache` keeps what a session remembered of a pack in the pack's private folder and the next takes it back before its first look, so a pack of 1,946 garments and 13,333 files that took 9.6 s to read and count the first time, in a release build, took 0.14 s and read no file the next (`the_pack_of_a_server_is_counted_once_and_then_read_by_what_changed`, `a_second_session_reads_only_what_changed_since_the_first_kept`). A folder that holds many of the named files is listed once and their sizes and times are taken from the listing, because on Windows asking for a file opens it, and a scan of a pack of 12,000 files that found nothing changed spent two seconds there (`the_files_of_a_crowded_folder_are_listed_once_and_each_reads_as_if_it_were_asked_for_alone`).
+- It is held to packs that exist: 1,772 of the 1,839 staged variation documents come back out of an
+  import and a plan with the same drawables, textures, component infos, props and anchors
+  (`a_staged_variation_document_survives_being_held_as_places_and_planned_again`), and the
+  plan of a server's resource of 13,331 drawables and textures has its files, the metadata of
+  both peds, the header and entries of their shop files and its creature file
+  (`the_plan_of_a_reference_pack_matches_the_reference`, which takes the resource from
+  `OPENRAGE_REFERENCE_PACK` and skips without it).
+- ⚠ A drawable's `propMask` is read bit by bit (`mask`), and the game builds the names of a
+  component's files from it, so a garment that states none gets the mask its skin implies (17
+  for the race skin, 1 for the other) and the plan, the read-back and the rule `mask-skin`
+  read it. The staged documents state seven values and no value is shared by every slot, so a
+  mask a pack states is kept as stated, and Fix states the skin bit again where it alone
+  disagrees with the skin. The flags that say a ped has variations follow nothing a document
+  holds, so a pack states both true, as the freemode packs do.
+- A garment's model may be a `.drawables.src` folder instead of a game file: `plan` plans it as
+  `Origin::Cook`, the preview and `openrage-cli wardrobe build` cook it, and `export` writes the file a
+  build makes of it. Hide hair is a preset of the hat's hair scale (`hair::HIDES`, which `dress` reads to take the
+  ped's own hair off); not built: hide ears as a named flag (the game states none that this build can
+  name), a prop placed at the bone it attaches to, and addon peds.
+
+**or-weapons.** The weapons engine, headless: weapons a person streams into the game and the metadata that defines them, as content of a project, whose design is [Workbench_Views_Design.md](../direction/Workbench_Views_Design.md#weapons). It has the shape of `or-addonped`. `model` is `weapons.json`, the file of a weapons content (each weapon with a stable id, an optional label, the name the game resolves it by, the sources it is made of as folders of the module, and the waivers); `layout` says where a source lands in a resource (a model or a texture at `stream/`, a data source at `DATA_FOLDER`, which is `data/`, registered by that path under the type its root names, `DATA_FILE_TYPES`); `facts` looks at each source (what it cooks to, whether it opens, and the weapons its metadata defines); `metadata` reads what the typed family says a weapon is (`DefinedWeapon`: name, model, audio, slot, group and the attach points with their components); `rules` is the table `RULES` (a code, a severity, whether a waiver can set a finding aside) and `check` applies it; `plan` hands a build one `Contribution` (the cooked files, the data file with the manifest line that registers it, each weapon's name as a claim, the figures and an item for each weapon and component); `verify` reads a built resource back against the model; `adopt` is the recogniser `WeaponPack` and its `start_module`; `import` makes sources of game files (a text `.meta` becomes a metadata source, the one row this content adds to what a project imports) and says which weapons they define; `edit` changes one weapon's metadata through the typed family and returns the text before and after, so one Undo step puts the text before back; and `assemble` is the pure query of which part a weapon wears at which bone and which model each is drawn with. It depends on `or-io` (its `meta` feature), `or-project` and `or-source` and on no renderer or UI, and `openrage-cli weapons` validates and verifies it.
+
+**or-world.** The world editor's model over `.ymap` and `.ytyp` (`MapData`,
+`MapTypes`, `Archetype`, `ArchetypeIndex`, `MapGroup`, `WorkingSet` and the
+rest), each a view over the reader's `MetaInstance`: it borrows and never
+copies, reads fields by name hash, and `write` edits the tree against the
+document's own layout. `scenario` is the exception: it names a scenario
+region's points over the typed `CScenarioPointRegion`.
+
+- `parentIndex` does not index its own map when bit 3 of `CEntityDef::flags` is
+  set, and `write::refuse_if_broken` honours the bit. A map name names a set of
+  files, which `MapGroup` merges (`crates/domain/or-world/src/group.rs`).
+- Create and delete are set operations, because a map exists for the game only
+  through its `_manifest.ymf`. Deleting an entity renumbers every index above
+  it in every file, and a delete takes a parent with its children
+  (`delete_subtree`); 9,113 Legacy and 9,079 Enhanced deletes keep every link
+  (`executing_a_plan_keeps_every_link`, at `c33ae1c1`). Recomputing
+  `contentFlags` only adds bits, since nothing derives bit 9, which marks a
+  `_critical_` map.
+- A namespaced extension type has two hash spellings, `rage__…` in the file and
+  `rage::…` in a snapshot, and a kind must match both: 196,119 shipped
+  extensions conform with a snapshot and without
+  (`what_every_extension_in_an_install_carries`, at `ccec84bf`).
+- A map lists its LOD parents ahead of the entities nothing names, so a suite
+  that only deletes leaves moves no index and tests nothing.
+- A world-state group is named for the map it switches, and its `Bounds` lists
+  collision files, not member maps (`what_every_world_state_group_holds`).
+- A prefab is typed by its entities' member set, which Enhanced extends, so a
+  catalogue is one title's and a prefab of the other is refused
+  (`a_prefab_round_trips_every_map`).
+- An archetype's bounds match its drawable's only about half the time, because
+  the archetype's frame is not recorded in the drawable, and `lodDist` and
+  `textureDictionary` are authoring decisions
+  (`what_an_archetype_takes_from_its_drawable`). The measured figures behind
+  these are [R32](../direction/Roadmap.md#r32-world-data-ymap-ytyp-and-interiors)'s.
+
+## Runtime crates
+
+**or-anim.** Skeletal animation from a decoded `.ycd` to a moving figure,
+GPU-free so CI tests it; `resolve` answers which skeleton a document offers.
+Skinning is `world * inverse_bind`, in that order
+(`reversed_multiplication_order_would_be_wrong`). It stays apart from
+`or-simulation`, because a clip is a pure function of time and particle state
+is integrated ([Animation_Preview.md](../features/Animation_Preview.md)).
+
+**or-simulation.** The particle simulation behind the `.ypt` preview, following
+the engine's solver and behaviours at full fidelity (D9)
+([Particle_Preview.md](../features/Particle_Preview.md)).
+
+**or-renderer.** The wgpu viewport on `RenderContext` and `Renderer`. It has no
+egui dependency, which is why the texture preview cache in
+`src/state/texture_cache.rs` stays in the app. The particle shader contract is
+[Particle_Shader_ABI.md](Particle_Shader_ABI.md). `game_shaders` builds the game's
+own shaders into pipelines: it reads a SPIR-V pack into `naga` modules, reads what
+each module binds from the module, links the stages of a pass for interpolation,
+builds the pipeline with the bind group layouts those bindings ask for, and
+draws a triangle with stand-in resources, as the `draw_pass_check` example does
+for a whole pack, or a quad with real constants written by name (`constants`, with the
+engine's own values in `engine`) as `quad` does, for the `first_render` example and
+for every pass of a pack in `render_pass_check`. A `frame` holds a colour and a depth target that
+several passes draw into one after another, each testing depth when its pipeline was
+built to, and `mesh` draws a mesh's surfaces with the pass its material's effect names, the
+material's values and its textures, prepared once as a `MeshScene` that a frame updates and
+records into a pass the caller owns, for the colour and depth `Target` the caller says (its `Route` picks the
+techniques: the forward ones, the ones that write the G-buffer, or the forward ones for what blends), `screen`
+draws any pass over the whole target by a quad with the textures it is given, and `deferred` uses both to
+light a G-buffer with the game's `directional` pass, reflecting the `sky` of the day, after `shadow` has multiplied the sun's shadow into the G-buffer and `ambient` has darkened the
+ambient scales of the G-buffer by the game's `ssao` passes, `dome` draws the sky of the day with its clouds, and the discs of the sun and the moon on it, where nothing was drawn, `point_lights` and `spot_lights` add the light of the particles as spheres of the game's `point` pass and cones of its `spot` pass, both through `light_volumes`, `fog_volumes` lays their fog over the lit frame as spheres of the game's `vfx_fogvolume` pass, `bloom` blurs the bright part of the lit frame and adds it back, and `antialias` draws the mapped frame to the screen, and `sprite` draws
+a particle's sprites with a pass of `ptfx_sprite` (a `SpritePass` for each kind of batch, read
+from a second, per-instance vertex buffer), which `particle_sprites` lays a frame's batches out for;
+`trail` and `model` do the same for a trail's
+strip and a model's indexed mesh, which `particle_trails` and `particle_meshes` lay out, and
+`particle_game` bundles the three hosts for a kind of target. `or-shader-tool` depends on it under its
+`native-front` and `device-check` features, so the check builds a pass the way the
+renderer will. `gpu_timer` writes a timestamp between the stages of a frame on a device that has
+timestamp queries (`gpu_timer::FEATURES`) and reads them back a frame late, so that the viewport
+reports what each stage took on the device without waiting for it; the Statistics panel and
+`or-shader-tool render-drawable --frames` show it.
+
+## Tool crates
+
+**or-cli** holds the `openrage-cli` subcommands (`openrage-cli help` lists
+them), built into a binary by the app package; the `serve` protocol is
+[CLI_Server_Protocol.md](CLI_Server_Protocol.md). An install census such as
+`formats --all` stops classifying at a byte budget, its only memory ceiling,
+which `--no-byte-budget` or `--budget-gib unlimited` lifts. `awc which` and
+`awc index` read `or-depends`' audio index; `awc export` decodes through
+`or-media`, and it and `awc replace` take a multi-channel container as one
+interleaved WAV; a GTA VI Opus stream `awc export` writes as Ogg Opus, one file per
+stream or channel, or decoded to WAV with `--wav`, and `awc decode-check` decodes every
+Opus stream of a container in memory, writing nothing. `convert retarget`, the app's Convert and a project build with a
+target share one call, `or_io::gta5::retarget::retarget_file`, which `or-cli` re-exports.
+`addonped validate` and `verify` are the rules and the verifier of `or-addonped`; the plan and the build of its content are `project`.
+`weapons validate` and `verify` are the rules and the verifier of `or-weapons`, and its plan and build are `project` as well.
+`particles list`, `validate` and `verify` are those of `or-particles`, and its plan and build are `project` as well.
+`maps list`, `validate` and `verify` are those of `or-maps`, and its plan and build are `project` as well.
+**or-shader-tool** translates shaders, `.fxc` to a pack of SPIR-V modules, with a
+binary of its own. Its `inventory` command counts what an install's shaders are
+(the bytecode, shader model, stage, container parts and feature flags of every
+DXBC or DXIL container, and the capabilities of any SPIR-V module) from the
+bytes alone, so a translator is chosen by measurement; it reads a file, a folder
+of loose files or an install, and writes JSON with `--json`. Its `spv-check`
+command runs translated SPIR-V through the legalizer (`legalize`), naga's reader
+and validator and its MSL writer, and counts how far each module gets. With its `native-front` feature,
+`translate-check` runs a whole install through `or-shader-front`, the legalizer and naga
+in one command, on every core; with its `device-check` feature, `--device` builds a
+pipeline from each module that survives on the machine's own GPU, which runs the platform's
+shader compiler. `pass-check` then asks the question a viewer asks: it reads each
+effect, translates and builds the programs a pass binds (`passes`, `pass_check`),
+and counts a pass as built only when every stage it names is, by stage set and by
+technique, and with `--device` builds each pass of a vertex stage and at most a pixel stage as one pipeline and classifies how the pixel inputs meet the vertex outputs (`signature`). `translate-check` also counts each translated module's bindings against its
+container's reflection (`bindings`). `bake-pack` (`spirv_pack`) writes the SPIR-V
+pack: one legalized module per program a pass runs and a manifest of what each
+binds and which pass runs which (types in `or-io`'s `spirv_pack`). With its
+`render-drawable` feature, `render-drawable` draws one drawable of a file or an install
+with a pack into a PNG, taking the scene from `or-cli`'s `export_scene` and the textures
+from the `.ytd` beside it, and `render-census` counts how much of an install's
+drawables a pack draws (`render_drawable`). `pack_protocol` is what `bake-pack --progress`
+says on stdout, one JSON event a line, that the app's `src/state/game_pack.rs` reads.
+
+**or-shader-front** turns a DXBC container into a SPIR-V module with the vendored
+dxbc-spirv translator (`crates/tools/or-shader-front/vendor/dxbc-spirv`, MIT),
+one call per shader through a thin C shim, with the options naga needs set in
+the shim. The C++ is compiled by the crate's build script, with the `cc` crate and
+no CMake or Meson, only under its `native` feature, which is off by default: a
+build without it has no C++ and every call says so. `BindingLayout` (always
+compiled) says where each register binds, and the shim places it. It depends on
+no workspace crate; only `or-shader-tool` depends on it, behind its `native-front`
+feature, so the editor's own build holds no C++.
+
+**xtask** is the repository's own tasks, run as `cargo xtask <task>` (an alias
+in `.cargo/config.toml`): the chunked formatter, the encoding and provenance
+lints, the pre-commit hook and its installer, the test tiers' environment and
+skip ledger, the baseline recorder, the format scaffold, `lane-new`, the janitor and `dist`, the
+packager. It
+replaces the PowerShell scripts so one implementation runs on every OS, depends
+on no workspace crate because the hook runs its binary, and is depended on by
+nothing.
+
+## The resource machinery
+
+What a decompressed resource is read and laid out through, under the owned
+values and the canonical writer.
+
+- `DatResource` (`crates/io/or-io/src/container/paging/resource.rs`) is a
+  decompressed payload with pointer resolution, read as bytes; `PgRscBuilder`
+  lays one out.
+- System memory is addressed from `0x50000000` and graphics memory from
+  `0x60000000` (`crates/io/or-io/src/constants.rs`). `IoError`
+  (`crates/io/or-io/src/error.rs`) is this machinery's error.
+- ⚠ `ErrorMode::Lenient`, the default, succeeds with less than the file holds:
+  a dictionary skips an entry it cannot read. A read path with no compiled
+  fallback reads `Strict`.
+
+## The app
+
+`src/main.rs` runs `app::run()`, or the headless self-check with
+`--self-check`; `src/app/` drives the editor and the settings window over one
+`SharedGpu`, `src/render/` bridges the scene to `or-renderer` (and `src/render/game_scene.rs` makes the open drawable the surfaces Shaded mode draws, and `src/render/dressed.rs` holds what the Wardrobe hands the viewport to draw for a ped that is no document),
+`src/platform/` holds file dialogs, drag and drop, file associations, the
+Recycle Bin, the clipboard's file list and the probe for the libraries the app
+loads on Linux,
+`src/video.rs` previews a `.bik` and plays its sound, Bink 1 and Bink 2 alike, through
+`or-media`'s own decoders, `src/bink.rs` reads a movie's header and holds the install's
+DLL that the Windows test comparing the Bink 2 decoder to it loads, and
+`src/audio.rs` plays, through `rodio` on every platform, exports and replaces an
+`.awc`'s streams, decoding them through `or-media` and re-encoding a
+WAV into each stream's own codec, PCM16, ADPCM or MP3, through
+`AwcFile::with_stream_replaced`, which also rebuilds a multi-channel stream's
+shared blocks.
+
+⚠ A call that reaches past the app, a file dialog, the clipboard, the file
+manager, the Recycle Bin or the registry, goes through `src/platform/`, which
+hands it to a stand-in that logs what it was asked in a test build and in a
+self-check (`stand_in_for_the_desktop`); one made anywhere else reaches the
+owner's desktop from a `just shots` click, and
+`nothing_outside_the_platform_layer_reaches_past_the_app` refuses the ones it
+knows.
+
+### Where the app's behaviour lives
+
+`AppState`'s methods are split across `src/state/` by concern, each module with
+its own `impl AppState`. The struct is deliberately flat: its fields are mostly
+handles to types with their own modules, and nesting them would make borrows
+harder in an immediate-mode UI (`the_shell_is_flat_rather_than_deep`).
+
+| Module | Owns |
+|---|---|
+| `mod.rs` | construction, the document list, the per-frame tick, dirty tracking |
+| `file_io.rs` | opening and saving, on worker threads |
+| `closing.rs` | closing documents, a new session, opening a project and exiting, each asking before it drops unsaved work |
+| `reload_open_file.rs` | a recook, or an answer to the changed-on-disk question, reading again every tab open on a file: in place, dropping the steps that hold its old contents and the previews drawn from it |
+| `pending_prompts.rs` | the edit gate's verdict, and the prompts a write into an install or the open of an Enhanced file waits on |
+| `tabs.rs` | the tab strip's bookkeeping: which document has a tab and its name, the preview tab a single click in Files opens, the order tabs were used in for `Ctrl+Tab`, and the closed tabs `Ctrl+Shift+T` reopens |
+| `document_io.rs` | bytes to payload and back as free functions, because the parse runs on a worker and must not touch app state |
+| `payload_handlers.rs` | one `PayloadHandler` per resource format: parse, serialize, a blank document |
+| `kinds.rs` | one `KindInfo` row per `DocumentKind`: noun, tooltip, glyph, colour, default workspace |
+| `capabilities.rs` | what the editor can do with a kind (below) |
+| `pack_edit.rs` | editing a described scalar in a document's bytes |
+| `plugins.rs` | the embedded plugin host: the plugins directory, consent kept in the preferences, the edit mode as the write gate, and every refusal kept to show; its child `surface` holds the plugins that stay loaded: what each registered, the frames it describes, the settings kept in the preferences, the overlay it draws over the open document and the clicks it takes |
+| `selection.rs` | the focused row every single-row reader sees, and the rows a multi-select adds |
+| `edit_history.rs`, `undo.rs`, `meta_edit.rs`, `rpf_undo.rs` | each document's own history of edits and where its file stands in it, undo and redo through it, and a metadata edit and an archive session's edit as a step holds them. An edit records its step through `AppState::record`; `Document::mark_edited` stands for an edit no step holds, and empties the history |
+| `bone_numbers.rs` | a bone's name, position, rotation and scale as one edit of its skeleton: the bone a selection names, the rotation's Euler order, and the step it records, which swaps the whole skeleton, and each skeleton of a fragment equal to it, in one step |
+| `animation_session.rs`, `preview_scene.rs`, `viewport_camera.rs` | clip preview, what the viewport shows, one camera per open document |
+| `rpf_session.rs`, `rpf_tree.rs`, `extract_job.rs`, `extract_planning.rs` | an archive's tree, lazy extraction, edits, extraction to disk, opening what an extraction names on workers |
+| `clipboard/` | copy, cut and paste: rows held as the files a paste and Explorer read, a field of the inspector's grid whole, and records of a metadata array |
+| `jobs.rs` | every background job in one list, read from its own controller each frame: what it is doing, its progress, its Cancel and what it left; and the files the jobs read, which a save, a delete, a move or a rename on disk and a defragment ask about first |
+| `workbench/` | the open project as the Project workspace shows it: a worker's scan of its files and `.src` folders and the plan of each build (`scan.rs`), a saved source recooked into the shadow folder by a watcher and a worker (`cook.rs`), game files imported into the project on a worker with the report they leave and Undo import (`imports.rs`), builds as a job (`builds.rs`, which reads a clothing pack's build back against the pack, and `build_cooker.rs`, which says what each `.src` folder cooks to), the problems (`findings.rs`, the clothing engine's among them with the fix and the waiver each offers), the project's commands (`commands.rs`), the edits the Builds window makes to the builds and the locks of its matrix (`build_edits.rs`), how Locate asks for a folder or a file and a copy of a source is given an id (`members.rs`), the steps every change to the project is, kept beside it for Undo, Redo and a rollback (`project_history.rs`), the picture the quick look draws, read on a worker (`glance.rs`), the one rule and the plurals every count is said by, the one count of errors and warnings and the one name of a content and of a build (`tally.rs`), linked content (`links.rs`), the strip of workspace buttons (`strip.rs`), the Weapons screen's packs, selection and edits, each a step of its own Undo (`weapons.rs`), and the assembled weapon's scene, read on a worker (`weapons_scene.rs`), the Particle screen's packs and the effect it shows, with the commands that give a project particles and add files to them (`particles.rs`), the Wardrobe's packs, selection and the worker that runs its edits one after the other (`wardrobe.rs`), the edits that are each a step of Undo (`edits.rs`), the garments picked in the list and what the keys do with them (`wardrobe_select.rs`), what makes them recoverable (Redo, the one Undo of the Wardrobe workspace, the lock on a pack another window edits, the card of a pack that does not read, the versions of a pack: `wardrobe_recovery.rs`), Fix all safe, the repair of a model and the texture optimiser (`wardrobe_fix.rs`), the maps, the budget plan with its pictures, the completion of materials and the folders bound to slots with the watcher that puts a saved picture in (`wardrobe_textures.rs`) and the sentences of a drop and of what an edit moved (`wardrobe_words.rs`), the dressed ped it shows, whose files are read on a worker (`dressed.rs` and `dressed/read.rs`) and whose scene the viewport draws, with the way it is seen (`dressed/view.rs`), the key light it is seen in (`dressed/light.rs`), a prop carried to the bone of its anchor and skinned to it (`dressed/props.rs`), the clip it plays on the skeleton of the install (`dressed/motion.rs` and `dressed/clips.rs`), each garment alone for a picture (`dressed/alone.rs`) and the catalogue of pictures a worker draws of the pack (`dressed/catalogue.rs`), and the watch on the folders of those packs that asks for a rescan when a file changes, in place of the clock (`watch.rs`) |
+| `front_door/` | what a launch opens and how a project is begun: the start page raised over the shell, the recent projects as cards read on a worker (`cards.rs`), the New project dialog's templates and the one plan its tree and its write follow (`new_project.rs`), the offer to make an opened folder a project and the preview of what the folder holds, read on a worker (`adopt.rs`), the template files the dialog lists, the project made on a worker while the dialog waits (`mod.rs`), the count and the plural a sentence of another crate is read with (`words.rs`), and the question a second project asks while one is open |
+| `compare/` | a file compared with another, or one in the mods overlay with the game's own copy: read and lined up on a worker, and opened as a document of its own |
+| `mod_manager.rs` | the active install's mods, the load order saved for it, the winner of two mods writing one path, and moving a mod between `mods` and `mods_` once the edit gate permits and the user answers |
+| `install_lifecycle.rs`, `game_discovery.rs` | choosing a game and finding installs |
+| `explorer.rs`, `navigation.rs` | archive-tree sorting, favourites, back and forward, and the walk that opens the archives on a path before revealing, opening or extracting what it names |
+| `file_index.rs`, `vfs_session.rs` | every file of the install and of each folder and archive open in Files, nested archives included, walked off the UI thread: what Go to File and the search of every archive read |
+
+### Panels, docks and panel state
+
+Panels are a registry keyed by a string id (`src/ui/panel_registry.rs`), and
+`src/ui/panels/registry.rs` registers the built-in dock panels, and a plugin that
+stays loaded registers its own as `plugin.<plugin>.<panel>`
+(`src/ui/panels/plugin_panel.rs`); settings (its
+own window) and the command palette are not dock panels. A large panel is a directory with a thin
+`mod.rs`, as `text_editor/` and `meta_editor/` are, and `src/ui/timeline/` is
+the format-agnostic timeline both previews use.
+
+- `src/ui/dock_layout.rs` persists a dock arrangement and the workspace on
+  screen, which the next start opens in, versioned and flushed on close; a
+  saved id no panel provides keeps its tab as a `MissingPanel` placeholder. ⚠ A `PanelId` is `&'static str`, so an id read from a file is
+  interned for the life of the process and the file decides how much leaks,
+  which is why tabs per workspace are bounded. And a `DockState` not yet laid
+  out holds infinite rects, which `serde_json` writes as `null` and then
+  refuses, losing every other preference in the file; the geometry is flattened
+  on capture and the layout read through a `serde_json::Value`.
+- Panel scratch state lives in the `PanelStore` of `crate::ui::panel_state`,
+  never in an `AppState` field, so a runtime-registered panel keeps state across
+  frames (`a_panel_registered_at_runtime_keeps_state_across_frames`). `get`
+  serves a value touched at one point, `take` and `put` state held across a
+  long draw; but a taken slot reads as `Default` to anything reached before the
+  put-back, which then discards what that code wrote, so a draw that dispatches
+  into other modules, as the Files and Outline panels' do, uses `get`
+  (`a_taken_slot_reads_as_default_and_the_put_back_wins`).
+- Every command is a row of `COMMANDS` in `src/ui/commands/table.rs` (the checks that enable one are `src/ui/commands/predicates.rs`): its id,
+  label, category, default bindings, an enabled-when that says why not, and
+  what it runs. A command that acts on something (`On`) takes a `Target`: what
+  a context menu was opened on, else the focused panel's selection
+  (`src/ui/commands/target.rs`). The menu bar, the context menus, the command
+  palette, Settings ▸ Keyboard shortcuts and the key dispatcher read it, and
+  `src/ui/commands/mod.rs` adds what recent files, workspaces, edit modes,
+  panels and plugins offer, and the commands of Tools, Help and
+  Notifications are `src/ui/commands/tools_and_help.rs`. ⚠ A context menu's command runs once the frame's
+  rows are drawn, so it never changes the tree the menu is drawn from.
+  ⚠ `prefs.json` keeps a user's binding under the command's id, so an id is
+  never renamed.
+- Every workspace has one job per region: on the left Files
+  (`src/ui/panels/hierarchy/files.rs`, each install, folder and archive open as
+  a tree) above the Outline (`src/ui/panels/hierarchy/outline_panel.rs`, the
+  active document's own tree), its own centre, and Details on the right: the one panel of what is selected on the screen
+  in front, a task screen's row naming what it draws there (`src/ui/task_screens.rs`). A rail at the
+  left edge (`src/ui/panels/rail.rs`) runs the commands that lead to Home, Game, Project and
+  Automate, and the screens of a project are tabs before its files' (`src/ui/panels/document_tabs.rs`).
+  Every tab bar shows its titles, and the focused panel's is in the accent:
+  the panel Maximize shows. A click, Back, Forward or a breadcrumb in Files
+  makes its document active only where the workspace on screen shows that kind
+  (`activate_if_shown`), so moving through Files never switches the workspace;
+  a click on a file of a kind the workspace shows opens it in the preview tab,
+  except in Browse, whose centre is the Files view
+  (`src/ui/panels/hierarchy/files_view.rs`): the folder where the user last went
+  in Files (`AppState::files_view_folder`, a file's being its folder), in
+  Details or Icons, beside the preview pane. Its pictures, a texture's image and
+  a model's render, are read and decoded off the UI thread
+  (`src/state/files_view/pictures.rs`), and a model's geometry reaches the
+  thumbnail renderer with its request, since no open document holds it.
+  ⚠ A panel drawn inside the dock changes a copy of the arrangement that the
+  drawn one then replaces, so it shows another panel through
+  `WorkspaceDocks::reveal`, which applies once the dock is drawn.
+- `Workspace::Project` is the neutral view of an open project and is offered only
+  while one is: `commands::workspaces` lists the six workspaces of a window with
+  no project, seven with one and eight with one that holds clothing, and the strip draws what fits, then More. Its panels are
+  `src/ui/panels/project/` (Project, Assets, Properties, Problems and Build, the buttons of a finding that Problems and Properties share in `fixes.rs`, and the Builds window in `builds_editor.rs`) with History
+  (the project's events there), Jobs and Log, and each reads what
+  `AppState::workbench` holds and never touches the disk. It handles no kind of
+  document, so opening an asset moves to the workspace that suits it. The commands are
+  `src/ui/commands/project.rs`: the Project menu, Ctrl+B for a build and Ctrl+1 to Ctrl+9 for a
+  workspace, in the order of the buttons shown and then the rest. Import game files…, Import folder…, Import into
+  Project (a row's menu in Files), a drop on the Project workspace (`DropTarget::Project`, planned in
+  `src/state/os_drop.rs`; the dock notes the workspace's area and `src/ui/os_drop.rs` reads it) and Add
+  images as a textures source… start `src/state/workbench/imports.rs`,
+  a job in the status bar with a count of files, a bar and a Cancel (`or_source::game_import::Watch`) whose report is the window
+  `src/ui/panels/import_report.rs`, drawn with the
+  other questions; Undo import removes the folders that import made while none was changed. Import built pack… and a drop of a built pack ask `Question::Reopen` (`src/ui/panels/project/reopen_question.rs`) and run `src/state/workbench/reopen.rs`, a job of the same list with a Stop (`JobKind::ProjectReopen`) that ends in the window `src/ui/panels/reopen_report.rs`; it writes a new folder and never the pack, so it has no Undo. ⚠ A project's
+  `shown_workspaces` key holds the buttons it pinned, and a build of the editor that does not read it
+  carries it.
+- The table of task screens is `src/ui/task_screens.rs`: one row (`TaskScreen`) for each screen that belongs to a kind of content, read through `all`, `of_workspace`, `of_kind` and `of_template`. A row holds the workspace and the kind of content, the words of the content and of its count, what Open in answers for other content and for one of its rows, the heading of the empty state and the command that adds the content, the hint of a drop and its command, the commands the Project menu and the Assets landing list, the layout and the panels a saved layout must keep, the template that starts it with the buttons it pins and what its chip on the start page says, the folder at which a data source of the content ships, how a content is counted and how a start page card counts it, and how the screen is made to show a content. The strip, the palette, Content, Open in, the empty state, the start page, the Project menu, the status bar, the saved layouts and the counts read it, and none of them names a kind of content or a task screen. ⚠ A second task screen is a variant of `Workspace` named in `Workspace::ALL`, a row and its panels. `no_site_matches_on_the_kind_of_a_task_screen` fails when a place outside the table matches on the clothing content (the files that read a pack with the Wardrobe's engine are listed with the reason) or on the Wardrobe, `a_second_task_screen_is_one_row` adds a stand-in row for the length of one test, and `the_task_screens_draw_as_they_did_before_the_table` compares the Project and Wardrobe screens with a record of what they drew (`OPENRAGE_RECORD_SCREENS=1` records it again when a change to them is meant).
+- `Workspace::Wardrobe` is the first row of that table: the screen of a kind of content, offered only while the project holds clothing; it follows a separator in the strip and takes the last key. Its panels are `src/ui/panels/wardrobe/` (the garments, the header with the filter, whose commands `header::bar` draws in the row of tabs, the chips and the line of figures under the list, and the garment selected; the rows and the slot headings of the list are `rows.rs`, its keys, menus and quick look are `keys.rs`, `menus.rs` and `quick.rs`, and the Garment panel keeps its place form, its tags and group, its texture rows and its problems in `garment/`; the dressed ped is `preview.rs` for the rows, the view and its notes, `wear.rs` for who wears it and which version is shown, `tools.rs`, `parts.rs`, `light.rs` and `views.rs` for how it is drawn and what plays on it, `overlay.rs` for the helpers under the view and what is drawn on it, `tiles.rs` for the strip under it and `kit.rs` for the controls they share); the bottom of the workspace is the Project workspace's Problems, Build, History, Jobs and Log. A drop on the Wardrobe's panel is `DropTarget::Wardrobe` and is Add clothes (`src/state/os_drop.rs`). The commands are `src/ui/commands/wardrobe.rs`, and a toast can carry a button (`ToastAction`), which is how a drop offers Undo.
+- `Workspace::Weapons` is the second row of that table: the screen of a kind of content, offered only while the project holds weapons, after the Wardrobe in the strip. Its panels are `src/ui/panels/weapons/` (`list.rs` the weapons grouped and filtered, `weapon.rs` the weapon selected with the rows of its typed info in `fields.rs`, and `preview.rs` the assembled weapon, which the viewport draws through the scene of `src/state/workbench/weapons_scene.rs`); the bottom of the workspace is the Project workspace's. A drop on the list or on the assembled weapon is `DropTarget::Weapons` and is Add weapons (`src/state/os_drop.rs`), the commands are `src/ui/commands/weapons.rs`, and the state, whose edits are each a step of Undo, is `src/state/workbench/weapons.rs`.
+- `Workspace::Particle` is the third row of that table, and the first of a workspace that is also the editor of a kind of file (`edits_files`): it is offered with no project, keeps its name and its own saved arrangement, and while a project holds particles it gets a second one, `SavedLayouts::for_a_project`, which is the row's layout and holds the Effects panel (`src/ui/panels/particles/`, the effects of every particle file of the pack by file, with the filter and the two buttons). A click on an effect cooks the source if it is not cooked and opens the cooked file (`show_effect`), and a save of that document goes into the source (`or_source::particles::write_back`). A drop on the Effects panel is `DropTarget::Particles` and is Add particle effects, the commands are `src/ui/commands/particles.rs`, and the state is `src/state/workbench/particles.rs`.
+- `Workspace::Map` is the fourth row of that table: the screen of a kind of content, offered only while the project holds maps. Its panels are `src/ui/panels/maps/` (`list.rs` the sources of the set shown with the entities and archetypes under them, `scene.rs` the set as boxes in the viewport with the tools and the manipulator, `plan.rs` the set seen from above, and `entity.rs` the selection, every number a field that takes what is typed). The viewport is not changed to draw it: the scene panel builds the lines of the frame (`src/render/map_overlay.rs`), keeps them in `state.workbench.maps.overlay`, and the viewport's list of lines in front, the one plugins draw through, takes them with `map_overlay::append`, while `step_viewport_camera` hands the Map workspace its own camera, as it does the Wardrobe and the Weapons. A drop on the scene, the plan or the list is `DropTarget::Maps` and is Add map files (`src/state/os_drop.rs`), the commands are `src/ui/commands/maps.rs`, and the state, whose edits are each a step of Undo that writes the source through `or_maps::edit`, is `src/state/workbench/maps.rs` (the scan, the scene and the selection) and `maps_edit.rs` (the edits and their steps).
+- The start page is `src/ui/panels/start_page.rs` (the five ways in, the goals of a first launch and the
+  recent projects as cards) over `src/ui/panels/game_picker.rs` (the installs, the recent files and the
+  keys), drawn by the Document panel while nothing is open and by `src/ui/dock.rs` in place of the
+  workspace while `FrontDoor::raised` says it is raised over it. The New project dialog and the
+  question a second project asks are `src/ui/panels/new_project.rs`, drawn with the other questions,
+  and the banner over an opened folder is `src/ui/panels/adopt_banner.rs`, drawn by the Files view.
+  The commands are `src/ui/commands/front_door.rs`. ⚠ `platform::new_window` starts the second
+  window as a process, so a self-check and a test tell its stand-in instead; two processes share
+  `prefs.json`, and `save_prefs_to` writes over the file only the keys this one changed.
+- A workspace with nothing of its own, nothing active or an active document of
+  a kind it does not handle (`has_nothing_to_show`), draws its empty state from
+  `src/ui/panels/empty_state.rs`: in the Document panel where the workspace has
+  one, with the inspector naming only what is missing, and otherwise in the
+  inspector. Outside Browse an install is the tree beside the work, and in Data
+  a model is another workspace's, so a panel that drew it there would be
+  drawing another kind's view.
+- Drawing a panel never changes a document
+  (`opening_a_file_of_every_kind_and_drawing_every_panel_modifies_no_document`). An
+  egui `DragValue` rewrites the value it is handed with no input, a NaN to an
+  infinity and a value past its range to the range's end, and reports that as a
+  change, so a panel draws a document's number through `ui::panels::drag_value`,
+  which writes only what the user changes. A value the file leaves out is shown
+  as unset, and only an action the user takes writes a default.
+- A question the user answers before going on (unsaved changes, a delete, a
+  name already taken) is drawn through `ui::panels::question`, an egui modal
+  that keeps clicks from the shell behind it, and a key command or a dropped
+  file waits for its answer
+  (`every_question_leaves_the_shell_behind_it_inert_until_it_is_answered`).
+  ⚠ An `egui::Window` leaves the shell working behind it.
+
+### What a format costs the app
+
+A paged format is three registrations and no lines in `src/`: a `FormatHandler`
+in `src/state/format_handlers.rs` (which extensions name it), a
+`PayloadHandler` (how to read, write and create it) and a `FormatCapabilities`
+row (what the editor can do with it). A `kinds` row is optional; without one
+the row is visibly provisional
+(`a_format_nobody_described_gets_an_obviously_provisional_row`).
+`src/state/adding_a_format.rs` declares a format inside itself and walks
+detected → named → opens → described (`a_synthetic_format_is_fully_usable`); it
+lives in `src/` because the `openrage` package has no library target. The opens
+rung needs a payload of the requested kind, since counting a parse error as
+reaching it would pass a handler that always fails.
+`every_registered_resource_extension_opens` reads the live format registry, not
+`ResourceType::extensions()`, and every kind's default workspace shows it
+(`a_kinds_default_workspace_can_show_it`), or activating the document bounces
+it to another workspace. A new format gets a document view, not a workspace:
+the Document panel (`src/ui/panels/document_view.rs`), the centre of Browse and
+Data, draws a kind with no editor of its own from its inspector body, and the
+inspector then shows only that document's facts
+(`a_kind_with_no_editor_of_its_own_is_drawn_once_in_the_centre`).
+
+`DocumentKind` names `Ypt`, `Ytd`, `Ydr`, `Ydd`, `Yft`, `Ybn`, `Yld`, `Ycd`,
+`Yed`, `Yfd`, `Ynd`, `Ynv`, `Ypdb`, `Fxc`, `Gxt2`, `Bik`, `Awc`, `HeightMap`,
+`DistantLights`, `WaterMap`, `WorldBlanket`, `NavPrecalc`, `DatTable`, `Rel`, `NameTable`, `Gfx`, `MoveNetwork`, `Dds`, `Ttpf`, `Rpf`, `Rpf9`, `Gta6Anim`, `Gta6Drawable`, `Gta6Text`, `Gta6AudioData`, `Gta6Expressions`, `Gta6Save`, `GameRoot`, `Folder`, `Text`, `Meta`, `Hex` and `Compare`, and `Registered`
+carries the `ResourceType` of a detected format the enum does not name
+(`src/doc_counts.rs` holds the list). Only the format's own
+rows look inside `DocPayload::Registered`, by downcasting to the reader's type
+(a `.ysc`'s `ScriptDocument` holds the listing the inspector shows and
+its decompiled source in the Data workspace), and the generic panels read the
+document's resource image. A kind is generation-agnostic, so a Gen9 payload finds its
+format's row (`an_enhanced_payload_shares_its_formats_row`). A file no kind
+names, or a binary `.dat` no reader opens, opens as `DocumentKind::Hex`: its
+bytes, read-only, in the inspector, and never saved. A file no kind names whose
+bytes are text (UTF-8 with no NUL in its first 8 KiB, or a UTF-16 byte order
+mark) opens as `DocumentKind::Text` instead. `DocumentKind::Compare` is no
+file's: it is two files compared (`src/state/compare/`), opened and never saved.
+
+`src/state/capabilities.rs` is the table, builtins plus a process-global behind
+a lock, keyed by `kind` because a `FormatId` cannot name an archive, a text
+document or a metadata document. Every other field is an `Option` cell, and
+`None` is the usual answer:
+
+| Cell | Answers |
+|---|---|
+| `selection_summary` | the status bar's line for a selection |
+| `outline` | the Outline panel's tree |
+| `has_outline_children` | whether this document has anything to expand |
+| `inspector` | a hand-written inspector body |
+| `meshes` | the viewport's geometry for the document alone |
+| `scene_meshes` | the geometry it adds to a composed preview scene |
+| `lines` | wireframe overlays |
+| `bounds` | the sphere the camera frames |
+| `textures` | the textures the gallery lists |
+| `models` | the models the gallery lists |
+| `texture_for_selection` | which texture a selection names |
+| `texture_at` | fetching a listed texture for the gallery and the preview |
+| `texture_named` | the viewport's material lookup by name |
+| `mesh_sources` | what the preview-scene picker offers |
+| `skeleton_sources` | which skeletons a document offers |
+| `skeleton_data` | the skeleton behind one of those sources |
+| `edited_sections` | the sections a GTA VI resource document holds edited, which a save writes |
+
+- A later registration replaces an earlier one within its
+  `format_handlers::Tier`, and lookup walks preferred, standard,
+  fallback. ⚠ A registration replaces the whole row and never merges, so an
+  override built from `FormatCapabilities::none` clears every cell it does not
+  set; start from the current row
+  (`a_later_registration_replaces_an_earlier_one_in_the_same_tier`). The title
+  and panel registries refuse a duplicate id instead (`plugins/README.md`).
+- Cells that look like one decision are two, and a test pins each difference:
+  an empty dictionary has an `outline` and no `has_outline_children`; an
+  unnamed dictionary entry is drawn alone by `meshes` and with its siblings by
+  `scene_meshes`; `texture_named` leaves out `.ytd`, a global fallback
+  (`a_material_lookup_is_not_the_same_set_as_a_browsable_dictionary`);
+  `mesh_sources` leaves out `.ybn` and `.yld`
+  (`two_formats_can_be_drawn_into_a_scene_and_never_offered_to_one`).
+- A fragment's texture tiles are addressed by index under
+  `FRAGMENT_ENTRY_HASH`, as a `.ydd` garment's are; the `.ydr` encoding makes
+  tiles the preview cannot read
+  (`a_fragments_tile_is_addressed_the_way_its_outline_row_is`).
+  `TextureResolution` has three cases, because a selection that is not a
+  texture and a texture that is gone are different facts.
+- A kind with no hand-written inspector or outline gets the described grid
+  and `Outline` (`every_reachable_format_has_an_inspector_or_a_described_root`),
+  which show a root's scalars and not a `.ypt` behaviour tree, so most named
+  kinds keep a body of their own. The grid reads the built-in description of
+  the format `or_io::gta5::formats` declares for the kind's extension, at the
+  target the file's RSC7 version names, and needs no pack
+  (`every_declared_format_and_target_gets_a_described_outline_and_summary`).
+  Its two empty answers (no declared format, as for `.ypdb`; a version no
+  declared root reads) stay distinct.
+- An array of `DocumentKind`s drifts silently where a `match` would not, so the
+  New menu is one derived list, `kinds::creatable`
+  (`nothing_offered_would_refuse_if_clicked`); `Workspace::handles_kind` stays a
+  `match`, because grouping is a product decision.
+- A kind with no `ResourceType` still costs arms in `src/state/document_io.rs`:
+  `GameRoot`, `Folder` and `Compare` have no bytes, `Rpf` needs a crypto provider, and
+  `Text`, `Meta`, `Gxt2`, `Ypdb`, `Fxc`, `Bik`, `Awc`, `HeightMap`, `DistantLights`, `WaterMap`, `WorldBlanket`, `NavPrecalc`, `DatTable`, `Rel`, `NameTable`, `Gfx`, `MoveNetwork`, `Dds`, `Ttpf`, `Rpf9`, `Gta6Anim`, `Gta6Drawable`, `Gta6Text`, `Gta6AudioData`, `Gta6Expressions`, `Gta6Save` and `Hex`
+  are not paged.
+
+### What a kind of content costs
+
+A kind of content is a typed family or a source form under it, a crate, one line in two lists, one row of a table and its panels. Weapons (wave P42) was the second, Particles (wave P43) the third and Maps (wave P44) the fourth, and the steps below are the order they were built in. Each step ends on a check that has been seen failing, and the next does not begin before it passes.
+
+1. **The data.** Measure the owner's install read only (`OPENRAGE_GAME_ROOT`), and declare in `or-io` only what was measured, with the engine's names (D15) and as an owned value (D16): `meta::typed::weapon` is the example, each root declared in the PSC's dialect (`typed::weapon_types`) so it opens with no schema snapshot, and a record keeps what no member names so that a save loses nothing. The check is a suite that opens every file of the install, saves, compares the two texts element by element, saves the saved text again and holds the declared members to the install (`every_weapon_file_of_the_install_opens_saves_and_arrives_as_it_was`). It is install-gated, so it reports a skip in the skip ledger when no install is named and is never counted as a pass; a second suite with documents of its own runs everywhere. No game content goes into the repository, a fixture or a document, and what was not measured stays raw and is reported as unmeasured.
+2. **The kind.** A `ModuleKind` variant with its folder and manifest in `or-project` (`container.rs`, `links.rs`, `template.rs`), the reload of the files a build wrote in `readers.rs`, and a crate in the shape of `or-addonped`: `model`, `layout`, `facts`, `metadata`, `rules` as data, `plan` as a `Contribution`, `verify`, `adopt` as a `Content` and a recogniser, then `import`, `edit` and a pure query where the kind has them. One line in `kinds` and one in `recognisers` of `or-content` register it, and `openrage-cli` verbs are one file. Build cells are not written: `cannot_ship` derives them from what the contribution hands over (`a_singleplayer_dlc_cell_is_derived_from_what_the_content_hands_over`), and a data source ships at the folder the row of the kind's task screen states.
+3. **The row.** One `TaskScreen` in `src/ui/task_screens.rs` (the workspace, the kind, the words and hovers, the empty state, the drop, the menu, the layout, the template it starts, where a data source ships and what is held), a `Workspace` variant listed in `ALL`, a `Template` variant (`src/state/front_door/template.rs`), the commands (`src/ui/commands/weapons.rs`, with its `Action`s in `src/ui/commands/table.rs`), the state (`src/state/workbench/weapons.rs`, which `Scan` reads with the rest), the panels registered in `src/ui/panels/registry.rs` and the drop target of `src/state/os_drop.rs`. No other place may name the kind: `no_site_matches_on_the_kind_of_a_task_screen` fails one that does, and the row appears in the strip, Content, Open in, the start page, the empty state and the Project menu with no line of its own. A screen over a workspace that already edits a kind of file (the Particle workspace) sets `edits_files` and takes no new `Workspace` variant: the workspace keeps its name, its arrangement and its place in a window with no project, and the row's layout is a second arrangement used while a project holds the content.
+4. **Every string, and its translations in the same wave.** Each sentence goes through `tr!`, `tr_n!` or `tr_key!` and has its entry in every catalog of `src/i18n/languages`, the French one with the no-break space before `:`, `;`, `?` and `!` and inside « and »; the sentences of the engine crate stay English ([Interface languages](#interface-languages)). `the_french_screens_clip_break_and_overflow_nothing_the_english_ones_do_not_at_the_smallest_window` draws the new screen in both languages, and it found a control that ran past the window in English too.
+5. **Every control, with a name a screen reader speaks.** A row in the control inventory of [Workbench_UX_Design.md](../direction/Workbench_UX_Design.md#control-inventory) for each control, found by a walk of the screen (`weapon_controls` in `every_control_of_the_project_screens_has_a_row_with_its_place_and_its_reason`).
+6. **The screens.** The record of the task screens is taken again and what changed is said (`the_task_screens_draw_as_they_did_before_the_table`), and `just shots` takes the screens at 1280 by 720 in both languages, since nobody opens a window.
+7. **The documents.** The crate's section and the layer row here, the screen and its inventory rows in the UX design, what the design draft asked in [Workbench_Views_Design.md](../direction/Workbench_Views_Design.md), and the crate's name in the workspace table of `AGENTS.md`.
+
+### Two address spaces for a selection
+
+`src/ui/panels/selection_ids.rs` names a place in the parsed model and survives
+an edit; `or_editor::PackPath` names a place in the file's bytes and survives
+the description changing. Neither replaces the other. `Document::mark_edited` drops a
+document's bytes at the first structural edit, deliberately, since drawing from
+stale bytes is worse than drawing nothing
+(`mark_edited_is_the_only_way_a_document_becomes_dirty`); most YPT selections
+address a tree the app mutates; and a dictionary selection (`dict_entry_id`) is
+keyed by name hash, which survives insertion. So only a description-derived outline
+row selects by `PackPath`. What a YPT selection should be is open.
+
+### Interface languages
+
+Every sentence a person reads in the app goes through the mechanism in
+`src/i18n/mod.rs`. The English text is the key, so English needs no catalog and
+a sentence nobody has translated reads in English. A language is a `.po` file
+of the part of gettext a translation needs: `msgid`, `msgid_plural`,
+`msgstr`, `msgstr[N]`, `#` comments, and a header entry with `Language-Name`
+and `Plural-Forms` (only `n != 1`, `n > 1` and the three forms of Russian are
+understood). Nine catalogs are built in (`BUILT_IN` in `src/i18n/mod.rs`, the
+files of `src/i18n/languages`), and the gates hold each complete; a file `CODE.po` in the `languages` folder of
+the configuration directory is laid over the built-in one of that code, or is
+a new language when no built-in has it, and is read once at launch
+(`a_file_of_the_folder_lies_over_the_built_in_catalog_and_a_new_code_is_a_new_language`).
+The Settings page, Appearance, Language, picks one or the system's, which is
+the default; `AppState::set_language` saves it, applies it from the next frame
+and refreshes what was said when it was read (the start page's cards). A test
+build's system language is English, and a test that draws text pins its own
+language with `crate::i18n::pin("en")` (a guard for its thread) so no other
+test sees it. Chinese, Japanese and Korean have no glyph in the fonts the
+program carries: `font_definitions` in `src/app/gpu.rs` adds the system's fonts
+for them last, the one of the language in use first, and a window restyles
+when the language changes.
+
+**How a new string is added.**
+
+1. Write the sentence in English with one of three macros, and nothing else
+   around it:
+   - `tr!("Add clothes…")` is a `&'static str`. With names it is a `String`:
+     `tr!("Built {ago}: {size}", ago = ago(at), size = size(n))`. A name is a
+     plain `{name}` of letters, digits and underscores, takes the value it is
+     given once, and is written in lower case (an upper case name does not
+     compile in the pattern the macro builds). `{{` and `}}` are the braces
+     themselves.
+   - `tr_n!("{count} file", "{count} files", n)` is a sentence that depends on
+     a number, with both forms in English and `{count}` standing for the
+     number. More names follow the number: `tr_n!("…", "…", n, folder = f)`.
+   - `tr_key!("Open")` is the literal itself, for a `const`, a `static` or a
+     table row (a command's label, a column's title) that cannot call a
+     function. It is translated where it is drawn: `crate::i18n::tr(label)`,
+     and a key drawn without `tr` stays English in every language
+     (`the_empty_wardrobe_and_the_level_of_detail_are_said_in_french`).
+2. Say the whole sentence. A sentence built from pieces (`format!` over a
+   translated noun, a plural made by appending `s`) cannot be put in another
+   language's order: give each sentence its own `tr!` or `tr_n!`, and let the
+   words a number counts be a `tr_n!` of their own
+   (`src/state/front_door/words.rs` has `counted`).
+3. Add the entry to every catalog of `src/i18n/languages`, sorted by its English
+   text, with the same names in braces under the same spelling, and one form
+   per form of the language's rule for a plural. The French catalog's words are in
+   [Interface_Languages.md](../guides/Interface_Languages.md#french).
+4. Run `cargo nextest run --bin openrage i18n::` (the gates below), then
+   `just ready`. Changing the English of a sentence changes its key, so the
+   entry follows it.
+5. Wrap every English word a sentence puts together, not only the sentence: the
+   fallback of an `unwrap_or("…")`, a noun a `format!` joins and a word a
+   `tr!` takes as an argument are each a `tr!`, or the French sentence holds
+   English in the middle of it. Nothing flags a literal that has no `tr!`, so
+   draw the screen in French once (`just shots` with a `language fr` step) before
+   a wave is done.
+6. Two places read the English and must not translate it. A text the code looks
+   for in what a library crate wrote (`plain` in
+   `src/ui/panels/import_report.rs`, which cuts the library's own words) is
+   matched as the library wrote it, never with `tr!`: a catalog entry for it
+   would change the text looked for and the cut would never match. A value the
+   preferences or a project file keeps names its choice by a key of its own
+   (`ThemeChoice::from_key` reads `Dark` and `Light`), never by a label, which
+   is in the language in use.
+
+**When the list of languages is read.** `AppState::new` reads the `languages`
+folder before the preferences (`read_the_languages` in `src/state/mod.rs`),
+because the first text any code asks for fixes the list of languages for the
+process. Code that asks for a text while the preferences or a project are read
+must come after that call
+(`a_language_file_in_the_folder_is_listed_by_a_launch_that_has_saved_preferences`
+runs a launch in a process of its own).
+
+**What stays English** because a person does not read it as a sentence of the
+app: ids and file names, format names and hashes, anything `tracing` logs, the
+developer tools (the renderer, the particle and animation editors), the
+sentences that a library crate returns (`or_wardrobe`'s and `or_weapons`'s rules and
+`or_project`'s build reports, which reach the screen as they were written),
+and a value a person typed. A `tr!` of such a text only adds an entry nobody
+translates.
+
+**What the gates check.** All of them are in the app's own suites, so
+`just ready` runs them.
+
+| Check | Fails when |
+|---|---|
+| `every_text_the_code_asks_for_is_in_every_built_in_catalog_and_every_entry_is_asked_for` | a text the code asks for has no entry in a built-in catalog, an entry has nothing in the code asking for it, an entry is empty or in the catalog twice, or a text is plural in the code and plain in the catalog (or the other way round) |
+| `a_translation_keeps_every_argument_of_its_text_under_its_own_name` | a translation of any built-in catalog drops, adds or renames a `{name}` of its English text; a form of a plural entry may take the names of either English form |
+| `every_built_in_catalog_names_itself_and_counts_in_a_rule_this_reader_knows` | a built-in catalog has no `Language-Name`, a `Plural-Forms` the reader does not know, an entry twice, or a plural entry without one form per form of its rule |
+| `every_character_a_built_in_catalog_writes_is_in_the_fonts` | a built-in catalog writes a character that draws as a box (Chinese, Japanese and Korean are checked on Windows only, where the system has their fonts) |
+| `a_text_with_a_name_in_braces_is_asked_for_with_the_value_of_the_name` | a `tr!` with braces and no arguments |
+| `a_text_no_catalog_has_is_shown_in_english_and_the_log_says_so_once` | a text with no entry is not shown in English, or is logged each time it is drawn |
+| `every_noun_a_count_is_said_of_has_its_own_words` | a noun that a number counts has no words of its own (`counted`) |
+| `the_french_screens_clip_break_and_overflow_nothing_the_english_ones_do_not_at_the_smallest_window` | the Project workspace, the Wardrobe, the start page or the New project dialog (its gallery and the details of each template, opened on their own, since `Action::NewProject` is the Close all command) at 1280×720 has, in French, an ellipsis, a word broken in two, a text the edge of its panel cuts off or a control past the side of the window that English has not, or a dialog screen is not drawn at all |
+| `a_language_file_in_the_folder_is_listed_by_a_launch_that_has_saved_preferences` | a launch that has saved preferences does not list a language file of the `languages` folder |
+| `a_saved_theme_reads_back_whatever_language_is_in_use` | a preference is read back by a label in the language in use |
+| `a_reason_is_put_plain_in_french_as_it_is_in_english` | the import report's reason keeps its jargon in French |
+| `the_empty_wardrobe_and_the_level_of_detail_are_said_in_french` | the empty Wardrobe's drop sentence or the Level of detail combo stays English in French |
+| `switching_to_french_redraws_the_project_the_wardrobe_the_menus_and_the_palette_at_once` | a switch of the setting leaves English on screen |
+
+The scan that finds the calls (`src/i18n/used.rs`) reads every `.rs` file under
+`src/` as the compiler reads a literal, tests included, so a sentence a test
+asks for needs its entry too. The macros check at compile time that a text and
+its names agree. The control inventory and the figure gates
+(`src/ui/the_task_screens_draw_as_they_did_before_the_table.rs` among them)
+pin English, so a language never changes what they read.
+
+When a French sentence is too long for a control, shorten the French, not the
+English: the layout test above names the text, and `just shots SCRIPT DIR` with
+a `language fr` step shows it ([screenshots](../guides/Development_Workflow.md#screenshots)).
+A menu is as wide as its widest row in every language but English
+(`room_for_the_words_of_the_language`, `src/ui/mod.rs`).
+
+## The src/ code-line gate
+
+What the app crate's own suites hold about its size and shape:
+`src/shell_budget.rs`, `src/suppressions.rs` and `src/state/tests.rs`, each a
+`#[cfg(test)]` module run by `cargo test --bin openrage`.
+
+### No file in src/ is over 900 code lines
+
+A code line is one that is not a comment, a doc comment, blank, or inside a
+`#[cfg(test)]` item (`no_file_in_src_exceeds_the_code_line_gate`). A file that
+should not be split goes in the gate's `DECIDED` list with its reason; the one
+entry is `ui/panels/text_editor/mod.rs`, whose virtualized paint-and-input loop
+costs more split than whole. A file over the line and due to be split goes in
+`NOT_YET_SPLIT`, pinned to its own count; that list is empty, and an entry that
+stops breaching has to leave (`the_not_yet_split_list_shrinks_and_never_lies`).
+
+The gate counts code because a raw-line gate points backwards. It would split
+`src/state/capabilities.rs`, mostly documentation and tests, and pass
+`src/ui/panels/inspector/ypt.rs` and `src/ui/panels/hierarchy/ypt/mod.rs`,
+almost all code and untested: it taxes documentation and tests and rewards a
+file for having neither. `src/state/kinds.rs` was the second example until its
+one table row per document kind outgrew its notes.
+`the_gate_reproduces_the_arguments_shape` asserts that shape rather than a
+figure: `src/state/capabilities.rs` stays mostly not code, the YPT panels mostly code,
+`src/state/capabilities.rs` is over the line raw and under it in code, and
+something in `src/` still exceeds it in code.
+
+Pins do not ratchet down automatically, because a gate that fails for a reason
+the committer did not cause teaches people to raise the number; a pin is
+lowered in the commit that earns it.
+`cargo test --bin openrage shell_budget::report -- --ignored --nocapture`
+prints the largest files beside their budgets; splitting redistributes code, so
+the crate's total measures nothing.
+
+### Every .rs file in src/ is declared by a module
+
+A file no `mod` declares is compiled and tested by nothing, and still looks like
+part of the tree. `every_rs_file_in_src_is_declared_by_a_module` follows the
+`mod` declarations from `src/main.rs` and `src/cli_main.rs` as rustc does,
+`#[path]` included, and fails on a file under `src/` that none reaches. It reads
+a declaration only at column 0, where rustfmt leaves one, so a `mod name;`
+indented inside an inline module is not followed.
+
+### AppState holds application state; no panel reserves a field on it
+
+`no_panel_reserves_a_field_on_app_state` fails on an `AppState` field whose
+type is declared under `src/ui/`; application state that is spelled in the UI
+layer is listed in `UI_TYPED_BY_DESIGN` with its reason, and panel state goes in
+the `PanelStore`. The gate keys on the type, so it cannot see a primitive
+field: it finds a panel's surface, not every field of it.
+
+### Suppressions name their reason
+
+- No module-level `allow(dead_code)` in `src/`, whatever its reason: a blanket
+  over a subtree hides what is really dead beside what only looks dead, such as
+  the plugin API's seams
+  (`a_module_level_suppression_is_the_one_that_has_to_argue_for_itself`).
+- A suppression of a lint about unused surface (`dead_code`, the `unused_*`
+  lints) carries a reason: a comment on the line above, or an `expect` with a
+  `reason`, which the compiler retires once the lint stops firing
+  (`a_suppression_that_hides_unused_surface_says_why`). An `expect` cannot
+  serve a registration seam, which is dead in the bin build and live in the
+  test build.
+- A `clippy::too_many_arguments` suppression needs no sentence and must sit on
+  a function (`a_too_many_arguments_suppression_sits_on_a_function`); nothing in
+  `src/` suppresses a deprecation (`no_file_in_src_suppresses_a_deprecation`).
+  When adding a suppression, name the item and what retires it.
+- The registration seams (`capabilities::register`, `kinds::register`,
+  `payload_handlers::register`) are called by nothing in-tree by definition, so a
+  mechanical dead-code sweep deletes the plugin API; `panel_registry::register`
+  has a caller, the panels a plugin that stays loaded adds. A sweep intersects what `cargo check -p openrage --bins` and
+  `--tests` report dead, and still misses a field read only through a derived
+  `Debug` and a live call graph nobody feeds data into.
+
+Splits the gate does not require are [R13](../direction/Roadmap.md#r13-step-5-shrink-the-shell)'s.
+
+## Gen8 and Gen9: Enhanced is a separate target
+
+Code and documents say Gen8 and Gen9 for a resource's target, with a `G8` or
+`G9` suffix on a type; anything a user reads says Legacy and Enhanced, through
+`Generation::edition_label()`. An Enhanced install ships Gen8 resources, so a
+layout comes from the file's own RSC7 version
+(`ResourceType::generation_of_version`), never the install. `Generation`
+(`crates/io/or-io/src/generation.rs`) is an open newtype over a target id. The
+rules carry into `or-io` ([Gen8 and Gen9](../direction/OR_IO_Specification.md#gen8-and-gen9)).
+
+- A type whose field set Gen9 changed keeps a `G9` type: the vertex buffer, the
+  index buffer, the texture and the shader. Every other type both carry is
+  described identically.
+- A type that differs only in what it points at takes a target parameter,
+  `GtaDrawable<Gen9>`, with no `G9` alias.
+  A Gen8 type never holds Gen9 data: a struct with per-target field presence
+  was built and reverted because it let a Legacy document carry Enhanced data.
+- `.ytd`, `.ydr`, `.ydd`, `.yft` and `.ypt` open and save as Enhanced as the
+  owned Gen9 roots `or_io::Asset` names (`DrawableGen9` and its siblings),
+  with no pack, in the one `DocPayload::Resource` payload
+  (`every_enhanced_row_opens_and_saves_with_no_pack`).
+- A generic write defaults to Gen8, and the Gen9 writers name their target
+  (`gen9_registration_does_not_change_the_write_version`). Two defaults are
+  still guesses: `parse_payload` reads a version it cannot place as Gen8, and
+  `PayloadRegistry::get` falls back to a format's Gen8 handler.
+
+An Enhanced drawable frames the camera, draws a wireframe
+(`an_enhanced_drawable_draws_a_wireframe`) and its mesh through the walk the
+Legacy one takes, browses its textures, outlines through
+`section_drawable_tree` and inspects through
+`src/ui/panels/inspector/gen9.rs`. Every path the viewer runs takes both
+targets (`every_viewer_path_that_matches_a_legacy_asset_handles_its_enhanced_twin`):
+Material mode finds an Enhanced file's embedded textures, the Animation
+workspace offers its meshes and skeletons, and the gallery lists an Enhanced
+`.ypt`'s models, the one selected drawing and framing. The panels around the
+viewer take both targets too
+(`an_enhanced_particle_file_fills_the_outline_as_a_legacy_one_does`): an
+Enhanced `.yft` and `.ypt` list their textures, and an Enhanced `.ypt` has its
+outline, status-bar summary, Inspector and timeline, each reading the list
+through `ParticleTarget` in `src/state/particle_target.rs`. An Enhanced `.ypt`
+is not simulated, and the material lookup by name has no Enhanced row, because
+an Enhanced shader names its effect by a numeric preset.
+
+⚠ A round trip cannot see a coherent wrong description, because it reads and
+writes through the one description: a Gen9 description whose fields move
+together stayed green through a round trip, and a swap of two same-sized
+fields left every Enhanced `.ydr` opening unless something dereferenced them.
+The recorded testimony sees both. The layouts are the local
+[Gen9_Resource_Layouts_Specification.md](../extra/Gen9_Resource_Layouts_Specification.md).
+
+## Adding a title
+
+A title costs two things, and `crates/title/or-title/tests/adding_a_title.rs`
+proves it with a synthetic title declared and registered inside the test: one
+`impl GameProfile`, whose required methods are all facts about the title (the
+file stops compiling if the trait gains another), and one registry line, placed
+by how specific its install marker is. Detection, executable lookup, mount
+layout, DLC policy, support status, store discovery, the keys-cache filename
+and the picker's artwork follow from those. No pack is loaded for a title
+(OD-OTHER-TITLES, P63, #335): a title on GTA V's target reads GTA V's
+declarations, and one with its own target reads nothing until its formats are
+declared.
+
+- Registry order is load-bearing: a title with a loose install marker asked
+  first claims installs that are not its own, and an Enhanced install ships
+  `GTA5.exe`. A registered title is asked after the builtins
+  (`registering_a_title_does_not_reorder_detection`).
+- `Game` is a handle over a `GameId` string, not an enum; `Game::GtaVLegacy`
+  and its siblings are associated constants, and `prefs.json` still loads the
+  enum names it once stored.
+- `is_supported()` derives from the container family, so a title whose
+  container is unimplemented is greyed out with its reason.
+- A title, a target and an edition are three things, and a title declares its
+  own targets, as RDR2 declares `Generation::from_id("rdr2")`. A title that
+  declares `Generation::Gen8` reads "Legacy" wherever a user sees its target.
+- A title is not yet a data manifest, because Enhanced names `GTA5.exe` for
+  key extraction and refuses it for detection
+  (`one_shipped_title_needs_behaviour_and_the_rest_are_data`).
+
+RDR2 is declared, discovered and unsupported until a second container exists;
+[R56](../direction/Roadmap.md#r56-rdr2-the-second-container) is its plan.
+
+## The container seam
+
+Where a second container would plug in; RSC7 and RPF7 are the only
+implementations, and a joint exists only where a second consumer does.
+
+### The resource envelope
+
+`ResourceEnvelope` (`crates/io/or-io/src/container/resource/envelope.rs`) is
+`detect`, `peek`, `open` and `reseal` with an opaque `Seal`; `Rsc7` is the one
+implementation. `Opened` carries the payload (the virtual half, then the
+physical), both sizes, the version and the seal.
+
+- ⚠ An envelope is defined by the round trip, not the read: whatever the format
+  preserves has to survive `open` → `reseal`, so `Rsc7Seal` reproduces its
+  header and has no public field-by-field constructor. RBM's byte-identity gate
+  is the only thing that would notice otherwise.
+- `Rsc7::author` invents a header for a new file; `reseal` reproduces one, and
+  only that can be byte-identical. `reseal` refuses a payload whose length the
+  seal does not describe. `Rsc7::header_from_entry_flags` rebuilds the
+  header an RPF7 entry stripped from the flag words it kept.
+- The magic is `pub(super)` in `resource/`, and nothing outside names the old
+  header reader and writer. The header is also declared for `or-io` as the
+  public `DatResourceFileHeader`.
+- DEFLATE stays outside the envelope because RPF7 inflates entries that are not
+  resources, and
+  the envelope stays usable with no paging context because RBM carries metadata
+  in RSC7.
+
+### The paging model
+
+`PagingModel` (`crates/io/or-io/src/desc/image.rs`) is two bases and an offset
+mask. Both readers, `DatResource` and `Image`, carry one
+(`a_resource_with_other_bases_reads_through_both_readers`), and
+`ResourceHeap::with_paging` takes one for writing
+(`crates/io/or-io/tests/a_second_paging_model_on_the_write_half.rs`), where
+`virtual_address` invents an address and `virtual_offset_of` inverts it. Within
+`paging/` only the heap invents an address that reaches a file
+(`only_the_heap_invents_an_address_that_reaches_a_file`); `or-io`'s `decl` and
+`gta5::formats` still subtract the named base by hand. The test model widens the
+mask as well as moving the bases, because code hard-coding the top nibble passes
+a test that only moves them. The pointer width is parameterised nowhere.
+
+### The heap and the packer
+
+`ResourceHeap` (`crates/io/or-io/src/container/paging/heap.rs`) appends to a
+virtual and a physical heap and records fixups; `PgRscBuilder` adds the RSC7
+bucket packer. The canonical writer takes a `ResourceHeap`, so reaching the
+packer from it does not compile (`nothing_here_reaches_the_bucket_packer`).
+RSC7 stores no fixup table, since the game walks types to rebase pointers; the
+fixups are kept for an envelope that does. The write half is
+concrete types, not traits: a trait with one implementation is a guess, and
+promoting one later is mechanical, while the read seams keep traits because
+they have a second consumer.
+
+### The archive and the version registry
+
+`RpfCryptoProvider` is the only trait on that side: a new title brings keys, a
+new archive generation brings a layout, and those are different events. A
+generation is a value of `RpfVersion` and its table a module under
+`container/rpf/layout/`: `classic.rs` for RPF0, RPF2, RPF3 and RPF4, `rpf6.rs`,
+`rpf8.rs` and `img.rs` for IMG1 to IMG3. RPF7's header and entry table stay
+declared (`FiPackHeader`, `FiPackEntry`); the others are ordinary code, because
+a declaration follows the GTA source and these are other titles'. No archive
+trait was added: every layout reads into the entries and names RPF7 already
+reads into, so a hash that has no text is spelled `hash_XXXXXXXX` and nothing
+above the reader sees the difference. A table with no directories (RPF8, the
+images) gets a root directory at entry 0.
+
+`RpfArchive::open` and `from_bytes` find the version from the first four
+bytes (an IMG1 has none: its `.img` opens beside its `.dir`), and their `_with`
+forms take the keys of an encrypted one, which the archive keeps, so no read or
+nested open asks for them again. `edit` hands back an `RpfBuilder` holding every
+file, laid out and encrypted as it was and read only when the builder writes;
+`insert`, `remove` and `rename` change it by path and `save` replaces the file
+only once all of it is written, so an archive is saved over itself safely. The
+builder keeps paths, not a table: the table is laid out from the sorted paths
+at save, so the same files give the same archive whatever order they were added
+in, and adding to a path replaces what was there. `insert_stored` carries a body
+exactly as its entry stores it, which is how an RPF8 holding Oodle is rebuilt
+without decoding it, and the only way a resource before RPF7 is written: its
+header is not one this crate can author from a file. `edit` carries every body
+as stored in every version but RPF7, and `Defrag` is `edit` with a size preview.
+`RpfEntryTag::of` is the one decoder of RPF7's entry
+bitfield, so NG key recovery cannot misread it and report every key wrong;
+`hide_big_resource_size` and `read_big_resource_size` are the one rule for a
+resource too big for the entry's size field. The key code under
+`container/rpf/crypto` is title work and moves with nothing else.
+
+A table, or a body, the title enciphers (RPF2 to RPF6 and IMG3 with a header
+tag, RPF8 with a key id other than `0xFF`) is `RpfEncryption::Tagged` and is
+refused by name until a provider holds that title's key; the GTA V provider
+refuses it too, where `Other` would have been taken for an NG mode. An RPF8
+table in the clear opens and writes without one.
+
+`VersionRegistry` is keyed by `(TitleId, ResourceType)` and ships one title,
+`GTA5` (`the_shipped_registry_holds_exactly_one_title`); a second title adds
+rows (`a_second_title_is_a_register_call`), and an openable title must have a
+table (`every_openable_title_has_a_version_table`). `ResourceType` is still GTA
+V's enum, so a second title's format list is an edit to `or-io`.
+
+### What a second container costs
+
+| Concern | Seam | What it pays |
+|---|---|---|
+| Paging, read and write | `PagingModel` | nothing, if it keeps RAGE's two bases and the virtual-then-physical payload |
+| Page packing | the heap and packer split | its own `allocator.rs` and `chunk_map.rs` |
+| Resource envelope | `ResourceEnvelope` | an implementation, and call sites that name `Rsc7` directly |
+| Archive | `RpfVersion` | a layout module, and nothing above it: the generations to RPF8 and the images are written |
+| Keys | `RpfCryptoProvider` | a provider for its keys |
+| Version numbers | the title-keyed registry | a row per format |
+| Pointer width | none | a fork of the paging layer |
+
+Whether RSC8 keeps RAGE's bases cannot be settled by reading, and no RSC8 file
+exists here.

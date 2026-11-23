@@ -1,0 +1,117 @@
+[package]
+name = "or-io"
+description = "Reads, edits and writes GTA V's file formats: RSC7 resources, RPF7 archives, and the declarations that describe them"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+or-io-macros.workspace = true
+
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+byteorder.workspace = true
+# The on-disk keys cache and the metadata schema snapshot are `bincode`;
+# `crypto` and `meta` turn it on.
+bincode = { workspace = true, optional = true }
+
+# RSC7 payloads are raw DEFLATE.
+flate2.workspace = true
+
+# The shader definition database and the shader pack manifest are JSON.
+serde_json.workspace = true
+
+# An RPF6 body may be zstd where the others are deflate; decode only, pure Rust.
+ruzstd = { version = "0.8", optional = true }
+
+# RDR2 bodies are Oodle Kraken. A pure-Rust port of the ooz decoder, so `oodle` still builds for
+# wasm32; decode only, because no open Oodle encoder exists.
+or-kraken = { workspace = true, optional = true }
+
+# RPF7 retail crypto and key extraction: AES for the archive, SHA-1 for the
+# key derivation and a writer's fingerprint, mmap to scan the executable
+# without reading it whole.
+aes = { workspace = true, optional = true }
+sha1 = { workspace = true, optional = true }
+memmap2 = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+
+quick-xml = { version = "0.38", features = ["serialize"], optional = true }
+
+# Enhanced `.awc` streams are MP3. A pure-Rust port of minimp3, so `awc`
+# still builds for wasm32.
+nanomp3 = { version = "0.2", optional = true }
+# Replacing one encodes MP3 again: a pure-Rust Apache-2.0 encoder, so `awc`
+# still builds for wasm32.
+rusty_mp3 = { version = "1", optional = true }
+
+# BCn decode. Chosen over texture2ddecoder for BC1-BC7 because it honours the
+# S3TC rule that BC2/BC3 colour blocks are always 4-colour (`only_opaque`),
+# which texture2ddecoder gets wrong, and because `bc6h_float` gives real HDR
+# rather than a clamped tone-map.
+bcdec_rs = "0.2"
+# ETC2 and EAC, which bcdec_rs does not implement; also the independent test
+# oracle for BC1, BC4, BC5 and BC7.
+texture2ddecoder = "0.1"
+# PNG in and out. Mips are resampled by `codec::texture::mipmap` instead,
+# because they are filtered in linear premultiplied space and must stay
+# bit-reproducible across machines. `authoring` adds the import formats.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# BC1-BC5 encode: a pure-Rust libsquish port, deterministic under rayon
+# because each block writes a disjoint range.
+texpresso = { version = "2.0.2", features = ["rayon"], optional = true }
+# BC7 encode through Intel's ISPC kernels: the one native link, shipped
+# prebuilt, so no ISPC install is needed.
+intel_tex_2 = { version = "0.5", optional = true }
+
+[features]
+default = ["gta5", "gen9", "archives", "crypto", "bundled-keys", "dds", "oodle"]
+# GTA V's declarations; `gen9` adds the Enhanced target's.
+gta5 = []
+gen9 = ["gta5"]
+# Every RPF and IMG version, with no key: an archive that needs one is refused.
+archives = ["dep:ruzstd"]
+# Decodes an Oodle-compressed RPF8 body.
+oodle = ["archives", "dep:or-kraken"]
+# Key extraction from the user's executable and `magic.dat`, and retail
+# decryption. Ships no key material.
+crypto = ["archives", "dep:aes", "dep:sha1", "bincode"]
+# CodeWalker's key snapshot (D18). Masked with the game's AES key, so it opens
+# nothing without the user's own executable.
+bundled-keys = ["crypto"]
+dds = []
+# `.fxc` effects, and assembling the shader definition database from them.
+fxc = ["gta5"]
+# `.awc` audio, whose key is extracted with the others.
+awc = ["crypto", "dep:nanomp3", "dep:rusty_mp3"]
+# `.gfx` Scaleform movies, and the SWF they export to.
+gfx = []
+# `.rel` audio metadata containers.
+rel = []
+# GTA VI's formats, read, its `.ttpf` texture packs, written, and the scan of
+# its RPF9 archives that finds them.
+gta6 = ["archives"]
+# Without these the executable is read whole, and the key scan and the NG
+# encrypt derivation run on one thread.
+mmap = ["dep:memmap2"]
+rayon = ["dep:rayon"]
+# PSO, RBM and RBF0 metadata and its XML; a schema snapshot is `bincode`.
+meta = ["dep:quick-xml", "bincode"]
+# BCn encode, mip chains for encoding, and image import (JPEG, BMP, TGA, TIFF, Radiance HDR, OpenEXR, DDS, and a PSD read here).
+authoring = ["dds", "dep:texpresso", "image/jpeg", "image/bmp", "image/tga", "image/tiff", "image/hdr", "image/exr"]
+# BC7 encode, off by default because it is the only native link.
+bc7-encode = ["authoring", "dep:intel_tex_2"]
+
+[dev-dependencies]
+or-test-support.workspace = true
+# Scratch folders the tests remove when they end, a failed test's too.
+tempfile.workspace = true
+# The suites also cover what the default leaves off.
+# ⚠ Only features something else in the workspace also enables: one only this
+# line turns on makes `cargo test --workspace` build `or-io` and everything
+# above it differently from `cargo test --bin openrage`.
+or-io = { path = ".", features = ["authoring", "awc", "fxc", "gfx", "gta6", "meta", "mmap", "rayon", "rel"] }

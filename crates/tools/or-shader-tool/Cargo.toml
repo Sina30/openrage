@@ -1,0 +1,63 @@
+[package]
+name = "or-shader-tool"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Build-time tool that translates GTA V .fxc shaders into a pack of SPIR-V modules"
+
+[lib]
+name = "or_shader_tool"
+path = "src/lib.rs"
+
+[[bin]]
+name = "or-shader-tool"
+path = "src/main.rs"
+
+[features]
+default = []
+# Translate DXBC with the vendored C++ translator: the `translate-check` command. Off, the tool has no C++ in its build.
+native-front = ["dep:or-shader-front", "or-shader-front/native", "dep:or-renderer"]
+# Build a pipeline from each module on a real GPU device, which runs the platform's own shader compiler: `--device`.
+device-check = ["dep:wgpu", "dep:pollster", "dep:or-renderer"]
+# Draw a drawable of an install with a pack's passes into a picture: `render-drawable`.
+render-drawable = ["device-check", "dep:or-cli", "dep:or-interchange", "dep:image"]
+# Reach the Vulkan loader on macOS (MoltenVK), so the Vulkan route runs on this machine: `WGPU_BACKEND=vulkan`.
+vulkan-portability = ["device-check", "wgpu/vulkan-portability"]
+
+[dependencies]
+or-shader-front = { workspace = true, optional = true }
+# The pipeline a pass builds into, which the renderer will build the same way: linking the stages, the vertex layout and the colour targets.
+or-renderer = { workspace = true, optional = true }
+# The scene a drawable file extracts to, which `mesh export` writes as glTF.
+or-cli = { workspace = true, optional = true }
+or-interchange = { workspace = true, optional = true }
+# A texture's PNG back to pixels, and the picture written.
+image = { workspace = true, optional = true }
+wgpu = { workspace = true, features = ["naga-ir"], optional = true }
+pollster = { workspace = true, optional = true }
+# It finds `.fxc` archives inside a game install.
+or-title.workspace = true
+or-io = { workspace = true, features = ["fxc"] }
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Pure-Rust SPIR-V to WGSL translation. Same `naga` wgpu uses internally.
+# `wgsl-in` is what `validate_wgsl` re-parses the baked output with, so
+# the baker rejects exactly what `Device::create_shader_module` would.
+naga = { workspace = true, features = ["spv-in", "spv-out", "wgsl-in", "wgsl-out", "msl-out", "hlsl-out"] }
+
+# SHA1 of source DXBC bytes -> stable cache keys. Already in the workspace
+# graph for RPF crypto; reused here for the per-shader manifest hash.
+sha1.workspace = true
+
+
+[dev-dependencies]
+tempfile = "3"
+# Fixture discovery for the `.fxc` corpus, shared with every other suite.
+or-test-support.workspace = true

@@ -1,0 +1,615 @@
+//! GTA VI's textures in the app: a `.ttpf` opened as its directory, a texture read from the file
+//! only when it is shown and replaced from an image, the pack saved through a file beside it; and a scanned
+//! texture dictionary, read-only. Each shows as Legacy textures so the `.ytd` preview and export
+//! take them.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use or_io::authoring::TextureBuildOptions;
+use or_io::codec::texture::{GrcTextureFormat, RgbaImage};
+use or_io::gta5::gen8::GrcTexture;
+use or_io::gta5::shared::PgDictionary;
+use or_io::gta6::hash::name_hash64;
+use or_io::gta6::headerless::{Dictionary, DictionaryTexture, Entry, Resource};
+use or_io::gta6::texture_names::name_keys;
+use or_io::gta6::TexturePack;
+
+use super::document::{DocPayload, Document};
+use super::edit_history::Change;
+use super::texture_edit::TextureEdit;
+use super::textures::{self, Texture, TextureSource};
+
+/// Names whose 64-bit hash may key a pack's texture: each texture dictionary's the app has read,
+/// each one the user typed that a pack's key matched, and each the naming rules gave for a key.
+// ponytail: one list for the whole app, which no view empties.
+static NAMES: Mutex<BTreeMap<u64, String>> = Mutex::new(BTreeMap::new());
+
+fn names() -> std::sync::MutexGuard<'static, BTreeMap<u64, String>> {
+    NAMES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The name the app has learned for a texture key, if any.
+pub(crate) fn known_name(key: u64) -> Option<String> {
+    names().get(&key).cloned()
+}
+
+/// How many texture names the app has learned.
+pub(crate) fn names_known() -> usize {
+    names().len()
+}
+
+pub struct TtpfDocument {
+    pub pack: TexturePack,
+    /// The texture each key on disk keys.
+    keys: HashMap<u64, usize>,
+    read: Mutex<Read>,
+}
+
+/// What reading has found, so a frame that asks again reads nothing from disk.
+#[derive(Default)]
+struct Read {
+    refused: HashMap<usize, String>,
+    // ponytail: one texture slice held; an LRU if a gallery's tiles and the preview thrash it.
+    last: Option<((usize, u32), Arc<GrcTexture>)>,
+    /// The slice of a cube, an array or a volume that is shown, where it is not the first.
+    shown: HashMap<usize, u32>,
+}
+
+impl TtpfDocument {
+    /// Reads the pack's header, table and directory, and no body.
+    pub fn open(path: &std::path::Path) -> Result<Self, String> {
+        let pack = TexturePack::open(path).map_err(|e| e.to_string())?;
+        let keys = (pack.entries.iter().enumerate())
+            .filter(|(_, e)| e.on_disk && e.key != 0)
+            .map(|(index, e)| (e.key, index))
+            .collect();
+        Ok(Self {
+            pack,
+            keys,
+            read: Mutex::default(),
+        })
+    }
+
+    /// Texture `index`'s name where a known one hashes to its key, else `hash_` and the key, or `#` and the index without one.
+    pub fn name(&self, index: usize) -> String {
+        let Some(entry) = (self.pack.entries.get(index)).filter(|e| e.on_disk && e.key != 0) else {
+            return format!("#{index}");
+        };
+        let known = names().get(&entry.key).cloned();
+        known.unwrap_or_else(|| format!("hash_{:016X}", entry.key))
+    }
+
+    /// The texture [`Self::name`] names, or whose key a name of the user's hashes to.
+    pub fn index_of(&self, name: &str) -> Option<usize> {
+        if let Some(index) = name.strip_prefix('#') {
+            return index.parse().ok();
+        }
+        let key = match name.strip_prefix("hash_") {
+            Some(hex) => u64::from_str_radix(hex, 16).ok()?,
+            None => name_hash64(name.as_bytes()),
+        };
+        self.keys.get(&key).copied()
+    }
+
+    /// The texture `name` keys, which is then shown by that name; `None` when it keys none here.
+    pub fn learn(&self, name: &str) -> Option<usize> {
+        let key = name_hash64(name.as_bytes());
+        let index = self.keys.get(&key).copied()?;
+        names().insert(key, name.to_string());
+        Some(index)
+    }
+
+    /// Why texture `index` is not shown, from what the table says or a read that failed.
+    pub fn refusal(&self, index: usize) -> Option<String> {
+        let known = self.lock().refused.get(&index).cloned();
+        known.or_else(|| self.pack.check(index).err().map(|e| e.to_string()))
+    }
+
+    /// The slices texture `index` is shown one at a time in: a cube's six faces, an array's or a volume's slices; 1 for any other.
+    pub fn slices(&self, index: usize) -> u32 {
+        self.pack.entries.get(index).map_or(1, |e| e.slices.into())
+    }
+
+    /// Shows slice `slice` of texture `index` wherever it is asked for from now on.
+    pub fn show_slice(&self, index: usize, slice: u32) {
+        self.lock().shown.insert(index, slice);
+    }
+
+    /// The slice of texture `index` shown, which a replacement takes: 0 until another is shown.
+    pub fn shown_slice(&self, index: usize) -> u32 {
+        let shown = self.lock().shown.get(&index).copied().unwrap_or(0);
+        shown.min(self.slices(index) - 1)
+    }
+
+    /// Texture `index`'s slice shown, read from the file the first time it is asked for.
+    pub fn texture(&self, index: usize) -> Result<Arc<GrcTexture>, String> {
+        let mut read = self.lock();
+        let shown = read.shown.get(&index).copied().unwrap_or(0);
+        let at = (index, shown.min(self.slices(index) - 1));
+        if let Some((_, texture)) = read.last.as_ref().filter(|(shown, _)| *shown == at) {
+            return Ok(texture.clone());
+        }
+        if let Some(why) = read.refused.get(&index) {
+            return Err(why.clone());
+        }
+        match self
+            .pack
+            .texture(index)
+            .map_err(|e| e.to_string())
+            .and_then(|t| grc(self.name(index), t.face(at.1).unwrap_or(t)))
+        {
+            Ok(texture) => {
+                let texture = Arc::new(texture);
+                read.last = Some((at, texture.clone()));
+                Ok(texture)
+            }
+            Err(why) => {
+                read.refused.insert(index, why.clone());
+                Err(why)
+            }
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Read> {
+        self.read
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The pack as a save writes it: every row it leaves alone as the file stores it.
+    pub fn save(&self) -> Result<Vec<u8>, String> {
+        let mut bytes = Vec::new();
+        self.pack.save_to(&mut bytes).map_err(|e| e.to_string())?;
+        Ok(bytes)
+    }
+}
+
+/// The same pack with nothing read yet, so an edit of one copy shows nothing stale in the other.
+impl Clone for TtpfDocument {
+    fn clone(&self) -> Self {
+        Self {
+            pack: self.pack.clone(),
+            keys: self.keys.clone(),
+            read: Mutex::default(),
+        }
+    }
+}
+
+/// The pack's document, which an edit changes, with what it has read forgotten.
+fn edited(payload: &mut DocPayload) -> Option<&mut TtpfDocument> {
+    let DocPayload::Ttpf(ttpf) = payload else {
+        return None;
+    };
+    let ttpf = Arc::make_mut(ttpf);
+    ttpf.read = Mutex::default();
+    Some(ttpf)
+}
+
+/// The label and step that undo an edit, and what it changed.
+type Replaced = ((String, Change), TextureEdit);
+
+/// Texture `name` of the pack `payload` is, replaced from `image`: the step that undoes it and what changed; `None` for any other document.
+pub(super) fn replace(
+    payload: &mut DocPayload,
+    name: &str,
+    image: &RgbaImage,
+    options: &TextureBuildOptions,
+) -> Option<Result<Replaced, String>> {
+    // A cube's, an array's or a volume's shown slice is replaced alone; an edit forgets it.
+    let shown = match &*payload {
+        DocPayload::Ttpf(ttpf) => ttpf.index_of(name).map(|index| ttpf.shown_slice(index)),
+        _ => None,
+    };
+    let ttpf = edited(payload)?;
+    let Some(index) = ttpf.index_of(name) else {
+        return Some(Err(tr!("{name} is not in this pack", name = name)));
+    };
+    let before = ttpf.pack.replaced_mut().clone();
+    let slice = shown.unwrap_or(0);
+    let mips = match ttpf.pack.replace_slice(index, slice, image, options) {
+        Ok(mips) => mips,
+        Err(e) => return Some(Err(e.to_string())),
+    };
+    let format = (ttpf.pack.entries[index].format()).map_or(GrcTextureFormat::None, |f| f.format());
+    let change = Change::part(format!("texture {name}"), before, |payload| {
+        Some(edited(payload)?.pack.replaced_mut())
+    });
+    let edit = TextureEdit::Imported {
+        name: name.to_string(),
+        format,
+        mips,
+        replaced: true,
+    };
+    Some(Ok(((tr!("Replace {name}", name = name), change), edit)))
+}
+
+/// A writer that fails once `cancel` is set, so a save stops between two writes.
+struct Stoppable<'a, W> {
+    out: W,
+    cancel: &'a or_job::Cancel,
+}
+
+impl<W: std::io::Write> std::io::Write for Stoppable<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.cancel.is_set() {
+            return Err(std::io::Error::other("stopped"));
+        }
+        self.out.write(bytes)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.out.flush()
+    }
+}
+
+/// The save of `ttpf` to `path`: its rows streamed, the ones it leaves alone from the file it was
+/// opened from, into a file beside `path` that is renamed over it once whole.
+pub(super) fn saved(
+    ttpf: &TtpfDocument,
+    path: &Path,
+    cancel: &or_job::Cancel,
+    doc_id: super::DocumentId,
+    at: u64,
+) -> super::SaveResult {
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(".tmp");
+    let temp = PathBuf::from(temp);
+    let written = std::fs::File::create(&temp)
+        .map_err(|e| e.to_string())
+        .and_then(|file| {
+            let file = std::io::BufWriter::new(file);
+            let mut out = Stoppable { out: file, cancel };
+            ttpf.pack.save_to(&mut out).map_err(|e| e.to_string())?;
+            std::io::Write::flush(&mut out).map_err(|e| e.to_string())
+        });
+    let written = written.and_then(|()| {
+        if cancel.is_set() {
+            return Err(String::new());
+        }
+        std::fs::rename(&temp, path).map_err(|e| e.to_string())
+    });
+    match written {
+        Ok(()) => super::SaveResult::Success {
+            doc_id,
+            path: path.to_path_buf(),
+            at,
+        },
+        Err(_) if cancel.is_set() => {
+            let _ = std::fs::remove_file(&temp);
+            super::SaveResult::Stopped
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp);
+            super::SaveResult::Error {
+                message: tr!("Write error: {e}", e = e),
+            }
+        }
+    }
+}
+
+impl super::AppState {
+    /// Read a pack again from the file it was saved to, whose rows have moved; another tab on that
+    /// file with unsaved edits asks first.
+    pub(super) fn reread_saved_pack(&mut self, doc_id: super::DocumentId, path: &Path) {
+        let pack =
+            (self.document(doc_id)).is_some_and(|d| matches!(d.payload, DocPayload::Ttpf(_)));
+        if pack {
+            if let Err(why) = self.reload_open_file_where(path, |id| id == doc_id) {
+                self.set_error(tr!("Could not read the saved pack again"), why);
+            }
+        }
+    }
+}
+
+/// The names a scanned body states a drawable by: its own, its fragment's, its dictionary's drawables'.
+pub(super) fn stated_names(body: &Resource) -> Vec<&str> {
+    match body {
+        Resource::Drawable(d) => vec![d.name.as_str()],
+        Resource::DrawableWithBound(r) => vec![r.name.as_str(), r.drawable.name.as_str()],
+        Resource::Dictionary(dict) => (dict.entries.iter())
+            .filter_map(|(_, e)| match e {
+                Ok(Entry::Drawable(d)) => Some(d.name.as_str()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The names drawables state and the keys the texture naming rules may name from them as `payload` opens.
+// A drawable's names meet its own keys and every open pack's; a pack's keys meet the names of
+// every drawable open. None when either is empty.
+pub(super) fn texture_naming_work(
+    documents: &[Document],
+    payload: &DocPayload,
+) -> Option<(Vec<String>, HashSet<u64>)> {
+    let packs = || {
+        documents.iter().filter_map(|d| match &d.payload {
+            DocPayload::Ttpf(pack) => Some(pack.keys.keys().copied()),
+            _ => None,
+        })
+    };
+    let (stems, keys): (Vec<&str>, HashSet<u64>) = match payload {
+        DocPayload::Gta6Drawable(body) => {
+            let drawables = super::gta6_resource::dictionary_drawables(body)
+                .map(|(_, d)| d)
+                .chain(super::gta6_resource::drawable_of(body, None));
+            let bound = drawables
+                .flat_map(|d| &d.shaders)
+                .flat_map(|s| &s.texture_keys);
+            let keys = bound.flatten().copied().chain(packs().flatten()).collect();
+            (stated_names(body), keys)
+        }
+        DocPayload::Ttpf(pack) => {
+            let stems = (documents.iter())
+                .filter_map(|d| match &d.payload {
+                    DocPayload::Gta6Drawable(body) => Some(stated_names(body)),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            (stems, pack.keys.keys().copied().collect())
+        }
+        _ => return None,
+    };
+    let stems: Vec<String> = stems.into_iter().map(str::to_string).collect();
+    (!stems.is_empty() && !keys.is_empty()).then_some((stems, keys))
+}
+
+/// Keep the name the texture naming rules give a key of `keys` from a drawable's `name`; how many it named.
+pub(super) fn learn_rule_names(name: &str, keys: &HashSet<u64>) -> usize {
+    let found = name_keys([name], keys);
+    learn_named(found.into_iter().map(|(key, (name, _))| (key, name)))
+}
+
+/// Keep each name of `found` for its key where no name is known for it; how many it named.
+pub(super) fn learn_named(found: impl IntoIterator<Item = (u64, String)>) -> usize {
+    let mut known = names();
+    let mut named = 0;
+    for (key, name) in found {
+        if let std::collections::btree_map::Entry::Vacant(at) = known.entry(key) {
+            at.insert(name);
+            named += 1;
+        }
+    }
+    named
+}
+
+/// Keep the name of each texture of `dict`, which a pack's or a drawable's 64-bit key may hash.
+pub(super) fn learn_names(dict: &Dictionary) {
+    let mut known = names();
+    for (_, entry) in &dict.entries {
+        if let Ok(Entry::Texture(t)) = entry {
+            known.insert(name_hash64(t.name.as_bytes()), t.name.clone());
+        }
+    }
+}
+
+/// Why each texture of a scanned dictionary does not read, by the dictionary's path.
+// ponytail: one list for the whole app, which no close empties.
+static REFUSED: Mutex<BTreeMap<PathBuf, Vec<(String, String)>>> = Mutex::new(BTreeMap::new());
+
+fn refused_lists() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, Vec<(String, String)>>> {
+    REFUSED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Why the texture `name` of the scanned dictionary `doc` is does not read; `None` for one that reads, or another document.
+pub(crate) fn refused(doc: &Document, name: &str) -> Option<String> {
+    let lists = refused_lists();
+    let list = lists.get(doc.path.as_deref()?)?;
+    (list.iter())
+        .find(|(refused, _)| refused.eq_ignore_ascii_case(name))
+        .map(|(_, why)| why.clone())
+}
+
+/// The engine's image type of a volume texture.
+pub(super) const VOLUME_IMAGE: u8 = 3;
+
+/// A scanned dictionary of textures, read from `path`, as a Legacy texture dictionary: each
+/// texture that reads, and each that does not as its name with no pixels, its reason kept for
+/// [`refused`]. `None` where an entry is no texture or none reads, which opens as the facts its
+/// reader reads.
+pub(super) fn scanned_textures(path: &Path, dict: Dictionary) -> Option<DocPayload> {
+    learn_names(&dict);
+    refused_lists().remove(path);
+    let mut dictionary = PgDictionary::<GrcTexture>::default();
+    let mut refused = Vec::new();
+    for (code, entry) in dict.entries {
+        let (placeholder, why) = match entry {
+            Ok(Entry::Texture(t)) => {
+                let read = t.texture.map_err(|e| e.to_string());
+                match read.and_then(|texture| grc(t.name.clone(), texture)) {
+                    Ok(mut texture) => {
+                        // The engine's image types: a cube's slices are faces, six per cube, and
+                        // a volume's z-slabs each hold part of every level.
+                        texture.image_type = match t.dimension {
+                            2 => 1,
+                            3 => VOLUME_IMAGE,
+                            _ => 0,
+                        };
+                        dictionary.insert(texture);
+                        continue;
+                    }
+                    Err(why) => {
+                        let (width, height) = (t.width, t.height);
+                        let mip_count = t.mip_levels;
+                        let name = t.name;
+                        let texture = GrcTexture {
+                            name,
+                            width,
+                            height,
+                            depth: 1,
+                            mip_count,
+                            ..Default::default()
+                        };
+                        (texture, why)
+                    }
+                }
+            }
+            Ok(_) => return None,
+            Err(e) => {
+                let name = format!("hash_{code:08X}");
+                (
+                    GrcTexture {
+                        name,
+                        ..Default::default()
+                    },
+                    e.to_string(),
+                )
+            }
+        };
+        refused.push((placeholder.name.clone(), why));
+        dictionary.insert(placeholder);
+    }
+    if refused.len() == dictionary.codes.len() {
+        return None;
+    }
+    if !refused.is_empty() {
+        refused_lists().insert(path.to_path_buf(), refused);
+    }
+    Some(DocPayload::Resource(or_io::Asset::TextureDict(dictionary)))
+}
+
+/// The slices a scanned dictionary's texture holds one after another: an array's, a cube's six faces, a volume's; 1 for any other document's.
+pub(crate) fn scanned_slices(doc: &Document, texture: &GrcTexture) -> u32 {
+    use or_io::codec::texture::TextureSource;
+    let (width, height) = texture.stored_size();
+    let one = (texture.pixel_format()).total_size(width, height, texture.stored_levels());
+    match (
+        doc.read_only,
+        texture.backing_store.len() as u64 / u64::from(one.max(1)),
+    ) {
+        (Some(_), slices) if slices > 1 => u32::try_from(slices).unwrap_or(u32::MAX),
+        _ => 1,
+    }
+}
+
+/// The slice of each scanned dictionary's texture the preview shows, by the dictionary's path and the texture's name.
+// ponytail: one map for the whole app, which no close empties; an entry is a path and a name.
+static SHOWN: Mutex<BTreeMap<(PathBuf, String), u32>> = Mutex::new(BTreeMap::new());
+
+fn shown() -> std::sync::MutexGuard<'static, BTreeMap<(PathBuf, String), u32>> {
+    SHOWN
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Have slice `slice` of the texture `name` of the scanned dictionary `doc` be the one a replacement takes.
+pub(crate) fn show_scanned_slice(doc: &Document, name: &str, slice: u32) {
+    if let Some(path) = doc.path.clone() {
+        shown().insert((path, name.to_ascii_lowercase()), slice);
+    }
+}
+
+/// The slice of that texture the preview shows: 0 until it shows another.
+pub(crate) fn shown_scanned_slice(doc: &Document, name: &str) -> u32 {
+    let Some(path) = doc.path.clone() else {
+        return 0;
+    };
+    let key = (path, name.to_ascii_lowercase());
+    shown().get(&key).copied().unwrap_or(0)
+}
+
+/// Slice `slice` of `slices` of such a texture, as a texture of one slice.
+pub(crate) fn scanned_slice(mut texture: GrcTexture, slice: u32, slices: u32) -> GrcTexture {
+    let each = texture.backing_store.len() / slices.max(1) as usize;
+    let at = each * slice.min(slices.saturating_sub(1)) as usize;
+    texture.backing_store = texture.backing_store[at..at + each].to_vec();
+    texture
+}
+
+/// The texture of a scanned dictionary named `name`, whatever its case, where its pixels read.
+fn texture_entry<'a>(resource: &'a Resource, name: &str) -> Option<&'a DictionaryTexture> {
+    let Resource::Dictionary(dict) = resource else {
+        return None;
+    };
+    dict.entries.iter().find_map(|(_, entry)| match entry {
+        Ok(Entry::Texture(t)) if t.name.eq_ignore_ascii_case(name) && t.texture.is_ok() => Some(t),
+        _ => None,
+    })
+}
+
+/// What every open pack's edits come to, which moves when a texture of one is replaced, and when
+/// the packs on disk are indexed: a key none of them holds is then no longer asked for.
+pub(crate) fn packs_epoch(state: &super::AppState) -> u64 {
+    let packs = state
+        .documents
+        .iter()
+        .filter(|d| matches!(d.payload, DocPayload::Ttpf(_)));
+    packs.fold(state.texture_packs_indexed(), |sum, d| {
+        sum.wrapping_add(d.id.wrapping_mul(31).wrapping_add(d.payload_epoch()))
+    })
+}
+
+/// Whether a pack or a scanned dictionary `payload` is holds a texture `name` names, asked for by
+/// a GTA VI document `asker`; `false` for any other document or asker.
+pub(super) fn holds(asker: Option<&Document>, payload: &DocPayload, name: &str) -> bool {
+    // ⚠ A GTA V model's texture is never a GTA VI one, whatever its name hashes to.
+    let gta6 = is_gta6(asker);
+    match payload {
+        DocPayload::Ttpf(pack) if gta6 => pack.index_of(name).is_some(),
+        DocPayload::Gta6Drawable(body) if gta6 => texture_entry(body, name).is_some(),
+        _ => false,
+    }
+}
+
+/// Whether `doc` is a GTA VI document: a pack, a scanned body or a GTA VI animation.
+pub(super) fn is_gta6(doc: Option<&Document>) -> bool {
+    doc.is_some_and(|doc| {
+        doc.read_only == Some(super::rpf9_scan::READ_ONLY_BODY)
+            || matches!(
+                doc.payload,
+                DocPayload::Ttpf(_) | DocPayload::Gta6Drawable(_) | DocPayload::Gta6Anim(_)
+            )
+    })
+}
+
+/// That texture, a scanned dictionary's read from it each time it is asked for.
+pub(super) fn fetch<'a>(payload: &'a DocPayload, name: &str) -> Option<Texture<'a>> {
+    match payload {
+        DocPayload::Ttpf(_) => textures::rows::at::ttpf(payload, TextureSource::Document, name),
+        DocPayload::Gta6Drawable(body) => {
+            let t = texture_entry(body, name)?;
+            let texture = grc(t.name.clone(), t.texture.as_ref().ok()?.clone()).ok()?;
+            Some(Texture::Owned(std::borrow::Cow::Owned(texture)))
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn grc(name: String, texture: or_io::gta6::Texture) -> Result<GrcTexture, String> {
+    let format = texture.format.format();
+    let (Ok(width), Ok(height), Ok(mip_count)) = (
+        u16::try_from(texture.width),
+        u16::try_from(texture.height),
+        u8::try_from(texture.levels),
+    ) else {
+        return Err(format!(
+            "{}x{} with {} mips does not fit a texture",
+            texture.width, texture.height, texture.levels
+        ));
+    };
+    Ok(GrcTexture {
+        name,
+        width,
+        height,
+        depth: 1,
+        mip_stride: u16::try_from(format.row_pitch(texture.width)).unwrap_or(0),
+        format: format.to_raw_format(),
+        mip_count,
+        info_bits: u8::from(texture.format.is_srgb()),
+        backing_store: texture.pixels,
+        resource_type_and_conversion_flags: or_io::gta5::texture_dict::gen8::PROCESSED,
+        ..Default::default()
+    })
+}
+
+#[path = "ttpf_reshape.rs"]
+mod relaid;
+pub(super) use relaid::{import, reshape};
