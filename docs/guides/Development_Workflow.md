@@ -550,7 +550,7 @@ limit, which stopped every hosted job for seventeen hours; the header of
 | `main-tip.yml` | every push to `main`; on request | `cargo check --workspace --all-targets`, the workspace tests with no corpus, clippy, the BC7 encoder, the renderer's GPU tests, `cargo hack` over each feature, the shader tool |
 | `ci.yml`, Windows job | weekly, and on request | the full Windows suite on a clean hosted machine |
 | `ci.yml`, macOS job | weekly, and on request | clippy, the workspace tests, the BC7 encoder and the self-check on an Apple-silicon hosted machine |
-| `release.yml` | a tag starting with `v` | `cargo xtask dist` on each OS: a Windows `.zip`, a Linux `.tar.gz` and `.deb` and a macOS `.dmg`, each with its checksum and the `or-shader-tool` helper beside the editor (left out with a warning where its C++ will not build, unless `--require-helper`), attached to a GitHub release |
+| `release.yml` | a tag starting with `v`; on request, the packages with no release | `cargo xtask dist` on each OS: a Windows `.zip`, a Linux `.tar.gz` and `.deb` and a macOS `.dmg`, each with its checksum and the `or-shader-tool` helper beside the editor (left out with a warning where its C++ will not build, unless `--require-helper`), attached to a GitHub release |
 
 - Nothing waits for any of it before a merge. `layouts` is the only automatic
   check with the corpus, which is not on GitHub, so it is the
