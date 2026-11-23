@@ -176,8 +176,8 @@ fn a_record_without_the_side_bits_is_a_polygon_proper_and_refused_with_two_corne
 fn wide_cell(proper: usize, id: u16, holder: usize, leaf: &[u16]) -> Vec<u8> {
     let mut img = Image::default();
     let root = img.alloc(0xF0);
-    let map = img.alloc(16);
-    img.bytes[map + 8] = 1;
+    // Room for both blocks a section past 64 KiB is cut into, as a written body's map holds.
+    let map = img.alloc(0x20);
     img.ptr(root + 0x08, map);
     img.u32(root + 0x10, 9);
     img.u32(root + 0x14, 0x0001_0015);
@@ -241,6 +241,10 @@ fn wide_cell(proper: usize, id: u16, holder: usize, leaf: &[u16]) -> Vec<u8> {
         root + 0xCC,
         (6 * 6 + 14 * first as usize + 44 * (proper + 1)) as u32,
     );
+    // A section is stored in 16-byte steps, its whole 64 KiB pieces one block, the rest another.
+    let len = img.bytes.len().next_multiple_of(16);
+    img.bytes.resize(len, 0);
+    img.bytes[map + 8] = u8::from(len >= 0x1_0000) + u8::from(len % 0x1_0000 != 0);
     img.bytes
 }
 

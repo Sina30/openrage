@@ -335,3 +335,6 @@ fn a_fragment_s_masses_and_inertia_write_in_place_and_a_moved_child_is_refused()
         Err(HeaderlessError::NotInPlace(_))
     ));
 }
+
+#[path = "write_fragment_child.rs"]
+mod write_fragment_child;

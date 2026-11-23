@@ -6,8 +6,8 @@ use crate::codec::texture::DxgiFormat;
 
 /// Where tail level i starts in a 4 KiB tail tile of 1-, 4- or 8-byte elements; 16-byte elements stop at index 5.
 const SLOTS_4K: &[u64] = &[0x800, 0x600, 0x500, 0x400, 0x300, 0x200, 0x100];
-/// Where tail level i starts in a 64 KiB tail tile of 8-byte elements; 1- and 16-byte elements stop at index 5, 4-byte at index 4.
-const SLOTS_64K: &[u64] = &[0x8000, 0x4000, 0x2000, 0x1000, 0x800, 0x600, 0x500];
+/// Where tail level i starts in a 64 KiB tail tile of 16-byte elements; 8-byte elements stop at index 6, 1-byte at index 5, 4-byte at index 4.
+const SLOTS_64K: &[u64] = &[0x8000, 0x4000, 0x2000, 0x1000, 0x800, 0x600, 0x500, 0x400];
 /// Where tail level i starts in a volume's 4 KiB tail tile, whatever its element size.
 const SLOTS_3D: &[u64] = &[0x800, 0x300, 0x200, 0x100, 0];
 /// A volume level is a tail level when its part of one z-slab fits a tile and is at most this many bytes.
@@ -39,9 +39,9 @@ impl Tile {
             (false, 4) => ("x0 x1 y0 y1 y2 x2 y3 x3 y4 x4", SLOTS_4K),
             (true, 4) => ("x0 x1 y0 y1 x2 y2 y3 x3 y4 x4 y5 x5 y6 x6", &SLOTS_64K[..5]),
             (false, 8) => ("x0 y0 y1 x1 x2 y2 x3 y3 x4", SLOTS_4K),
-            (true, 8) => ("x0 y0 x1 x2 y1 y2 x3 y3 x4 y4 x5 y5 x6", SLOTS_64K),
+            (true, 8) => ("x0 y0 x1 x2 y1 y2 x3 y3 x4 y4 x5 y5 x6", &SLOTS_64K[..7]),
             (false, _) => ("y0 y1 x0 x1 y2 x2 y3 x3", &SLOTS_4K[..6]),
-            (true, _) => ("x0 y0 x1 y1 y2 x2 y3 x3 y4 x4 y5 x5", &SLOTS_64K[..6]),
+            (true, _) => ("x0 y0 x1 y1 y2 x2 y3 x3 y4 x4 y5 x5", SLOTS_64K),
         };
         Self::new(pattern, element, slots)
     }

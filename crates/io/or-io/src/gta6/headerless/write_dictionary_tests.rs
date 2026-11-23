@@ -316,3 +316,53 @@ fn what_the_plan_does_not_cover_is_refused_by_name() {
     )));
     assert!(pixels(ModelTexture::tiled("zq_none", 64, 64, 71, &[])));
 }
+
+/// Each slice's levels, for a call that takes them by slice.
+fn by_slice(all: &[Vec<Vec<u8>>]) -> Vec<&[Vec<u8>]> {
+    all.iter().map(Vec::as_slice).collect()
+}
+
+#[test]
+fn an_array_and_a_cube_are_tiled_slice_after_slice_and_read_back_each_slice() {
+    let slices = |count: u8, width, height, side, element, mips| -> Vec<Vec<Vec<u8>>> {
+        (0..count)
+            .map(|s| levels(width, height, side, element, mips, 10 * s + 1))
+            .collect()
+    };
+    let one = slices(3, 16, 16, 4, 8, 1);
+    let made = ModelTexture::tiled_slices("zq_array", 16, 16, 1, 71, &by_slice(&one));
+    let array = slices(3, 64, 32, 4, 8, 4);
+    let reshaped = (made
+        .expect("tiles")
+        .reshaped_slices(64, 32, 71, &by_slice(&array)))
+    .expect("tiled anew");
+    let shape = (reshaped.depth, reshaped.dimension, reshaped.mip_levels);
+    assert_eq!(shape, (3, 1, 4));
+    let faces = slices(6, 32, 32, 4, 16, 3);
+    let cube = ModelTexture::tiled_slices("zq_cube", 32, 32, 2, 98, &by_slice(&faces));
+    let model = DictionaryModel {
+        textures: vec![reshaped, cube.expect("tiles")],
+        capacity: 2,
+    };
+    let sections = write_dictionary(&model).expect("planned");
+    let read = read_back(&sections);
+    for (name, all) in [("zq_array", &array), ("zq_cube", &faces)] {
+        let held = read.iter().find(|t| t.0 == name).expect("its entry");
+        let want: Vec<u8> = all.iter().flatten().flatten().copied().collect();
+        assert!(held.4 == want, "{name} reads back slice after slice");
+    }
+    assert_eq!(fixed_point(&sections), model);
+
+    let refused =
+        |why: Written<ModelTexture>| matches!(why, Err(DictionaryWriteError::Pixels { .. }));
+    let fewer = model.textures[0].reshaped_slices(64, 32, 71, &by_slice(&array[..2]));
+    assert!(refused(fewer), "a new shape keeps the count of slices");
+    let mut volume = model.textures[0].clone();
+    volume.dimension = 3;
+    assert!(refused(volume.reshaped_slices(
+        64,
+        32,
+        71,
+        &by_slice(&array)
+    )));
+}

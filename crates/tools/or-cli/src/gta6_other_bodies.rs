@@ -73,8 +73,10 @@ pub(crate) fn print(body: OtherBody, bytes: &[u8]) -> Result<(), String> {
                 head.list_d.len(),
                 head.word_after_b
             );
+            let named = (super::gta6_names::vocabulary().name32(head.root_id))
+                .map_or_else(String::new, |name| format!(" ({name}, from the text)"));
             println!(
-                "  root node     type {}, index {}, id {:#010X} at {:#X}",
+                "  root node     type {}, index {}, id {:#010X}{named} at {:#X}",
                 head.root_type, head.root_index, head.root_id, outline.root
             );
             match outline.stops.first() {

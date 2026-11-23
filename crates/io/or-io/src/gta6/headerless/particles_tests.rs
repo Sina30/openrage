@@ -621,3 +621,12 @@ fn a_rule_an_event_or_a_behaviour_added_or_removed_is_refused_naming_what_is_not
 
 #[path = "particles_open_tests.rs"]
 mod open;
+
+#[path = "particles_remove_tests.rs"]
+mod remove;
+
+#[path = "particles_keys_tests.rs"]
+mod keys_added;
+
+#[path = "particles_copy_tests.rs"]
+mod copied;

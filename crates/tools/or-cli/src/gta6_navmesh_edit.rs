@@ -10,7 +10,8 @@ use or_io::container::rpf::{
     read_rpf9_body, write_rpf9_resource, Rpf9BodyKind, Rpf9Role, Rpf9Sections,
 };
 use or_io::gta6::headerless::{
-    cut_edges, delete_polygon, links_into, polygon_cut, read_navmesh, Border, NavMesh, NOWHERE,
+    cut_edges, delete_polygon, disable_polygon, disabling, links_into, polygon_cut, read_navmesh,
+    Border, NavMesh, NOWHERE,
 };
 
 const USAGE: &str = "navmesh disable|delete <archive.rpf|file> <offset> <polygon> <out> \
@@ -135,7 +136,7 @@ fn edit_body(
 }
 
 /// Polygon proper `polygon` cut off as the editor cuts it: every edge into or out of it that names a
-/// polygon of this cell written as leading nowhere.
+/// polygon of this cell written as leading nowhere, and the side records naming it chained again.
 fn disable(
     sections: &mut Rpf9Sections,
     cell: &NavMesh,
@@ -143,20 +144,39 @@ fn disable(
     near: &[NavMesh],
 ) -> Result<Vec<String>, String> {
     let cut = polygon_cut(cell, polygon).map_err(|e| e.to_string())?;
-    let edges: Vec<usize> = (cut.edges.iter().copied())
-        .filter(|&j| cell.edges.get(j).is_some_and(|e| e.mesh == cell.cell))
-        .collect();
-    cut_edges(&mut sections.virtual_section, &edges).map_err(|e| e.to_string())?;
-    let mut lines = vec![match edges.len() {
+    let others: Vec<&NavMesh> = near.iter().collect();
+    // A body of no cell has no side record to chain again.
+    let made = (cell.cell != 0)
+        .then(|| disabling(cell, polygon, &others))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let reaching = |m: &NavMesh| m.edges.iter().filter(|e| e.mesh == m.cell).count();
+    // A side record that drops a corner moves the arrays after it.
+    let rechained = made.filter(|m| m.mesh.indices.len() != cell.indices.len());
+    let cuts = if let Some(made) = rechained {
+        if made.records.len() < cell.polygons.len() {
+            let given: Vec<u32> = near.iter().map(|b| b.cell).collect();
+            let missing: Vec<u32> = across(cell).filter(|c| !given.contains(c)).collect();
+            if !missing.is_empty() {
+                return Err(format!(
+                    "polygon {polygon} is not disabled while the bodies of the neighbouring cells {} are not given with --neighbour <offset>: a side record it empties goes, and their special links may number the records after it",
+                    listed(&missing)
+                ));
+            }
+        }
+        disable_polygon(sections, polygon, &others).map_err(|e| e.to_string())?;
+        reaching(cell).saturating_sub(reaching(&made.mesh))
+    } else {
+        let edges: Vec<usize> = (cut.edges.iter().copied())
+            .filter(|&j| cell.edges.get(j).is_some_and(|e| e.mesh == cell.cell))
+            .collect();
+        cut_edges(&mut sections.virtual_section, &edges).map_err(|e| e.to_string())?;
+        edges.len()
+    };
+    let mut lines = vec![match cuts {
         0 => format!("polygon {polygon} has no edge into or out of it left to cut"),
         n => format!("polygon {polygon} disabled: {n} edges now lead nowhere"),
     }];
-    if !cut.side_records.is_empty() {
-        lines.push(format!(
-            "side records {} still name it at their corner 1, which every shipped side record leads somewhere from, so it still joins the next cell across that border",
-            listed(&cut.side_records)
-        ));
-    }
     if !cut.links.is_empty() {
         lines.push(format!(
             "special links {} of this cell still end in it",

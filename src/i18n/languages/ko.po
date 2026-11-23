@@ -15342,9 +15342,6 @@ msgstr "그룹 {group}의 데이터베이스, 유형 {kind}: 열 {columns}개, �
 msgid "Bone tracks it reads: {bones}; tracks of a word whose name is not known it reads: {others}; facial controls it writes: {facial}."
 msgstr "읽는 본 트랙: {bones}; 이름을 알 수 없는 워드의 읽는 트랙: {others}; 쓰는 얼굴 컨트롤: {facial}."
 
-msgid "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image."
-msgstr "{name}은(는) 볼륨 텍스처이며 각 슬라이스가 모든 밉 레벨의 일부를 담고 있으므로, 이미지로 교체하지 않습니다."
-
 msgid "The walk stops at {folders} folders and {archives} archives, so the archives past them are not scanned."
 msgstr "순회는 폴더 {folders}개와 아카이브 {archives}개에서 멈추므로, 그 이후의 아카이브는 스캔하지 않습니다."
 
@@ -15439,8 +15436,8 @@ msgstr "{group}: hash_{id} {word} ({at}/{total}), {detail}"
 msgid "Expression set hash_{key}, tracks read: {reads}, tracks written: {writes}"
 msgstr "표현식 세트 hash_{key}, 읽는 트랙: {reads}, 쓰는 트랙: {writes}"
 
-msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known."
-msgstr "GTA V의 레코드에 멤버가 없는 키프레임 값은 끝에 원시 값으로 나열됩니다: 속도의 각도, 색상의 이름 없는 마지막 세 값, 도메인의 다섯 번째와 여섯 번째 값. 색상의 이름 없는 처음 두 값은 최솟값과 최댓값으로 표시되며 이는 추정입니다. 최댓값을 켜는 것이 알려지지 않았으므로 미리보기는 최솟값만 그립니다."
+msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too."
+msgstr "GTA V의 레코드에 멤버가 없는 키프레임 값은 끝에 원시 값으로 나열됩니다: 속도의 각도, 색상의 이름 없는 마지막 세 값, 도메인의 다섯 번째와 여섯 번째 값. 색상의 이름 없는 처음 두 값은 최솟값과 최댓값으로 표시되며 이는 추정입니다. 미리보기는 색상의 +0x19C 워드가 사용 중인 색을 둘 이상 셀 때 GTA V처럼 최댓값을 그리며, 이것도 추정입니다."
 
 msgid "Emitter rule {name}, domain {slot}: keyframed value {value}, whose name is not known, holds {keys}."
 msgstr "이미터 규칙 {name}, 도메인 {slot}: 이름이 알려지지 않은 키프레임 값 {value}은(는) {keys}을(를) 담고 있습니다."
@@ -15580,8 +15577,8 @@ msgstr "옮겨지지 않음: {held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "본문의 바이트를 확인합니다. GTA VI가 이를 불러오는지는 시험하지 않습니다."
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "메시가 가리키는 각 지오메트리는 위치, 노멀, 탄젠트, 텍스처 좌표, 색상, 삼각형을 받습니다. 가중치, 블렌드 인덱스와 다른 채널은 가진 그대로 유지되며, 원래 정점 수일 때만 가능합니다."
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
+msgstr "메시가 가리키는 각 지오메트리는 위치, 노멀, 탄젠트, 텍스처 좌표, 색상, 삼각형을 받고, 가중치와 블렌드 인덱스를 메시의 조인트에서 받으며, 팔레트에 없는 본은 팔레트에 추가합니다. 다른 채널은 가진 그대로 유지되며, 원래 정점 수일 때만 가능합니다."
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "이 사전 항목은 열 때 읽을 수 있는 스켈레톤을 보유하지 않았으므로 편집할 본이 없습니다."
@@ -15631,14 +15628,14 @@ msgstr "레벨 {level}: {frames}프레임 레인. 각 레인은 그 프레임에
 msgid "Tetrahedra: each vertex's weight list, counted from its group's first, and its place in the space of the three columns"
 msgstr "사면체: 각 꼭짓점의 가중치 목록(그룹의 첫 목록부터 셈)과 세 열의 공간에서의 위치"
 
-msgid "No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
-msgstr "앱이 아는 이름도, 이 드로어블의 슬롯도 이 텍스처의 32비트 이름 해시를 나타내지 않으므로 어떤 슬롯도 이 텍스처에 바인딩되지 않습니다."
+msgid "No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
+msgstr "앱이 아는 이름이나 입력된 이름도, 앱이 읽은 설치본의 드로어블도, 이 드로어블의 슬롯도 이 텍스처의 32비트 이름 해시를 나타내지 않으므로 어떤 슬롯도 이 텍스처에 바인딩되지 않습니다."
 
 msgid "That parameter is no texture slot of this shader."
 msgstr "그 매개변수는 이 셰이더의 텍스처 슬롯이 아닙니다."
 
-msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."
-msgstr "상수는 크기를 유지하므로 아무것도 밀리지 않습니다. 키를 받은 빈 슬롯은 가상 섹션 끝에 자체 바인딩과 키 레코드를 가지며, 앱이 이름을 아는 키나 드로어블의 다른 슬롯이 바인딩하는 키만 받습니다. 다른 이름으로 저장은 본문을 개별 리소스로 기록합니다."
+msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."
+msgstr "상수는 크기를 유지하므로 아무것도 밀리지 않습니다. 키를 받은 빈 슬롯은 가상 섹션 끝에 자체 바인딩과 키 레코드를 가지며, 앱이 이름을 알거나 이름이 입력된 키, 또는 이 드로어블이나 설치본의 드로어블의 슬롯이 바인딩하는 키만 받습니다. 다른 이름으로 저장은 본문을 개별 리소스로 기록합니다."
 
 msgid "the shader holds a constant elsewhere than the effect places it"
 msgstr "셰이더가 효과가 배치하는 곳과 다른 곳에 상수를 보유합니다"
@@ -15655,8 +15652,8 @@ msgstr "에볼루션의 진화 키프레임을 읽고 에볼루션 슬라이더�
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "물리 섹션의 GPU 버퍼를 검사합니다. +0x390의 버퍼는 규칙의 +0x1E0 부동소수를 복사하고, +0x388의 버퍼는 16행 표 두 개를 가지는데 그 값은 규칙에서 유도되지 않으므로 저장된 그대로 유지되고 편집한 키프레임 값과 어긋날 수 있습니다. 미리보기는 둘 다 필요하지 않습니다."
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it."
-msgstr "다른 이름으로 저장은 두 형식이 공유하는 값을 GTA VI 목록에 제자리에서 덮어씁니다. 규칙, 이벤트, 동작 또는 키를 추가하거나 제거하면 목록이 이동하므로 작업 공간은 이를 제공하지 않습니다."
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
+msgstr "다른 이름으로 저장은 두 형식이 공유하는 값을, 제거된 규칙이나 다른 규칙에 연결된 이벤트와 함께 GTA VI 목록에 제자리에서 덮어씁니다. 추가한 키와 복제한 이펙트는 목록의 끝 뒤에 기록되며, 사본은 Duplicate가 붙인 이름으로 찾습니다. 아무것도 없이 만든 규칙이나 추가한 이벤트 또는 동작에는 명시된 값이 없으므로 작업 공간은 이를 제공하지 않습니다."
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "세 번째 스포너는 ptxu_ZCull이 점을 제거하는 곳에서 {effect}을(를) 시작하며 미리보기도 그렇게 합니다. 그 발동 값이 충돌 스포너처럼 점이 도달해야 하는 속도라는 것은 추정입니다."
@@ -15684,9 +15681,6 @@ msgstr "키프레임 값의 ID는 hash_{id}이며 멤버 이름은 알려지지 
 
 msgid "{owner}: evolved value {value} under evolution {evolution} has kind {kind}, where 1 is the LOD distance and 2 to 4 the camera's forward, top and side views, and flags {first} and {second}, whose meaning is not known."
 msgstr "{owner}: 에볼루션 {evolution}에서 진화 값 {value}의 종류는 {kind}(1은 LOD 거리, 2에서 4는 카메라의 전면, 상단, 측면 뷰)이고 플래그는 {first} 및 {second}이며 그 의미는 알려지지 않았습니다."
-
-msgid "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-msgstr "GTA VI 파티클 목록은 제자리에서 저장되므로 아직 규칙이나 이펙트를 제거할 수 없습니다"
 
 msgid "An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own."
 msgstr "엔티티는 그 맵이 지정하거나, 열려 있거나 찾은 맵 타입 본문이 담은, 같은 클래스의 아키타입만 받으며, 인테리어는 자기 것을 유지합니다."
@@ -16014,3 +16008,270 @@ msgid "{count} station no text names"
 msgid_plural "{count} stations no text names"
 msgstr[0] "텍스트가 이름을 지정하지 않은 방송국 {count}개"
 msgstr[1] "텍스트가 이름을 지정하지 않은 방송국 {count}개"
+
+msgid "{name} (from the text)"
+msgstr "{name} (텍스트에서)"
+
+msgid "Bytes to the next item"
+msgstr "다음 항목까지의 바이트"
+
+msgid "Counted elements"
+msgstr "개수가 적힌 요소"
+
+msgid "Each slot a field table or a measured value type places in the item, at its offset, and the bytes between them as they are. A value type is what every item measured holds there, which no table of the file states, so a value may break it; the types are shown only on an item that ends where its layout does."
+msgstr "필드 표나 측정된 값 형식이 항목 안에 두는 각 슬롯을 오프셋별로 보여 주고, 그 사이의 바이트는 있는 그대로 보여 줍니다. 값 형식은 측정한 모든 항목이 그 자리에 담는 것으로, 파일의 어떤 표에도 적혀 있지 않아 값이 이를 벗어날 수 있습니다. 형식은 레이아웃이 끝나는 곳에서 끝나는 항목에만 표시됩니다."
+
+msgid "reference row"
+msgstr "참조 행"
+
+msgid "group slot"
+msgstr "그룹 슬롯"
+
+msgid "hash"
+msgstr "해시"
+
+msgid "wave container"
+msgstr "웨이브 컨테이너"
+
+msgid "zero"
+msgstr "영"
+
+msgid "unset"
+msgstr "설정 안 됨"
+
+msgid "float"
+msgstr "부동소수점"
+
+msgid "float or -1"
+msgstr "부동소수점 또는 -1"
+
+msgid "{word}, where every item measured holds {held}"
+msgstr "{word}, 측정한 모든 항목에서는 {held}"
+
+msgid "bytes"
+msgstr "바이트"
+
+msgid "index key"
+msgstr "인덱스 키"
+
+msgid "its own key"
+msgstr "자신의 키"
+
+msgid "number or -1"
+msgstr "숫자 또는 -1"
+
+msgid "2-bit flags"
+msgstr "2비트 플래그"
+
+msgid "item offset"
+msgstr "항목 오프셋"
+
+msgid "{offset}, where the item of the key before it does not start"
+msgstr "{offset}, 앞의 키가 가리키는 항목은 여기서 시작하지 않음"
+
+msgid "byte, zero"
+msgstr "바이트, 0"
+
+msgid "byte, constant"
+msgstr "바이트, 상수"
+
+msgid "byte, 0 or 1"
+msgstr "바이트, 0 또는 1"
+
+msgid "byte, few values"
+msgstr "바이트, 적은 값"
+
+msgid "The first entry after an archive's table, where its header puts it, whose end its bytes do not state: the {count} bytes from it to the next body the list holds. No view reads them, so they show as bytes."
+msgstr "아카이브 테이블 뒤의 첫 번째 항목으로, 헤더가 가리키는 위치에 있으며 그 바이트는 끝을 나타내지 않습니다. 그 위치부터 목록에 있는 다음 본문까지의 {count}바이트입니다. 이를 읽는 보기가 없으므로 바이트로 표시됩니다."
+
+msgid "Headerless resource"
+msgstr "헤더 없는 리소스"
+
+msgid "Root block"
+msgstr "루트 블록"
+
+msgid "{virtual_blocks} virtual and {physical_blocks} physical blocks"
+msgstr "가상 블록 {virtual_blocks}개, 물리 블록 {physical_blocks}개"
+
+msgid "{entries} entries, {bytes} blob bytes, not read: no key for them is known"
+msgstr "항목 {entries}개, 블롭 {bytes}바이트, 읽지 않음: 키를 알 수 없음"
+
+msgid "String table"
+msgstr "문자열 테이블"
+
+msgid "{count} at {at}, carried as read"
+msgstr "{at}에 {count}개, 읽은 그대로 유지"
+
+msgid "Ids at 0x50"
+msgstr "0x50의 ID"
+
+msgid "Every entry has a version 1 or 4 UUID's version and variant, so each reads as a UUID. What object an entry names is not known."
+msgstr "모든 항목이 버전 1 또는 4 UUID의 버전과 변형을 가지므로 각 항목을 UUID로 읽습니다. 항목이 어떤 객체를 가리키는지는 알 수 없습니다."
+
+msgid "Not every entry has a UUID's version and variant, so each is shown as its bytes. What object an entry names is not known."
+msgstr "UUID의 버전과 변형을 갖지 않은 항목이 있으므로 각 항목을 바이트로 표시합니다. 항목이 어떤 객체를 가리키는지는 알 수 없습니다."
+
+msgid "Its ptxu_Colour counts {count} colours in use; what the colours past the second draw is not known, so the preview draws its minimum and maximum alone."
+msgstr "이 ptxu_Colour는 사용 중인 색을 {count}개 셉니다. 두 번째 이후의 색이 무엇을 그리는지 알려지지 않았으므로 미리보기는 최솟값과 최댓값만 그립니다."
+
+msgid "Its ptxu_Colour enables its maximum, which holds no key; what that draws is not known, so the preview draws its minimum alone."
+msgstr "이 ptxu_Colour는 최댓값을 켜지만 최댓값에는 키가 없습니다. 그것이 무엇을 그리는지 알려지지 않았으므로 미리보기는 최솟값만 그립니다."
+
+msgid "This drawable already embeds another texture, and a dictionary of two was never measured, so {name} is not embedded."
+msgstr "이 드로어블은 이미 다른 텍스처를 포함하고 있으며 두 개를 담은 사전은 측정된 적이 없으므로 {name}은(는) 포함되지 않습니다."
+
+msgid "No name or bound entry states the 32-bit name hash of {name}, so it is not embedded."
+msgstr "{name}의 32비트 이름 해시를 나타내는 이름이나 연결된 항목이 없으므로 포함되지 않습니다."
+
+msgid "The fragment holds no such group."
+msgstr "프래그먼트에 해당 그룹이 없습니다."
+
+msgid "Moved a fragment's child"
+msgstr "프래그먼트의 자식 이동"
+
+msgid "Gave a fragment's child another group"
+msgstr "프래그먼트의 자식을 다른 그룹으로 이동"
+
+msgid "The composite states no type and include entries."
+msgstr "컴포지트에 유형 및 포함 항목이 없습니다."
+
+msgid "Set a child's type and include entry"
+msgstr "자식의 유형 및 포함 항목 설정"
+
+msgid "Rewired a triangle"
+msgstr "삼각형 재연결"
+
+msgid "Reshape the collision"
+msgstr "충돌 형태 변경"
+
+msgid "A fragment child moves by its own transform and its composite's matrix follows; a group change keeps where it lies; a rewired triangle links to the triangles it shares an edge with. Save As writes the body as a loose resource."
+msgstr "프래그먼트 자식은 자체 변환으로 움직이고 컴포지트의 행렬이 따라가며, 그룹을 바꿔도 위치는 유지되고, 재연결한 삼각형은 모서리를 공유하는 삼각형과 연결됩니다. 다른 이름으로 저장은 본문을 개별 리소스로 기록합니다."
+
+msgid "Fragment child"
+msgstr "프래그먼트 자식"
+
+msgid "Type and include entry"
+msgstr "유형 및 포함 항목"
+
+msgid "Rewire"
+msgstr "재연결"
+
+msgid "A geometry with no BVH is not reshaped: it carries a shrunk copy of each vertex, and how far a vertex is shrunk is not known."
+msgstr "BVH가 없는 지오메트리는 형태를 바꾸지 않습니다. 각 정점의 축소 사본을 가지며, 정점이 얼마나 축소되는지는 알려져 있지 않습니다."
+
+msgid "A copy takes the key its name hashes to and the signature of the entry it copies; Save As places it and its tracks or bones after the body's last object."
+msgstr "사본은 이름의 해시가 가리키는 키와 복사한 항목의 서명을 받습니다. 다른 이름으로 저장하면 사본과 그 트랙 또는 본이 본문의 마지막 객체 뒤에 놓입니다."
+
+msgid "A dictionary keeps one frame filter or animation record at least."
+msgstr "사전에는 프레임 필터 또는 애니메이션 레코드가 하나 이상 남아야 합니다."
+
+msgid "A name is printable text with no space."
+msgstr "이름은 공백이 없는 인쇄 가능한 텍스트입니다."
+
+msgid "Another entry of the dictionary has the key that name hashes to."
+msgstr "사전의 다른 항목이 그 이름의 해시가 가리키는 키를 가지고 있습니다."
+
+msgid "Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"
+msgstr "각 프레임의 벡터 앞: 0x90의 워드와, 클래스 1에서는 회전과 레코드의 부동소수점 4~11"
+
+msgid "Copy a frame filter or animation record"
+msgstr "프레임 필터 또는 애니메이션 레코드 복사"
+
+msgid "Copy the entry"
+msgstr "항목 복사"
+
+msgid "Database bytes at {at}"
+msgstr "{at}의 데이터베이스 바이트"
+
+msgid "Database words at {at}"
+msgstr "{at}의 데이터베이스 워드"
+
+msgid "Edit a track's id"
+msgstr "트랙 ID 편집"
+
+msgid "Everything the motion reader reads"
+msgstr "모션 리더가 읽는 모든 것"
+
+msgid "Group {group}, column ranges {ranges}, weight lists {lists}"
+msgstr "그룹 {group}, 열 범위 {ranges}, 가중치 목록 {lists}"
+
+msgid "Group {group}, constants: {values}"
+msgstr "그룹 {group}, 상수: {values}"
+
+msgid "Group {group}, database bounds {bounds}, hash at 0x80 {hash}, weight lists {lists}"
+msgstr "그룹 {group}, 데이터베이스 경계 {bounds}, 0x80의 해시 {hash}, 가중치 목록 {lists}"
+
+msgid "Group {group}, grid {index}: words {words}, cells {cells}, bounds {bounds}, cell sizes {sizes}, inverses {inverses}"
+msgstr "그룹 {group}, 격자 {index}: 워드 {words}, 셀 {cells}, 경계 {bounds}, 셀 크기 {sizes}, 역수 {inverses}"
+
+msgid "Group {group}, lists {lists}, hashes {hashes}"
+msgstr "그룹 {group}, 목록 {lists}, 해시 {hashes}"
+
+msgid "Group {group}, phase curve {index}: points {points}, x from {x0} to {x1}, y1 {y1}, {cycles} cycles"
+msgstr "그룹 {group}, 위상 곡선 {index}: 점 {points}, x는 {x0}부터 {x1}까지, y1 {y1}, {cycles}주기"
+
+msgid "Group {group}, range {lo} to {hi}: hashes {hashes}, bounds {bounds}"
+msgstr "그룹 {group}, 범위 {lo}~{hi}: 해시 {hashes}, 경계 {bounds}"
+
+msgid "Group {group}, simplex {index}: {words}"
+msgstr "그룹 {group}, 심플렉스 {index}: {words}"
+
+msgid "Matcher bytes at {at}"
+msgstr "{at}의 매처 바이트"
+
+msgid "Matcher words at {at}"
+msgstr "{at}의 매처 워드"
+
+msgid "New name"
+msgstr "새 이름"
+
+msgid "No stored entry of its kind is there to copy, so {name} is not added."
+msgstr "복사할 같은 종류의 저장된 항목이 없으므로 {name}은(는) 추가되지 않습니다."
+
+msgid "Parameter objects, by type: {types}"
+msgstr "매개변수 객체, 유형별: {types}"
+
+msgid "Parameter {name}: words {words}, word {word}, from {min} to {max}"
+msgstr "매개변수 {name}: 워드 {words}, 워드 {word}, {min}부터 {max}까지"
+
+msgid "Remove a frame filter or animation record"
+msgstr "프레임 필터 또는 애니메이션 레코드 제거"
+
+msgid "Remove the entry"
+msgstr "항목 제거"
+
+msgid "That entry is no frame filter or animation record."
+msgstr "그 항목은 프레임 필터도 애니메이션 레코드도 아닙니다."
+
+msgid "The entry {code} is stored as the other kind of entry, so it is not written."
+msgstr "항목 {code}은(는) 다른 종류의 항목으로 저장되어 있으므로 기록되지 않습니다."
+
+msgid "The entry's warp list of {count} points follows no known rule, so it is kept as read."
+msgstr "항목의 {count}개 점 워프 목록은 알려진 규칙을 따르지 않으므로 읽은 그대로 유지됩니다."
+
+msgid "Time warp {index}: a {a}, b {b}, points {points}"
+msgstr "시간 워프 {index}: a {a}, b {b}, 점 {points}"
+
+msgid "Version-1 GUID"
+msgstr "버전 1 GUID"
+
+msgid "Weight list {index}: {weights}"
+msgstr "가중치 목록 {index}: {weights}"
+
+msgid "the group already states that id on that track word"
+msgstr "그룹이 그 트랙 워드에 그 ID를 이미 지정하고 있습니다"
+
+msgid "{name} hashes to another key than its entry's, so it is not added."
+msgstr "{name}의 해시는 해당 항목과 다른 키가 되므로 추가되지 않습니다."
+
+msgid "An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules."
+msgstr "이벤트가 GTA VI 파티클 목록에 없는 규칙을 가리킵니다. 목록의 규칙 중 하나에 연결하십시오."
+
+msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
+msgstr "GTA VI 파티클 목록은 새 이펙트를 목록에 있는 이펙트의 사본으로만 받습니다. Duplicate를 사용하고, 사본의 이름은 복사한 이펙트의 이름 뒤에 _copy를 붙인 그대로 두십시오."
+
+msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
+msgstr "이웃 셀 {cells}의 본문이 열려 있지 않은 동안에는 폴리곤 {polygon}을(를) 비활성화하지 않습니다. 그것이 비우는 경계 레코드는 사라지고, 그 특수 링크가 뒤의 레코드를 번호로 가리킬 수 있습니다. 먼저 스캔에서 이웃 셀을 찾으십시오."
+
+msgid "An interior takes only its own archetype or another interior archetype whose rooms and portals were read."
+msgstr "인테리어는 자기 아키타입이나, 방과 포털을 읽은 다른 인테리어 아키타입만 받습니다."

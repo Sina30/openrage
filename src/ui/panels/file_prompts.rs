@@ -259,7 +259,7 @@ fn import_body(ui: &mut egui::Ui, asked: &mut Import, answer: &mut Option<Answer
     ui.add_space(crate::ui::theme::SPACING_DEFAULT);
     // A GTA VI geometry keeps the channels the mesh does not replace, so neither choice is asked.
     if asked.is_gta6() {
-        weak(ui, tr!("Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."));
+        weak(ui, tr!("Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."));
         match buttons(ui, tr!("Replace"), ready) {
             Some(true) => *answer = Some(Answer::Import),
             Some(false) => *answer = Some(Answer::Cancel),

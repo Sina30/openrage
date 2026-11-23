@@ -175,7 +175,7 @@ pub fn header_facts(virtual_section: &[u8]) -> Result<HeaderFacts> {
 /// The namespace of each entry of a virtual section's string table, none where 0x40 is null.
 // An entry is its namespace byte, a kind byte, a u16 and its blob's length; no blob is read.
 #[cfg(feature = "gta6")]
-fn described_namespaces(virtual_section: &[u8]) -> Result<Vec<u8>> {
+pub(super) fn described_namespaces(virtual_section: &[u8]) -> Result<Vec<u8>> {
     let whole = padded(virtual_section);
     let virtual_section = &*whole;
     let head = header(virtual_section)?;

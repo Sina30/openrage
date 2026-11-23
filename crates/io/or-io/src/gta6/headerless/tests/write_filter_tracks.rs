@@ -5,7 +5,7 @@ use crate::container::rpf::{Rpf9Form, Rpf9Sections};
 use crate::gta6::hash::name_hash32;
 
 /// `img` with a block map of one virtual block at its end, which root 0x08 points at.
-fn mapped(img: Image) -> Rpf9Sections {
+pub(super) fn mapped(img: Image) -> Rpf9Sections {
     let mut bytes = img.bytes;
     let map = bytes.len().next_multiple_of(16);
     bytes.resize(map + 24, 0);

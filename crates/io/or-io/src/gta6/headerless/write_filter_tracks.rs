@@ -165,7 +165,7 @@ pub fn write_record_bones(
     relay(sections, code, &RECORD, read, bones.len(), &bytes)
 }
 
-fn is_filter(v: Bytes, at: usize) -> bool {
+pub(super) fn is_filter(v: Bytes, at: usize) -> bool {
     let half = |o| v.u32("frame filter", at + o).ok();
     v.u64("frame filter", at).ok() == Some(0)
         && half(0x08) == Some(1)
@@ -176,7 +176,7 @@ fn is_filter(v: Bytes, at: usize) -> bool {
             .is_some()
 }
 
-fn is_record(v: Bytes, at: usize) -> bool {
+pub(super) fn is_record(v: Bytes, at: usize) -> bool {
     let word = |o| v.u64("animation record", at + o).ok();
     word(0) == Some(0)
         && word(0x08) == Some(0)

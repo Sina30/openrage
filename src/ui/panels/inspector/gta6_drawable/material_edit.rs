@@ -77,7 +77,7 @@ pub(super) fn draw(
         .id_salt(("gta6_material_edit", doc_id))
         .show(ui, |ui| {
             ui.label(
-                egui::RichText::new(tr!("A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."))
+                egui::RichText::new(tr!("A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."))
                     .small()
                     .color(theme::TEXT_SECONDARY),
             );
@@ -159,5 +159,6 @@ fn key_field(ui: &mut egui::Ui, at: (DocumentId, usize, usize), key: Option<u64>
         return None;
     }
     ui.data_mut(|d| d.remove::<String>(id));
+    crate::state::gta6_key_words::typed(&text);
     texture_key(&text).filter(|typed| Some(*typed) != key)
 }

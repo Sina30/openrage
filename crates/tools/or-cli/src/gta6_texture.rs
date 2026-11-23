@@ -1,7 +1,7 @@
 //! `rpf scan-texture`: a scanned or loose GTA VI texture dictionary's texture replaced from an
 //! image, re-encoded, resized or added, as `texture import` and `texture reencode` edit a `.ytd`,
-//! or a drawable's or fragment's embedded texture replaced in its own shape, written as a loose
-//! resource that `rpf scan-open` reads at offset 0.
+//! or a drawable's or fragment's embedded texture replaced, embedded or unembedded, written as a
+//! loose resource that `rpf scan-open` reads at offset 0.
 
 use std::fs;
 use std::io::Cursor;
@@ -15,9 +15,9 @@ use or_io::container::rpf::{
 use or_io::gta6::headerless::{read_dictionary, write_dictionary_textures, Entry, HeldTexture};
 
 const USAGE: &str = "usage: rpf scan-texture <archive.rpf|file> <offset> <texture> <out> \
-                     [--image <file>] [--add] [--slice <n>] [--format <format>] [--mips <n>] \
-                     [--filter box|lanczos3] [--quality fast|normal|high] [--srgb|--linear] \
-                     [--allow-npot] [--limit <bytes>]";
+                     [--image <file>] [--add] [--remove] [--slice <n>] [--format <format>] \
+                     [--mips <n>] [--filter box|lanczos3] [--quality fast|normal|high] \
+                     [--srgb|--linear] [--allow-npot] [--limit <bytes>]";
 
 /// A texture of the dictionary as its save writes it, the slices it holds, whether it is a
 /// volume, and its pixels as read, which a re-encode decodes.
@@ -41,7 +41,10 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
     let (image, args) = super::rpf::split_value(&args, "--image")?;
     let (slice, args) = super::rpf::split_value(&args, "--slice")?;
     let add = args.iter().any(|a| a == "--add");
-    let args: Vec<String> = args.into_iter().filter(|a| a != "--add").collect();
+    let remove = args.iter().any(|a| a == "--remove");
+    let args: Vec<String> = (args.into_iter())
+        .filter(|a| a != "--add" && a != "--remove")
+        .collect();
     let (encode, words) = super::texture::parse_flags(&args)?;
     let [path, offset, name, out] = words.as_slice() else {
         return Err(USAGE.to_string());
@@ -79,12 +82,16 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
         Some(Rpf9Role::DrawableWithBound) => Some(true),
         _ => None,
     };
+    use super::gta6_embedded_texture::Change;
+    let change = match (ask.add, remove) {
+        (true, true) => return Err("--add and --remove ask for opposite edits: give one".into()),
+        (true, false) => Change::Add,
+        (false, true) => Change::Remove,
+        (false, false) => Change::Replace,
+    };
     let (saved, said) = match fragment {
-        Some(_) if ask.add => {
-            return Err(
-                "a drawable's embedded texture is replaced in its own shape: --add needs a physical re-pack, which is not written"
-                    .into(),
-            )
+        None if remove => {
+            return Err("--remove takes a drawable's or a fragment's embedded texture".into())
         }
         Some(_) if ask.slice != 0 => {
             return Err(format!(
@@ -98,6 +105,7 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
             name,
             ask.image.as_ref(),
             &ask.encode,
+            change,
         )?,
         None => edit(&sections, name, &ask)?,
     };

@@ -15342,9 +15342,6 @@ msgstr "组 {group} 的数据库，类型 {kind}：{columns} 列，共 {tables} 
 msgid "Bone tracks it reads: {bones}; tracks of a word whose name is not known it reads: {others}; facial controls it writes: {facial}."
 msgstr "它读取的骨骼轨道：{bones}；它读取的名称未知的字的轨道：{others}；它写入的面部控件：{facial}。"
 
-msgid "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image."
-msgstr "{name} 是体积纹理，其每个切片都包含每一级的一部分，因此无法用图像替换。"
-
 msgid "The walk stops at {folders} folders and {archives} archives, so the archives past them are not scanned."
 msgstr "遍历在 {folders} 个文件夹和 {archives} 个归档处停止，因此其后的归档不会被扫描。"
 
@@ -15439,8 +15436,8 @@ msgstr "{group}：hash_{id} {word}（{at}/{total}），{detail}"
 msgid "Expression set hash_{key}, tracks read: {reads}, tracks written: {writes}"
 msgstr "表达式集 hash_{key}，读取的轨道：{reads}，写入的轨道：{writes}"
 
-msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known."
-msgstr "GTA V 的记录中没有对应成员的关键帧值以原始形式列在末尾：速度的角度、颜色最后三个未命名的值，以及域的第五和第六个值。颜色前两个未命名的值显示为其最小值和最大值，这是推断的；由于不知道什么启用最大值，预览只绘制最小值。"
+msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too."
+msgstr "GTA V 的记录中没有对应成员的关键帧值以原始形式列在末尾：速度的角度、颜色最后三个未命名的值，以及域的第五和第六个值。颜色前两个未命名的值显示为其最小值和最大值，这是推断的；当颜色在 +0x19C 处的字计数两种或更多正在使用的颜色时，预览像 GTA V 一样绘制最大值，这也是推断的。"
 
 msgid "Emitter rule {name}, domain {slot}: keyframed value {value}, whose name is not known, holds {keys}."
 msgstr "发射器规则 {name}，域 {slot}：名称未知的关键帧值 {value} 包含 {keys}。"
@@ -15580,8 +15577,8 @@ msgstr "未带入：{held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "这会检查数据体的字节，但不测试 GTA VI 是否加载它们。"
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "网格指名的每个几何体会取得其位置、法线、切线、纹理坐标、颜色和三角形；其权重、混合索引和其他通道保持原样，且仅在其自身顶点数不变时。"
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
+msgstr "网格指名的每个几何体会取得其位置、法线、切线、纹理坐标、颜色和三角形，并从网格的关节取得权重和混合索引，其调色板缺少的骨骼会被加入；其他通道保持原样，且仅在其自身顶点数不变时。"
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "此字典条目在打开时没有可读取的骨架，因此没有可编辑的骨骼。"
@@ -15631,14 +15628,14 @@ msgstr "层级 {level}：每条通道 {frames} 帧，每条通道为其各帧上
 msgid "Tetrahedra: each vertex's weight list, counted from its group's first, and its place in the space of the three columns"
 msgstr "四面体：每个顶点的权重列表（从其组的第一个列表起计）及其在三列空间中的位置"
 
-msgid "No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
-msgstr "应用已知的名称和此 drawable 的槽都没有给出此纹理的 32 位名称哈希，因此不会将任何槽绑定到它。"
+msgid "No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
+msgstr "应用已知或输入的名称、应用读取过的安装中的 drawable 以及此 drawable 的槽都没有给出此纹理的 32 位名称哈希，因此不会将任何槽绑定到它。"
 
 msgid "That parameter is no texture slot of this shader."
 msgstr "该参数不是此着色器的纹理槽。"
 
-msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."
-msgstr "常量保持其大小，因此不会有任何移动。被赋予键的空槽会在虚拟段末尾获得自己的绑定和键记录，并且只接受应用知道其名称、或此 drawable 的另一个槽所绑定的键。“另存为”会将数据体写成独立资源。"
+msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."
+msgstr "常量保持其大小，因此不会有任何移动。被赋予键的空槽会在虚拟段末尾获得自己的绑定和键记录，并且只接受应用知道其名称或名称已输入的键，或此 drawable 或安装中某个 drawable 的槽所绑定的键。“另存为”会将数据体写成独立资源。"
 
 msgid "the shader holds a constant elsewhere than the effect places it"
 msgstr "着色器将某个常量放在了效果所放位置之外的地方"
@@ -15655,8 +15652,8 @@ msgstr "读取演化的演化关键帧，并由演化滑块播放。关键帧的
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "物理段中的 GPU 缓冲区会被检查：+0x390 处的缓冲区复制规则 +0x1E0 处的浮点数，+0x388 处的缓冲区含有两张 16 行的表，其值并非由规则推导，因此按存储原样保留，可能与编辑后的关键帧值不一致。预览两者都不需要。"
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it."
-msgstr "“另存为”将两种形式共有的值原地写入 GTA VI 列表。添加或移除规则、事件、行为或键会移动列表，因此工作区不提供此操作。"
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
+msgstr "“另存为”将两种形式共有的值原地写入 GTA VI 列表，连同被移除的规则或绑定到另一条规则的事件。添加的键和复制的效果写在列表末尾之后，副本按 Duplicate 赋予它的名称找到。凭空创建的规则，或添加的事件或行为，没有明确的值，因此工作区不提供此操作。"
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "其第三个生成器在其 ptxu_ZCull 剔除一个点的位置启动 {effect}，预览也是如此；其触发值是点必须达到的速度（与碰撞生成器相同），这是推断的。"
@@ -15684,9 +15681,6 @@ msgstr "其关键帧值的 ID 为 hash_{id}，其成员名称未知。"
 
 msgid "{owner}: evolved value {value} under evolution {evolution} has kind {kind}, where 1 is the LOD distance and 2 to 4 the camera's forward, top and side views, and flags {first} and {second}, whose meaning is not known."
 msgstr "{owner}：演化 {evolution} 下的演化值 {value} 的类型为 {kind}，其中 1 为 LOD 距离，2 到 4 为相机的前视、俯视和侧视，标志为 {first} 和 {second}，其含义未知。"
-
-msgid "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-msgstr "GTA VI 的粒子列表原地保存，因此尚不能从中移除规则或效果"
 
 msgid "An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own."
 msgstr "实体只能采用其地图所指明的、或已打开或已找到的地图类型主体所含的同类原型，内部空间则保留自己的原型。"
@@ -16014,3 +16008,270 @@ msgid "{count} station no text names"
 msgid_plural "{count} stations no text names"
 msgstr[0] "{count} 个电台没有任何文本为其命名"
 msgstr[1] "{count} 个电台没有任何文本为其命名"
+
+msgid "{name} (from the text)"
+msgstr "{name} (来自文本)"
+
+msgid "Bytes to the next item"
+msgstr "到下一项的字节数"
+
+msgid "Counted elements"
+msgstr "计数的元素"
+
+msgid "Each slot a field table or a measured value type places in the item, at its offset, and the bytes between them as they are. A value type is what every item measured holds there, which no table of the file states, so a value may break it; the types are shown only on an item that ends where its layout does."
+msgstr "字段表或测得的值类型在该项中放置的每个槽位，按其偏移列出，以及它们之间的原样字节。值类型是所有测得的项在该处都持有的内容，文件中没有任何表说明它，因此某个值可能不符合它；只有当项在其布局结束处结束时才显示这些类型。"
+
+msgid "reference row"
+msgstr "引用行"
+
+msgid "group slot"
+msgstr "组槽位"
+
+msgid "hash"
+msgstr "哈希"
+
+msgid "wave container"
+msgstr "波形容器"
+
+msgid "zero"
+msgstr "零"
+
+msgid "unset"
+msgstr "未设置"
+
+msgid "float"
+msgstr "浮点数"
+
+msgid "float or -1"
+msgstr "浮点数或 -1"
+
+msgid "{word}, where every item measured holds {held}"
+msgstr "{word}，而所有测得的项都为 {held}"
+
+msgid "bytes"
+msgstr "字节"
+
+msgid "index key"
+msgstr "索引键"
+
+msgid "its own key"
+msgstr "自身的键"
+
+msgid "number or -1"
+msgstr "数字或 -1"
+
+msgid "2-bit flags"
+msgstr "2 位标志"
+
+msgid "item offset"
+msgstr "项偏移"
+
+msgid "{offset}, where the item of the key before it does not start"
+msgstr "{offset}，前一个键的项并不从此处开始"
+
+msgid "byte, zero"
+msgstr "字节，零"
+
+msgid "byte, constant"
+msgstr "字节，常量"
+
+msgid "byte, 0 or 1"
+msgstr "字节，0 或 1"
+
+msgid "byte, few values"
+msgstr "字节，少量取值"
+
+msgid "The first entry after an archive's table, where its header puts it, whose end its bytes do not state: the {count} bytes from it to the next body the list holds. No view reads them, so they show as bytes."
+msgstr "归档表之后的第一个条目，位于其头部所指的位置，其字节未说明它在何处结束：从它到列表中下一个数据体的 {count} 个字节。没有视图读取它们，因此以字节形式显示。"
+
+msgid "Headerless resource"
+msgstr "无头资源"
+
+msgid "Root block"
+msgstr "根块"
+
+msgid "{virtual_blocks} virtual and {physical_blocks} physical blocks"
+msgstr "{virtual_blocks} 个虚拟块和 {physical_blocks} 个物理块"
+
+msgid "{entries} entries, {bytes} blob bytes, not read: no key for them is known"
+msgstr "{entries} 个条目，{bytes} 字节的数据块，未读取：其密钥未知"
+
+msgid "String table"
+msgstr "字符串表"
+
+msgid "{count} at {at}, carried as read"
+msgstr "位于 {at} 的 {count} 个，按读取原样保留"
+
+msgid "Ids at 0x50"
+msgstr "0x50 处的 ID"
+
+msgid "Every entry has a version 1 or 4 UUID's version and variant, so each reads as a UUID. What object an entry names is not known."
+msgstr "每个条目都具有版本 1 或 4 UUID 的版本和变体，因此每个条目都按 UUID 读取。条目所指的对象未知。"
+
+msgid "Not every entry has a UUID's version and variant, so each is shown as its bytes. What object an entry names is not known."
+msgstr "并非每个条目都具有 UUID 的版本和变体，因此每个条目按其字节显示。条目所指的对象未知。"
+
+msgid "Its ptxu_Colour counts {count} colours in use; what the colours past the second draw is not known, so the preview draws its minimum and maximum alone."
+msgstr "其 ptxu_Colour 计数 {count} 种正在使用的颜色；第二种之后的颜色绘制什么尚不清楚，因此预览只绘制其最小值和最大值。"
+
+msgid "Its ptxu_Colour enables its maximum, which holds no key; what that draws is not known, so the preview draws its minimum alone."
+msgstr "其 ptxu_Colour 启用了最大值，但最大值没有任何键；它绘制什么尚不清楚，因此预览只绘制其最小值。"
+
+msgid "This drawable already embeds another texture, and a dictionary of two was never measured, so {name} is not embedded."
+msgstr "此 drawable 已嵌入另一个纹理，而含两个纹理的字典从未测量过，因此不嵌入 {name}。"
+
+msgid "No name or bound entry states the 32-bit name hash of {name}, so it is not embedded."
+msgstr "没有任何名称或绑定条目给出 {name} 的 32 位名称哈希，因此不嵌入它。"
+
+msgid "The fragment holds no such group."
+msgstr "该 fragment 不含此组。"
+
+msgid "Moved a fragment's child"
+msgstr "已移动 fragment 的子项"
+
+msgid "Gave a fragment's child another group"
+msgstr "已将 fragment 的子项移到另一组"
+
+msgid "The composite states no type and include entries."
+msgstr "该 composite 未标明类型与包含条目。"
+
+msgid "Set a child's type and include entry"
+msgstr "已设置子项的类型与包含条目"
+
+msgid "Rewired a triangle"
+msgstr "已重连三角形"
+
+msgid "Reshape the collision"
+msgstr "重塑碰撞"
+
+msgid "A fragment child moves by its own transform and its composite's matrix follows; a group change keeps where it lies; a rewired triangle links to the triangles it shares an edge with. Save As writes the body as a loose resource."
+msgstr "fragment 子项按其自身变换移动，其 composite 的矩阵随之更新；更换组会保持其所在位置；重连的三角形会与共享一条边的三角形相连。“另存为”会将数据体写成独立资源。"
+
+msgid "Fragment child"
+msgstr "fragment 子项"
+
+msgid "Type and include entry"
+msgstr "类型与包含条目"
+
+msgid "Rewire"
+msgstr "重连"
+
+msgid "A geometry with no BVH is not reshaped: it carries a shrunk copy of each vertex, and how far a vertex is shrunk is not known."
+msgstr "没有 BVH 的几何体不会被重塑：它带有每个顶点的收缩副本，而顶点收缩多少尚不清楚。"
+
+msgid "A copy takes the key its name hashes to and the signature of the entry it copies; Save As places it and its tracks or bones after the body's last object."
+msgstr "副本使用其名称哈希得到的键，以及所复制条目的签名；“另存为”会将它及其轨道或骨骼放在主体最后一个对象之后。"
+
+msgid "A dictionary keeps one frame filter or animation record at least."
+msgstr "字典至少保留一个帧筛选器或动画记录。"
+
+msgid "A name is printable text with no space."
+msgstr "名称是不含空格的可打印文本。"
+
+msgid "Another entry of the dictionary has the key that name hashes to."
+msgstr "字典中的另一个条目已具有该名称哈希得到的键。"
+
+msgid "Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"
+msgstr "每帧向量之前：其 0x90 处的字，以及在类 1 中其旋转和记录的浮点数 4 至 11"
+
+msgid "Copy a frame filter or animation record"
+msgstr "复制帧筛选器或动画记录"
+
+msgid "Copy the entry"
+msgstr "复制条目"
+
+msgid "Database bytes at {at}"
+msgstr "{at} 处的数据库字节"
+
+msgid "Database words at {at}"
+msgstr "{at} 处的数据库字"
+
+msgid "Edit a track's id"
+msgstr "编辑轨道的 ID"
+
+msgid "Everything the motion reader reads"
+msgstr "运动读取器读取的全部内容"
+
+msgid "Group {group}, column ranges {ranges}, weight lists {lists}"
+msgstr "组 {group}，列范围 {ranges}，权重列表 {lists}"
+
+msgid "Group {group}, constants: {values}"
+msgstr "组 {group}，常量：{values}"
+
+msgid "Group {group}, database bounds {bounds}, hash at 0x80 {hash}, weight lists {lists}"
+msgstr "组 {group}，数据库边界 {bounds}，0x80 处的哈希 {hash}，权重列表 {lists}"
+
+msgid "Group {group}, grid {index}: words {words}, cells {cells}, bounds {bounds}, cell sizes {sizes}, inverses {inverses}"
+msgstr "组 {group}，网格 {index}：字 {words}，单元 {cells}，边界 {bounds}，单元大小 {sizes}，倒数 {inverses}"
+
+msgid "Group {group}, lists {lists}, hashes {hashes}"
+msgstr "组 {group}，列表 {lists}，哈希 {hashes}"
+
+msgid "Group {group}, phase curve {index}: points {points}, x from {x0} to {x1}, y1 {y1}, {cycles} cycles"
+msgstr "组 {group}，相位曲线 {index}：点 {points}，x 从 {x0} 到 {x1}，y1 {y1}，{cycles} 个周期"
+
+msgid "Group {group}, range {lo} to {hi}: hashes {hashes}, bounds {bounds}"
+msgstr "组 {group}，范围 {lo} 至 {hi}：哈希 {hashes}，边界 {bounds}"
+
+msgid "Group {group}, simplex {index}: {words}"
+msgstr "组 {group}，单纯形 {index}：{words}"
+
+msgid "Matcher bytes at {at}"
+msgstr "{at} 处的匹配器字节"
+
+msgid "Matcher words at {at}"
+msgstr "{at} 处的匹配器字"
+
+msgid "New name"
+msgstr "新名称"
+
+msgid "No stored entry of its kind is there to copy, so {name} is not added."
+msgstr "没有可复制的同类已存储条目，因此不添加 {name}。"
+
+msgid "Parameter objects, by type: {types}"
+msgstr "参数对象，按类型：{types}"
+
+msgid "Parameter {name}: words {words}, word {word}, from {min} to {max}"
+msgstr "参数 {name}：字 {words}，字 {word}，从 {min} 到 {max}"
+
+msgid "Remove a frame filter or animation record"
+msgstr "移除帧筛选器或动画记录"
+
+msgid "Remove the entry"
+msgstr "移除条目"
+
+msgid "That entry is no frame filter or animation record."
+msgstr "该条目既不是帧筛选器也不是动画记录。"
+
+msgid "The entry {code} is stored as the other kind of entry, so it is not written."
+msgstr "条目 {code} 以另一类条目存储，因此不写入。"
+
+msgid "The entry's warp list of {count} points follows no known rule, so it is kept as read."
+msgstr "该条目的 {count} 点扭曲列表不遵循任何已知规则，因此按读取时保留。"
+
+msgid "Time warp {index}: a {a}, b {b}, points {points}"
+msgstr "时间扭曲 {index}：a {a}，b {b}，点 {points}"
+
+msgid "Version-1 GUID"
+msgstr "版本 1 GUID"
+
+msgid "Weight list {index}: {weights}"
+msgstr "权重列表 {index}：{weights}"
+
+msgid "the group already states that id on that track word"
+msgstr "该组已在该轨道字上声明了该 ID"
+
+msgid "{name} hashes to another key than its entry's, so it is not added."
+msgstr "{name} 的哈希得到的键与其条目的不同，因此不添加。"
+
+msgid "An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules."
+msgstr "某个事件指向 GTA VI 粒子列表中没有的规则：请将其绑定到列表中的某条规则。"
+
+msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
+msgstr "GTA VI 粒子列表只接受作为其已有效果副本的新效果：请使用 Duplicate，并保持副本名称为所复制效果的名称后加 _copy。"
+
+msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
+msgstr "在相邻单元 {cells} 的数据体未打开时，不禁用多边形 {polygon}：它清空的边记录会被移除，而它们的特殊链接可能按编号指向其后的记录。请先在扫描中查找相邻单元。"
+
+msgid "An interior takes only its own archetype or another interior archetype whose rooms and portals were read."
+msgstr "内部空间只能采用自己的原型，或另一个已读取其房间和入口的内部原型。"

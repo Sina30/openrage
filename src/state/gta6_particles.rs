@@ -28,6 +28,9 @@ mod raw;
 #[path = "gta6_particle_spawners.rs"]
 pub(crate) mod spawners;
 
+#[path = "gta6_particle_colour.rs"]
+pub(crate) mod colour_max;
+
 /// The highest alignment mode GTA V's sprite names.
 const GTA5_ALIGNMENTS: u32 = 4;
 
@@ -72,7 +75,7 @@ pub(crate) fn scanned_lines(path: &Path) -> Option<Arc<Vec<String>>> {
     scanned().get(path).cloned()
 }
 
-/// Whether `doc` is a scanned GTA VI list, which saves in place, so nothing is added or removed.
+/// Whether `doc` is a scanned GTA VI list, saved in place, so no rule is made in it from nothing.
 pub(crate) fn written_in_place(state: &super::AppState, doc: super::DocumentId) -> bool {
     let path = state.document(doc).and_then(|d| d.path.as_deref());
     path.is_some_and(|p| scanned_lines(p).is_some())
@@ -456,6 +459,7 @@ pub(super) fn behaviour(b: &Behaviour, place: usize) -> Option<PtxBehaviourAny> 
             rgba_min_kfp: kfp_of(b, COLOUR_RGBA_KFPS[0], KFP_COLOUR[0]),
             rgba_max_kfp: kfp_of(b, COLOUR_RGBA_KFPS[1], KFP_COLOUR[1]),
             emissive_intensity_kfp: k(KFP_COLOUR[2]),
+            rgba_max_enable: colour_max::max_enable(b),
             ..Default::default()
         }),
         "ptxu_AnimateTexture" => {
@@ -590,10 +594,10 @@ pub(super) fn lines(list: &ParticleEffects) -> Vec<String> {
         ),
         tr!("A sprite is drawn from its rule's texture slot 0, else 6, else 5, else 12, once a texture pack open in the app holds its key. Slot 6 is coloured from the ramp slot 7 holds, whose four rows are one row, at the place its value gives, which is inferred; it is drawn grey until a pack holding the ramp is open, and where slot 7 is not a BC6H texture 4 texels high, which is no ramp. Slot 5 is drawn opaque. Most slot 4 and 9 textures are single-channel masks, slot 10's two-channel vector maps and slot 12's grey layers; what the shader does with them is not known.").to_string(),
         tr!("A rule's atlas grid is not stated: it is cut into the square cells that hold exactly its frames where such a grid exists, else guessed as GTA V guesses it.").to_string(),
-        tr!("Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known.").to_string(),
+        tr!("Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too.").to_string(),
         tr!("An evolution's evolved keyframes are read and the evolution sliders play them. A keyframe's kind is its evolution's source: 1 the LOD distance, 2 to 4 the camera's forward, top and side views, whose levels the sliders set, since how the game computes them is not stated. Each keyframe's two flags are listed at the end; what they select is not known.").to_string(),
         tr!("The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither.").to_string(),
-        tr!("Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it.").to_string(),
+        tr!("Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it.").to_string(),
     ];
     for e in &list.emitters {
         lines.push(tr!(
@@ -665,6 +669,7 @@ fn rule_lines(list: &ParticleEffects, p: &ParticleRule, lines: &mut Vec<String>)
                 ));
             }
         }
+        colour_max::lines(b, lines);
     }
     for (slot, key) in p.texture_keys.iter().enumerate().filter(|(_, k)| **k != 0) {
         lines.push(tr!(

@@ -299,7 +299,7 @@ fn a_deletion_the_rules_do_not_cover_is_refused_by_name_and_changes_nothing() {
     let mut s = stored.clone();
     delete_polygon(&mut s, 0, &[&same_cell]).expect("another body of the cell itself");
 
-    // Polygon 1's edge into 2 cut: the side record still names 2 at corner 1.
+    // Polygon 1's edge into 2 cut: the side record would go with 2, but link 0 still ends in 2.
     let mut img = Image {
         bytes: built.img.bytes.clone(),
     };
@@ -308,8 +308,8 @@ fn a_deletion_the_rules_do_not_cover_is_refused_by_name_and_changes_nothing() {
     img.u16(edge + 4, 0xFFFF);
     assert!(matches!(
         refused(&img, 2, &[]),
-        NavDeleteError::SideRecordInto {
-            record: 3,
+        NavDeleteError::LinkAt {
+            link: 0,
             polygon: 2
         }
     ));
@@ -324,34 +324,148 @@ fn a_deletion_the_rules_do_not_cover_is_refused_by_name_and_changes_nothing() {
             polygon: 1
         }
     ));
-    // An index list the rule does not give.
-    let mut img = Image {
-        bytes: built.img.bytes.clone(),
-    };
-    for (k, i) in [2u16, 0, 0].iter().enumerate() {
-        img.u16(built.link_list + 2 * k, *i);
-    }
-    assert!(matches!(refused(&img, 0, &[]), NavDeleteError::IndexRule));
-
     let mut no_cell = read_navmesh(&stored.virtual_section).expect("it reads");
     no_cell.cell = 0;
     assert!(matches!(
         polygon_deleted(&no_cell, 0, &[]),
         Err(NavDeleteError::NoCell)
     ));
-    let mut wide = read_navmesh(&stored.virtual_section).expect("it reads");
-    let filler = wide.polygons[0];
-    wide.polygons.resize((1 << 16) + 1, filler);
-    assert!(matches!(
-        polygon_deleted(&wide, 0, &[]),
-        Err(NavDeleteError::TooMany { .. })
-    ));
+}
+
+#[test]
+fn an_index_list_no_form_gives_is_filed_again_under_both_ends_of_each_link() {
+    let built = deletable();
+    let mut img = built.img;
+    for (k, i) in [2u16, 0, 0].iter().enumerate() {
+        img.u16(built.link_list + 2 * k, *i);
+    }
+    let mut s = sections_of(&img);
+    let read = delete_polygon(&mut s, 0, &[]).expect("deleted");
+    assert_eq!(read.special_link_indices, [0, 2, 0]);
+}
+
+#[test]
+fn an_index_list_left_with_no_entry_is_written_null_with_count_0() {
+    let built = deletable();
+    let mut img = built.img;
+    // Every link runs between polygons 3 of the cell east: one link, filed under record 3 alone.
+    let links = target(&img.bytes, 0xA8);
+    for k in 0..3 {
+        img.u16(links + 32 * k + 0x0C, 3);
+        img.u16(links + 32 * k + 0x0E, 3);
+        img.u32(links + 32 * k + 0x10, OTHER);
+        img.u32(links + 32 * k + 0x14, OTHER);
+    }
+    img.u16(built.link_list, 0);
+    img.u32(0xD8, 1);
+    let records = first_item(&img, built.polygons);
+    for (q, run) in [0u32, 0, 1 << 23, 1].iter().enumerate() {
+        img.u32(records + 44 * q + 0x20, *run);
+    }
+    read_navmesh(&img.bytes).expect("the patched cell reads");
+    let mut s = sections_of(&img);
+    // Three records stay, so number 3 files under none.
+    let read = delete_polygon(&mut s, 0, &[]).expect("deleted");
+    assert!(read.special_link_indices.is_empty());
+    assert_eq!(read.special_links.len(), 3, "no link is deleted");
+    assert!(read.polygons.iter().all(|p| p.link_run().is_empty()));
+    assert_ne!(read.polygons[1].word_20 & (1 << 23), 0, "bit 23 as read");
+    let v = &s.virtual_section;
+    assert_eq!((u64_at(v, 0xB0), u32_at(v, 0xD8)), (0, 0));
+    let file = write_rpf9_resource(&s).expect("written");
+    let (find, bytes) = read_rpf9_body(Cursor::new(&file), 0, u64::MAX).expect("it reads");
+    assert_eq!(Rpf9Sections::of(&find, &bytes).expect("a resource"), s);
+}
+
+/// [`deletable`] with polygon 1's edge into 2 cut and links 0 and 1 running from polygon 1.
+fn side_only() -> Image {
+    let built = deletable();
+    let mut img = built.img;
+    let edge = first_item(&img, built.adjacency) + 12 * 4;
+    img.u32(edge, NOWHERE);
+    img.u16(edge + 4, 0xFFFF);
+    let links = target(&img.bytes, 0xA8);
+    for k in 0..2 {
+        img.u16(links + 32 * k + 0x0C, 1);
+    }
+    read_navmesh(&img.bytes).expect("the patched cell reads");
+    img
+}
+
+#[test]
+fn a_side_record_whose_last_named_piece_led_into_the_polygon_goes_with_it() {
+    let mut s = sections_of(&side_only());
+    let read = delete_polygon(&mut s, 2, &[]).expect("deleted");
+    assert_eq!((read.polygons.len(), read.polygons_proper), (2, 2));
+    // Vertices 4 and 5 were polygon 2's and the side record's alone.
+    assert_eq!(read.vertices, (0..4).map(vertex).collect::<Vec<_>>());
+    assert_eq!(read.indices, [0, 1, 2, 1, 3, 2]);
+    // Links 0 and 1 are one link filed once under polygon 1, link 2 under its end there.
+    assert_eq!(read.special_link_indices, [0, 2]);
+    let runs: Vec<_> = read.polygons.iter().map(|p| p.link_run()).collect();
+    assert_eq!(runs, [0..0, 0..2]);
+    let leaf = |i: usize| (read.tree.children[i].as_deref()).and_then(|n| n.polygons.clone());
+    assert_eq!((leaf(0), leaf(1)), (Some(vec![0]), Some(vec![0, 1])));
+}
+
+#[test]
+fn a_disable_that_empties_a_side_record_writes_the_cell_without_it() {
+    let built = deletable();
+    let mut s = sections_of(&built.img);
+    let read = disable_polygon(&mut s, 2, &[]).expect("disabled");
+    assert_eq!((read.polygons.len(), read.polygons_proper), (3, 3));
+    let reaches = |j: usize| read.edges[j].mesh != NOWHERE;
+    assert!(!(0..read.edges.len()).any(reaches), "every edge cut");
+    assert_eq!(read.edges[8].word_06, 0x2A00, "+0x06's high byte kept");
+    assert_eq!(read.vertices, (0..5).map(vertex).collect::<Vec<_>>());
+    assert_eq!(read.special_link_indices, [0, 2, 0]);
+    assert_ne!(read.polygons[2].word_20 & (1 << 23), 0, "bit 23 as read");
+
+    // Polygon 1 names no side record: its cut moves nothing.
+    let m = read_navmesh(&built.img.bytes).expect("it reads");
+    let cut = disabling(&m, 1, &[]).expect("disabled");
+    assert_eq!(cut.mesh.indices, m.indices);
+    assert_eq!(cut.records, [0, 1, 2, 3]);
+    assert_eq!(cut.edges, (0..m.edges.len()).collect::<Vec<_>>());
+}
+
+#[test]
+fn a_split_array_that_empties_its_last_chunk_loses_the_chunk_and_its_row() {
     // 372 polygons a chunk: the 373rd record alone in the second.
-    let full = read_navmesh(&wide_cell(372, 5, 1, &[0])).expect("it reads");
+    let mut s = Rpf9Sections {
+        form: Rpf9Form::BlockMapped,
+        virtual_section: wide_cell(372, 5, 1, &[0]),
+        physical: Vec::new(),
+    };
+    let read = delete_polygon(&mut s, 3, &[]).expect("deleted");
+    assert_eq!((read.polygons.len(), read.polygons_proper), (372, 371));
+    assert_eq!(read.neighbour(0), Some(4), "polygon 5 is now 4");
+    let header = target(&s.virtual_section, 0x98);
+    assert_eq!(u64_at(&s.virtual_section, header + 0x20), 1, "one chunk");
+    let file = write_rpf9_resource(&s).expect("written");
+    let (find, bytes) = read_rpf9_body(Cursor::new(&file), 0, u64::MAX).expect("it reads");
+    assert_eq!(Rpf9Sections::of(&find, &bytes).expect("a resource"), s);
+}
+
+#[test]
+fn a_cell_past_65_536_records_writes_each_number_modulo_65_536_and_it_resolves_again() {
+    let proper = 65_536 + 10;
+    // Number 4 names polygons 4 and 65,540, the second the one holding polygon 0's edge.
+    let mut s = Rpf9Sections {
+        form: Rpf9Form::BlockMapped,
+        virtual_section: wide_cell(proper, 4, 65_540, &[10]),
+        physical: Vec::new(),
+    };
+    let read = delete_polygon(&mut s, 65_539, &[]).expect("deleted");
+    assert_eq!(read.polygons_proper, proper - 1);
+    assert_eq!(read.edges[0].polygon, 3, "65,539 modulo 65,536");
+    assert_eq!(read.neighbour(0), Some(65_539));
+    assert_eq!(read.tree.polygons.as_deref(), Some(&[10][..]));
+
+    // A leaf whose numbers name polygons past the one that goes would name others once renumbered.
+    let m = read_navmesh(&wide_cell(proper, 4, 65_540, &[0, 4])).expect("it reads");
     assert!(matches!(
-        polygon_deleted(&full, 3, &[]),
-        Err(NavDeleteError::ChunkEmpties {
-            list: "polygon list"
-        })
+        polygon_deleted(&m, 65_539, &[]),
+        Err(NavDeleteError::Ambiguous { index: 65_539, .. })
     ));
 }

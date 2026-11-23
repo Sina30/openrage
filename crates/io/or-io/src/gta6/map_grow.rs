@@ -19,12 +19,14 @@ use crate::meta::binary::rbm::schema::RbmModel;
 
 use super::links::{self, Links, LodLink};
 use super::{
-    read, u64_at, MapBody, MapData, MapError, ARRAY, C_ENTITY_DEF, ENTITY_SIZE, ORPHAN_HD,
-    PROP_LIST_SIZE,
+    read, u64_at, Aabb, Entity, MapBody, MapData, MapError, ARRAY, C_ENTITY_DEF, ENTITY_SIZE,
+    ORPHAN_HD, PROP_LIST_SIZE,
 };
 
 /// `CMapData`'s `entities`, an `AtArray64` of pointers to entity records.
 const ENTITIES: usize = 0xD0;
+/// `CMapData`'s `entitiesExtentsMin`, with `entitiesExtentsMax` 16 bytes after it.
+const ENTITIES_EXTENTS: usize = 0xB0;
 /// `CEntityDef`'s `extensions`, an `AtArray64` a copy does not share with its source.
 const EXTENSIONS: u32 = 0x28;
 /// `CMapData`'s `instancedData.PropInstanceList`, an `AtArray64` of prop list records in place.
@@ -175,6 +177,42 @@ pub fn remove_entity(sections: &mut Rpf9Sections, index: usize) -> Result<()> {
     remove_element(&mut s, model.root_block_id, ENTITIES, index)?;
     let mut expected = map;
     expected.entities.remove(index);
+    check(&s, &expected)?;
+    *sections = s;
+    Ok(())
+}
+
+/// The union of the entities' boxes `placed` gives and the lists' `BatchAABB`s: `entitiesExtents`.
+// `None` where `placed` places no box of an entity.
+pub fn entities_union(map: &MapData, placed: impl Fn(&Entity) -> Option<Aabb>) -> Option<Aabb> {
+    let lists = (map.prop_lists.iter().chain(&map.grass_lists)).map(|l| Some(l.batch_aabb));
+    let mut held: Option<Aabb> = None;
+    for b in map.entities.iter().map(placed).chain(lists) {
+        let b = b?;
+        held = Some(match held {
+            None => b,
+            Some(h) => Aabb {
+                min: std::array::from_fn(|a| h.min[a].min(b.min[a])),
+                max: std::array::from_fn(|a| h.max[a].max(b.max[a])),
+            },
+        });
+    }
+    held
+}
+
+/// Writes `extents` as the map's `entitiesExtents`, each corner's fourth lane kept as read.
+pub fn set_entities_extents(sections: &mut Rpf9Sections, extents: Aabb) -> Result<()> {
+    let mut s = sections.clone();
+    let (model, map) = map_data(&s)?;
+    for (at, corner) in [
+        (ENTITIES_EXTENTS, extents.min),
+        (ENTITIES_EXTENTS + 0x10, extents.max),
+    ] {
+        let bytes: Vec<u8> = corner.iter().flat_map(|f| f.to_le_bytes()).collect();
+        put_in(&mut s, &model, model.root_block_id, at, &bytes)?;
+    }
+    let mut expected = map;
+    expected.entities_extents = extents;
     check(&s, &expected)?;
     *sections = s;
     Ok(())
@@ -645,6 +683,30 @@ mod tests {
         assert_eq!(map(&s), expected);
         // The pointers go back to the 16 bytes they had; the copy's record stays in its block.
         assert_eq!(s.virtual_section.len(), grown - 16);
+        assert_eq!(map(&loose(&s)), expected);
+    }
+
+    #[test]
+    fn a_removal_s_extents_are_the_union_of_the_boxes_left_and_read_back() {
+        let mut s = map_body(0x7777_0001);
+        remove_entity(&mut s, 0).expect("removed");
+        // A box 1 m either side of each origin; a box not known leaves no union.
+        let placed = |e: &Entity| {
+            Some(Aabb {
+                min: e.position.map(|x| x - 1.0),
+                max: e.position.map(|x| x + 1.0),
+            })
+        };
+        let m = map(&s);
+        assert_eq!(entities_union(&m, |_| None), None);
+        let union = entities_union(&m, placed).expect("every box placed");
+        let p = m.entities[0].position;
+        assert_eq!(union.min, p.map(|x| x - 1.0));
+        assert_eq!(union.max, p.map(|x| x + 1.0));
+        set_entities_extents(&mut s, union).expect("written");
+        let mut expected = m.clone();
+        expected.entities_extents = union;
+        assert_eq!(map(&s), expected);
         assert_eq!(map(&loose(&s)), expected);
     }
 

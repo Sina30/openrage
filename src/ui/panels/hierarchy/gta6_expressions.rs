@@ -14,6 +14,7 @@ pub(crate) const CAPABILITIES: FormatCapabilities = FormatCapabilities {
     outline: Some(draw_rows),
     has_outline_children: Some(has_rows),
     inspector: Some(draw_facts),
+    edited_sections: Some(crate::state::gta6_expression_edit::edited_save),
     ..FormatCapabilities::none(DocumentKind::Gta6Expressions)
 };
 
@@ -135,12 +136,52 @@ fn draw_facts(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId, selec
     let Some(DocPayload::Gta6Expressions(set)) = state.document(doc_id).map(|d| &d.payload) else {
         return;
     };
-    if let Some(said) = selection.and_then(|sel| picked(set, sel)) {
+    let set = std::sync::Arc::clone(set);
+    if let Some((sel, said)) = selection.and_then(|sel| Some((sel, picked(&set, sel)?))) {
         ui.strong(said);
+        if let Some((group, Some(track))) = row_of(sel) {
+            draw_id(ui, state, (doc_id, sel), &set, group, track);
+        }
         ui.separator();
     }
-    for line in facts(set).lines() {
+    for line in facts(&set).lines() {
         ui.label(line);
+    }
+}
+
+/// The picked track's id, `hash_` and eight hex digits or a name to hash, written once the field
+/// lets go.
+fn draw_id(
+    ui: &mut egui::Ui,
+    state: &mut AppState,
+    (doc_id, sel): (DocumentId, u64),
+    set: &Expressions,
+    group: ExpressionGroup,
+    track: usize,
+) {
+    let Some(&(id, _)) = group.of(set).and_then(|t| t.tracks.get(track)) else {
+        return;
+    };
+    let key = egui::Id::new(("gta6_expression_id", doc_id, sel));
+    let held = format!("hash_{id:08X}");
+    let mut text = (ui.data(|d| d.get_temp::<String>(key))).unwrap_or_else(|| held.clone());
+    let mut typed = None;
+    ui.horizontal(|ui| {
+        ui.label(tr!("Id"));
+        let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(160.0));
+        if response.changed() {
+            ui.data_mut(|d| d.insert_temp(key, text.clone()));
+        }
+        if response.lost_focus() {
+            ui.data_mut(|d| d.remove::<String>(key));
+            typed = (text != held).then(|| text.clone());
+        }
+    });
+    let typed = typed
+        .as_deref()
+        .and_then(crate::state::gta6_expression_edit::typed_id);
+    if let Some(id) = typed {
+        state.edit_gta6_expression_id(doc_id, group, track, id);
     }
 }
 

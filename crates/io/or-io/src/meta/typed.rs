@@ -1198,6 +1198,14 @@ fn encode(
         Some(written) => return written.map_err(|e| save(e.to_string())),
         None => {}
     }
+    // A GTA VI P-form's own tables and the measured rules lay out any tree of its types.
+    #[cfg(feature = "gta6")]
+    if let Some(ContainerLayout::Pso(pso)) = layout.map(|l| &l.container) {
+        if pso.is_gta6() && !pso.is_table_form() {
+            return crate::meta::binary::pso::pform_layout::write(pso, root)
+                .map_err(|e| save(e.to_string()));
+        }
+    }
     // ⚠ The installed schema is a developer's artifact and no user has one, so
     // what the document's own tables state stands in for what it lacks.
     let own = layout.map(type_tables::of_layout);

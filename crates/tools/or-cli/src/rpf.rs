@@ -100,11 +100,11 @@ fn print_usage() {
          openrage-cli rpf scan <archive.rpf> [--from <offset>] [--to <offset>]   (RPF9: the bodies found without the table, those that start in the range; what the headers before --from state is not carried)\n  \
          openrage-cli rpf scan-body <archive.rpf> <offset> <out_file> [--limit <bytes>] [--stored | --xml | --gxt2 | --rewrite]   (--stored writes a resource as it is stored, which scan-open reads at offset 0; --xml writes a metadata body's XML; --gxt2 a text table's plain texts as GTA V's text table; --rewrite a text table as OpenRage writes it again)\n  \
          openrage-cli rpf scan-from-xml <archive.rpf|file> <offset> <edited.xml> <out> [--limit <bytes>]   (a scanned or loose GTA VI headerless metadata body with the tree of the XML scan-body --xml wrote, edited, written in, an array of structures, pointers or values whose size their type gives grown or shrunk to it; written as a loose resource that scan-open reads at offset 0)\n  \
-         openrage-cli rpf scan-open <archive.rpf> <offset> [--limit <bytes>] [--effects <archive.rpf> <offset>] [--export <dir> [--format png|dds]] [--texts]   (one scanned body through the reader that fits, or the scan of a nested archive whose names the scan placed; --effects names a drawable's shaders by the SGD5 container there; --export writes a texture dictionary's textures that read, by name, or a drawable's embedded ones as hash_<key>, one file per face or slice; --texts lists a text table's every text by key)\n  \
+         openrage-cli rpf scan-open <archive.rpf> <offset> [--limit <bytes>] [--effects <archive.rpf> <offset>] [--export <dir> [--format png|dds]] [--texts]   (one scanned body through the reader that fits, or the scan of a nested archive whose names the scan placed or a count of the entries its header states placed; --effects names a drawable's shaders by the SGD5 container there; --export writes a texture dictionary's textures that read, by name, or a drawable's embedded ones as hash_<key>, one file per face or slice; --texts lists a text table's every text by key)\n  \
          openrage-cli rpf scan-extract <archive.rpf> <out_dir> [--kind <kind>] [--role <role>] [--limit <bytes>] [--dry-run]   (every scanned body of a kind as `rpf scan` tallies it or of a family as `rpf list --kind` names it, or of a role, as <offset>.<ext>, each as scan-body --stored writes it)\n  \
          openrage-cli rpf scan-export <archive.rpf> <offset> <out.glb|out.gltf> [--every-lod] [--entry <code>] [--limit <bytes>] [--effects <archive.rpf> <offset>] [--textures <pack.ttpf|folder>]   (a scanned GTA VI drawable, fragment or dictionary entry to glTF, a dictionary's entry skinned to its own skeleton; --textures carries as images the textures the drawable embeds and those the pack, or a .ttpf in the folder, holds, its DiffuseTex map the base colour)\n  \
          openrage-cli rpf scan-import <archive.rpf|file> <offset> <mesh.glb|mesh.gltf> <out> [--entry <code>] [--limit <bytes>]   (a scanned or loose GTA VI drawable, fragment or dictionary entry with each geometry a primitive of the mesh names replaced from it, as mesh import replaces a GTA V one; channels the mesh cannot state are kept while the vertex count is, and the import is refused by name otherwise; written as a loose resource that scan-open reads at offset 0)\n  \
-         openrage-cli rpf scan-texture <archive.rpf|file> <offset> <texture> <out> [--image <file>] [--add] [--slice <n>] [--format <format>] [--mips <n>] [--filter box|lanczos3] [--quality fast|normal|high] [--srgb|--linear] [--allow-npot] [--limit <bytes>]   (a scanned or loose GTA VI texture dictionary's texture, as texture import and reencode edit a .ytd: from --image in its own size, format and mips, one slice of a cube, an array or a one-level volume by --slice, else given the image's size, --format and --mips; without --image re-encoded from its top mip; --add adds it from --image; a drawable's or fragment's embedded texture, named or hash_ and its key, from --image in its own size, format and mips; written as a loose resource that scan-open reads at offset 0)\n  \
+         openrage-cli rpf scan-texture <archive.rpf|file> <offset> <texture> <out> [--image <file>] [--add] [--remove] [--slice <n>] [--format <format>] [--mips <n>] [--filter box|lanczos3] [--quality fast|normal|high] [--srgb|--linear] [--allow-npot] [--limit <bytes>]   (a scanned or loose GTA VI texture dictionary's texture, as texture import and reencode edit a .ytd: from --image in its own size, format and mips, one slice of a cube, an array or a one-level volume by --slice, else given the image's size, --format and --mips; without --image re-encoded from its top mip; --add adds it from --image; a drawable's or fragment's embedded texture, named or hash_ and its key, from --image or re-encoded in any size, format and mips, the physical section packed anew, --add embedding one from --image and --remove unembedding it; written as a loose resource that scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-anim <archive.rpf> <offset> [--json] [--on <archive.rpf> <offset> [--clip <name>] [--at <seconds>]] [--limit <bytes>]   (a GTA VI animation body as JSON, or bound to the skeleton of the drawable or fragment body --on names, with its pose at --at)\n  \
          openrage-cli rpf scan-expressions <archive.rpf> <offset> [--limit <bytes>] [--id <group> <track> <hash> --out <file>]   (a GTA VI expression set's tracks group by group, each with its id, track word, components or mask and slots; --id gives track <track> of the group inputs, bones, controls, facial-outputs or outputs the id <hash>, written where it lies, and writes the set as a loose resource, which scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-radio <archive.rpf>... [--tracks] [--language <name>] [--limit <bytes>]   (the radio stations of the archives' GTA VI audio game data: the lists of stations, and each station's track lists and tracks, joined to the streamed sounds they play with each one's length and audio stream ids; a station is named by its key's text in the archives' text tables of the language, the first a change set among the archives registers unless --language names one; --tracks lists every track with the title and artists its text names)\n  \
@@ -395,7 +395,7 @@ fn headerless_row(signature: or_io::container::rpf::Rpf9Signature) -> String {
     }
 }
 
-fn scan_line(find: &Rpf9ScanFind) -> String {
+pub(crate) fn scan_line(find: &Rpf9ScanFind) -> String {
     let end = match (find.stored_len, find.inflated_len) {
         (Some(s), Some(i)) => format!("stored {s} bytes, inflated {i}"),
         _ => "end not known".to_string(),
@@ -1299,11 +1299,7 @@ fn scan_open(
                 super::meta::print_info(&name, &bytes, or_io::meta::ErrorMode::Lenient)
                     .map_err(|e| format!("the PSO reader does not read this body: {e}"))?
             }
-            Rpf9Content::Rbf => {
-                super::gta6_uidata::print_tree(&bytes)?;
-                super::meta::print_scanned_rbf(&name, &bytes)
-                    .map_err(|e| format!("the RBF reader does not read this body: {e}"))?
-            }
+            Rpf9Content::Rbf => print_rbf(&name, &bytes)?,
             Rpf9Content::ResourceShaped => match (run.resource, run.signature) {
                 (Some(resource), Some(signature)) => {
                     super::gta6_resource::print(&resource, &bytes, signature, effects.as_ref())?
@@ -1411,12 +1407,22 @@ fn scan_open(
                 scan_line(&find)
             ))
         }
+        Rpf9BodyKind::RawDeflate {
+            content: Rpf9Content::Rbf,
+        } => print_rbf(&name, &bytes)?,
         Rpf9BodyKind::RawDeflate { .. } => {
             super::meta::print_info(&name, &bytes, or_io::meta::ErrorMode::Lenient)
                 .map_err(|e| format!("the metadata reader does not read this body: {e}"))?
         }
     }
     Ok(())
+}
+
+/// An RBF body, of a zlib run or a raw DEFLATE stream: its interface tree, then its metadata.
+fn print_rbf(name: &str, bytes: &[u8]) -> Result<(), String> {
+    super::gta6_uidata::print_tree(bytes)?;
+    super::meta::print_scanned_rbf(name, bytes)
+        .map_err(|e| format!("the RBF reader does not read this body: {e}"))
 }
 
 /// The scan of the archive nested at `offset`, from its header to the end of its names.
@@ -1690,7 +1696,6 @@ fn parse_family(word: &str) -> Result<Rpf9Family, String> {
 
 /// `rpf list` on a GTA VI archive: what `rpf scan` prints, the bodies of one family, or one JSON document.
 fn list_rpf9(args: &[String]) -> Result<(), Failure> {
-    use std::collections::BTreeMap;
     let (json, args) = split_flag(args, "--json");
     let (kind, args) = split_value(&args, "--kind").map_err(Usage)?;
     let family = (kind.as_deref().map(parse_family).transpose()).map_err(Usage)?;
@@ -1702,20 +1707,38 @@ fn list_rpf9(args: &[String]) -> Result<(), Failure> {
     if !json && family.is_none() {
         return cmd_scan(&args);
     }
+    for line in listed_rpf9(path, family, json)? {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// The lines [`list_rpf9`] prints for the archive at `path`: one JSON document, or a line per body.
+pub(crate) fn listed_rpf9(
+    path: &str,
+    family: Option<Rpf9Family>,
+    json: bool,
+) -> Result<Vec<String>, Failure> {
+    use std::collections::BTreeMap;
+    let mut out = Vec::new();
     let file = fs::File::open(path).map_err(|e| format!("open({path}): {e}"))?;
     let mut scan = Rpf9Scan::new(&file, 0..u64::MAX).map_err(|e| e.to_string())?;
     if let (Some(family), false) = (family, json) {
-        println!(
+        out.push(format!(
             "  kind          {}: only the bodies of that family; {}",
             family.word(),
             Rpf9ScanFind::ORIGIN
-        );
+        ));
     }
     // Where each nested archive whose names were placed ends, and the runs a download has not delivered.
     let (mut finds, mut ends, mut missing) = (Vec::new(), BTreeMap::new(), Vec::new());
     let (mut after, mut counted) = (0, 0);
+    let mut by_count = or_io::container::rpf::Rpf9NamesByCount::default();
     loop {
         let find = scan.next().transpose().map_err(|e| e.to_string())?;
+        if let Some(find) = &find {
+            by_count.push(find);
+        }
         // A run is counted once the scan is past it, at the next find or at the file's end.
         if scan.missing_bytes() > counted {
             missing.push(serde_json::json!({
@@ -1737,11 +1760,27 @@ fn list_rpf9(args: &[String]) -> Result<(), Failure> {
         }
         match json {
             true => finds.push(find),
-            false => println!("{}", scan_line(&find)),
+            false => out.push(scan_line(&find)),
+        }
+    }
+    // The names placed by counting their header's entries, as `rpf scan` lists them.
+    for names in by_count.place(&file).map_err(|e| e.to_string())? {
+        if let Rpf9BodyKind::Names { archive } = names.kind {
+            ends.insert(archive, names.offset + names.span);
+        }
+        if family.is_some_and(|f| f != Rpf9Family::of(&names)) {
+            continue;
+        }
+        match json {
+            true => finds.insert(finds.partition_point(|f| f.offset <= names.offset), names),
+            false => out.push(format!(
+                "{}; placed by counting its header's entries",
+                scan_line(&names)
+            )),
         }
     }
     if !json {
-        return Ok(());
+        return Ok(out);
     }
     let bodies: Vec<serde_json::Value> = (finds.iter())
         .map(|find| {
@@ -1765,9 +1804,8 @@ fn list_rpf9(args: &[String]) -> Result<(), Failure> {
         "bodies": bodies,
         "missing": missing,
     });
-    let text = serde_json::to_string_pretty(&document).map_err(|e| e.to_string())?;
-    println!("{text}");
-    Ok(())
+    out.push(serde_json::to_string_pretty(&document).map_err(|e| e.to_string())?);
+    Ok(out)
 }
 
 fn cmd_list(args: &[String]) -> Result<(), Failure> {

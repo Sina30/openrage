@@ -12,7 +12,10 @@ const TABLE: &str = include_str!("audio_layouts.txt");
 
 /// One line per class keyed as [`TABLE`]'s, then each slot whose value type every item measured
 /// agrees on as `region:offset:type`: `z` zero, `a` 0xAAAAAAAA, `f` f32, `n` a u32 below 0x10000,
-/// `m` f32 or -1.
+/// `N` that or -1, `m` and `w` f32 or -1, `K` an index key or none, `O` the item's own key, `t`
+/// 2-bit fields of 0 to 2, `h` a hash, `P` the data offset of the item the key before it names,
+/// `T` and a width NUL-padded ASCII, and the single bytes `b0` zero, `bc` constant, `bb` 0 or 1
+/// and `be` of few values.
 const VALUES: &str = include_str!("audio_value_types.txt");
 
 /// What the field table that lists a slot's word says it holds.
@@ -85,6 +88,17 @@ enum ValueType {
     F32,
     Number,
     F32OrMinusOne,
+    NumberOrMinusOne,
+    Key,
+    OwnKey,
+    Flags,
+    Hash,
+    ItemOffset,
+    Text(usize),
+    ByteZero,
+    ByteConstant,
+    Bool,
+    Enum,
 }
 
 /// A key's typed slots: each one's region, its offset there and its type.
@@ -103,8 +117,21 @@ fn parse_values(line: &str) -> Option<(Key, Slots)> {
             "a" => ValueType::Unset,
             "f" => ValueType::F32,
             "n" => ValueType::Number,
-            "m" => ValueType::F32OrMinusOne,
-            _ => return None,
+            "m" | "w" => ValueType::F32OrMinusOne,
+            "N" => ValueType::NumberOrMinusOne,
+            "K" => ValueType::Key,
+            "O" => ValueType::OwnKey,
+            "t" => ValueType::Flags,
+            "h" => ValueType::Hash,
+            "P" => ValueType::ItemOffset,
+            "b0" => ValueType::ByteZero,
+            "bc" => ValueType::ByteConstant,
+            "bb" => ValueType::Bool,
+            "be" => ValueType::Enum,
+            text => {
+                let width: usize = text.strip_prefix('T')?.parse().ok()?;
+                ValueType::Text(Some(width).filter(|w| *w > 0)?)
+            }
         };
         Some((region, offset, value))
     });
@@ -205,15 +232,17 @@ pub struct TableItem {
     pub values: Vec<TableValue>,
 }
 
-/// A slot of an item and its word as the value type measured for it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A slot of an item and its bytes as the value type measured for it.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableValue {
     pub at: usize,
+    /// The bytes the slot spans.
+    pub width: usize,
     pub value: SlotValue,
 }
 
-/// A word as its measured value type; a type no table states, so a word may break it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A slot's bytes as their measured value type; a type no table states, so a word may break it.
+#[derive(Debug, Clone, PartialEq)]
 pub enum SlotValue {
     /// Measured zero: the word.
     Zero(u32),
@@ -224,20 +253,84 @@ pub enum SlotValue {
     Number(u32),
     /// An f32, `None` for the word -1.
     F32OrMinusOne(Option<f32>),
+    /// Measured below 0x10000 or -1, `None` for -1; a largest value seen and not a bound.
+    NumberOrMinusOne(Option<u32>),
+    /// Measured an index key of some body, or 0 or -1 for none: the word.
+    Key(u32),
+    /// Measured the item's own index key: the word.
+    OwnKey(u32),
+    /// Measured sixteen 2-bit fields of 0 to 2: the word.
+    Flags(u32),
+    Hash(u32),
+    /// A data offset, and whether the item the index key before it names starts there.
+    ItemOffset {
+        offset: u32,
+        of_its_key: bool,
+    },
+    /// NUL-padded ASCII up to its first NUL, any other byte escaped.
+    Text(String),
+    /// Measured zero: the byte.
+    ByteZero(u8),
+    /// Measured one value in every item: the byte.
+    ByteConstant(u8),
+    /// Measured 0 or 1: the byte.
+    Bool(u8),
+    /// Measured at most 16 values, a set seen and not a bound: the byte.
+    Enum(u8),
 }
 
 impl ValueType {
-    fn read(self, word: u32) -> SlotValue {
+    /// The bytes a slot of this type spans.
+    fn width(self) -> usize {
         match self {
-            Self::Zero => SlotValue::Zero(word),
-            Self::Unset => SlotValue::Unset(word),
-            Self::F32 => SlotValue::F32(f32::from_bits(word)),
-            Self::Number => SlotValue::Number(word),
-            Self::F32OrMinusOne => {
-                SlotValue::F32OrMinusOne((word != u32::MAX).then_some(f32::from_bits(word)))
-            }
+            Self::Text(width) => width,
+            Self::ByteZero | Self::ByteConstant | Self::Bool | Self::Enum => 1,
+            _ => 4,
         }
     }
+
+    /// The slot at `at` of `item` of `data` as this type; `None` where it runs past the item.
+    fn read(self, data: &AudioData, item: &[u8], at: usize) -> Option<SlotValue> {
+        let bytes = item.get(at..at.checked_add(self.width())?)?;
+        let word = || u32_at(bytes, 0);
+        let byte = || bytes.first().copied();
+        let or_none = |word: u32| (word != u32::MAX).then_some(word);
+        Some(match self {
+            Self::Zero => SlotValue::Zero(word()?),
+            Self::Unset => SlotValue::Unset(word()?),
+            Self::F32 => SlotValue::F32(f32::from_bits(word()?)),
+            Self::Number => SlotValue::Number(word()?),
+            Self::F32OrMinusOne => SlotValue::F32OrMinusOne(or_none(word()?).map(f32::from_bits)),
+            Self::NumberOrMinusOne => SlotValue::NumberOrMinusOne(or_none(word()?)),
+            Self::Key => SlotValue::Key(word()?),
+            Self::OwnKey => SlotValue::OwnKey(word()?),
+            Self::Flags => SlotValue::Flags(word()?),
+            Self::Hash => SlotValue::Hash(word()?),
+            Self::ItemOffset => {
+                let offset = word()?;
+                let key = at.checked_sub(4).and_then(|from| u32_at(item, from));
+                let of_its_key = key.and_then(|key| item_offset(data, key)) == Some(offset);
+                SlotValue::ItemOffset { offset, of_its_key }
+            }
+            Self::Text(_) => {
+                let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+                SlotValue::Text(bytes[..end].escape_ascii().to_string())
+            }
+            Self::ByteZero => SlotValue::ByteZero(byte()?),
+            Self::ByteConstant => SlotValue::ByteConstant(byte()?),
+            Self::Bool => SlotValue::Bool(byte()?),
+            Self::Enum => SlotValue::Enum(byte()?),
+        })
+    }
+}
+
+/// The data offset of the item `key` names in `data`'s index, which its order sorts.
+fn item_offset(data: &AudioData, key: u32) -> Option<u32> {
+    use crate::gta6::audio_data::index_order;
+    let i = (data.index)
+        .binary_search_by_key(&index_order(key), |e| index_order(e.0))
+        .ok()?;
+    Some(data.index.get(i)?.1)
 }
 
 /// A slot of an item: its offset, its role, and its word, `None` where it is -1.
@@ -332,7 +425,7 @@ pub(super) fn table_item(data: &AudioData, start: usize, bytes: &[u8]) -> Option
         return None;
     }
 
-    let want = placed(&places, &layout.slots);
+    let want = placed(&places, &layout.slots, |_| 4);
     // A field table lists body offsets, 8 past data offsets; a later table's role wins.
     let mut found = BTreeMap::new();
     let tables = [
@@ -369,13 +462,16 @@ pub(super) fn table_item(data: &AudioData, start: usize, bytes: &[u8]) -> Option
             .collect(),
         _ => Vec::new(),
     };
-    let typed = VALUE_SLOTS.get(&key).map(|slots| placed(&places, slots));
+    // The types hold on items the layout fits exactly and break on the others.
+    let typed = (VALUE_SLOTS.get(&key))
+        .filter(|_| length == bytes.len())
+        .map(|slots| placed(&places, slots, ValueType::width));
     let values = (typed.into_iter().flatten())
         .filter_map(|(at, kind)| {
-            let word = u32_at(bytes, at).filter(|_| at + 4 <= length)?;
             Some(TableValue {
                 at,
-                value: kind.read(word),
+                width: kind.width(),
+                value: kind.read(data, bytes, at)?,
             })
         })
         .collect();
@@ -389,12 +485,18 @@ pub(super) fn table_item(data: &AudioData, start: usize, bytes: &[u8]) -> Option
     })
 }
 
-/// Where each of `slots` falls in an item whose regions are `places`, by item offset.
-fn placed<T: Copy>(places: &Places, slots: &[(Region, isize, T)]) -> BTreeMap<usize, T> {
+/// Where each of `slots`, `width` bytes each, falls in an item whose regions are `places`, by
+/// item offset.
+fn placed<T: Copy>(
+    places: &Places,
+    slots: &[(Region, isize, T)],
+    width: impl Fn(T) -> usize,
+) -> BTreeMap<usize, T> {
     let mut at = BTreeMap::new();
     for &(region, from, room) in places {
         for &(r, offset, what) in slots {
-            if r != region || room.is_some_and(|room| offset + 4 > room as isize) {
+            let fits = |room: usize| offset + width(what) as isize <= room as isize;
+            if r != region || room.is_some_and(|room| !fits(room)) {
                 continue;
             }
             if let Some(to) = from.checked_add_signed(offset) {
@@ -438,7 +540,11 @@ mod tests {
         let groups: [&[usize]; 4] = [&[], &[], &[48, 76], &[]];
         let data = body(AudioDataKind::GameObjects, 581, &item, groups);
         let got = laid(&data).expect("laid out");
-        let value = |at: usize| got.values.iter().find(|v| v.at == at).map(|v| v.value);
+        let value = |at: usize| {
+            (got.values.iter())
+                .find(|v| v.at == at)
+                .map(|v| v.value.clone())
+        };
         assert_eq!(value(8), Some(SlotValue::F32(1.5)));
         assert_eq!(value(20), Some(SlotValue::F32OrMinusOne(Some(0.0))));
         assert_eq!(value(40), Some(SlotValue::Zero(0)));
@@ -451,9 +557,75 @@ mod tests {
         put(&mut item, 40, 7);
         let data = body(AudioDataKind::GameObjects, 581, &item, groups);
         let got = laid(&data).expect("a word that breaks its type refuses nothing");
-        let value = |at: usize| got.values.iter().find(|v| v.at == at).map(|v| v.value);
+        let value = |at: usize| {
+            (got.values.iter())
+                .find(|v| v.at == at)
+                .map(|v| v.value.clone())
+        };
         assert_eq!(value(20), Some(SlotValue::F32OrMinusOne(None)));
         assert_eq!(value(40), Some(SlotValue::Zero(7)));
+    }
+
+    const NO_FIELDS: [&[usize]; 4] = [&[]; 4];
+
+    /// GameObjects class 255 with byte +1 255: a u32 count of 2 at +4, two {key, data offset}
+    /// pairs, then u32 0 and u32 1; the second offset is not where its key's item starts.
+    #[test]
+    fn an_index_item_reads_as_its_keys_and_their_items_offsets() {
+        let (first, second) = (0x0000_1101, 0x0000_2201);
+        let mut item = vec![0; 32];
+        (item[0], item[1], item[4]) = (255, 255, 2);
+        for (at, word) in [(8, first), (12, 40), (16, second), (20, 99), (28, 1)] {
+            put(&mut item, at, word);
+        }
+        let mut data = body(AudioDataKind::GameObjects, 581, &item, NO_FIELDS);
+        data.index = vec![(0x1234_5678, 4), (first, 40), (second, 80)];
+        (data.index).sort_by_key(|e| crate::gta6::audio_data::index_order(e.0));
+        let got = laid(&data).expect("laid out");
+        assert_eq!(got.counts, [2]);
+        let values: Vec<(usize, SlotValue)> = (got.values.iter())
+            .map(|v| (v.at, v.value.clone()))
+            .collect();
+        let offset = |offset, of_its_key| SlotValue::ItemOffset { offset, of_its_key };
+        let mut want = vec![
+            (8, SlotValue::Key(first)),
+            (12, offset(40, true)),
+            (16, SlotValue::Key(second)),
+            (20, offset(99, false)),
+        ];
+        want.extend((26..32).map(|at| match at {
+            28 => (at, SlotValue::ByteConstant(1)),
+            _ => (at, SlotValue::ByteZero(0)),
+        }));
+        assert_eq!(values, want);
+
+        let mut longer = item.clone();
+        longer.push(0);
+        let data = body(AudioDataKind::GameObjects, 581, &longer, NO_FIELDS);
+        let got = laid(&data).expect("laid out with a byte after it");
+        assert_eq!((got.to_next_item, got.values.len()), (1, 0));
+    }
+
+    /// GameObjects class 192 with byte +1 zero: 68 bytes, NUL-padded ASCII at +4.
+    #[test]
+    fn a_text_slot_reads_to_its_first_nul_and_escapes_other_bytes() {
+        let mut item = vec![0; 68];
+        item[0] = 192;
+        item[4..9].copy_from_slice(b"ab\x07cd");
+        let data = body(AudioDataKind::GameObjects, 581, &item, NO_FIELDS);
+        let got = laid(&data).expect("laid out");
+        let text = (got.values.iter()).find(|v| v.at == 4);
+        let want = VALUE_SLOTS[&(581, 192, Some(0))]
+            .iter()
+            .find_map(|s| match s.2 {
+                ValueType::Text(width) => Some(width),
+                _ => None,
+            });
+        assert_eq!(text.map(|v| v.width), want);
+        assert_eq!(
+            text.map(|v| v.value.clone()),
+            Some(SlotValue::Text("ab\\x07cd".into()))
+        );
     }
 
     /// A body of `kind` whose data block is the stamp and `item`, with the fields of each table
@@ -535,7 +707,14 @@ mod tests {
             children: CHILDREN.to_vec(),
             values: Vec::new(),
         };
-        assert_eq!(laid(&data), Some(want.clone()));
+        // An item that ends where its layout does also takes the value types measured for it.
+        let got = laid(&data).expect("laid out");
+        assert!(!got.values.is_empty());
+        let slots = TableItem {
+            values: Vec::new(),
+            ..got
+        };
+        assert_eq!(slots, want);
 
         let data = categories(&category(6), rows);
         let after = TableItem {

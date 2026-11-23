@@ -263,11 +263,14 @@ fn entry_line(outline: &MoveOutline, entry: &MachineEntry) -> String {
     )
 }
 
-/// A condition as GTA V's network view writes one, its hashes as `hash_` and a flag half of 1 named.
+/// A condition as GTA V's network view writes one, its hashes as `named` names them and a flag
+/// half of 1 named.
 fn condition_line(c: &MoveCondition) -> String {
-    let hash = |w: u32| format!("hash_{w:08X}");
+    condition_line_with(c, named)
+}
+
+fn condition_line_with(c: &MoveCondition, hash: impl Fn(u32) -> String) -> String {
     let float = f32::from_bits;
-    let words: Vec<String> = c.words.iter().map(|w| hash(*w)).collect();
     let test = match (c.kind, c.words.as_slice()) {
         (0, [s, upper, lower, _]) => tr!(
             "{signal} in [{lower}, {upper}]",
@@ -293,7 +296,9 @@ fn condition_line(c: &MoveCondition) -> String {
         (9, [t]) => tr!("time in state > {seconds} s", seconds = float(*t)),
         (10, [t]) => tr!("time in state < {seconds} s", seconds = float(*t)),
         (12, [s, value]) => format!("{} == {}", hash(*s), *value != 0),
-        _ => words.join(", "),
+        _ => (c.words.iter().map(|w| hash(*w)))
+            .collect::<Vec<_>>()
+            .join(", "),
     };
     let kind = match condition_name(c.kind) {
         Some(name) => format!("{} ({name})", c.kind),
@@ -334,15 +339,34 @@ fn hashes<const N: usize>(records: &[[u32; N]]) -> String {
 
 /// A node's kind and id, for a node read or reached; its offset for any other.
 fn node_label(outline: &MoveOutline, at: usize) -> String {
+    node_label_with(outline, at, named)
+}
+
+fn node_label_with(outline: &MoveOutline, at: usize, hash: impl Fn(u32) -> String) -> String {
     let (kind, id) = match (outline.node(at), outline.stop(at)) {
         (Some(node), _) => (node.kind, node.id),
         (None, Some(stop)) => (stop.kind, stop.id),
         (None, None) => return tr!("the node at {at}", at = format!("{at:#X}")),
     };
     match kind_name(kind) {
-        Some(name) => format!("{name} hash_{id:08X}"),
-        None => format!("{} hash_{id:08X}", tr!("type {kind}", kind = kind)),
+        Some(name) => format!("{name} {}", hash(id)),
+        None => format!("{} {}", tr!("type {kind}", kind = kind), hash(id)),
     }
+}
+
+/// A 32-bit hash by the one name the harvested text holds for it, which may be a collision and
+/// is marked so, else as `hash_`.
+fn named(hash: u32) -> String {
+    text_name(hash).unwrap_or_else(|| format!("hash_{hash:08X}"))
+}
+
+/// The name the harvested text holds for `hash`, marked as from the text.
+fn text_name(hash: u32) -> Option<String> {
+    super::gta6_names::name32(hash).map(|name| from_the_text(&name))
+}
+
+fn from_the_text(name: &str) -> String {
+    tr!("{name} (from the text)", name = name)
 }
 
 fn why(reason: StopReason) -> &'static str {
@@ -421,6 +445,42 @@ mod tests {
         assert_eq!(
             line(14, 0, &[0xAB, 0xCD]),
             "14: hash_000000AB, hash_000000CD"
+        );
+    }
+
+    #[test]
+    fn an_id_and_a_signal_the_text_names_are_shown_by_that_name_marked_as_from_the_text() {
+        let text = |w: u32| match w {
+            7 => from_the_text("direction"),
+            w => format!("hash_{w:08X}"),
+        };
+        let line = |kind: u16, words: &[u32]| {
+            let words = words.to_vec();
+            condition_line_with(
+                &MoveCondition {
+                    kind,
+                    flag: 0,
+                    words,
+                },
+                text,
+            )
+        };
+        assert_eq!(
+            line(6, &[7, 0.25f32.to_bits()]),
+            "6 (GreaterThanEqual): direction (from the text) >= 0.25"
+        );
+        assert_eq!(
+            line(14, &[0xCD, 7]),
+            "14: hash_000000CD, direction (from the text)"
+        );
+        let outline = MoveOutline::open(&network(2, 0)).expect("opens");
+        assert_eq!(
+            node_label_with(&outline, outline.root, text),
+            "Tail direction (from the text)"
+        );
+        assert_eq!(
+            node_label_with(&outline, outline.root, |w| format!("hash_{w:08X}")),
+            "Tail hash_00000007"
         );
     }
 

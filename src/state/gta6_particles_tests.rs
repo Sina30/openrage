@@ -381,3 +381,9 @@ fn a_list_names_the_model_its_creation_mesh_domain_emits_from() {
 
 #[path = "gta6_particles_open_tests.rs"]
 mod open;
+
+#[path = "gta6_particles_remove_tests.rs"]
+mod remove;
+
+#[path = "gta6_particle_colour_tests.rs"]
+mod colour;

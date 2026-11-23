@@ -18,6 +18,7 @@ use super::write_physics::put;
 use super::HeaderlessError;
 use crate::container::rpf::{grow_section, Rpf9GrowError, Rpf9Role, Rpf9Section, Rpf9Sections};
 
+mod reference;
 mod skin;
 
 /// A vertex list's u16 entries name at most this many vertices.
@@ -577,6 +578,7 @@ fn vertex_data(
             (9..=11, 0x18, 4) if !edit.uv_tangents.is_empty() => {
                 skin::uv_tangents(c.index, edit, v, n, was)?
             }
+            (33, 0x10, 8) if n != n_old => reference::reference(held, &edit.positions, was)?,
             _ if n == n_old => {
                 carried.push(c.index);
                 was.to_vec()

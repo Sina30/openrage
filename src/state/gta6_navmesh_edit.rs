@@ -1,12 +1,14 @@
 //! A scanned GTA VI cell's polygon disabled as the cell's own form of an isolated polygon, one step
 //! of undo: the edges out of it and into it cut in the view's model, and a save writing each edge
-//! cut there over the body read again.
+//! cut there over the body read again. A side record naming it is chained again, as a deletion is.
 
 use std::sync::Arc;
 
 use or_io::gta5::navmesh::NO_NEIGHBOUR;
 use or_io::gta5::{AiSplitArray, CNavMesh, TAdjPoly};
-use or_io::gta6::headerless::{cut_edges, links_into, polygon_cut, read_navmesh, NavMesh};
+use or_io::gta6::headerless::{
+    cut_edges, links_into, polygon_cut, read_navmesh, NavMesh, PolygonCut,
+};
 
 use super::edit_history::Change;
 use super::{AppState, DocPayload, DocumentId};
@@ -78,24 +80,11 @@ impl AppState {
         polygon: usize,
     ) -> Result<String, String> {
         let cut = polygon_cut(cell, polygon).map_err(|e| e.to_string())?;
-        let nowhere = TAdjPoly::leading_to(0, NO_NEIGHBOUR).map_err(|e| e.to_string())?;
         let near = super::gta6_navmesh::neighbours(path, cell);
-        let document = (self.document_mut(doc)).ok_or_else(|| tr!("its document is closed"))?;
-        let held = (edges_mut(&mut document.payload))
-            .ok_or_else(|| tr!("The cell's view holds no edges."))?;
-        let before = held.clone();
-        let edges = (held.as_deref_mut()).ok_or_else(|| tr!("The cell's view holds no edges."))?;
-        let mut cuts = 0usize;
-        let all = edges
-            .sub_arrays
-            .iter_mut()
-            .flat_map(|s| s.elements.iter_mut());
-        for (j, edge) in all.enumerate() {
-            if is_open(edge) && cut.edges.binary_search(&j).is_ok() {
-                *edge = nowhere.clone();
-                cuts += 1;
-            }
-        }
+        let (cuts, in_place) = match self.disable_rechained(doc, path, cell, polygon, &near) {
+            Some(made) => (made?, false),
+            None => (self.cut_in_view(doc, &cut, polygon)?, true),
+        };
         let mut said = if cuts == 0 {
             tr!(
                 "Polygon {polygon} has no edge into or out of it left to cut.",
@@ -109,7 +98,7 @@ impl AppState {
                 polygon = polygon
             )
         };
-        if !cut.side_records.is_empty() {
+        if in_place && !cut.side_records.is_empty() {
             said.push(' ');
             said.push_str(&tr!(
                 "Side records {records} still name it at their corner 1, which every shipped side record leads somewhere from, so it still joins the next cell across that border.",
@@ -146,6 +135,33 @@ impl AppState {
                 cells = listed(&closed)
             ));
         }
+        Ok(said)
+    }
+
+    /// The edges `cut` names cut in the view of `doc`, one step of undo where one was open; how many.
+    fn cut_in_view(
+        &mut self,
+        doc: DocumentId,
+        cut: &PolygonCut,
+        polygon: usize,
+    ) -> Result<usize, String> {
+        let nowhere = TAdjPoly::leading_to(0, NO_NEIGHBOUR).map_err(|e| e.to_string())?;
+        let document = (self.document_mut(doc)).ok_or_else(|| tr!("its document is closed"))?;
+        let held = (edges_mut(&mut document.payload))
+            .ok_or_else(|| tr!("The cell's view holds no edges."))?;
+        let before = held.clone();
+        let edges = (held.as_deref_mut()).ok_or_else(|| tr!("The cell's view holds no edges."))?;
+        let mut cuts = 0usize;
+        let all = edges
+            .sub_arrays
+            .iter_mut()
+            .flat_map(|s| s.elements.iter_mut());
+        for (j, edge) in all.enumerate() {
+            if is_open(edge) && cut.edges.binary_search(&j).is_ok() {
+                *edge = nowhere.clone();
+                cuts += 1;
+            }
+        }
         if cuts > 0 {
             let label = tr!("Disable polygon {polygon}", polygon = polygon);
             self.record(
@@ -158,7 +174,7 @@ impl AppState {
                 document.history.seal();
             }
         }
-        Ok(said)
+        Ok(cuts)
     }
 
     /// Why a polygon of the scanned GTA VI cell `doc` is not deleted while a neighbouring cell's

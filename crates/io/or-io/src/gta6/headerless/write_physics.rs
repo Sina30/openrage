@@ -4,6 +4,7 @@
 
 use super::bound::COMPOSITE;
 use super::bytes::{sections, u64_at, Bytes};
+use super::write_bound_reshape::{put_child_flags, write_rewired};
 use super::write_bound_vertex::write_bound_vertices_at;
 use super::write_bvh::refit_composite;
 use super::{
@@ -254,7 +255,7 @@ pub fn write_fragment_bound(
 }
 
 /// The bound at `at`, read as `read`, written from `edited`; a child moves only where `may_move`.
-fn write_bound_at(
+pub(super) fn write_bound_at(
     section: &mut [u8],
     at: usize,
     read: &Bound,
@@ -304,6 +305,9 @@ fn write_bound_at(
     let pairs = read.children.iter().zip(&edited.children);
     for (i, ((r, e), record)) in pairs.zip(records).enumerate() {
         write_child(section, record, r, e)?;
+        if r.flags != e.flags {
+            put_child_flags(section, at, i, e.flags)?;
+        }
         if r.matrix != e.matrix {
             for (k, row) in e.matrix.iter().enumerate() {
                 put_vec3(
@@ -342,7 +346,10 @@ fn write_child(
         return Ok(());
     };
     match (rs, es) {
-        (ChildBound::Geometry(rg), ChildBound::Geometry(eg)) => geometry(section, at, rg, eg),
+        (ChildBound::Geometry(rg), ChildBound::Geometry(eg)) => {
+            geometry(section, at, rg, eg)?;
+            write_rewired(section, at, rg, eg)
+        }
         (ChildBound::Geometry(_), _) | (_, ChildBound::Geometry(_)) => Err(other()),
         _ => {
             let (was, now) = (numbers(rs), numbers(es));

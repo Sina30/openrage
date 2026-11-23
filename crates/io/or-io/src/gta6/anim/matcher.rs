@@ -15,6 +15,10 @@ const FRAME_RECORD_LEN: usize = 48;
 /// Sixteen f16 halves.
 const BLOCK_LEN: usize = 32;
 const LEVEL_LEN: usize = 32;
+/// The smallest object at a matcher's 0x48 seen; others run to 48 or 64 bytes.
+const OBJECT_48_LEN: usize = 40;
+/// The smallest object at a class-1 database's 0x30 seen; others run to 0x70 bytes.
+const OBJECT_30_LEN: usize = 0x30;
 /// The control byte of an empty slot of a chunked map; a full slot's is below it.
 const EMPTY: u8 = 0x80;
 
@@ -33,6 +37,12 @@ pub struct Matcher {
     pub keys_at_170: Vec<u32>,
     /// The words at 0x190, whose roles are not known.
     pub words_at_190: [u32; 2],
+    /// The first bytes of the object at 0x48, as many as the smallest one seen holds; role not known.
+    pub object_at_48: Vec<u8>,
+    /// The slot at 0xB0: one byte for each clip, whose role is not known.
+    pub clip_bytes: Vec<u8>,
+    /// The one byte of the slot at 0x110, whose role is not known.
+    pub byte_at_110: u8,
     pub database: MatcherDatabase,
 }
 
@@ -72,6 +82,12 @@ pub struct MatcherDatabase {
     pub word_at_c0: f32,
     /// One weight for each dimension at 0xB0, each positive, summing to 1.
     pub weights: Vec<f32>,
+    /// The words at 0x78 to 0x88, whose roles are not known.
+    pub words_at_78: [u32; 4],
+    /// A class-1 database's object at 0x30, its first bytes as many as the smallest one seen holds.
+    pub object_at_30: Vec<u8>,
+    /// A class-1 frame record's floats 4 to 11 for each frame, whose meaning is not known.
+    pub record_floats: Vec<[f32; 8]>,
     pub class: MatcherClass,
 }
 
@@ -195,7 +211,7 @@ impl Section<'_> {
         let frame_offsets = self.matcher_values("matcher frame offsets", at + 0x60, 4)?;
         let entry_offsets = self.matcher_values("matcher entry offsets", at + 0x70, 2)?;
         let clip_count = le32(head, 0xA4) as usize;
-        let (_, clip_bytes) = self.matcher_slot("matcher clip bytes", at + 0xB0, 1)?;
+        let (clip_bytes_at, clip_bytes) = self.matcher_slot("matcher clip bytes", at + 0xB0, 1)?;
         if count == 0
             || clip_count == 0
             || frame_offsets.len() != count + 1
@@ -284,7 +300,7 @@ impl Section<'_> {
         let clips = (clips.into_iter().collect::<Option<Vec<_>>>())
             .ok_or("its clip map does not hold every clip")?;
 
-        let (_, at_110) = self.matcher_slot("matcher byte at 0x110", at + 0x110, 1)?;
+        let (at_110_first, at_110) = self.matcher_slot("matcher byte at 0x110", at + 0x110, 1)?;
         let (byte_at, at_120) = self.matcher_slot("matcher byte at 0x120", at + 0x120, 1)?;
         if at_110 != 1
             || at_120 != 1
@@ -297,6 +313,12 @@ impl Section<'_> {
         let slots = self.matcher_map("matcher map at 0x170", at + 0x170, 8, true)?;
         let keys_at_170 = self.matcher_permuted("matcher map at 0x170", &slots)?;
         let database = self.target("matcher database", at + 0x20).map_err(s)?;
+        let clip_bytes = (self.bytes("matcher clip bytes", clip_bytes_at, clip_count))
+            .map_err(s)?
+            .to_vec();
+        let byte_at_110 = self
+            .bytes("matcher byte at 0x110", at_110_first, 1)
+            .map_err(s)?[0];
         Ok(Matcher {
             name: name.to_string(),
             key: key as u32,
@@ -305,8 +327,19 @@ impl Section<'_> {
             entries,
             keys_at_170,
             words_at_190: [le32(head, 0x190), le32(head, 0x194)],
+            object_at_48: self.leading_bytes("matcher object at 0x48", at + 0x48, OBJECT_48_LEN)?,
+            clip_bytes,
+            byte_at_110,
             database: self.matcher_database(database, frames)?,
         })
+    }
+
+    /// The first `len` bytes of the object the pointer at `at` aims at; none where it is null.
+    fn leading_bytes(&self, what: &'static str, at: usize, len: usize) -> Result<Vec<u8>, String> {
+        match self.pointer(what, at).map_err(s)? {
+            Some(object) => Ok(self.bytes(what, object, len).map_err(s)?.to_vec()),
+            None => Ok(Vec::new()),
+        }
     }
 
     fn matcher_database(&self, d: usize, frames: u32) -> Result<MatcherDatabase, String> {
@@ -384,9 +417,11 @@ impl Section<'_> {
             return Err("its database's floats at 0xC0 are not {a finite float, 1.0}".into());
         }
         let weights = self.matcher_weights(d, dims)?;
-        let class = match le32(head, 0xC8) {
+        let words_at_78 = std::array::from_fn(|k| le32(head, 0x78 + 4 * k));
+        let object_at_30 = self.leading_bytes("matcher object at 0x30", d + 0x30, OBJECT_30_LEN)?;
+        let (class, record_floats) = match le32(head, 0xC8) {
             1 => self.matcher_vectors(d, frames as usize, dims)?,
-            3 => self.matcher_levels(d, frames, dims)?,
+            3 => (self.matcher_levels(d, frames, dims)?, Vec::new()),
             other => {
                 return Err(format!(
                     "its database's class word at 0xC8 is {other}, where 1 and 3 are known"
@@ -401,13 +436,22 @@ impl Section<'_> {
             frame_words,
             word_at_c0,
             weights,
+            words_at_78,
+            object_at_30,
+            record_floats,
             class,
         })
     }
 
     /// Class 1: a 48-byte record for each frame, opening with a unit quaternion, and a matrix of
-    /// `ceil(dims / 16)` blocks for each frame whose halves past `dims` are zero.
-    fn matcher_vectors(&self, d: usize, frames: usize, dims: u64) -> Result<MatcherClass, String> {
+    /// `ceil(dims / 16)` blocks for each frame whose halves past `dims` are zero; with each
+    /// record's floats 4 to 11.
+    fn matcher_vectors(
+        &self,
+        d: usize,
+        frames: usize,
+        dims: u64,
+    ) -> Result<(MatcherClass, Vec<[f32; 8]>), String> {
         let (records_at, records) =
             self.matcher_slot("matcher frame records", d + 0xA0, FRAME_RECORD_LEN)?;
         if records != frames {
@@ -416,14 +460,16 @@ impl Section<'_> {
             ));
         }
         let mut rotations = Vec::with_capacity(frames);
+        let mut record_floats = Vec::with_capacity(frames);
         for f in 0..frames {
             let r = (self.bytes(
                 "matcher frame record",
                 records_at + FRAME_RECORD_LEN * f,
-                16,
+                FRAME_RECORD_LEN,
             ))
             .map_err(s)?;
             let q: [f32; 4] = std::array::from_fn(|k| f32::from_bits(le32(r, 4 * k)));
+            record_floats.push(std::array::from_fn(|k| f32::from_bits(le32(r, 16 + 4 * k))));
             let length = q.iter().map(|v| v * v).sum::<f32>().sqrt();
             if !length.is_finite() || (length - 1.0).abs() >= 1e-3 {
                 return Err(format!(
@@ -462,7 +508,7 @@ impl Section<'_> {
             }
             vectors.push(vector.to_vec());
         }
-        Ok(MatcherClass::Vectors { rotations, vectors })
+        Ok((MatcherClass::Vectors { rotations, vectors }, record_floats))
     }
 
     /// Class 3: a permutation of the dimensions, the frame and dimension counts again, the frames

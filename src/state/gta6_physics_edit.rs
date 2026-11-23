@@ -8,9 +8,8 @@ use std::sync::Arc;
 use or_io::gta5::TNavMeshPoly;
 use or_io::gta6::headerless::write_bound_vertices;
 use or_io::gta6::headerless::{
-    bound_placement_holds, material_key, write_bound, write_drawable_bound, write_fragment,
-    write_fragment_bound, write_polygon_flags, Bound, BoundGeometry, ChildBound, Fragment,
-    Resource,
+    bound_placement_holds, material_key, write_bound, write_drawable_bound, write_fragment_level,
+    write_polygon_flags, Bound, BoundGeometry, ChildBound, Fragment, Resource,
 };
 
 use super::document::Document;
@@ -57,7 +56,7 @@ pub(crate) enum FragmentEdit {
 }
 
 /// The bound a body is, or the one a drawable or a fragment embeds.
-fn bound_mut(payload: &mut DocPayload) -> Option<&mut Bound> {
+pub(super) fn bound_mut(payload: &mut DocPayload) -> Option<&mut Bound> {
     let DocPayload::Gta6Drawable(resource) = payload else {
         return None;
     };
@@ -79,7 +78,7 @@ fn shape_mut(payload: &mut DocPayload, child: usize) -> Option<&mut ChildBound> 
     .ok()
 }
 
-fn geometry_mut(payload: &mut DocPayload, child: usize) -> Option<&mut BoundGeometry> {
+pub(super) fn geometry_mut(payload: &mut DocPayload, child: usize) -> Option<&mut BoundGeometry> {
     match shape_mut(payload, child)? {
         ChildBound::Geometry(g) => Some(g),
         _ => None,
@@ -529,11 +528,7 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
                     Resource::Drawable(d) => {
                         (d.bound.as_ref()).map_or(Ok(()), |b| write_drawable_bound(v, p, b))
                     }
-                    Resource::DrawableWithBound(r) => {
-                        write_fragment(v, p, &r.fragment).and_then(|()| {
-                            (r.bound.as_ref()).map_or(Ok(()), |b| write_fragment_bound(v, p, b))
-                        })
-                    }
+                    Resource::DrawableWithBound(r) => write_fragment_level(v, p, r),
                     _ => Ok(()),
                 };
                 written.map_err(|e| e.to_string())

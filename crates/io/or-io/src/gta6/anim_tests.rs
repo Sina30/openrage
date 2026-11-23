@@ -624,6 +624,42 @@ fn a_section_10_channel_decodes_to_its_values_at_every_frame() {
 }
 
 #[test]
+fn sampling_each_frame_of_a_block_at_once_gives_what_each_sample_gives() {
+    let small: Vec<Vec<i64>> = (0..3).map(|p| quantised(usize::from(FRAMES), p)).collect();
+    let mut constants = Vec::new();
+    for values in &small {
+        constants.extend(delta_channel(values));
+    }
+    let spec = Spec {
+        dofs: vec![(0, "boneRotation")],
+        sections: vec![(7, vec![3]), (10, vec![0, 1, 2])],
+        constants,
+        ..Spec::default()
+    };
+    let read = read(&build(&spec).bytes).expect("reads");
+    let animation = the_animation(&read);
+    let rate = animation.rate().expect("a rate");
+    // Whole frames, a time between two and one past the end, out of order.
+    let mut times: Vec<f32> = (0..FRAMES).map(|f| f32::from(f) / rate).collect();
+    times.extend([0.5 / rate, animation.duration * 2.0, 0.0]);
+    let each = animation
+        .sample_each(0, times.iter().copied())
+        .expect("decodes");
+    assert_eq!(each.len(), times.len());
+    for (time, value) in times.iter().zip(&each) {
+        assert_eq!(
+            *value,
+            animation.sample(0, *time).expect("decodes"),
+            "at {time}"
+        );
+    }
+    assert!(matches!(
+        animation.sample_each(1, [0.0]),
+        Err(AnimError::NoDof { dof: 1, .. })
+    ));
+}
+
+#[test]
 fn a_mover_track_is_named_and_a_track_word_no_name_hashes_to_is_carried_and_labelled_by_its_word() {
     let spec = Spec {
         dofs: vec![
@@ -1433,5 +1469,7 @@ mod write;
 mod write_derived_and_grown;
 #[path = "anim/write_edit_tests.rs"]
 mod write_edit;
+#[path = "anim/write_mapped_tests.rs"]
+mod write_mapped;
 #[path = "anim/write_relayout_tests.rs"]
 mod write_relayout;

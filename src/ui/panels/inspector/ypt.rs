@@ -239,7 +239,6 @@ pub(super) fn draw_ypt_emitter_lib_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     idx: usize,
 ) {
-    offer_keys(ui, state, doc_id);
     let mut dirty = false;
     let before;
     {
@@ -355,18 +354,8 @@ fn edit_kfp_vec3(ui: &mut egui::Ui, label: &str, kfp: &mut PtxKeyframeProp, dirt
     });
 }
 
-/// Where the drawn list says whether a key may be added: not to one that saves in place.
-const ADDS_KEYS: &str = "ypt_inspector_adds_keys";
-
-/// Say, for the keyframed values drawn next, whether `doc`'s list takes an added key.
-fn offer_keys(ui: &egui::Ui, state: &AppState, doc: DocumentId) {
-    let adds = !crate::state::gta6_particles::written_in_place(state, doc);
-    ui.data_mut(|d| d.insert_temp(egui::Id::new(ADDS_KEYS), adds));
-}
-
 /// A property the file gives no keyframe, which gets one only from the user's Add.
 fn add_first_keyframe(ui: &mut egui::Ui, label: &str, kfp: &mut PtxKeyframeProp, dirty: &mut bool) {
-    let adds = ui.data(|d| d.get_temp::<bool>(egui::Id::new(ADDS_KEYS)));
     ui.horizontal(|ui| {
         ui.label(label);
         ui.label(
@@ -374,11 +363,10 @@ fn add_first_keyframe(ui: &mut egui::Ui, label: &str, kfp: &mut PtxKeyframeProp,
                 .small()
                 .color(theme::TEXT_SECONDARY),
         );
-        if adds.unwrap_or(true)
-            && ui
-                .small_button(tr!("Add"))
-                .on_hover_text(tr!("Give the property a keyframe at time and value zero"))
-                .clicked()
+        if ui
+            .small_button(tr!("Add"))
+            .on_hover_text(tr!("Give the property a keyframe at time and value zero"))
+            .clicked()
         {
             kfp.keyframe.entries.push(Default::default());
             *dirty = true;
@@ -392,6 +380,8 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     idx: usize,
 ) {
+    // A scanned GTA VI list holds no shader template name to write.
+    let named_template = !crate::state::gta6_particles::written_in_place(state, doc_id);
     let mut dirty = false;
     let before;
     {
@@ -539,37 +529,42 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
                 .small()
                 .color(theme::TEXT_SECONDARY),
         );
-        ui.horizontal(|ui| {
-            ui.label("shader_template_name");
-            if ui
-                .text_edit_singleline(&mut rule.shader_inst.shader_template_name)
-                .changed()
-            {
-                dirty = true;
-            }
-            const KNOWN_TEMPLATES: &[&str] = &[
-                "particle",
-                "particle_lit",
-                "particle_screen",
-                "particle_refract",
-                "particle_proj",
-                "ptxblood",
-                "ptxgeneric",
-            ];
-            egui::ComboBox::from_id_salt("ypt_rule_shader_template")
-                .selected_text("\u{2304}")
-                .show_ui(ui, |ui| {
-                    for name in KNOWN_TEMPLATES {
-                        if ui
-                            .selectable_label(rule.shader_inst.shader_template_name == *name, *name)
-                            .clicked()
-                        {
-                            rule.shader_inst.shader_template_name = (*name).to_string();
-                            dirty = true;
+        if named_template {
+            ui.horizontal(|ui| {
+                ui.label("shader_template_name");
+                if ui
+                    .text_edit_singleline(&mut rule.shader_inst.shader_template_name)
+                    .changed()
+                {
+                    dirty = true;
+                }
+                const KNOWN_TEMPLATES: &[&str] = &[
+                    "particle",
+                    "particle_lit",
+                    "particle_screen",
+                    "particle_refract",
+                    "particle_proj",
+                    "ptxblood",
+                    "ptxgeneric",
+                ];
+                egui::ComboBox::from_id_salt("ypt_rule_shader_template")
+                    .selected_text("\u{2304}")
+                    .show_ui(ui, |ui| {
+                        for name in KNOWN_TEMPLATES {
+                            if ui
+                                .selectable_label(
+                                    rule.shader_inst.shader_template_name == *name,
+                                    *name,
+                                )
+                                .clicked()
+                            {
+                                rule.shader_inst.shader_template_name = (*name).to_string();
+                                dirty = true;
+                            }
                         }
-                    }
-                });
-        });
+                    });
+            });
+        }
         ui.horizontal(|ui| {
             ui.label("shader_technique_name");
             if ui
@@ -687,7 +682,6 @@ pub(super) fn draw_ypt_domain_mut<T: ParticleTarget>(
     em_idx: usize,
     kind: u64,
 ) {
-    offer_keys(ui, state, doc_id);
     let mut dirty = false;
     let before;
     {

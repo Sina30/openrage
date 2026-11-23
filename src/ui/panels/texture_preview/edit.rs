@@ -44,6 +44,7 @@ pub(super) fn draw_encoding_bar(
             matches!(
                 d.payload,
                 DocPayload::Resource(or_io::Asset::Drawable(_) | or_io::Asset::Fragment(_))
+                    | DocPayload::Gta6Drawable(_)
             )
         })
         .unwrap_or(false);
@@ -65,6 +66,8 @@ pub(super) fn draw_encoding_bar(
     let inputs_live = editable && !enhanced;
     // ⚠ A pack's texture reached from a drawable is replaced in its own format and mips, so neither is offered.
     let pack = bound == Some(Ok(()));
+    // A texture the drawable embeds is replaced in the drawable, in any format and mips.
+    let reshapes = pack && state.bound_texture_pack(doc_id, texture.name()) == Ok(doc_id);
     let why_kept = crate::i18n::tr(crate::state::texture_edit::PACK_KEEPS_ITS_FORMAT);
     let why_not_reencoded: &str = if pack { why_kept } else { &why_not_edited };
     let mut apply = false;
@@ -80,7 +83,7 @@ pub(super) fn draw_encoding_bar(
             "texture_encode_format",
             96.0,
             format,
-            inputs_live && !pack,
+            inputs_live && (!pack || reshapes),
             |ui| {
                 ui.selectable_value(&mut choice.format, FormatChoice::Automatic, "Automatic")
                     .on_hover_text(
@@ -123,7 +126,7 @@ pub(super) fn draw_encoding_bar(
             u32::from(texture.height()),
         );
         let mips = ui.add_enabled(
-            inputs_live && !pack,
+            inputs_live && (!pack || reshapes),
             egui::DragValue::new(&mut choice.mip_levels)
                 .range(1..=ceiling.max(1))
                 .prefix("mips "),
@@ -259,8 +262,13 @@ pub(super) fn draw_encoding_bar(
             }
         }
     }
+    // A GTA VI drawable embeds and unembeds by the key its slots bind.
+    let not_carried = || Err(tr!("Only a drawable or fragment can carry textures").to_string());
     if embed {
         let outcome = match texture {
+            textures::Texture::Owned(t) if bound.is_some() => {
+                (state.embed_gta6_texture(doc_id, t)).unwrap_or_else(not_carried)
+            }
             textures::Texture::Owned(t) => state.embed_texture(doc_id, t.clone().into_owned()),
             textures::Texture::Enhanced(_) => {
                 Err("An Enhanced texture cannot be carried by a Legacy drawable".to_string())
@@ -269,7 +277,12 @@ pub(super) fn draw_encoding_bar(
         report(state, outcome);
     }
     if unembed {
-        let outcome = state.unembed_texture(doc_id, texture.name());
+        let outcome = match bound {
+            Some(_) => {
+                (state.unembed_gta6_texture(doc_id, texture.name())).unwrap_or_else(not_carried)
+            }
+            None => state.unembed_texture(doc_id, texture.name()),
+        };
         report(state, outcome);
     }
 }

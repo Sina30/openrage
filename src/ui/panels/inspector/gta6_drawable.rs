@@ -2,7 +2,9 @@ use super::*;
 
 mod bone_edit;
 mod bound_place_edit;
+mod collision_edit;
 mod filter_edit;
+mod filter_entries;
 mod head;
 mod material_edit;
 mod material_layout;
@@ -242,6 +244,7 @@ pub(super) fn draw_gta6_drawable(
     material_edit::draw(ui, state, doc_id, selection);
     material_layout::draw(ui, state, doc_id, selection);
     physics_edit::draw(ui, state, doc_id, selection);
+    collision_edit::draw(ui, state, doc_id, selection);
     vertex_edit::draw(ui, state, doc_id, selection);
     filter_edit::draw(ui, state, doc_id);
 }

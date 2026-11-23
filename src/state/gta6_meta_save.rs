@@ -354,4 +354,118 @@ mod tests {
         typed_into_the_text_panel(&mut state, "y");
         assert_eq!(text(&state), before);
     }
+
+    /// A GTA VI P-form body whose root holds an array of the u32s 7 and 9, a string kept in its 16
+    /// bytes and a u32, placed as the measured rules place one.
+    fn p_form_pso() -> Vec<u8> {
+        use or_io::meta::binary::pso::schema::{string_subtype, ARRAY_INFO_NAME_HASH};
+        // The root's type falls in the block table's first bucket, the string block's in the
+        // second and the u32 values' in the seventh, which is the order the blocks are in.
+        const ROOT: u32 = 0x0B0B_0B0B;
+        const STRING_BLOCK: u32 = 1;
+        const UINT: u8 = 0x06;
+        const SIZE: u32 = 0x28;
+        assert_eq!(
+            (ROOT % 11, STRING_BLOCK % 11, u32::from(UINT) % 11),
+            (0, 1, 6)
+        );
+        let mut root = vec![0u8; SIZE as usize];
+        // The array's pointer names block 3 at offset 0, then its count twice.
+        root[..4].copy_from_slice(&3u32.to_be_bytes());
+        root[8..12].copy_from_slice(&[0, 2, 0, 2]);
+        root[0x10..0x12].copy_from_slice(b"hi");
+        root[0x1F] = 0x80 | 2;
+        root[0x20..0x24].copy_from_slice(&5u32.to_be_bytes());
+        let blocks = [
+            (ROOT, root),
+            (STRING_BLOCK, b"hi\0".to_vec()),
+            (u32::from(UINT), [7u32, 9].map(u32::to_be_bytes).concat()),
+        ];
+        let mut psin = b"PSIN\0\0\0\0".to_vec();
+        psin.extend([0x70; 8]);
+        let mut pmap = 1i32.to_be_bytes().to_vec();
+        pmap.extend(3i16.to_be_bytes());
+        pmap.extend(0i16.to_be_bytes());
+        for (hash, data) in &blocks {
+            while !psin.len().is_multiple_of(16) {
+                psin.push(0x70);
+            }
+            for word in [*hash, psin.len() as u32, 0, data.len() as u32] {
+                pmap.extend(word.to_be_bytes());
+            }
+            psin.extend(data);
+        }
+        let len = psin.len() as u32;
+        psin[4..8].copy_from_slice(&len.to_be_bytes());
+        let entry =
+            |out: &mut Vec<u8>, hash: u32, code: u8, subtype: u8, offset: u16, reference: u32| {
+                out.extend(hash.to_be_bytes());
+                out.extend([code, subtype]);
+                out.extend(offset.to_be_bytes());
+                out.extend(reference.to_be_bytes());
+            };
+        let mut items = vec![0, 0, 0, 4];
+        items.extend(SIZE.to_be_bytes());
+        items.extend([0; 4]);
+        entry(&mut items, 0x0C0C_0010, 0x0D, 0, 0, 3);
+        entry(
+            &mut items,
+            0x0C0C_0011,
+            0x0B,
+            string_subtype::CHAR_ARRAY,
+            0x10,
+            0,
+        );
+        entry(&mut items, 0x0C0C_0012, UINT, 0, 0x20, 0);
+        entry(&mut items, ARRAY_INFO_NAME_HASH, UINT, 0, 0, 0);
+        let mut psch = 1u32.to_be_bytes().to_vec();
+        psch.extend(ROOT.to_be_bytes());
+        psch.extend((8u32 + 4 + 8).to_be_bytes());
+        psch.extend(items);
+        let mut out = psin;
+        frame(&mut out, b"PMAP", &pmap);
+        frame(&mut out, b"PSCH", &psch);
+        let mut chks = (out.len() as u32 + 20).to_be_bytes().to_vec();
+        chks.extend(CHECKSUM);
+        chks.extend(b"zppp");
+        frame(&mut out, b"CHKS", &chks);
+        out
+    }
+
+    #[test]
+    fn xml_typed_into_the_text_panel_of_a_gta_vi_p_form_body_grows_its_array_and_saves() {
+        let _serial = crate::ui::theme::serial();
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let mut bytes = rpf9_head(1, 0x1A0);
+        bytes.resize(0x1000, 0);
+        bytes.extend(zlib(&p_form_pso()));
+        let mut state = AppState::new();
+        let scan = scanned(&mut state, written(dir.path(), &bytes));
+        state.open_scanned_body(scan, row_at(&rows(&state, scan), 0x1000));
+        settle(&mut state);
+        let body = (state.active_document)
+            .filter(|&d| d != scan)
+            .expect("the body");
+        let Some(DocPayload::Meta(meta)) = state.document_mut(body).map(|d| &mut d.payload) else {
+            panic!("a metadata document");
+        };
+        // A third u32 typed after the array's last, which its allocation has no room for.
+        let opened = meta.text.text.to_string();
+        let xml = opened.replacen("value=\"9\"/>", "value=\"9\"/>\n<Item value=\"11\"/>", 1);
+        assert_ne!(xml, opened, "the array's u32s are written as attributes");
+        meta.text = crate::state::TextDocument::decode(xml.as_bytes());
+        meta.mark_text_edited();
+        meta.ensure_parsed_current();
+        let saved = dir.path().join("typed.pso");
+        assert!(state.save_active_document_as(saved.clone()));
+        finished(&mut state);
+        let file = std::fs::read(&saved).expect("the file");
+        assert_eq!(&file[file.len() - 8..file.len() - 4], &CHECKSUM);
+        let reopened =
+            or_io::meta::MetaDocument::parse(&Default::default(), file).expect("it reads");
+        assert_eq!(
+            root_value(&reopened.instance),
+            &Value::Array([7u64, 9, 11].map(Value::UInt).into())
+        );
+    }
 }

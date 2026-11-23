@@ -671,7 +671,7 @@ impl PsoEncoder<'_> {
         Ok(())
     }
 
-    /// A GTA VI pair map's pairs into the ones it holds; a group map only while empty.
+    /// A GTA VI map's pairs into the ones it holds; a group map's only with GTA VI support.
     fn write_gta6_map(
         &mut self,
         entry: &PsoStructEntry,
@@ -698,6 +698,9 @@ impl PsoEncoder<'_> {
             return Ok(());
         }
         if entry.subtype() == GTA6_GROUP_MAP {
+            #[cfg(feature = "gta6")]
+            return self.write_group_map(offset, pairs);
+            #[cfg(not(feature = "gta6"))]
             return Err(MetaError::Other(
                 "a GTA VI group map that holds pairs, whose values' layout is not measured".into(),
             ));
@@ -843,6 +846,10 @@ struct ArrayHeader {
     pointer: PsoPointer,
     count: u32,
 }
+
+#[cfg(feature = "gta6")]
+#[path = "pform_group_write.rs"]
+mod group_write;
 
 fn as_bool(v: &Value) -> Result<bool> {
     match v {

@@ -81,14 +81,14 @@ pub(super) fn add_menu_for_effect(
     effect_idx: usize,
     ops: &mut Vec<YptDeferredOp>,
 ) {
-    if !in_place(state, doc_id) && ui.button("Duplicate").clicked() {
+    if ui.button("Duplicate").clicked() {
         ops.push(YptDeferredOp::DuplicateEffect(effect_idx));
         ui.close_kind(egui::UiKind::Menu);
     }
     delete_item(ui, state, doc_id, ypt_effect_id(effect_idx), ops);
 }
 
-/// Whether the list `doc` holds saves in place, so nothing is added to or removed from it.
+/// Whether the list `doc` holds saves in place, so no rule is made in it from nothing.
 pub(super) fn in_place(state: &AppState, doc: DocumentId) -> bool {
     crate::state::gta6_particles::written_in_place(state, doc)
 }

@@ -149,7 +149,10 @@ fn save_verdict(written: or_io::meta::Result<Vec<u8>>, stored: &[u8]) -> String 
         Ok(bytes) if bytes == stored => "writes back byte-identical".to_string(),
         Ok(bytes) => {
             let at = (0..bytes.len().max(stored.len())).find(|&i| bytes.get(i) != stored.get(i));
-            format!("writes back other bytes, from {:#X}", at.unwrap_or(0))
+            format!(
+                "writes back its canonical form, other bytes from {:#X}",
+                at.unwrap_or(0)
+            )
         }
         Err(e) => format!("refused: {e}"),
     }

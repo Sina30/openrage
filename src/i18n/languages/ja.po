@@ -15211,9 +15211,6 @@ msgstr "グループ {group}のデータベース、タイプ {kind}：{columns}
 msgid "Bone tracks it reads: {bones}; tracks of a word whose name is not known it reads: {others}; facial controls it writes: {facial}."
 msgstr "読み取るボーントラック：{bones}。読み取る名前不明のワードのトラック：{others}。書き込むフェイシャルコントロール：{facial}。"
 
-msgid "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image."
-msgstr "{name}はボリュームテクスチャで、各スライスがすべてのレベルの一部を保持しているため、画像から置き換えられません。"
-
 msgid "The walk stops at {folders} folders and {archives} archives, so the archives past them are not scanned."
 msgstr "走査は {folders} 個のフォルダーと {archives} 個のアーカイブで停止するため、それ以降のアーカイブはスキャンされません。"
 
@@ -15439,8 +15436,8 @@ msgstr "{group}：hash_{id} {word} ({at}/{total})、{detail}"
 msgid "Expression set hash_{key}, tracks read: {reads}, tracks written: {writes}"
 msgstr "エクスプレッションセット hash_{key}、読み取るトラック：{reads}、書き込むトラック：{writes}"
 
-msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known."
-msgstr "GTA V のレコードにメンバーがないキーフレーム値は末尾に生のまま一覧表示されます: 速度の角度、色の名前のない最後の 3 つの値、ドメインの 5 番目と 6 番目。色の名前のない最初の 2 つの値はその最小値と最大値として表示されますが、これは推定です。最大値を有効にするものが不明なため、プレビューは最小値のみを描画します。"
+msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too."
+msgstr "GTA V のレコードにメンバーがないキーフレーム値は末尾に生のまま一覧表示されます: 速度の角度、色の名前のない最後の 3 つの値、ドメインの 5 番目と 6 番目。色の名前のない最初の 2 つの値はその最小値と最大値として表示されますが、これは推定です。プレビューは、色の +0x19C のワードが使用中の色を 2 つ以上数える場合に GTA V と同様に最大値を描画しますが、これも推定です。"
 
 msgid "Emitter rule {name}, domain {slot}: keyframed value {value}, whose name is not known, holds {keys}."
 msgstr "エミッタールール {name}、ドメイン {slot}: 名前が不明なキーフレーム値 {value} は {keys} を保持します。"
@@ -15580,8 +15577,8 @@ msgstr "引き継がれないもの：{held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "これはボディのバイトを確認します。GTA VI がそれを読み込むかは試しません。"
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "メッシュが指す各ジオメトリは、その位置、法線、接線、テクスチャ座標、カラー、三角形を受け取ります。ウェイト、ブレンドインデックス、その他のチャンネルは保持したまま残り、元の頂点数のときに限られます。"
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
+msgstr "メッシュが指す各ジオメトリは、その位置、法線、接線、テクスチャ座標、カラー、三角形を受け取り、ウェイトとブレンドインデックスをメッシュのジョイントから受け取り、パレットにないボーンはパレットに追加します。その他のチャンネルは保持したまま残り、元の頂点数のときに限られます。"
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "この辞書エントリは開いたときに読み取れるスケルトンを保持していなかったため、編集するボーンがありません。"
@@ -15631,14 +15628,14 @@ msgstr "レベル{level}：{frames}フレームのレーン。各レーンはそ
 msgid "Tetrahedra: each vertex's weight list, counted from its group's first, and its place in the space of the three columns"
 msgstr "四面体：各頂点の重みリスト（グループの最初のリストから数える）と、3つの列の空間での位置"
 
-msgid "No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
-msgstr "アプリが知る名前も、このドローアブルのスロットも、このテクスチャの32ビット名前ハッシュを示していないため、どのスロットもこれにバインドされません。"
+msgid "No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
+msgstr "アプリが知る名前や入力された名前も、アプリが読んだインストールのドローアブルも、このドローアブルのスロットも、このテクスチャの32ビット名前ハッシュを示していないため、どのスロットもこれにバインドされません。"
 
 msgid "That parameter is no texture slot of this shader."
 msgstr "そのパラメーターはこのシェーダーのテクスチャスロットではありません。"
 
-msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."
-msgstr "定数のサイズは変わらないため、何もずれません。キーを与えられた空のスロットは、仮想セクションの末尾に専用のバインディングとキーレコードを持ち、アプリが名前を知っているキーか、ドローアブルの別のスロットがバインドしているキーのみを受け付けます。「名前を付けて保存」は、ボディを独立したリソースとして書き出します。"
+msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."
+msgstr "定数のサイズは変わらないため、何もずれません。キーを与えられた空のスロットは、仮想セクションの末尾に専用のバインディングとキーレコードを持ち、アプリが名前を知っているか名前が入力されたキー、またはこのドローアブルやインストールのドローアブルのスロットがバインドしているキーのみを受け付けます。「名前を付けて保存」は、ボディを独立したリソースとして書き出します。"
 
 msgid "the shader holds a constant elsewhere than the effect places it"
 msgstr "シェーダーは、エフェクトが配置する場所とは別の場所に定数を保持しています"
@@ -15655,8 +15652,8 @@ msgstr "エボリューションの進化キーフレームは読み込まれ、
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "物理セクションのGPUバッファを検査します。+0x390 のものはルールの +0x1E0 の浮動小数を複製し、+0x388 のものは 16 行の表を 2 つ持ちます。その値はルールから導けないため保存されたまま保たれ、編集したキーフレーム値と食い違うことがあります。プレビューにはどちらも必要ありません。"
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it."
-msgstr "「名前を付けて保存」は、2つの形式が共通して持つ値を、GTA VIのリストにその場で上書きします。ルール、イベント、挙動、キーの追加や削除はリストをずらしてしまうため、ワークスペースでは提供しません。"
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
+msgstr "「名前を付けて保存」は、2つの形式が共通して持つ値を、削除されたルールや別のルールに割り当てたイベントとともに、GTA VIのリストにその場で上書きします。追加したキーと複製したエフェクトはリストの末尾より後に書き込まれ、コピーはDuplicateが付けた名前で見つけられます。何もないところから作ったルール、または追加したイベントや挙動には記された値がないため、ワークスペースでは提供しません。"
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "3 番目のスポナーは、ptxu_ZCull が点を除去した場所で {effect} を開始し、プレビューも同様です。その発動値が衝突スポナーと同じく点の到達すべき速度であることは推定です。"
@@ -15684,9 +15681,6 @@ msgstr "キーフレーム値の ID は hash_{id} で、そのメンバー名は
 
 msgid "{owner}: evolved value {value} under evolution {evolution} has kind {kind}, where 1 is the LOD distance and 2 to 4 the camera's forward, top and side views, and flags {first} and {second}, whose meaning is not known."
 msgstr "{owner}：エボリューション {evolution} での進化値 {value} の種類は {kind}（1 は LOD 距離、2〜4 はカメラの前方、上方、側方のビュー）、フラグは {first} と {second} で、その意味は不明です。"
-
-msgid "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-msgstr "GTA VI のパーティクルリストはその場で保存されるため、ルールやエフェクトはまだ削除できません"
 
 msgid "An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own."
 msgstr "エンティティが取れるのは、そのマップが名指すか、開いているか見つかったマップタイプ本体が持つ、同じクラスのアーキタイプだけです。インテリアは自分のものを保ちます。"
@@ -16014,3 +16008,270 @@ msgid "{count} station no text names"
 msgid_plural "{count} stations no text names"
 msgstr[0] "どのテキストにも名前がないラジオ局 {count} 個"
 msgstr[1] "どのテキストにも名前がないラジオ局 {count} 個"
+
+msgid "{name} (from the text)"
+msgstr "{name} (テキストより)"
+
+msgid "Bytes to the next item"
+msgstr "次の項目までのバイト数"
+
+msgid "Counted elements"
+msgstr "数えられた要素"
+
+msgid "Each slot a field table or a measured value type places in the item, at its offset, and the bytes between them as they are. A value type is what every item measured holds there, which no table of the file states, so a value may break it; the types are shown only on an item that ends where its layout does."
+msgstr "フィールド表または測定された値の型が項目内に置く各スロットをそのオフセットで示し、その間のバイトはそのまま示します。値の型は測定したすべての項目がそこに持つもので、ファイルのどの表にも記されていないため、値がそれに反することがあります。型は、レイアウトの終わりで終わる項目にだけ表示されます。"
+
+msgid "reference row"
+msgstr "参照行"
+
+msgid "group slot"
+msgstr "グループスロット"
+
+msgid "hash"
+msgstr "ハッシュ"
+
+msgid "wave container"
+msgstr "ウェーブコンテナ"
+
+msgid "zero"
+msgstr "ゼロ"
+
+msgid "unset"
+msgstr "未設定"
+
+msgid "float"
+msgstr "浮動小数点"
+
+msgid "float or -1"
+msgstr "浮動小数点または -1"
+
+msgid "{word}, where every item measured holds {held}"
+msgstr "{word}、測定したすべての項目では {held}"
+
+msgid "bytes"
+msgstr "バイト"
+
+msgid "index key"
+msgstr "インデックスキー"
+
+msgid "its own key"
+msgstr "自身のキー"
+
+msgid "number or -1"
+msgstr "数値または -1"
+
+msgid "2-bit flags"
+msgstr "2 ビットフラグ"
+
+msgid "item offset"
+msgstr "項目オフセット"
+
+msgid "{offset}, where the item of the key before it does not start"
+msgstr "{offset}、直前のキーの項目はここから始まりません"
+
+msgid "byte, zero"
+msgstr "バイト、ゼロ"
+
+msgid "byte, constant"
+msgstr "バイト、定数"
+
+msgid "byte, 0 or 1"
+msgstr "バイト、0 または 1"
+
+msgid "byte, few values"
+msgstr "バイト、少数の値"
+
+msgid "The first entry after an archive's table, where its header puts it, whose end its bytes do not state: the {count} bytes from it to the next body the list holds. No view reads them, so they show as bytes."
+msgstr "アーカイブのテーブルの後にある最初のエントリで、ヘッダーが示す位置にあり、そのバイト列は終わりを示しません。そこからリストにある次のボディまでの {count} バイトです。読み取るビューがないため、バイト列として表示されます。"
+
+msgid "Headerless resource"
+msgstr "ヘッダーのないリソース"
+
+msgid "Root block"
+msgstr "ルートブロック"
+
+msgid "{virtual_blocks} virtual and {physical_blocks} physical blocks"
+msgstr "仮想ブロック {virtual_blocks} 個、物理ブロック {physical_blocks} 個"
+
+msgid "{entries} entries, {bytes} blob bytes, not read: no key for them is known"
+msgstr "エントリ {entries} 個、ブロブ {bytes} バイト。鍵が不明なため読み取りません"
+
+msgid "String table"
+msgstr "文字列テーブル"
+
+msgid "{count} at {at}, carried as read"
+msgstr "{at} に {count} 個、読み取ったまま保持"
+
+msgid "Ids at 0x50"
+msgstr "0x50 の ID"
+
+msgid "Every entry has a version 1 or 4 UUID's version and variant, so each reads as a UUID. What object an entry names is not known."
+msgstr "すべてのエントリがバージョン 1 または 4 の UUID のバージョンとバリアントを持つため、各エントリを UUID として読みます。エントリが何のオブジェクトを指すかは不明です。"
+
+msgid "Not every entry has a UUID's version and variant, so each is shown as its bytes. What object an entry names is not known."
+msgstr "UUID のバージョンとバリアントを持たないエントリがあるため、各エントリをバイトで表示します。エントリが何のオブジェクトを指すかは不明です。"
+
+msgid "Its ptxu_Colour counts {count} colours in use; what the colours past the second draw is not known, so the preview draws its minimum and maximum alone."
+msgstr "その ptxu_Colour は使用中の色を {count} 個数えます。2 つ目より後の色が何を描画するかは不明なため、プレビューは最小値と最大値のみを描画します。"
+
+msgid "Its ptxu_Colour enables its maximum, which holds no key; what that draws is not known, so the preview draws its minimum alone."
+msgstr "その ptxu_Colour は最大値を有効にしていますが、最大値にはキーがありません。それが何を描画するかは不明なため、プレビューは最小値のみを描画します。"
+
+msgid "This drawable already embeds another texture, and a dictionary of two was never measured, so {name} is not embedded."
+msgstr "このドローアブルはすでに別のテクスチャを埋め込んでおり、2 つを持つ辞書は計測されたことがないため、{name} は埋め込まれません。"
+
+msgid "No name or bound entry states the 32-bit name hash of {name}, so it is not embedded."
+msgstr "{name} の 32 ビット名前ハッシュを示す名前も結び付いたエントリもないため、埋め込まれません。"
+
+msgid "The fragment holds no such group."
+msgstr "フラグメントにそのようなグループはありません。"
+
+msgid "Moved a fragment's child"
+msgstr "フラグメントの子を移動しました"
+
+msgid "Gave a fragment's child another group"
+msgstr "フラグメントの子を別のグループに移しました"
+
+msgid "The composite states no type and include entries."
+msgstr "コンポジットはタイプとインクルードのエントリを示していません。"
+
+msgid "Set a child's type and include entry"
+msgstr "子のタイプとインクルードのエントリを設定しました"
+
+msgid "Rewired a triangle"
+msgstr "三角形をつなぎ直しました"
+
+msgid "Reshape the collision"
+msgstr "コリジョンを作り直す"
+
+msgid "A fragment child moves by its own transform and its composite's matrix follows; a group change keeps where it lies; a rewired triangle links to the triangles it shares an edge with. Save As writes the body as a loose resource."
+msgstr "フラグメントの子は自身の変換で動き、そのコンポジットの行列が追従します。グループの変更では位置が保たれます。つなぎ直した三角形は、辺を共有する三角形とリンクされます。「名前を付けて保存」は、ボディを独立したリソースとして書き出します。"
+
+msgid "Fragment child"
+msgstr "フラグメントの子"
+
+msgid "Type and include entry"
+msgstr "タイプとインクルードのエントリ"
+
+msgid "Rewire"
+msgstr "つなぎ直す"
+
+msgid "A geometry with no BVH is not reshaped: it carries a shrunk copy of each vertex, and how far a vertex is shrunk is not known."
+msgstr "BVH のないジオメトリは作り直されません。各頂点の縮小コピーを持ち、頂点がどれだけ縮小されるかは分かっていません。"
+
+msgid "A copy takes the key its name hashes to and the signature of the entry it copies; Save As places it and its tracks or bones after the body's last object."
+msgstr "コピーは名前のハッシュが示すキーと、コピー元のエントリのシグネチャを受け取ります。「名前を付けて保存」で、そのトラックまたはボーンとともに本体の最後のオブジェクトの後に配置されます。"
+
+msgid "A dictionary keeps one frame filter or animation record at least."
+msgstr "辞書には少なくとも 1 つのフレームフィルターまたはアニメーションレコードが残ります。"
+
+msgid "A name is printable text with no space."
+msgstr "名前は空白を含まない印字可能なテキストです。"
+
+msgid "Another entry of the dictionary has the key that name hashes to."
+msgstr "辞書の別のエントリが、その名前のハッシュが示すキーを持っています。"
+
+msgid "Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"
+msgstr "各フレームのベクトルの前に：0x90 のワードと、クラス 1 では回転とレコードの浮動小数点 4〜11"
+
+msgid "Copy a frame filter or animation record"
+msgstr "フレームフィルターまたはアニメーションレコードをコピー"
+
+msgid "Copy the entry"
+msgstr "エントリをコピー"
+
+msgid "Database bytes at {at}"
+msgstr "{at} のデータベースのバイト"
+
+msgid "Database words at {at}"
+msgstr "{at} のデータベースのワード"
+
+msgid "Edit a track's id"
+msgstr "トラックの ID を編集"
+
+msgid "Everything the motion reader reads"
+msgstr "モーションリーダーが読み取るすべて"
+
+msgid "Group {group}, column ranges {ranges}, weight lists {lists}"
+msgstr "グループ {group}、列の範囲 {ranges}、重みリスト {lists}"
+
+msgid "Group {group}, constants: {values}"
+msgstr "グループ {group}、定数：{values}"
+
+msgid "Group {group}, database bounds {bounds}, hash at 0x80 {hash}, weight lists {lists}"
+msgstr "グループ {group}、データベースの境界 {bounds}、0x80 のハッシュ {hash}、重みリスト {lists}"
+
+msgid "Group {group}, grid {index}: words {words}, cells {cells}, bounds {bounds}, cell sizes {sizes}, inverses {inverses}"
+msgstr "グループ {group}、グリッド {index}：ワード {words}、セル {cells}、境界 {bounds}、セルサイズ {sizes}、逆数 {inverses}"
+
+msgid "Group {group}, lists {lists}, hashes {hashes}"
+msgstr "グループ {group}、リスト {lists}、ハッシュ {hashes}"
+
+msgid "Group {group}, phase curve {index}: points {points}, x from {x0} to {x1}, y1 {y1}, {cycles} cycles"
+msgstr "グループ {group}、位相カーブ {index}：点 {points}、x は {x0} から {x1}、y1 {y1}、{cycles} サイクル"
+
+msgid "Group {group}, range {lo} to {hi}: hashes {hashes}, bounds {bounds}"
+msgstr "グループ {group}、範囲 {lo}〜{hi}：ハッシュ {hashes}、境界 {bounds}"
+
+msgid "Group {group}, simplex {index}: {words}"
+msgstr "グループ {group}、シンプレックス {index}：{words}"
+
+msgid "Matcher bytes at {at}"
+msgstr "{at} のマッチャーのバイト"
+
+msgid "Matcher words at {at}"
+msgstr "{at} のマッチャーのワード"
+
+msgid "New name"
+msgstr "新しい名前"
+
+msgid "No stored entry of its kind is there to copy, so {name} is not added."
+msgstr "コピーできる同じ種類の格納済みエントリがないため、{name} は追加されません。"
+
+msgid "Parameter objects, by type: {types}"
+msgstr "パラメーターオブジェクト（型別）：{types}"
+
+msgid "Parameter {name}: words {words}, word {word}, from {min} to {max}"
+msgstr "パラメーター {name}：ワード {words}、ワード {word}、{min} から {max}"
+
+msgid "Remove a frame filter or animation record"
+msgstr "フレームフィルターまたはアニメーションレコードを削除"
+
+msgid "Remove the entry"
+msgstr "エントリを削除"
+
+msgid "That entry is no frame filter or animation record."
+msgstr "そのエントリはフレームフィルターでもアニメーションレコードでもありません。"
+
+msgid "The entry {code} is stored as the other kind of entry, so it is not written."
+msgstr "エントリ {code} はもう一方の種類のエントリとして格納されているため、書き込まれません。"
+
+msgid "The entry's warp list of {count} points follows no known rule, so it is kept as read."
+msgstr "エントリの {count} 点のワープリストは既知の規則に従わないため、読み取ったまま保持されます。"
+
+msgid "Time warp {index}: a {a}, b {b}, points {points}"
+msgstr "タイムワープ {index}：a {a}、b {b}、点 {points}"
+
+msgid "Version-1 GUID"
+msgstr "バージョン 1 の GUID"
+
+msgid "Weight list {index}: {weights}"
+msgstr "重みリスト {index}：{weights}"
+
+msgid "the group already states that id on that track word"
+msgstr "グループはそのトラックワードでその ID をすでに示しています"
+
+msgid "{name} hashes to another key than its entry's, so it is not added."
+msgstr "{name} のハッシュはそのエントリとは別のキーになるため、追加されません。"
+
+msgid "An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules."
+msgstr "イベントが、GTA VIのパーティクルリストにないルールを指しています：リストのルールのいずれかに割り当ててください。"
+
+msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
+msgstr "GTA VIのパーティクルリストは、新しいエフェクトをリスト内のエフェクトのコピーとしてのみ受け付けます：Duplicateを使い、コピーの名前はコピー元のエフェクト名の後に_copyを付けたままにしてください。"
+
+msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
+msgstr "隣接セル {cells} のボディが開かれていない間は、ポリゴン {polygon} を無効化しません：それが空にする境界レコードは消え、それらの特殊リンクがその後のレコードを番号で指している可能性があります。先にスキャン内の隣接セルを探してください。"
+
+msgid "An interior takes only its own archetype or another interior archetype whose rooms and portals were read."
+msgstr "インテリアが取れるのは、自分のアーキタイプか、部屋とポータルが読み取られた別のインテリアのアーキタイプだけです。"

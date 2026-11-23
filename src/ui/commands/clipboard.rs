@@ -50,13 +50,6 @@ pub const NOTHING_TO_PASTE: &str =
 
 fn can_delete(state: &AppState, target: &Target) -> Result<(), &'static str> {
     match target {
-        Target::Particle { doc, .. }
-            if crate::state::gta6_particles::written_in_place(state, *doc) =>
-        {
-            Err(tr!(
-                "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-            ))
-        }
         Target::Particle { id, .. } if hierarchy::particle_row_deletes(*id) => Ok(()),
         Target::Particle { .. } => Err(tr!("Select an effect or a rule in the Outline first")),
         Target::Rows { rows, .. } if rows.len() > 1 => Err(tr!(

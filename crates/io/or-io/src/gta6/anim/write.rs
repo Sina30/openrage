@@ -9,6 +9,7 @@
 
 mod channels;
 mod clips;
+mod mapped;
 mod relayout;
 mod stored;
 
@@ -50,13 +51,15 @@ pub enum AnimEdit {
         end: f32,
         rate: f32,
     },
-    /// A group entry's window; its rate and a three-point warp list follow from it.
+    /// A group entry's window; its rate and a three-point warp list follow from it, the list at
+    /// `frame_rate` where another body holds the entry's animation; another list is kept as read.
     EntryWindow {
         clip: usize,
         group: usize,
         entry: usize,
         start: f32,
         end: f32,
+        frame_rate: Option<f32>,
     },
     /// DOF `dof` held at `value` over the whole clip, one constant channel in every block.
     Pose {
@@ -237,11 +240,13 @@ pub fn edit(resource: &AnimResource, edit: &AnimEdit) -> Result<AnimResource, An
             entry,
             start,
             end,
+            frame_rate,
         } => {
             let at = *(s.clip_offsets(resource)?.get(clip))
                 .ok_or_else(|| AnimError::Unwritten("the resource has no such clip".into()))?;
             let place = clips::EntryAt { clip, group, entry };
-            clips::entry_window(&s, &mut out, &mut edited, at, place, [start, end])?;
+            let window = [start, end];
+            clips::entry_window(&s, &mut out, &mut edited, at, place, window, frame_rate)?;
         }
         AnimEdit::ClipWindow {
             clip,

@@ -248,6 +248,7 @@ fn a_group_entry_s_window_sets_its_rate_and_its_three_point_warp_list() {
         entry,
         start,
         end,
+        frame_rate: None,
     };
     let edited = edit(&resource, &window(1, 0.5, 1.25)).expect("edits");
     let edited = edit(&edited, &window(0, 0.1, 0.9)).expect("edits");
@@ -280,6 +281,63 @@ fn a_group_entry_s_window_sets_its_rate_and_its_three_point_warp_list() {
     assert!(edit(&resource, &window(2, 0.0, 1.0)).is_err());
     let one = opened(build(&Spec::default()).bytes);
     assert!(edit(&one, &window(0, 0.0, 1.0)).is_err_and(|e| matches!(e, AnimError::Unwritten(_))));
+}
+
+#[test]
+fn an_entry_s_warp_list_of_another_count_is_kept_and_another_body_s_rate_is_taken() {
+    let groups = Spec {
+        clip: 2,
+        ..Spec::default()
+    };
+    let built = build(&groups);
+    let fps = |r: &AnimResource| f64::from(the_animation(r).rate().expect("a rate")).round();
+    let window = |frame_rate: Option<f32>| AnimEdit::EntryWindow {
+        clip: 0,
+        group: 0,
+        entry: 1,
+        start: 0.5,
+        end: 1.25,
+        frame_rate,
+    };
+    let second = |r: &AnimResource| match &r.clips[0].play {
+        ClipPlay::Groups { groups, .. } => groups[0].entries[1].clone(),
+        _ => panic!("a clip of groups"),
+    };
+
+    // A list of two points follows no known rule: the window and rate are written, the list kept.
+    let mut two = built.bytes.clone();
+    let entries = pointer_at(&two, pointer_at(&two, built.clip + 0x68));
+    let head = entries + 0x38 + 0x10;
+    two[head + 8..head + 12].copy_from_slice(&[2, 0, 2, 0]);
+    let resource = opened(two);
+    let kept = second(&resource).warp_points;
+    assert_eq!(kept.len(), 2);
+    let edited = edit(&resource, &window(None)).expect("edits");
+    for r in [&edited, &read(section(&edited)).expect("reads")] {
+        let e = second(r);
+        assert_eq!((e.start, e.end, e.rate), (0.5, 1.25, 0.75 / 1.5));
+        assert_eq!(e.warp_points, kept);
+    }
+
+    // An entry whose animation another body holds takes the rate it is given, and none refuses.
+    let mut resource = opened(built.bytes);
+    let rate = the_animation(&resource).rate().expect("a rate");
+    let (d, w, f) = (1.5f64, 0.75f64, fps(&resource));
+    let middle = [((d * f).floor() / f) as f32, (d * (w - 1.0 / f) / w) as f32];
+    if let ClipPlay::Groups { groups, .. } = &mut resource.clips[0].play {
+        groups[0].entries[1].animation = None;
+    }
+    assert!(edit(&resource, &window(None)).is_err_and(|e| matches!(e, AnimError::Unwritten(_))));
+    let edited = edit(&resource, &window(Some(rate))).expect("edits");
+    assert_eq!(
+        second(&edited).warp_points,
+        vec![[0.0, 0.0], middle, [1.5, 1.5]]
+    );
+    let again = read(section(&edited)).expect("reads");
+    assert_eq!(
+        second(&again).warp_points,
+        vec![[0.0, 0.0], middle, [1.5, 1.5]]
+    );
 }
 
 #[test]

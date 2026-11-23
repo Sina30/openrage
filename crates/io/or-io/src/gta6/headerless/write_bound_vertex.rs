@@ -36,7 +36,11 @@ fn span(points: &[[f32; 3]], grow: f32) -> Span {
 
 /// Primitive `p`'s box over the vertices `at` gives, a triangle grown by `margin`, as its BVH
 /// leaf holds it; `None` where it names a vertex `at` does not give.
-fn item_box(p: &Primitive, at: &dyn Fn(u16) -> Option<[f32; 3]>, margin: f32) -> Option<Span> {
+pub(super) fn item_box(
+    p: &Primitive,
+    at: &dyn Fn(u16) -> Option<[f32; 3]>,
+    margin: f32,
+) -> Option<Span> {
     Some(match *p {
         Primitive::Triangle { vertices, .. } => {
             let [a, b, c] = vertices;

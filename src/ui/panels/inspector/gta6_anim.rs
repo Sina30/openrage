@@ -11,6 +11,7 @@ mod cuts;
 mod edit;
 mod face;
 mod matcher;
+mod motion_detail;
 mod play;
 mod timeline;
 mod values;
@@ -141,6 +142,11 @@ pub(super) fn draw_gta6_anim(ui: &mut egui::Ui, state: &mut AppState, doc_id: Do
     }
     if let Some(at) = open {
         state.open_found_clip(&at);
+    }
+    if !resource.motions.is_empty() {
+        egui::CollapsingHeader::new(tr!("Everything the motion reader reads"))
+            .id_salt(("gta6_anim_motion_read", doc_id))
+            .show(ui, |ui| motion_detail::draw(ui, doc_id, &resource));
     }
     matcher::draw_matchers(ui, doc_id, &resource);
     ui.add_space(crate::ui::theme::SPACING_TIGHT);

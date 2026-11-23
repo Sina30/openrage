@@ -349,6 +349,23 @@ fn stated_word(v: &[u8], held: &[Held], key: u64) -> Option<u32> {
     })
 }
 
+/// Each key a slot of the drawable of `role` and `code` binds with the 32-bit name hash its key record states.
+pub fn stated_words(virtual_section: &[u8], role: Rpf9Role, code: Option<u32>) -> Vec<(u64, u32)> {
+    let v = virtual_section;
+    let Ok((_, _, held)) = read_held(v, role, code) else {
+        return Vec::new();
+    };
+    (held.iter().flat_map(|h| &h.bindings))
+        .filter_map(|&binding| {
+            let (entry, header) = record_of(v, binding)?;
+            Some((
+                word_at(v, entry.checked_add(8)?)?,
+                word_at(v, header + 8)? as u32,
+            ))
+        })
+        .collect()
+}
+
 /// `written`, the drawable of `role` and `code` written over `read`, with the word of each key
 /// record `read` holds whose entry now holds another key set to that key's 32-bit name hash.
 fn rekey(

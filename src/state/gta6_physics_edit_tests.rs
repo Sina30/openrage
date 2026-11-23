@@ -282,6 +282,7 @@ fn child(composite: Option<u16>, mass: f32) -> FragmentChild {
         composite,
         bound: None,
         flags: [0; 2],
+        bound_word: 0,
         matrix: [[0.0; 4]; 4],
     }
 }

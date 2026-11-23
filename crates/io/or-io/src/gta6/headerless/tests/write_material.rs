@@ -399,3 +399,15 @@ fn a_bound_slot_given_another_key_has_its_key_record_state_that_key_s_word() {
     assert!(matches!(err, MaterialLayoutError::UnnamedKey { shader: 0, key: k } if k == key));
     assert!(s == mapped(&img, &phys), "a refused write changed bytes");
 }
+
+#[test]
+fn a_drawable_states_the_word_of_each_key_its_slots_bind() {
+    let word = 0x0BAD_F00D;
+    let (img, _, _) = drawable_with_record(word);
+    let stated = stated_words(&img.bytes, Rpf9Role::Drawable, None);
+    assert!(stated.contains(&(TEXTURE_KEY, word)), "{stated:?}");
+    let (plain, _, _) = drawable_with_map();
+    let none = stated_words(&plain.bytes, Rpf9Role::Drawable, None);
+    assert!(!none.iter().any(|(_, w)| *w == word), "{none:?}");
+    assert!(stated_words(&[0u8; 8], Rpf9Role::Drawable, None).is_empty());
+}

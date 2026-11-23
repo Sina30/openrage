@@ -3,16 +3,24 @@
 //! a parent renumbered; each body that changed written as a loose resource that `rpf scan-open`
 //! reads at offset 0.
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
 
+use glam::{Quat, Vec3};
 use or_io::container::rpf::{
     read_rpf9_body, write_rpf9_resource, Rpf9BodyKind, Rpf9Scan, Rpf9Sections, Rpf9ZlibRun,
 };
-use or_io::gta6::map::grow::{add_entity_across, lod_parent, remove_entity_across};
+use or_io::gta6::map::grow::{
+    add_entity_across, entities_union, lod_parent, remove_entity_across, set_entities_extents,
+};
 use or_io::gta6::map::links::{self, Links};
-use or_io::gta6::map::{self, MapBody};
+use or_io::gta6::map::{self, Aabb, Entity, MapBody};
+use or_world::transform::{placed_corners, scale_of};
+
+/// Archetype boxes in model space, by the word an entity names its archetype by.
+type Boxes = HashMap<u64, ([f32; 3], [f32; 3])>;
 
 const USAGE: &str = "usage: rpf map-entity add|remove <archive.rpf> <offset> <entity> <out_dir> [--orphan] [--limit <bytes>]";
 
@@ -40,7 +48,7 @@ pub(crate) fn cmd_map_entity(args: &[String]) -> Result<(), String> {
         return Err(format!("the body at {offset:#X} is no CMapData that reads"));
     };
     let parent = (lod_parent(&target, entity).map_err(|e| e.to_string())?).map(|(name, _)| name);
-    let (offsets, mut others) = related(&file, offset, m.name, parent, limit)?;
+    let (offsets, mut others, boxes) = related(&file, offset, m.name, parent, limit)?;
     let (said, changed) = match add {
         true => {
             let (at, changed) = add_entity_across(&mut target, &mut others, entity, orphan)
@@ -50,7 +58,18 @@ pub(crate) fn cmd_map_entity(args: &[String]) -> Result<(), String> {
         false => {
             let changed = remove_entity_across(&mut target, &mut others, entity)
                 .map_err(|e| e.to_string())?;
-            (format!("entity {entity} removed"), changed)
+            let Ok(MapBody::Data(left)) = map::open(&target.virtual_section, &target.physical)
+            else {
+                return Err("the edited map does not read back".to_string());
+            };
+            let extents = match entities_union(&left, |e| placed(&boxes, e)) {
+                Some(union) => {
+                    set_entities_extents(&mut target, union).map_err(|e| e.to_string())?;
+                    "its entitiesExtents recomputed"
+                }
+                None => "its entitiesExtents kept, as no map types body of the archive holds the box of every entity left",
+            };
+            (format!("entity {entity} removed; {extents}"), changed)
         }
     };
     // Every body is written only once each reads back as a map.
@@ -77,17 +96,35 @@ fn body_at(file: &File, offset: u64, limit: u64) -> Result<Rpf9Sections, String>
         .ok_or_else(|| format!("the body at {offset:#X} is not a resource"))
 }
 
+/// `e`'s archetype box of `boxes` scaled, turned and placed, as a map's extents hold it.
+fn placed(boxes: &Boxes, e: &Entity) -> Option<Aabb> {
+    let (lo, hi) = boxes.get(&e.archetype_word)?;
+    let scale = scale_of(e.scale_xy, e.scale_z);
+    let turn = Quat::from_array(e.model_rotation()).normalize();
+    let (lo, hi) = (Vec3::from(*lo) * scale, Vec3::from(*hi) * scale);
+    let corners = placed_corners(lo, hi, turn, Vec3::from(e.position));
+    let (min, max) = (corners.iter()).fold((Vec3::INFINITY, Vec3::NEG_INFINITY), |(a, b), c| {
+        (a.min(*c), b.max(*c))
+    });
+    Some(Aabb {
+        min: min.to_array(),
+        max: max.to_array(),
+    })
+}
+
 /// Every CMapData body of the archive but the one at `skip` that names the map `name` as a parent
-/// or is the map `parent`, with its offset; refused where a body does not read, as it may be one.
+/// or is the map `parent`, with its offset, and the box of each archetype its map types bodies
+/// hold; refused where a body does not read, as it may be one.
 fn related(
     file: &File,
     skip: u64,
     name: u32,
     parent: Option<u32>,
     limit: u64,
-) -> Result<(Vec<u64>, Vec<Rpf9Sections>), String> {
+) -> Result<(Vec<u64>, Vec<Rpf9Sections>, Boxes), String> {
     let cancelled = super::jobs::on_interrupt();
     let (mut offsets, mut bodies) = (Vec::new(), Vec::new());
+    let mut boxes = Boxes::new();
     for find in Rpf9Scan::new(file, 0..u64::MAX).map_err(|e| e.to_string())? {
         if cancelled.is_set() {
             return Err("cancelled".to_string());
@@ -109,7 +146,14 @@ fn related(
             format!("the body at {at:#X} does not read, so whether it names the map is not known: {why}")
         };
         let s = body_at(file, at, limit).map_err(unknown)?;
-        if map::root_type(&s.virtual_section) != Some(map::C_MAP_DATA) {
+        let root = map::root_type(&s.virtual_section);
+        if root == Some(map::C_MAP_TYPES) {
+            if let Ok(MapBody::Types(t)) = map::open(&s.virtual_section, &s.physical) {
+                boxes.extend((t.archetypes.iter()).map(|a| (a.name_word, (a.bb_min, a.bb_max))));
+            }
+            continue;
+        }
+        if root != Some(map::C_MAP_DATA) {
             continue;
         }
         let named = match links::open(&s.virtual_section, &s.physical) {
@@ -124,7 +168,7 @@ fn related(
             bodies.push(s);
         }
     }
-    Ok((offsets, bodies))
+    Ok((offsets, bodies, boxes))
 }
 
 /// `s` as a loose resource, once it reads back as a map.
@@ -146,6 +190,43 @@ mod tests {
 
     fn words(words: &[&str]) -> Vec<String> {
         words.iter().map(|w| w.to_string()).collect()
+    }
+
+    #[test]
+    fn an_entity_s_box_is_its_archetype_s_scaled_turned_and_placed_or_none_when_not_held() {
+        let mut e = Entity {
+            interior: false,
+            id: 1,
+            // A quarter turn about z, stored as its conjugate.
+            rotation: [
+                0.0,
+                0.0,
+                -std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ],
+            archetype_word: 7,
+            position: [10.0, 0.0, 0.0],
+            archetype_name: 3,
+            flags: 0,
+            scale_xy: 2.0,
+            scale_z: 1.0,
+            parent_index: -1,
+            hash_e74c3c23: -1,
+            lod_dist: -1.0,
+            child_lod_dist: 0.0,
+            num_children: 0,
+            tint_value: 0,
+            priority_level: 0,
+            lod_level: 5,
+        };
+        let boxes = Boxes::from([(7, ([-1.0, -2.0, 0.0], [1.0, 2.0, 3.0]))]);
+        let b = placed(&boxes, &e).expect("held");
+        // Scaled to 4 m by 8 m, then turned: 8 m along x and 4 m along y.
+        let near = |a: [f32; 3], w: [f32; 3]| (0..3).all(|i| (a[i] - w[i]).abs() < 1e-4);
+        assert!(near(b.min, [6.0, -2.0, 0.0]), "{b:?}");
+        assert!(near(b.max, [14.0, 2.0, 3.0]), "{b:?}");
+        e.archetype_word = 8;
+        assert_eq!(placed(&boxes, &e), None);
     }
 
     #[test]

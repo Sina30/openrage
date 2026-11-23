@@ -43,7 +43,7 @@ const MISSED: &str =
 
 /// A GTA VI P-form document's bytes with `instance` laid out anew, refused when the rules do not
 /// give back the document `layout` was read from.
-pub(super) fn write(layout: &PsoLayout, instance: &MetaInstance) -> Result<Vec<u8>> {
+pub(crate) fn write(layout: &PsoLayout, instance: &MetaInstance) -> Result<Vec<u8>> {
     let stored = stored_bytes(layout);
     let library = SchemaLibrary::default();
     let (original, _) = super::reader::parse_full(&library, &stored, &mut Diagnostics::lenient())?;
@@ -318,8 +318,10 @@ impl<'a> Placer<'a> {
                 match entry.subtype() {
                     GTA6_PAIR_MAP => self.pair_map(owner, entry, block, at, pairs, depth),
                     GTA6_GROUP_MAP if pairs.is_empty() => Ok(()),
+                    // ⚠ Where a pair goes was measured on one pair, and its array's pointer
+                    // reaches no element at 0x1000 or past it, so the map is saved in place only.
                     GTA6_GROUP_MAP => Err(refused(
-                        "a group map that holds pairs, whose values' layout is not measured",
+                        "a group map that holds pairs is saved only into the allocation it arrived with, because where a pair goes and what its array's header holds in a new layout are not known",
                     )),
                     other => Err(refused(format!(
                         "map subtype {other}, whose layout is not measured"
@@ -660,6 +662,16 @@ mod tests {
             let (again, layout) = open(&written);
             assert_eq!(again, edited, "{list:?} {text}");
             assert_eq!(write(&again, &layout), written, "{list:?} {text}");
+        }
+    }
+
+    #[test]
+    fn a_gta6_p_form_converges_through_xml_to_the_layout_the_rules_give() {
+        for (list, text) in [(&[7u32, 9][..], "hi"), (&[], "a new text")] {
+            let bytes = document(list, text);
+            let converged = crate::meta::canonical::converge(&SchemaLibrary::default(), &bytes)
+                .unwrap_or_else(|e| panic!("{list:?} {text}: {e}"));
+            assert_eq!(converged.bytes, bytes, "{list:?} {text}");
         }
     }
 

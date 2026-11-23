@@ -113,7 +113,7 @@ fn a_held_texture_of_no_dictionary_format_or_short_pixels_is_refused_by_kind() {
 }
 
 #[test]
-fn a_volume_of_one_level_writes_its_planes_and_one_of_several_levels_is_refused() {
+fn a_volume_writes_each_level_s_planes_from_the_first_slice_that_shows_them() {
     let mut sections = dictionary(vec![fog(1, 0x1000)]);
     let mut textures = held(&sections);
     assert_eq!(textures[0].pixels.len(), 8 * 16 * 8 * 4);
@@ -121,11 +121,35 @@ fn a_volume_of_one_level_writes_its_planes_and_one_of_several_levels_is_refused(
     write_dictionary_textures(&mut sections, &textures).expect("the planes are written");
     assert_eq!(held(&sections)[0].pixels, textures[0].pixels);
 
-    // Level 1's 4x8x4 lies in the tail tile after level 0's slab.
+    // Level 1's 4x8x4 lies in the tail tile after level 0's slab: each of the 8 slices holds a
+    // plane of level 0 and the plane `s >> 1` of level 1.
     let mut sections = dictionary(vec![fog(2, 0x2000)]);
-    let read = held(&sections).remove(0);
+    let mut textures = held(&sections);
+    let (level0, level1) = (8 * 16 * 4, 4 * 8 * 4);
+    let each = level0 + level1;
+    assert_eq!(textures[0].pixels.len(), 8 * each);
+    let written = pattern(8 * each, 9);
+    textures[0].pixels = written.clone();
+    write_dictionary_textures(&mut sections, &textures).expect("every level's planes are written");
+    let want: Vec<u8> = (0..8)
+        .flat_map(|s| {
+            let from = (s & !1) * each + level0;
+            let own = &written[s * each..s * each + level0];
+            [own, &written[from..from + level1]].concat()
+        })
+        .collect();
+    let back = held(&sections).remove(0);
+    assert_eq!(back.mips, 2);
+    assert!(
+        back.pixels == want,
+        "slice s shows level 1 as slice s & !1 gave it"
+    );
+    let mut again = sections.clone();
+    write_dictionary_textures(&mut again, &[back]).expect("nothing changed");
+    assert_eq!(again, sections, "what reads back writes nothing");
+
+    // Pixels of another length are refused, and nothing is written.
     let (v, p) = (&sections.virtual_section, &mut sections.physical);
-    let why =
-        write_volume_texture(v, p, "zq_fog", &pattern(read.pixels.len(), 9)).expect_err("refused");
-    assert!(why.to_string().contains("several levels"), "{why}");
+    let why = write_volume_texture(v, p, "zq_fog", &pattern(8 * each - 4, 3)).expect_err("short");
+    assert!(why.to_string().contains("planes"), "{why}");
 }

@@ -15342,9 +15342,6 @@ msgstr "Datenbank der Gruppe {group}, Typ {kind}: {columns} Spalten, {tables} Ta
 msgid "Bone tracks it reads: {bones}; tracks of a word whose name is not known it reads: {others}; facial controls it writes: {facial}."
 msgstr "Knochenspuren, die er liest: {bones}; Spuren eines Worts, dessen Name nicht bekannt ist, die er liest: {others}; Gesichtssteuerungen, die er schreibt: {facial}."
 
-msgid "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image."
-msgstr "{name} ist eine Volumentextur, deren Schichten jeweils einen Teil jeder Stufe enthalten, daher wird sie nicht aus einem Bild ersetzt."
-
 msgid "The walk stops at {folders} folders and {archives} archives, so the archives past them are not scanned."
 msgstr "Der Durchlauf endet bei {folders} Ordnern und {archives} Archiven, daher werden die darüber hinausgehenden Archive nicht gescannt."
 
@@ -15439,8 +15436,8 @@ msgstr "{group}: hash_{id} {word} ({at} von {total}), {detail}"
 msgid "Expression set hash_{key}, tracks read: {reads}, tracks written: {writes}"
 msgstr "Expression-Set hash_{key}, gelesene Spuren: {reads}, geschriebene Spuren: {writes}"
 
-msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known."
-msgstr "Keyframe-Werte, für die GTA Vs Datensätze kein Feld haben, stehen roh am Ende: der Winkel einer Geschwindigkeit, die letzten drei unbenannten Werte einer Farbe und der fünfte und sechste eines Bereichs. Die ersten beiden unbenannten Werte einer Farbe werden als ihr Minimum und Maximum gezeigt, was erschlossen ist; die Vorschau zeichnet nur das Minimum, da nicht bekannt ist, was das Maximum aktiviert."
+msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too."
+msgstr "Keyframe-Werte, für die GTA Vs Datensätze kein Feld haben, stehen roh am Ende: der Winkel einer Geschwindigkeit, die letzten drei unbenannten Werte einer Farbe und der fünfte und sechste eines Bereichs. Die ersten beiden unbenannten Werte einer Farbe werden als ihr Minimum und Maximum gezeigt, was erschlossen ist; die Vorschau zeichnet das Maximum wie GTA V, wo das Wort der Farbe bei +0x19C zwei oder mehr verwendete Farben zählt, was ebenfalls erschlossen ist."
 
 msgid "Emitter rule {name}, domain {slot}: keyframed value {value}, whose name is not known, holds {keys}."
 msgstr "Emitterregel {name}, Bereich {slot}: der Keyframe-Wert {value}, dessen Name nicht bekannt ist, enthält {keys}."
@@ -15580,8 +15577,8 @@ msgstr "nicht übernommen: {held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "Dies prüft die Bytes des Inhalts. Es testet nicht, dass GTA VI sie lädt."
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "Jede Geometrie, die das Mesh nennt, übernimmt seine Positionen, Normalen, Tangenten, Texturkoordinaten, Farben und Dreiecke; ihre Gewichte, Blend-Indizes und anderen Kanäle bleiben, wie sie sie hält, und nur bei ihrer eigenen Vertexanzahl."
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
+msgstr "Jede Geometrie, die das Mesh nennt, übernimmt seine Positionen, Normalen, Tangenten, Texturkoordinaten, Farben und Dreiecke sowie ihre Gewichte und Blend-Indizes aus den Gelenken des Meshes und ergänzt ihre Palette um einen fehlenden Knochen; ihre anderen Kanäle bleiben, wie sie sie hält, und nur bei ihrer eigenen Vertexanzahl."
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "Dieser Wörterbucheintrag hielt beim Öffnen kein lesbares Skelett, daher hat er keine Knochen zum Bearbeiten."
@@ -15631,14 +15628,14 @@ msgstr "Ebene {level}: Bahnen zu {frames} Frames, jede das Kleinste und Größte
 msgid "Tetrahedra: each vertex's weight list, counted from its group's first, and its place in the space of the three columns"
 msgstr "Tetraeder: die Gewichtsliste jedes Eckpunkts, gezählt ab der ersten seiner Gruppe, und seine Stelle im Raum der drei Spalten"
 
-msgid "No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
-msgstr "Weder ein Name, den die App kennt, noch ein Slot dieses Drawables gibt den 32-Bit-Namens-Hash dieser Textur an, daher wird kein Slot an sie gebunden."
+msgid "No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
+msgstr "Weder ein Name, den die App kennt oder der eingegeben wurde, noch ein Drawable der Installation, das sie gelesen hat, noch ein Slot dieses Drawables gibt den 32-Bit-Namens-Hash dieser Textur an, daher wird kein Slot an sie gebunden."
 
 msgid "That parameter is no texture slot of this shader."
 msgstr "Dieser Parameter ist kein Textur-Slot dieses Shaders."
 
-msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."
-msgstr "Eine Konstante behält ihre Größe, daher verschiebt sich nichts. Ein leerer Slot, dem ein Schlüssel gegeben wird, erhält eine eigene Bindung und einen eigenen Schlüsseleintrag am Ende des virtuellen Abschnitts und nimmt nur einen Schlüssel an, dessen Namen die App kennt oder den ein anderer Slot des Drawables bindet. „Speichern unter…“ schreibt den Inhalt als lose Resource."
+msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."
+msgstr "Eine Konstante behält ihre Größe, daher verschiebt sich nichts. Ein leerer Slot, dem ein Schlüssel gegeben wird, erhält eine eigene Bindung und einen eigenen Schlüsseleintrag am Ende des virtuellen Abschnitts und nimmt nur einen Schlüssel an, dessen Namen die App kennt oder der eingegeben wird, oder den ein Slot des Drawables oder eines Drawables der Installation bindet. „Speichern unter…“ schreibt den Inhalt als lose Resource."
 
 msgid "the shader holds a constant elsewhere than the effect places it"
 msgstr "der Shader hält eine Konstante an einer anderen Stelle, als der Effekt sie platziert"
@@ -15655,8 +15652,8 @@ msgstr "Die entwickelten Keyframes einer Evolution werden gelesen und von den Ev
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "Die GPU-Puffer im physischen Abschnitt werden geprüft: der bei +0x390 kopiert die Floats der Regel bei +0x1E0, und der bei +0x388 enthält zwei Tabellen mit 16 Zeilen, deren Werte nicht aus der Regel abgeleitet sind, daher bleiben sie wie gespeichert und können einem bearbeiteten Keyframe-Wert widersprechen. Die Vorschau braucht keinen der beiden."
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it."
-msgstr "„Speichern unter“ schreibt die Werte, die beide Formen teilen, an Ort und Stelle über die GTA-VI-Liste. Das Hinzufügen oder Entfernen einer Regel, eines Ereignisses, eines Verhaltens oder eines Schlüssels würde die Liste verschieben, daher bietet der Arbeitsbereich es nicht an."
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
+msgstr "„Speichern unter“ schreibt die Werte, die beide Formen teilen, an Ort und Stelle über die GTA-VI-Liste, und mit ihnen eine entfernte Regel oder ein an eine andere Regel gebundenes Ereignis. Ein hinzugefügter Schlüssel und ein duplizierter Effekt werden hinter das Ende der Liste geschrieben, die Kopie über den Namen gefunden, den Duplicate ihr gibt. Eine aus dem Nichts erstellte Regel oder ein hinzugefügtes Ereignis oder Verhalten hat keinen angegebenen Wert, daher bietet der Arbeitsbereich es nicht an."
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "Sein dritter Spawner startet {effect} dort, wo sein ptxu_ZCull einen Punkt verwirft, und die Vorschau ebenso; dass sein Auslösewert eine Geschwindigkeit ist, die der Punkt erreichen muss, wie beim Kollisions-Spawner, ist erschlossen."
@@ -15684,9 +15681,6 @@ msgstr "Die Kennung seines Keyframe-Werts ist hash_{id}, dessen Feldname nicht b
 
 msgid "{owner}: evolved value {value} under evolution {evolution} has kind {kind}, where 1 is the LOD distance and 2 to 4 the camera's forward, top and side views, and flags {first} and {second}, whose meaning is not known."
 msgstr "{owner}: Der entwickelte Wert {value} unter der Evolution {evolution} hat die Art {kind}, wobei 1 die LOD-Entfernung ist und 2 bis 4 die Vorder-, Drauf- und Seitenansicht der Kamera, und die Flags {first} und {second}, deren Bedeutung nicht bekannt ist."
-
-msgid "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-msgstr "Eine Partikelliste von GTA VI wird an Ort und Stelle gespeichert, daher kann noch keine Regel und kein Effekt daraus entfernt werden"
 
 msgid "An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own."
 msgstr "Eine Entität nimmt nur einen Archetyp ihrer Klasse an, den ihre Karte nennt oder den ein geöffneter oder gefundener Kartentypen-Körper enthält, und ein Interieur behält seinen eigenen."
@@ -16014,3 +16008,270 @@ msgid "{count} station no text names"
 msgid_plural "{count} stations no text names"
 msgstr[0] "{count} Sender, den kein Text benennt"
 msgstr[1] "{count} Sender, die kein Text benennt"
+
+msgid "{name} (from the text)"
+msgstr "{name} (aus dem Text)"
+
+msgid "Bytes to the next item"
+msgstr "Bytes bis zum nächsten Element"
+
+msgid "Counted elements"
+msgstr "Gezählte Elemente"
+
+msgid "Each slot a field table or a measured value type places in the item, at its offset, and the bytes between them as they are. A value type is what every item measured holds there, which no table of the file states, so a value may break it; the types are shown only on an item that ends where its layout does."
+msgstr "Jeder Slot, den eine Feldtabelle oder ein gemessener Werttyp in das Element legt, an seinem Offset, und die Bytes dazwischen, wie sie sind. Ein Werttyp ist das, was jedes gemessene Element dort enthält und keine Tabelle der Datei angibt, sodass ein Wert ihn brechen kann; die Typen werden nur bei einem Element angezeigt, das dort endet, wo sein Layout endet."
+
+msgid "reference row"
+msgstr "Referenzzeile"
+
+msgid "group slot"
+msgstr "Gruppenslot"
+
+msgid "hash"
+msgstr "Hash"
+
+msgid "wave container"
+msgstr "Wave-Container"
+
+msgid "zero"
+msgstr "Null"
+
+msgid "unset"
+msgstr "nicht gesetzt"
+
+msgid "float"
+msgstr "Gleitkommazahl"
+
+msgid "float or -1"
+msgstr "Gleitkommazahl oder -1"
+
+msgid "{word}, where every item measured holds {held}"
+msgstr "{word}, wo jedes gemessene Element {held} enthält"
+
+msgid "bytes"
+msgstr "Bytes"
+
+msgid "index key"
+msgstr "Indexschlüssel"
+
+msgid "its own key"
+msgstr "sein eigener Schlüssel"
+
+msgid "number or -1"
+msgstr "Zahl oder -1"
+
+msgid "2-bit flags"
+msgstr "2-Bit-Flags"
+
+msgid "item offset"
+msgstr "Elementoffset"
+
+msgid "{offset}, where the item of the key before it does not start"
+msgstr "{offset}, wo das Element des Schlüssels davor nicht beginnt"
+
+msgid "byte, zero"
+msgstr "Byte, null"
+
+msgid "byte, constant"
+msgstr "Byte, konstant"
+
+msgid "byte, 0 or 1"
+msgstr "Byte, 0 oder 1"
+
+msgid "byte, few values"
+msgstr "Byte, wenige Werte"
+
+msgid "The first entry after an archive's table, where its header puts it, whose end its bytes do not state: the {count} bytes from it to the next body the list holds. No view reads them, so they show as bytes."
+msgstr "Der erste Eintrag nach der Tabelle eines Archivs, dort, wo sein Header ihn ansetzt, dessen Ende seine Bytes nicht angeben: die {count} Bytes von ihm bis zum nächsten Inhalt, den die Liste enthält. Keine Ansicht liest sie, daher werden sie als Bytes angezeigt."
+
+msgid "Headerless resource"
+msgstr "Ressource ohne Header"
+
+msgid "Root block"
+msgstr "Wurzelblock"
+
+msgid "{virtual_blocks} virtual and {physical_blocks} physical blocks"
+msgstr "{virtual_blocks} virtuelle und {physical_blocks} physische Blöcke"
+
+msgid "{entries} entries, {bytes} blob bytes, not read: no key for them is known"
+msgstr "{entries} Einträge, {bytes} Blob-Bytes, nicht gelesen: kein Schlüssel dafür ist bekannt"
+
+msgid "String table"
+msgstr "Zeichenkettentabelle"
+
+msgid "{count} at {at}, carried as read"
+msgstr "{count} bei {at}, wie gelesen übernommen"
+
+msgid "Ids at 0x50"
+msgstr "IDs bei 0x50"
+
+msgid "Every entry has a version 1 or 4 UUID's version and variant, so each reads as a UUID. What object an entry names is not known."
+msgstr "Jeder Eintrag hat die Version und Variante einer UUID der Version 1 oder 4, daher liest sich jeder als UUID. Welches Objekt ein Eintrag benennt, ist nicht bekannt."
+
+msgid "Not every entry has a UUID's version and variant, so each is shown as its bytes. What object an entry names is not known."
+msgstr "Nicht jeder Eintrag hat die Version und Variante einer UUID, daher wird jeder als seine Bytes gezeigt. Welches Objekt ein Eintrag benennt, ist nicht bekannt."
+
+msgid "Its ptxu_Colour counts {count} colours in use; what the colours past the second draw is not known, so the preview draws its minimum and maximum alone."
+msgstr "Sein ptxu_Colour zählt {count} verwendete Farben; was die Farben nach der zweiten zeichnen, ist nicht bekannt, daher zeichnet die Vorschau nur sein Minimum und Maximum."
+
+msgid "Its ptxu_Colour enables its maximum, which holds no key; what that draws is not known, so the preview draws its minimum alone."
+msgstr "Sein ptxu_Colour aktiviert sein Maximum, das keinen Schlüssel enthält; was das zeichnet, ist nicht bekannt, daher zeichnet die Vorschau nur sein Minimum."
+
+msgid "This drawable already embeds another texture, and a dictionary of two was never measured, so {name} is not embedded."
+msgstr "Dieses Drawable bettet bereits eine andere Textur ein, und ein Wörterbuch aus zwei wurde nie vermessen, daher wird {name} nicht eingebettet."
+
+msgid "No name or bound entry states the 32-bit name hash of {name}, so it is not embedded."
+msgstr "Kein Name und kein gebundener Eintrag nennt den 32-Bit-Namens-Hash von {name}, daher wird sie nicht eingebettet."
+
+msgid "The fragment holds no such group."
+msgstr "Das Fragment enthält keine solche Gruppe."
+
+msgid "Moved a fragment's child"
+msgstr "Unterelement eines Fragments verschoben"
+
+msgid "Gave a fragment's child another group"
+msgstr "Unterelement eines Fragments einer anderen Gruppe zugewiesen"
+
+msgid "The composite states no type and include entries."
+msgstr "Das Composite gibt keine Typ- und Include-Einträge an."
+
+msgid "Set a child's type and include entry"
+msgstr "Typ- und Include-Eintrag eines Unterelements gesetzt"
+
+msgid "Rewired a triangle"
+msgstr "Dreieck neu verbunden"
+
+msgid "Reshape the collision"
+msgstr "Kollision umformen"
+
+msgid "A fragment child moves by its own transform and its composite's matrix follows; a group change keeps where it lies; a rewired triangle links to the triangles it shares an edge with. Save As writes the body as a loose resource."
+msgstr "Ein Unterelement eines Fragments bewegt sich durch seine eigene Transformation, und die Matrix seines Composites folgt; ein Gruppenwechsel behält bei, wo es liegt; ein neu verbundenes Dreieck verknüpft sich mit den Dreiecken, mit denen es eine Kante teilt. „Speichern unter…“ schreibt den Inhalt als lose Resource."
+
+msgid "Fragment child"
+msgstr "Unterelement des Fragments"
+
+msgid "Type and include entry"
+msgstr "Typ- und Include-Eintrag"
+
+msgid "Rewire"
+msgstr "Neu verbinden"
+
+msgid "A geometry with no BVH is not reshaped: it carries a shrunk copy of each vertex, and how far a vertex is shrunk is not known."
+msgstr "Eine Geometrie ohne BVH wird nicht umgeformt: Sie trägt eine geschrumpfte Kopie jedes Scheitelpunkts, und wie weit ein Scheitelpunkt geschrumpft wird, ist nicht bekannt."
+
+msgid "A copy takes the key its name hashes to and the signature of the entry it copies; Save As places it and its tracks or bones after the body's last object."
+msgstr "Eine Kopie erhält den Schlüssel, zu dem ihr Name hasht, und die Signatur des kopierten Eintrags; „Speichern unter“ legt sie mit ihren Spuren oder Knochen hinter das letzte Objekt des Körpers."
+
+msgid "A dictionary keeps one frame filter or animation record at least."
+msgstr "Ein Wörterbuch behält mindestens einen Frame-Filter oder Animationsdatensatz."
+
+msgid "A name is printable text with no space."
+msgstr "Ein Name ist druckbarer Text ohne Leerzeichen."
+
+msgid "Another entry of the dictionary has the key that name hashes to."
+msgstr "Ein anderer Eintrag des Wörterbuchs hat den Schlüssel, zu dem dieser Name hasht."
+
+msgid "Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"
+msgstr "Vor dem Vektor jedes Frames: sein Wort bei 0x90 und, in Klasse 1, seine Rotation und die Gleitkommazahlen 4 bis 11 seines Datensatzes"
+
+msgid "Copy a frame filter or animation record"
+msgstr "Frame-Filter oder Animationsdatensatz kopieren"
+
+msgid "Copy the entry"
+msgstr "Eintrag kopieren"
+
+msgid "Database bytes at {at}"
+msgstr "Datenbank-Bytes bei {at}"
+
+msgid "Database words at {at}"
+msgstr "Datenbank-Wörter bei {at}"
+
+msgid "Edit a track's id"
+msgstr "Kennung einer Spur bearbeiten"
+
+msgid "Everything the motion reader reads"
+msgstr "Alles, was der Bewegungsleser liest"
+
+msgid "Group {group}, column ranges {ranges}, weight lists {lists}"
+msgstr "Gruppe {group}, Spaltenbereiche {ranges}, Gewichtslisten {lists}"
+
+msgid "Group {group}, constants: {values}"
+msgstr "Gruppe {group}, Konstanten: {values}"
+
+msgid "Group {group}, database bounds {bounds}, hash at 0x80 {hash}, weight lists {lists}"
+msgstr "Gruppe {group}, Datenbankgrenzen {bounds}, Hash bei 0x80 {hash}, Gewichtslisten {lists}"
+
+msgid "Group {group}, grid {index}: words {words}, cells {cells}, bounds {bounds}, cell sizes {sizes}, inverses {inverses}"
+msgstr "Gruppe {group}, Raster {index}: Wörter {words}, Zellen {cells}, Grenzen {bounds}, Zellgrößen {sizes}, Kehrwerte {inverses}"
+
+msgid "Group {group}, lists {lists}, hashes {hashes}"
+msgstr "Gruppe {group}, Listen {lists}, Hashes {hashes}"
+
+msgid "Group {group}, phase curve {index}: points {points}, x from {x0} to {x1}, y1 {y1}, {cycles} cycles"
+msgstr "Gruppe {group}, Phasenkurve {index}: Punkte {points}, x von {x0} bis {x1}, y1 {y1}, {cycles} Zyklen"
+
+msgid "Group {group}, range {lo} to {hi}: hashes {hashes}, bounds {bounds}"
+msgstr "Gruppe {group}, Bereich {lo} bis {hi}: Hashes {hashes}, Grenzen {bounds}"
+
+msgid "Group {group}, simplex {index}: {words}"
+msgstr "Gruppe {group}, Simplex {index}: {words}"
+
+msgid "Matcher bytes at {at}"
+msgstr "Matcher-Bytes bei {at}"
+
+msgid "Matcher words at {at}"
+msgstr "Matcher-Wörter bei {at}"
+
+msgid "New name"
+msgstr "Neuer Name"
+
+msgid "No stored entry of its kind is there to copy, so {name} is not added."
+msgstr "Kein gespeicherter Eintrag dieser Art ist zum Kopieren da, daher wird {name} nicht hinzugefügt."
+
+msgid "Parameter objects, by type: {types}"
+msgstr "Parameterobjekte, nach Typ: {types}"
+
+msgid "Parameter {name}: words {words}, word {word}, from {min} to {max}"
+msgstr "Parameter {name}: Wörter {words}, Wort {word}, von {min} bis {max}"
+
+msgid "Remove a frame filter or animation record"
+msgstr "Frame-Filter oder Animationsdatensatz entfernen"
+
+msgid "Remove the entry"
+msgstr "Eintrag entfernen"
+
+msgid "That entry is no frame filter or animation record."
+msgstr "Dieser Eintrag ist weder Frame-Filter noch Animationsdatensatz."
+
+msgid "The entry {code} is stored as the other kind of entry, so it is not written."
+msgstr "Der Eintrag {code} ist als die andere Art von Eintrag gespeichert, daher wird er nicht geschrieben."
+
+msgid "The entry's warp list of {count} points follows no known rule, so it is kept as read."
+msgstr "Die Warp-Liste des Eintrags mit {count} Punkten folgt keiner bekannten Regel, daher bleibt sie wie gelesen."
+
+msgid "Time warp {index}: a {a}, b {b}, points {points}"
+msgstr "Zeitverzerrung {index}: a {a}, b {b}, Punkte {points}"
+
+msgid "Version-1 GUID"
+msgstr "GUID der Version 1"
+
+msgid "Weight list {index}: {weights}"
+msgstr "Gewichtsliste {index}: {weights}"
+
+msgid "the group already states that id on that track word"
+msgstr "die Gruppe nennt diese Kennung bereits für dieses Spurwort"
+
+msgid "{name} hashes to another key than its entry's, so it is not added."
+msgstr "{name} hasht zu einem anderen Schlüssel als dem seines Eintrags, daher wird es nicht hinzugefügt."
+
+msgid "An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules."
+msgstr "Ein Ereignis nennt eine Regel, die die Partikelliste von GTA VI nicht enthält: Binden Sie es an eine der Regeln der Liste."
+
+msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
+msgstr "Eine Partikelliste von GTA VI nimmt einen neuen Effekt nur als Kopie eines Effekts an, den sie enthält: Verwenden Sie Duplicate und behalten Sie als Namen der Kopie den Namen des kopierten Effekts, gefolgt von _copy."
+
+msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
+msgstr "Polygon {polygon} wird nicht deaktiviert, solange die Inhalte der Nachbarzellen {cells} nicht geöffnet sind: ein Randdatensatz, den es leert, entfällt, und ihre speziellen Verbindungen können die Datensätze danach nummerieren. Zuerst die Nachbarzellen im Scan suchen."
+
+msgid "An interior takes only its own archetype or another interior archetype whose rooms and portals were read."
+msgstr "Ein Interieur nimmt nur seinen eigenen Archetyp oder einen anderen Interieur-Archetyp an, dessen Räume und Portale gelesen wurden."

@@ -52,6 +52,7 @@ pub(crate) fn rows(outline: &MoveOutline, at: usize) -> Vec<(String, String)> {
             rows.push((tr!("Kind").to_string(), kind(stop.kind)));
             rows.push((tr!("Child index").to_string(), stop.index.to_string()));
             rows.push((tr!("Id").to_string(), format!("hash_{:08X}", stop.id)));
+            name_row(stop.id, &mut rows);
             rows.push((
                 tr!("Word at +0x08").to_string(),
                 format!("{:#010X}", stop.word),
@@ -66,6 +67,7 @@ pub(crate) fn rows(outline: &MoveOutline, at: usize) -> Vec<(String, String)> {
     rows.push((tr!("Kind").to_string(), kind(node.kind)));
     rows.push((tr!("Child index").to_string(), node.index.to_string()));
     rows.push((tr!("Id").to_string(), format!("hash_{:08X}", node.id)));
+    name_row(node.id, &mut rows);
     rows.push((tr!("Bytes").to_string(), node.size.to_string()));
     match &node.body {
         MoveBody::Machine(m) => {
@@ -108,6 +110,13 @@ fn transitions(
         );
         rows.push((tr!("Transition").to_string(), to));
         conditions(&t.conditions, rows);
+    }
+}
+
+/// A row of the name the harvested text holds for `id`, where it holds one.
+fn name_row(id: u32, rows: &mut Vec<(String, String)>) {
+    if let Some(name) = super::text_name(id) {
+        rows.push((tr!("Name").to_string(), name));
     }
 }
 

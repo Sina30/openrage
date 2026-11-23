@@ -12,7 +12,9 @@ use super::super::{
     constants, directory, dof_signature, read, read_stored, AnimError, AnimResource, Bad, Dof,
     Section, DELTA_SECTION, DOF_LEN, SECTIONS,
 };
-use super::{place_blocks, section_of, stored, AnimEdit, BLOCK_ALIGN, BLOCK_HEAD, VIRTUAL_BASE};
+use super::{
+    mapped, place_blocks, section_of, stored, AnimEdit, BLOCK_ALIGN, BLOCK_HEAD, VIRTUAL_BASE,
+};
 use crate::container::rpf::{grow_section, Rpf9Form, Rpf9Section, Rpf9Sections};
 use crate::decl::Aligned;
 use crate::gta5::CrBlockStream;
@@ -157,6 +159,15 @@ pub(super) fn edit(resource: &AnimResource, edit: &AnimEdit) -> Result<AnimResou
             true => 0,
             false => VIRTUAL_BASE + place_list(&s, resource, sections, &mut out, &list)? as u64,
         };
+        // A growth that added block-map slots moved what follows them, perhaps the animation.
+        let at = {
+            let placed = Aligned::from_bytes(&out);
+            let p = section_of(&placed);
+            let set_at = *(p.set_offsets(resource)?.get(place.set))
+                .ok_or_else(|| unwritten("the resource has no such animation set"))?;
+            *(p.animation_offsets(set_at)?.get(place.animation))
+                .ok_or_else(|| unwritten("the set has no such animation"))?
+        };
         let count = dofs.len() as u16;
         put(&mut out, at + 0x60, &pointer.to_le_bytes());
         put(&mut out, at + 0x68, &count.to_le_bytes());
@@ -196,6 +207,9 @@ pub(super) fn place_list(
 ) -> Result<usize, AnimError> {
     match sections.form {
         Rpf9Form::BlockMapped => {
+            // Read from what is written so far, where a grown block now lies past the end.
+            let held = Aligned::from_bytes(out);
+            let pointers = mapped::pointer_fields(&section_of(&held), resource)?;
             let len = out.len().next_multiple_of(BLOCK_ALIGN);
             out.resize(len, 0);
             let mut grown = Rpf9Sections {
@@ -204,7 +218,7 @@ pub(super) fn place_list(
                 physical: sections.physical.clone(),
             };
             let by = bytes.len().next_multiple_of(BLOCK_ALIGN) as isize;
-            let grew = grow_section(&mut grown, &[0x08], Rpf9Section::Virtual, len, by);
+            let grew = grow_section(&mut grown, &pointers, Rpf9Section::Virtual, len, by);
             *out = grown.virtual_section;
             let at = grew.map_err(|e| unwritten(format!("the DOF list is not placed: {e}")))?;
             put(out, at, bytes);

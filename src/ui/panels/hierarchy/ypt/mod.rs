@@ -375,9 +375,6 @@ fn ypt_draw_event_emitter<T: ParticleTarget>(
     );
     let snapshot_emitter_name = event_em.emitter_rule_name.clone();
     let snapshot_particle_name = event_em.particle_rule_name.clone();
-    if in_place(state, doc_id) {
-        return;
-    }
     header_resp.context_menu(|ui| {
         add_menu_for_event_emitter(
             ui,

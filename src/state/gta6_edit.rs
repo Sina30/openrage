@@ -39,10 +39,12 @@ pub(crate) enum MaterialEdit {
     TextureKey { slot: usize, key: u64 },
 }
 
-/// The 32-bit name hash of the texture `key` names, where the app knows that name.
+/// The 32-bit name hash of the texture `key` names, where the app knows that name or a drawable or a typed name stated it.
 pub(crate) fn named_word(key: u64) -> Option<u32> {
-    let name = super::ttpf_document::known_name(key)?;
-    (name_hash64(name.as_bytes()) == key).then(|| name_hash32(name.as_bytes()))
+    let known = super::ttpf_document::known_name(key)
+        .filter(|name| name_hash64(name.as_bytes()) == key)
+        .map(|name| name_hash32(name.as_bytes()));
+    known.or_else(|| super::gta6_key_words::word(key))
 }
 
 /// The drawable `selection` shows of `resource`, by the code a save finds it under: `None` for its
@@ -116,7 +118,7 @@ fn apply(shader: &mut Shader, edit: MaterialEdit, stated: bool) -> Result<(), St
             // A slot's key record states its key's 32-bit name hash, so every slot needs one.
             Some(held) if stated || *held == Some(key) => *held = Some(key),
             Some(_) => {
-                return Err(tr!("No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it.").to_string());
+                return Err(tr!("No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it.").to_string());
             }
             None => {
                 let why = tr!("That parameter is no texture slot of this shader.");
@@ -203,13 +205,6 @@ pub(super) fn replace_scanned_texture(
     let (Some(texture), Some(slices)) = (dict.get_mut(name), slices) else {
         return Some(Err(tr!("{name} is not in this dictionary", name = name)));
     };
-    // A volume of one level holds one z-plane a slice, replaced alone as an array's slice is.
-    if texture.image_type == super::ttpf_document::VOLUME_IMAGE && texture.mip_count > 1 {
-        return Some(Err(tr!(
-            "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image.",
-            name = name
-        )));
-    }
     let outcome = match slices {
         1 => replaced(texture, image, format, options),
         _ => replaced_slice(texture, (shown, slices), image, format, options),
@@ -242,7 +237,32 @@ fn replaced_slice(
     let at = each * slice as usize;
     let before = texture.clone();
     texture.backing_store[at..at + each].copy_from_slice(&one.backing_store);
+    if texture.image_type == super::ttpf_document::VOLUME_IMAGE {
+        shared_planes(texture, slice as usize, slices as usize, each);
+    }
     Ok(before)
+}
+
+/// Each level m of slice `slice` of the volume `texture` copied into every other slice that shows
+/// the same plane of it, since a save writes one plane for them all.
+// Slice s shows plane `(s >> m).min(planes - 1)` of level m, which holds `slices >> m` planes.
+fn shared_planes(texture: &mut GrcTexture, slice: usize, slices: usize, each: usize) {
+    let (format, (width, height)) = (texture.pixel_format(), texture.stored_size());
+    let mut offset = 0;
+    for m in 0..texture.stored_levels() {
+        let side = |pixels: u32| pixels.checked_shr(m).unwrap_or(0).max(1);
+        let len = format.mip_size(side(width), side(height)) as usize;
+        if offset + len > each {
+            break;
+        }
+        let planes = slices.checked_shr(m).unwrap_or(0).max(1);
+        let plane = |s: usize| s.checked_shr(m).unwrap_or(0).min(planes - 1);
+        let from = slice * each + offset;
+        for s in (0..slices).filter(|&s| s != slice && plane(s) == plane(slice)) {
+            (texture.backing_store).copy_within(from..from + len, s * each + offset);
+        }
+        offset += len;
+    }
 }
 
 /// `texture` encoded from `image` in its own size, format and mips; the texture it was.
@@ -315,12 +335,14 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
         DocPayload::Gta6Drawable(resource) => {
             let drawables = shaders_of(resource);
             let filters = super::gta6_filter_edit::values_of(resource);
+            let entries = super::gta6_filter_entries::entries_of(resource);
             Arc::new(move |role, sections| {
                 let role = role.ok_or_else(|| tr!("The body's role is not known.").to_string())?;
                 for (code, shaders) in &drawables {
                     write_materials_with(role, sections, *code, shaders, &named_word)
                         .map_err(|e| e.to_string())?;
                 }
+                super::gta6_filter_entries::add_and_remove(sections, &entries, &filters)?;
                 super::gta6_filter_edit::write(sections, &filters)
             })
         }

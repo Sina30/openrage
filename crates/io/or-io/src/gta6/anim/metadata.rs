@@ -251,7 +251,7 @@ pub(super) fn tags(
 }
 
 /// The elements of the relative array at `at`, each `stride` bytes, all inside `region`.
-fn relative(
+pub(super) fn relative(
     s: &Section,
     region: Region,
     at: usize,

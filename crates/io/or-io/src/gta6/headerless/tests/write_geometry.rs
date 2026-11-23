@@ -612,3 +612,160 @@ fn a_0x8c_index_keeps_its_high_bits_at_its_count_and_refuses_another_count() {
     assert!(refused.contains("0x8C"), "{refused}");
     assert_eq!(again, sections);
 }
+
+/// [`quantised`]'s skinned triangle, whose every vertex weights palette entry 0, its model's
+/// palette the list `words` stated with `count` entries; where its model and geometry lie.
+fn with_palette(words: &[u32], count: usize) -> (Rpf9Sections, usize, usize) {
+    let (mut s, parts) = quantised(&TRIANGLE_AT, true);
+    let v = &mut s.virtual_section;
+    let model = target(v, target(v, target(v, parts.root + 0x50)));
+    let geometry = target(v, target(v, model + 0x08));
+    let list = v.len().next_multiple_of(16);
+    v.resize(list + (4 * words.len()).next_multiple_of(16), 0);
+    for (k, w) in words.iter().enumerate() {
+        v[list + 4 * k..list + 4 * k + 4].copy_from_slice(&w.to_le_bytes());
+    }
+    v[model + 0x28..model + 0x30].copy_from_slice(&(0x5000_0000 + list as u64).to_le_bytes());
+    v[model + 0x30] = count as u8;
+    v[geometry + 0x2C..geometry + 0x30].copy_from_slice(&(count as u32).to_le_bytes());
+    (s, model, geometry)
+}
+
+fn model_in(s: &Rpf9Sections) -> Model {
+    let mut d = read_drawable(&s.virtual_section, Some(&s.physical)).expect("the drawable reads");
+    d.levels[0].take().expect("level 0").remove(0)
+}
+
+#[test]
+fn a_bone_hash_the_palette_lacks_goes_in_its_order_and_every_index_follows_its_bone() {
+    let (b, c) = (0x2000_0000u32, 0x3000_0000u32);
+    let (sections, _, geometry) = with_palette(&[b, c], 2);
+    let mut written = sections.clone();
+    let add = PaletteAdd {
+        hashes: vec![0x1000_0000, c],
+        ..PaletteAdd::default()
+    };
+    write_palette(&mut written, Rpf9Role::Drawable, None, 0, 0, &add).expect("written");
+    let model = model_in(&written);
+    let wanted = Palette::Hashes(vec![0x1000_0000, b, c]);
+    assert_eq!(model.palette.ok(), Some(wanted));
+    let g = model
+        .geometries
+        .into_iter()
+        .next()
+        .expect("a geometry")
+        .expect("it reads");
+    assert_eq!(
+        g.vertices.joints,
+        [(20, vec![[1; 4]; 3])],
+        "entry 0 moved to 1"
+    );
+    assert_eq!(g.vertices.weights, geometry_in(&sections).vertices.weights);
+    assert_eq!(u32_at(&written.virtual_section, geometry + 0x2C), 3);
+    assert!(written.virtual_section.len() > sections.virtual_section.len());
+
+    // A hash the list holds adds nothing, and a hash list takes no bone by its number.
+    let mut again = written.clone();
+    let held = PaletteAdd {
+        hashes: vec![b],
+        ..PaletteAdd::default()
+    };
+    write_palette(&mut again, Rpf9Role::Drawable, None, 0, 0, &held).expect("nothing to add");
+    assert_eq!(again, written);
+    let bone = PaletteAdd {
+        bones: vec![1],
+        ..PaletteAdd::default()
+    };
+    let refused = write_palette(&mut again, Rpf9Role::Drawable, None, 0, 0, &bone)
+        .expect_err("refused")
+        .to_string();
+    assert!(refused.contains("by its number"), "{refused}");
+    assert_eq!(again, written);
+}
+
+#[test]
+fn a_bone_mask_takes_a_bone_s_bit_in_place_and_refuses_one_past_its_count() {
+    let (sections, model, _) = with_palette(&[1, 0], 40);
+    assert_eq!(model_in(&sections).palette.ok(), Some(Palette::Own));
+    let mut written = sections.clone();
+    let add = PaletteAdd {
+        bones: vec![33, 2],
+        ..PaletteAdd::default()
+    };
+    write_palette(&mut written, Rpf9Role::Drawable, None, 0, 0, &add).expect("set");
+    let v = &written.virtual_section;
+    let list = target(v, model + 0x28);
+    assert_eq!((u32_at(v, list), u32_at(v, list + 4)), (1 | 1 << 2, 1 << 1));
+    assert_eq!(v.len(), sections.virtual_section.len(), "in place");
+
+    let past = PaletteAdd {
+        bones: vec![40],
+        ..PaletteAdd::default()
+    };
+    let mut again = written.clone();
+    let refused = write_palette(&mut again, Rpf9Role::Drawable, None, 0, 0, &past)
+        .expect_err("refused")
+        .to_string();
+    assert!(refused.contains("past its mask's count"), "{refused}");
+    assert_eq!(again, written);
+}
+
+/// [`drawable`]'s triangle as floats with channel 33 `lanes`, its block map an allocation of its own.
+fn with_reference(lanes: &[[u8; 8]]) -> Rpf9Sections {
+    let (mut img, mut phys, parts) = drawable([1.0, 1.0, 0.0]);
+    let map = img.alloc(0x20);
+    (img.bytes[map + 8], img.bytes[map + 9]) = (1, 1);
+    img.ptr(0x08, map);
+    let streams = vec![float_positions(), stream(33, 0x10, lanes)];
+    put_vertex_block(&mut img, &mut phys, &parts, 3, streams, None);
+    Rpf9Sections {
+        form: Rpf9Form::BlockMapped,
+        virtual_section: img.bytes,
+        physical: phys,
+    }
+}
+
+#[test]
+fn channel_33_s_reference_follows_a_new_vertex_where_every_vertex_sets_bit_15() {
+    const OFFSET: [f32; 3] = [0.5, -0.25, 1.0];
+    let element = |p: &[f32; 3]| -> [u8; 8] {
+        let q = |a: usize| (f64::from(p[a] + OFFSET[a]) * 8192.0 + 32768.0).round() as u16;
+        let mut e = [0u8; 8];
+        for (k, x) in [0x8000, q(0), q(1), q(2)].iter().enumerate() {
+            e[2 * k..2 * k + 2].copy_from_slice(&x.to_le_bytes());
+        }
+        e
+    };
+    let lanes: Vec<[u8; 8]> = TRIANGLE_AT.iter().map(element).collect();
+    let sections = with_reference(&lanes);
+    let g = geometry_in(&sections);
+    let moved =
+        |p: &[f32; 3]| -> Option<[f32; 3]> { Some(std::array::from_fn(|a| p[a] + OFFSET[a])) };
+    let held: Vec<Option<[f32; 3]>> = TRIANGLE_AT.iter().map(moved).collect();
+    assert_eq!(g.vertices.reference, held);
+
+    let mut edit = edit_of(&g);
+    edit.positions.push([1.0, 1.0, 0.0]);
+    edit.triangles.push([1, 3, 2]);
+    let mut written = sections.clone();
+    write_geometry(&mut written, Rpf9Role::Drawable, None, AT, &edit).expect("written");
+    let back = geometry_in(&written);
+    assert_eq!(back.vertex_count, 4);
+    assert_eq!(back.vertices.reference[..3], held[..]);
+    assert_eq!(back.vertices.reference[3], moved(&[1.0, 1.0, 0.0]));
+
+    // A vertex whose lane 0 clears bit 15 holds lanes no writer derives.
+    let mut clear = lanes.clone();
+    clear[0][1] = 0;
+    let sections = with_reference(&clear);
+    let mut again = sections.clone();
+    let refused = write_geometry(&mut again, Rpf9Role::Drawable, None, AT, &edit);
+    assert!(
+        matches!(
+            refused,
+            Err(GeometryWriteError::Channel { channel: 33, .. })
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(again, sections);
+}

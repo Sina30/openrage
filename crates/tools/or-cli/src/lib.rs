@@ -33,6 +33,7 @@ mod gta6_matcher;
 mod gta6_meta_census;
 mod gta6_meta_import;
 mod gta6_mission;
+mod gta6_motion_detail;
 mod gta6_name_pool;
 mod gta6_names;
 mod gta6_navmesh;

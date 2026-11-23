@@ -1,7 +1,9 @@
-//! A scanned GTA VI particle effects list's edits saved: the values its GTA V form shares with the
-//! list written over the body's sections in place on the save's worker, and any edit with no place
-//! in the list refused.
+//! A scanned GTA VI particle effects list's edits saved: the rules its GTA V form no longer holds
+//! taken out, the effects it duplicated and the keys it added written past the section's end,
+//! then the values the two forms share and each event's rules written over the body's sections in
+//! place on the save's worker, and any edit with no place in the list refused.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use or_io::container::rpf::Rpf9Sections;
@@ -9,10 +11,16 @@ use or_io::decl::{Bool8, Gen8, Hash32, Ref};
 use or_io::gta5::particle::*;
 use or_io::gta5::{Vec3V, Vec4V};
 use or_io::gta6::headerless::{
-    read_particle_effects, write_particle_effects, EffectRule, EmitterRule, Kfp, KfpEntry,
+    add_particle_keys, duplicate_particle_effect, read_particle_effects,
+    remove_from_particle_effects, write_particle_effects, EffectRule, EmitterRule, Kfp, KfpEntry,
     ParticleEffects, SpawnedScalars,
 };
-use or_particle::list::{canonical, effect_rules, emitter_rules, events, particle_rules};
+use or_particle::list::{
+    canonical, effect_rules, effect_rules_mut, emitter_rules, events, events_mut, particle_rules,
+};
+
+#[path = "gta6_particles_remove.rs"]
+pub(super) mod remove;
 
 use super::document::Document;
 use super::gta6_edit::EditSections;
@@ -33,10 +41,29 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
     let (archive, offset) = super::rpf9_scan::scanned_body(path)?;
     let ypt = ypt.clone();
     let edit: Arc<EditSections> = Arc::new(move |_, sections: &mut Rpf9Sections| {
-        let stored =
-            read_particle_effects(&sections.virtual_section, None).map_err(|e| e.to_string())?;
-        let edited = from_ypt(&stored, &ypt)?;
-        write_particle_effects(&mut sections.virtual_section, &edited).map_err(|e| e.to_string())
+        // Every write goes to a copy, so a refused one leaves the sections as they were.
+        let mut s = sections.clone();
+        let read = |s: &Rpf9Sections| {
+            read_particle_effects(&s.virtual_section, None).map_err(|e| e.to_string())
+        };
+        let removals = remove::removals(&read(&s)?, &ypt);
+        if !removals.is_empty() {
+            remove_from_particle_effects(&mut s.virtual_section, &removals)
+                .map_err(|e| e.to_string())?;
+        }
+        for (from, name) in duplicates(&read(&s)?, &ypt)? {
+            let stored = read(&s)?;
+            let Some(source) = stored.effects.iter().position(|e| e.name == from) else {
+                return Err(not_a_copy());
+            };
+            duplicate_particle_effect(&mut s, source, &name).map_err(|e| e.to_string())?;
+        }
+        let keyed = from_ypt(&read(&s)?, &ypt)?;
+        add_particle_keys(&mut s, &keyed).map_err(|e| e.to_string())?;
+        let edited = from_ypt(&read(&s)?, &ypt)?;
+        write_particle_effects(&mut s.virtual_section, &edited).map_err(|e| e.to_string())?;
+        *sections = s;
+        Ok(())
     });
     Some(Ok(EditedSave::Body {
         archive: archive.to_path_buf(),
@@ -57,6 +84,7 @@ pub(super) fn from_ypt(
 ) -> Result<ParticleEffects, String> {
     let mut edited = ypt.clone();
     canonical(&mut edited);
+    unbound_dropped(&mut edited);
     let mut list = stored.clone();
     let effects: Vec<&PtxEffectRule<Gen8>> = effect_rules(&edited).collect();
     let emitters: Vec<&PtxEmitterRule> = emitter_rules(&edited).collect();
@@ -67,8 +95,12 @@ pub(super) fn from_ypt(
     if !same {
         return Err(moved());
     }
+    let names = Names {
+        emitters: list.emitters.iter().map(|r| r.name.clone()).collect(),
+        particles: list.particles.iter().map(|r| r.name.clone()).collect(),
+    };
     for (to, from) in list.effects.iter_mut().zip(effects) {
-        effect(to, from)?;
+        effect(to, from, &names)?;
     }
     for (to, from) in list.emitters.iter_mut().zip(emitters) {
         emitter(to, from);
@@ -82,6 +114,63 @@ pub(super) fn from_ypt(
         return Err(tr!("An edit has no place in the GTA VI particle list, which keeps only the values both games share: undo it to save the others.").to_string());
     }
     Ok(list)
+}
+
+fn not_a_copy() -> String {
+    tr!("A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy.").to_string()
+}
+
+/// Each effect `ypt` holds that `stored` does not, with the stored effect it copies: the one whose
+/// name followed by `_copy` begins its name, the longest where several do.
+pub(super) fn duplicates(
+    stored: &ParticleEffects,
+    ypt: &PtxFxList,
+) -> Result<Vec<(String, String)>, String> {
+    let held: HashSet<&str> = stored.effects.iter().map(|e| e.name.as_str()).collect();
+    let mut out = Vec::new();
+    for rule in effect_rules(ypt).filter(|r| !held.contains(r.name.as_str())) {
+        let from = (stored.effects.iter())
+            .filter(|e| rule.name.starts_with(&format!("{}_copy", e.name)))
+            .max_by_key(|e| e.name.len());
+        let Some(from) = from else {
+            return Err(not_a_copy());
+        };
+        out.push((from.name.clone(), rule.name.clone()));
+    }
+    Ok(out)
+}
+
+fn unbound() -> String {
+    tr!("An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules.").to_string()
+}
+
+/// `ypt` without the events a rule's deletion left naming no rule, which the list removes with
+/// the rule, each effect's other events numbered by their place.
+fn unbound_dropped(ypt: &mut PtxFxList) {
+    let bound = |e: &Option<Box<PtxEventEmitter<Gen8>>>| {
+        e.as_deref()
+            .is_none_or(|e| !e.emitter_rule_name.is_empty() && !e.particle_rule_name.is_empty())
+    };
+    for rule in effect_rules_mut(ypt) {
+        let held = rule.timeline.events.len();
+        rule.timeline.events.retain(bound);
+        if rule.timeline.events.len() == held {
+            continue;
+        }
+        for (place, ev) in events_mut(rule).enumerate() {
+            ev.base.index = i32::try_from(place).unwrap_or(i32::MAX);
+        }
+    }
+}
+
+/// The list's emitter and particle rule names, each at its rule's index.
+struct Names {
+    emitters: Vec<String>,
+    particles: Vec<String>,
+}
+
+fn index_of(names: &[String], name: &str) -> Result<usize, String> {
+    names.iter().position(|n| n == name).ok_or_else(unbound)
 }
 
 /// `held` where it already reads as `b`, so a flag not edited keeps its byte.
@@ -109,7 +198,7 @@ fn keys(k: &mut Kfp, prop: &PtxKeyframeProp) {
         .collect();
 }
 
-fn effect(to: &mut EffectRule, from: &PtxEffectRule<Gen8>) -> Result<(), String> {
+fn effect(to: &mut EffectRule, from: &PtxEffectRule<Gen8>, names: &Names) -> Result<(), String> {
     to.num_loops = from.num_loops;
     let f = &mut to.flags;
     f[0] = byte(f[0], from.sort_events_by_distance);
@@ -160,9 +249,11 @@ fn effect(to: &mut EffectRule, from: &PtxEffectRule<Gen8>) -> Result<(), String>
     d[2] = from.data_volume_type;
     let fired: Vec<&PtxEventEmitter<Gen8>> = events(from).collect();
     if fired.len() != to.events.len() {
-        return Err(moved());
+        return Err(unbound());
     }
     for (ev, from) in to.events.iter_mut().zip(fired) {
+        ev.emitter = index_of(&names.emitters, &from.emitter_rule_name)?;
+        ev.particle = index_of(&names.particles, &from.particle_rule_name)?;
         (ev.start_ratio, ev.end_ratio) = (from.base.start_ratio, from.base.end_ratio);
         ev.playback_rate_scalar = [from.playback_rate_scalar_min, from.playback_rate_scalar_max];
         ev.zoom_scalar = [from.zoom_scalar_min, from.zoom_scalar_max];
@@ -267,6 +358,12 @@ fn particle(
         let Some(held) = list.behaviours.get_mut(at) else {
             continue;
         };
+        // Only an edit of the enable shown changes the count, which may read on and be shown off.
+        if let PtxBehaviourAny::PtxuColour(c) = b {
+            if c.rgba_max_enable != super::gta6_particles::colour_max::max_enable(held) {
+                held.fields = held.fields.with_colour_max_enabled(c.rgba_max_enable.get());
+            }
+        }
         for (id, prop) in behaviour_kfps(b) {
             if let Some(k) = held.kfps.iter_mut().find(|k| k.id == id) {
                 keys(k, prop);

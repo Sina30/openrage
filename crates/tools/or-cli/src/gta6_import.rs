@@ -14,7 +14,7 @@ use or_io::container::rpf::{
 };
 use or_io::gta6::headerless::{
     read_dictionary, read_drawable, read_drawable_with_bound, read_skeleton_of, write_geometry,
-    Drawable, Entry, Geometry, GeometryAt, GeometryEdit, SkeletonOwner,
+    write_palette, Drawable, Entry, Geometry, GeometryAt, GeometryEdit, Model, SkeletonOwner,
 };
 
 mod skin;
@@ -141,6 +141,21 @@ fn geometry_at(drawable: &Drawable, at: GeometryAt) -> Option<&Geometry> {
         .ok()
 }
 
+/// The geometry `at` names, where its positions read, and its model.
+fn located<'a>(
+    drawable: &'a Drawable,
+    at: GeometryAt,
+    named: &str,
+) -> Result<(&'a Geometry, &'a Model), String> {
+    let g = geometry_at(drawable, at).ok_or(format!(
+        "{named}: the drawable holds no geometry there whose positions read"
+    ))?;
+    let model = (drawable.levels.get(at.level).and_then(Option::as_ref))
+        .and_then(|models| models.get(at.model))
+        .ok_or(format!("{named}: the drawable holds no model there"))?;
+    Ok((g, model))
+}
+
 /// The channels of `g` among `range`, in ascending order.
 fn declared(g: &Geometry, range: std::ops::RangeInclusive<u8>) -> Vec<u8> {
     (g.channels.iter().map(|c| c.index))
@@ -201,7 +216,7 @@ pub fn replace_gta6_mesh(
     entry: Option<u32>,
     scene: &Scene,
 ) -> Result<(Rpf9Sections, Vec<String>), String> {
-    let drawable = drawable_of(sections, role, entry)?;
+    let mut drawable = drawable_of(sections, role, entry)?;
     let mut out = sections.clone();
     let mut lines = Vec::new();
     let mut taken = BTreeSet::new();
@@ -223,18 +238,22 @@ pub fn replace_gta6_mesh(
             if !taken.insert((at.level, at.model, at.geometry)) {
                 return Err(format!("{named}: two primitives of the mesh replace it"));
             }
-            let g = geometry_at(&drawable, at).ok_or(format!(
-                "{named}: the drawable holds no geometry there whose positions read"
-            ))?;
-            let (mut edit, dropped) = edit_of(g, p);
-            let model = (drawable.levels.get(at.level).and_then(Option::as_ref))
-                .and_then(|models| models.get(at.model))
-                .ok_or(format!("{named}: the drawable holds no model there"))?;
             let wearer = skin::Wearer {
                 bones: &object.bones,
                 own: own.as_ref(),
             };
-            skin::fill(&mut edit, g, model, p, &wearer).map_err(|e| format!("{named}: {e}"))?;
+            let (g, model) = located(&drawable, at, &named)?;
+            let add = skin::additions(g, model, p, &wearer).map_err(|e| format!("{named}: {e}"))?;
+            if !add.is_empty() {
+                write_palette(&mut out, role, entry, at.level, at.model, &add)
+                    .map_err(|e| format!("{named}: {e}"))?;
+                // Every blend index of the model may have moved with its palette.
+                drawable = drawable_of(&out, role, entry)?;
+            }
+            let (g, model) = located(&drawable, at, &named)?;
+            let (mut edit, dropped) = edit_of(g, p);
+            skin::fill(&mut edit, g, model, p, &wearer, &add.bones)
+                .map_err(|e| format!("{named}: {e}"))?;
             let written = write_geometry(&mut out, role, entry, at, &edit)
                 .map_err(|e| format!("{named}: {e}"))?;
             before += g.vertex_count as usize;
@@ -256,6 +275,18 @@ pub fn replace_gta6_mesh(
                 said.push(format!(
                     "channels {} kept as it held them",
                     carried.join(", ")
+                ));
+            }
+            if !add.hashes.is_empty() {
+                said.push(format!(
+                    "{} bones added to its model's palette",
+                    add.hashes.len()
+                ));
+            }
+            if !add.bones.is_empty() {
+                said.push(format!(
+                    "{} bones set in its model's bone mask",
+                    add.bones.len()
                 ));
             }
             if !edit.joints.is_empty() {

@@ -571,11 +571,12 @@ fn print_usage() {
     eprintln!("volumes in tile modes other than 1; a mip in a tail with no measured slot (2-byte");
     eprintln!("elements, and past the slots measured); other DXGI numbers; entries and bytes");
     eprintln!("not on disk.");
-    eprintln!("Replace takes a 2D texture OpenRage encodes (BC1 to BC5, BC7 with bc7-encode,");
-    eprintln!("RGBA8, BGRA8, R8, A8) and refuses, each by name: cubes, arrays and volumes; a");
-    eprintln!("tail with mips no measured slot places; a top mip over rows that are not 4 MiB");
-    eprintln!("each; row-size codes not the rule's; an image of another size; a pack not");
-    eprintln!("wholly on disk. A save carries every other row as the file stores it.");
+    eprintln!("Replace takes a texture OpenRage encodes (BC1 to BC5, BC7 with bc7-encode,");
+    eprintln!("RGBA8, BGRA8, R8, A8) and refuses, each by name: another shape for a volume, or");
+    eprintln!("for a cube or an array from one image, since each slice takes its own; a tail");
+    eprintln!("with mips no measured slot places; a top mip over rows that are not 4 MiB each;");
+    eprintln!("row-size codes not the rule's; a pack not wholly on disk. A save carries every");
+    eprintln!("other row as the file stores it.");
 }
 
 pub fn run(args: &[String]) -> ExitCode {

@@ -257,18 +257,17 @@ fn quaternions(animation: &Animation) -> Result<(usize, usize), String> {
         if dof.kind != 0 {
             continue;
         }
-        for (b, block) in animation.blocks.iter().enumerate() {
-            if !block.holds_delta(d) {
-                continue;
-            }
-            for f in 0..animation.frames_in_block(b) {
-                let time = animation.internal_frame_to_time((b * chunk + f) as f32);
-                let value = animation.sample(d, time).map_err(|e| e.to_string())?;
-                let length = value.as_slice().iter().map(|x| x * x).sum::<f32>().sqrt();
-                samples += 1;
-                let clamped = value.as_slice().contains(&0.0) && length <= 1.0 + CLAMP_SLACK;
-                off += usize::from((1.0 - length).abs() > UNIT_SLACK && !clamped);
-            }
+        // In block order, so a block's last frame, which lies in the next, walks that one once.
+        let times = (animation.blocks.iter().enumerate())
+            .filter(|(_, block)| block.holds_delta(d))
+            .flat_map(|(b, _)| (0..animation.frames_in_block(b)).map(move |f| b * chunk + f))
+            .map(|frame| animation.internal_frame_to_time(frame as f32));
+        let values = animation.sample_each(d, times).map_err(|e| e.to_string())?;
+        for value in values {
+            let length = value.as_slice().iter().map(|x| x * x).sum::<f32>().sqrt();
+            samples += 1;
+            let clamped = value.as_slice().contains(&0.0) && length <= 1.0 + CLAMP_SLACK;
+            off += usize::from((1.0 - length).abs() > UNIT_SLACK && !clamped);
         }
     }
     Ok((samples, off))
@@ -445,6 +444,7 @@ fn print_motion(motion: &Motion) -> usize {
             _ => {}
         }
     }
+    crate::gta6_motion_detail::print(motion);
     let phase = |t: &Typed| match t {
         Typed::PhaseCurves(c) => c.len(),
         _ => 0,
@@ -783,7 +783,7 @@ fn report(resource: &AnimResource) -> serde_json::Value {
         })
         .collect();
     let motions: Vec<_> = (resource.motions.iter())
-        .map(|m| json!({ "name": m.name, "key": m.key, "kind": m.kind, "clips": m.clips, "parameters": m.parameters.len(), "groups": m.groups.len() }))
+        .map(|m| json!({ "name": m.name, "key": m.key, "kind": m.kind, "clips": m.clips, "parameters": m.parameters.len(), "groups": m.groups.len(), "read": crate::gta6_motion_detail::report(m) }))
         .collect();
     json!({
         "root": root, "name": resource.name, "key": resource.key, "root_word": resource.root_word,

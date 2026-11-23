@@ -52,6 +52,8 @@ struct Planned {
     levels: Vec<Level>,
     /// Each row's decoded bytes, in virtual order.
     rows: Vec<u64>,
+    /// For each slice, each mip written and where in the rows' memory: a cube's earlier rows hold its smaller cubes.
+    places: Vec<Vec<(usize, Level)>>,
 }
 
 impl Format {
@@ -112,6 +114,18 @@ impl TexturePack {
         format: Format,
         options: &crate::authoring::TextureBuildOptions,
     ) -> Result<u32, TtpfError> {
+        self.reshape_slices(index, std::slice::from_ref(image), format, options)
+    }
+
+    /// Texture `index` encoded from `images`, one for each of its slices and all of one size, into `format` with the mips `options` asks for, or as many as its chain places; how many it holds.
+    #[cfg(feature = "authoring")]
+    pub fn reshape_slices(
+        &mut self,
+        index: usize,
+        images: &[crate::codec::texture::RgbaImage],
+        format: Format,
+        options: &crate::authoring::TextureBuildOptions,
+    ) -> Result<u32, TtpfError> {
         // A signed BC6H texture would be written from the unsigned blocks the encoder makes.
         if !crate::authoring::is_encodable(format.stored()) || format.dxgi() == DxgiFormat::Bc6hSf16
         {
@@ -120,33 +134,45 @@ impl TexturePack {
                 format: format.name(),
             });
         }
+        let slices = self.entries.get(index).map_or(1, |e| usize::from(e.slices));
+        let one_size = (images.windows(2))
+            .all(|pair| (pair[0].width, pair[0].height) == (pair[1].width, pair[1].height));
+        let Some(first) = images.first().filter(|_| one_size) else {
+            return Err(TtpfError::SliceImages { index, slices });
+        };
         let shape = Shape {
-            width: image.width,
-            height: image.height,
+            width: first.width,
+            height: first.height,
             format,
             mips: options.mip_levels,
         };
         let planned = self.planned(index, shape)?;
+        if images.len() != planned.places.len() {
+            let slices = planned.places.len();
+            return Err(TtpfError::SliceImages { index, slices });
+        }
         let count = planned.levels.len() as u32;
         let encode = |e: crate::Error| TtpfError::Encode(e.to_string());
-        let rgba = crate::codec::texture::generate_mip_chain_with(
-            image.width,
-            image.height,
-            &image.data,
-            Some(count),
-            options.filter,
-            options.srgb,
-            options.alpha,
-        )
-        .map_err(encode)?;
-        let levels = (rgba.iter().enumerate())
-            .map(|(level, rgba)| {
+        let mut levels = Vec::with_capacity(images.len() * count as usize);
+        for image in images {
+            let rgba = crate::codec::texture::generate_mip_chain_with(
+                image.width,
+                image.height,
+                &image.data,
+                Some(count),
+                options.filter,
+                options.srgb,
+                options.alpha,
+            )
+            .map_err(encode)?;
+            for (level, rgba) in rgba.iter().enumerate() {
                 let side = |pixels: u32| (pixels >> level).max(1);
                 let (w, h) = (side(image.width), side(image.height));
-                crate::authoring::encode_level(format.stored(), w, h, rgba, options.quality)
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(encode)?;
+                let encoded =
+                    crate::authoring::encode_level(format.stored(), w, h, rgba, options.quality);
+                levels.push(encoded.map_err(encode)?);
+            }
+        }
         self.relay(index, planned, &levels)?;
         Ok(count)
     }
@@ -161,8 +187,12 @@ impl TexturePack {
             .entries
             .get(index)
             .ok_or(TtpfError::NoSuchTexture { index, count })?;
-        if !matches!((was.dimension, was.slices), (1 | 5, 1)) {
-            return Err(TtpfError::ReplaceShape { index });
+        let flat = matches!((was.dimension, was.slices), (1 | 5, 1));
+        let sliced = !flat
+            && (matches!((was.dimension, was.slices), (2, 6))
+                || (was.dimension == 5 && was.tile_mode == 0));
+        if !flat && !sliced {
+            return Err(TtpfError::ReshapeShape { index });
         }
         let Shape {
             width,
@@ -177,6 +207,9 @@ impl TexturePack {
         };
         if !(1..=SIDE_LIMIT).contains(&width) || !(1..=SIDE_LIMIT).contains(&height) {
             return Err(too_large());
+        }
+        if sliced {
+            return self.planned_slices(index, was, shape);
         }
         let top = chain_lengths(width, height, format, &Tile::of(format, true))
             .first()
@@ -298,12 +331,14 @@ impl TexturePack {
             align_pages: 0,
             ..was
         };
+        let places = vec![levels.iter().copied().enumerate().collect()];
         Ok(Planned {
             entry,
             format,
             tile,
             levels,
             rows,
+            places,
         })
     }
 
@@ -320,24 +355,29 @@ impl TexturePack {
             tile,
             levels: placed,
             rows,
+            places,
         } = planned;
-        if levels.len() != placed.len() {
+        let mips = placed.len();
+        if levels.len() != places.len() * mips {
             return Err(malformed(format!(
-                "texture {index}'s new chain holds {} mips, not {}",
-                placed.len(),
+                "texture {index}'s new chain holds {mips} mips in {} slice(s), not {} in all",
+                places.len(),
                 levels.len()
             )));
         }
         let element = format.element_bytes();
         let mut memory = vec![0u8; rows.iter().sum::<u64>() as usize];
-        for (i, (level, elements)) in placed.iter().zip(levels).enumerate() {
-            if elements.len() != level.width * level.height * element
-                || !place(&mut memory, level, elements, &tile, element)
-            {
-                return Err(malformed(format!(
-                    "mip {i} of texture {index}'s new chain is not {}x{} elements",
-                    level.width, level.height
-                )));
+        for (slice, written) in places.iter().enumerate() {
+            for (i, level) in written {
+                let fits = (levels.get(slice * mips + i))
+                    .filter(|e| e.len() == level.width * level.height * element)
+                    .is_some_and(|e| place(&mut memory, level, e, &tile, element));
+                if !fits {
+                    return Err(malformed(format!(
+                        "mip {i} of texture {index}'s new chain is not {}x{} elements",
+                        level.width, level.height
+                    )));
+                }
             }
         }
         let (mut at, mut bodies) = (0usize, Vec::with_capacity(rows.len()));
@@ -353,10 +393,23 @@ impl TexturePack {
             (r.at, r.width, r.height, r.tail) == (p.at, p.width, p.height, p.tail)
         };
         let found = &read.layout.levels;
-        if found.len() != placed.len() || !found.iter().zip(&placed).all(|(r, p)| same(r, p)) {
-            return Err(malformed(format!(
+        // An array's reader reads on through any tail slot that holds data, and the rest are zero.
+        let array = places.len() > 1 && entry.dimension == 5;
+        let counted = found.len() == placed.len() || (array && found.len() > placed.len());
+        let unread = || {
+            malformed(format!(
                 "texture {index}'s new rows would not be read where they are written"
-            )));
+            ))
+        };
+        if !counted || !found.iter().zip(&placed).all(|(r, p)| same(r, p)) {
+            return Err(unread());
+        }
+        // A cube's faces and an array's slices are read back whole, since each lies elsewhere.
+        if places.len() > 1 && format.dxgi() != DxgiFormat::Bc6hSf16 {
+            let back = next.texture(index)?;
+            if back.levels as usize != mips || back.pixels != levels.concat() {
+                return Err(unread());
+            }
         }
         *self = next;
         Ok(())
@@ -427,10 +480,14 @@ impl TexturePack {
         self.rows[0].offset = (HEADER_LEN + ROW_LEN * n as u64).next_multiple_of(0x100);
         self.replaced.0.insert(index, bodies);
         self.moved = Some(Box::new(moved));
-        // The row-size codes, small_rows and align_pages from the rows.
-        let (codes, small, align) = self
-            .codes_by_rule(index)
-            .ok_or(TtpfError::RowNotCoded { index })?;
+        // The row-size codes, small_rows and align_pages from the rows; an array in 64 KiB tiles
+        // states none, as a 2D texture in them does not.
+        let array = self.entries[index].dimension == 5 && self.entries[index].slices > 1;
+        let coded = match array {
+            true => Some(([0; 4], 0, 0)),
+            false => self.codes_by_rule(index),
+        };
+        let (codes, small, align) = coded.ok_or(TtpfError::RowNotCoded { index })?;
         let entry = &mut self.entries[index];
         (entry.row_codes, entry.small_rows, entry.align_pages) = (codes, small, align);
         self.rows = self.save_layout()?.rows;
@@ -487,7 +544,9 @@ impl TexturePack {
                     }
                     page
                 }
-                None => decided.ok_or(TtpfError::NotWhole)?,
+                // A row a reshape wrote that the rule does not decide, an array's, takes 256-byte
+                // alignment.
+                None => decided.unwrap_or(false),
             };
             let offset = start_at(page, end);
             rule.step(starts[i], end, offset);
@@ -548,9 +607,12 @@ fn restate(words: &mut [u8], entry: &Entry) {
         packed | u32::from(code) << (5 * j)
     });
     let w0 = (entry.width - 1) | (entry.height - 1) << 14 | u32::from(entry.mip_count) << 28;
-    let w4 = u32_at(words, 4) & !(0x3FF | 3 << 24)
+    // Bit 26 marks a cube in tile mode 0.
+    let cube = u32::from(entry.dimension == 2);
+    let w4 = u32_at(words, 4) & !(0x3FF | 3 << 24 | cube << 26)
         | u32::from(entry.format_code)
-        | u32::from(entry.tile_mode) << 24;
+        | u32::from(entry.tile_mode) << 24
+        | (cube & u32::from(entry.tile_mode == 0)) << 26;
     let w8 = entry.page | packed << 21;
     let w12 = u32_at(words, 12) & !(0x1FF | 3 << 19 | 0x7FF << 21)
         | packed >> 11
@@ -578,3 +640,6 @@ fn flags_of(pieces: &[u64]) -> u16 {
 fn spliced<T: Clone>(all: &[T], old: &Range<usize>, new: &[T]) -> Vec<T> {
     [&all[..old.start], new, &all[old.end..]].concat()
 }
+
+#[path = "ttpf_reshape_slices.rs"]
+mod slices;

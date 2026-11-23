@@ -1,25 +1,30 @@
-//! A scanned GTA VI cell's polygon deleted, one step of undo: the view's model and the cell the
-//! inspector reads lose it at once, and a save deletes it from the body read again, after every
-//! earlier deletion and before the flags and the cuts are written.
+//! A scanned GTA VI cell's polygon deleted, or cut off where a side record naming it drops a
+//! corner, one step of undo: the view's model is drawn again from the cell the inspector reads,
+//! each record's flags and each edge cut kept, and a save makes the step on the body read again,
+//! after every earlier one and before the flags and the cuts are written.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use or_io::container::rpf::Rpf9Sections;
-use or_io::gta5::CNavMesh;
+use or_io::gta5::navmesh::NO_NEIGHBOUR;
+use or_io::gta5::{CNavMesh, TAdjPoly, TNavMeshPoly};
 use or_io::gta6::headerless::{
-    delete_polygon, polygon_deleted, read_navmesh, Border, NavDeleteError, NavMesh, NOWHERE,
+    delete_polygon, deletion, disable_polygon, disabling, read_navmesh, Border, NavDeleteError,
+    NavMesh, NavRebuild, NOWHERE,
 };
 
 use super::edit_history::{Change, Swap};
 use super::{AppState, DocPayload, DocumentId};
 
-/// A deletion as a save makes it again: the polygon, and the records the cell held before it.
+/// A deletion, or a disable that moves the arrays, as a save makes it again: the polygon, and the
+/// records the cell held before it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Deletion {
     polygon: usize,
     records: usize,
+    disable: bool,
 }
 
 // ponytail: one entry per scanned cell a polygon was deleted from, never emptied, as the cells are.
@@ -125,27 +130,99 @@ impl AppState {
         let near = super::gta6_navmesh::neighbours(path, cell);
         let open = others(cell, &near, polygon)?;
         let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
-        let after = match polygon_deleted(cell, polygon, &bodies) {
-            Ok(after) => after,
+        let made = match deletion(cell, polygon, &bodies) {
+            Ok(made) => made,
             Err(e @ NavDeleteError::NeighbourLink { .. }) => {
                 let why = self.gta6_delete_refusal(doc).unwrap_or_default();
                 return Err(format!("{why} {e}"));
             }
             Err(e) => return Err(e.to_string()),
         };
+        let left = made.mesh.polygons.len();
+        let step = Deletion {
+            polygon,
+            records: cell.polygons.len(),
+            disable: false,
+        };
+        self.make_in_cell(doc, path, made, step, open)?;
+        Ok(tr!(
+            "Deleted polygon {polygon}. Polygons left: {count}.",
+            polygon = polygon,
+            count = left
+        ))
+    }
+
+    /// Polygon `polygon` of the scanned cell `doc` cut off as one step where a side record naming
+    /// it drops a corner, and how many edges now lead nowhere; `None` where the cut moves nothing.
+    pub(super) fn disable_rechained(
+        &mut self,
+        doc: DocumentId,
+        path: &Path,
+        cell: &NavMesh,
+        polygon: usize,
+        near: &[(Border, u32, Option<Arc<NavMesh>>)],
+    ) -> Option<Result<usize, String>> {
+        // A body of no cell has no side record to chain again.
+        if cell.cell == 0 {
+            return None;
+        }
+        let open: Vec<Arc<NavMesh>> = near.iter().filter_map(|(_, _, b)| b.clone()).collect();
+        let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
+        let made = match disabling(cell, polygon, &bodies) {
+            Ok(made) if made.mesh.indices.len() == cell.indices.len() => return None,
+            Ok(made) => made,
+            Err(e) => return Some(Err(e.to_string())),
+        };
+        if made.records.len() < cell.polygons.len() {
+            let closed: Vec<String> = (near.iter())
+                .filter(|(_, _, body)| body.is_none())
+                .map(|(_, c, _)| c.to_string())
+                .collect();
+            if !closed.is_empty() {
+                return Some(Err(tr!(
+                    "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first.",
+                    polygon = polygon,
+                    cells = closed.join(", ")
+                )
+                .to_string()));
+            }
+            if let Err(why) = others(cell, near, polygon) {
+                return Some(Err(why));
+            }
+        }
+        let reaching = |m: &NavMesh| m.edges.iter().filter(|e| e.mesh == m.cell).count();
+        let cuts = reaching(cell).saturating_sub(reaching(&made.mesh));
+        let step = Deletion {
+            polygon,
+            records: cell.polygons.len(),
+            disable: true,
+        };
+        Some(
+            self.make_in_cell(doc, path, made, step, open)
+                .map(|()| cuts),
+        )
+    }
+
+    /// `made` the cell and the view of `doc` hold, as one step of undo that a save makes again.
+    fn make_in_cell(
+        &mut self,
+        doc: DocumentId,
+        path: &Path,
+        made: NavRebuild,
+        step: Deletion,
+        open: Vec<Arc<NavMesh>>,
+    ) -> Result<(), String> {
         let closed = || tr!("its document is closed").to_string();
         let before = match self.document(doc).map(|d| &d.payload) {
             Some(DocPayload::Resource(or_io::Asset::NavMesh(view))) => view.clone(),
             Some(_) => return Err(tr!("The cell's view holds no edges.").to_string()),
             None => return Err(closed()),
         };
-        let mut edited = before.clone();
-        edited.delete_polygon(polygon).map_err(|e| e.to_string())?;
-        let (records, left) = (cell.polygons.len(), after.polygons.len());
+        let edited = view_after(&before, &made)?;
         let mut planned = deletions().get(path).cloned().unwrap_or_default();
-        planned.push(Deletion { polygon, records });
-        tried(path, planned, open.clone())?;
-        let held = super::gta6_navmesh::replace(path, Arc::new(after)).ok_or_else(closed)?;
+        planned.push(step);
+        tried(path, planned, open)?;
+        let held = super::gta6_navmesh::replace(path, Arc::new(made.mesh)).ok_or_else(closed)?;
         if let Some(view) = self.document_mut(doc).and_then(|d| view_of(&mut d.payload)) {
             *view = edited;
         }
@@ -153,10 +230,20 @@ impl AppState {
             let mut made = deletions();
             let list = made.entry(path.to_path_buf()).or_default();
             let earlier = list.clone();
-            list.push(Deletion { polygon, records });
+            list.push(step);
             earlier
         };
-        let mut change = Change::part("gta6 delete polygon", before, view_of);
+        let (kind, label) = match step.disable {
+            true => (
+                "gta6 disable polygon",
+                tr!("Disable polygon {polygon}", polygon = step.polygon),
+            ),
+            false => (
+                "gta6 delete polygon",
+                tr!("Delete polygon {polygon}", polygon = step.polygon),
+            ),
+        };
+        let mut change = Change::part(kind, before, view_of);
         if let Change::Part { parts, .. } = &mut change {
             parts.push(Box::new(CellPart {
                 path: path.to_path_buf(),
@@ -164,21 +251,42 @@ impl AppState {
                 deletions: earlier,
             }));
         }
-        self.record(
-            doc,
-            tr!("Delete polygon {polygon}", polygon = polygon),
-            change,
-        );
+        self.record(doc, label, change);
         // ⚠ Never folded into the next edit: polygon numbers change under a deletion.
         if let Some(document) = self.document_mut(doc) {
             document.history.seal();
         }
-        Ok(tr!(
-            "Deleted polygon {polygon}. Polygons left: {count}.",
-            polygon = polygon,
-            count = left
-        ))
+        Ok(())
     }
+}
+
+/// The view of `made`'s cell, each record's flags and each edge a disable cut there kept from
+/// `before`, the view of the cell it was made from.
+fn view_after(before: &CNavMesh, made: &NavRebuild) -> Result<CNavMesh, String> {
+    let no_view = || tr!("The cell's view holds no edges.").to_string();
+    let mut view = super::gta6_resource::cell_view(&made.mesh).ok_or_else(no_view)?;
+    let flags: Vec<u32> = (before.polys_array.as_deref()).map_or(Vec::new(), |l| {
+        l.iter().map(TNavMeshPoly::as_integer1).collect()
+    });
+    let open = super::gta6_navmesh_edit::open_edges(before);
+    let nowhere = TAdjPoly::leading_to(0, NO_NEIGHBOUR).map_err(|e| e.to_string())?;
+    if let Some(polygons) = view.polys_array.as_deref_mut() {
+        let all = (polygons.sub_arrays.iter_mut()).flat_map(|s| s.elements.iter_mut());
+        for (p, from) in all.zip(&made.records) {
+            if let Some(f) = flags.get(*from) {
+                p.set_as_integer1(*f);
+            }
+        }
+    }
+    if let Some(edges) = view.adjacent_polys_array.as_deref_mut() {
+        let all = (edges.sub_arrays.iter_mut()).flat_map(|s| s.elements.iter_mut());
+        for (e, from) in all.zip(&made.edges) {
+            if open.get(*from) == Some(&false) {
+                *e = nowhere.clone();
+            }
+        }
+    }
+    Ok(view)
 }
 
 /// The deletions a save of the cell at `path` makes, and the open bodies of the cells across its
@@ -224,7 +332,13 @@ pub(super) fn write_deletions(
                 polygon = d.polygon
             ));
         }
-        delete_polygon(sections, d.polygon, &bodies).map_err(|e| e.to_string())?;
+        // A disable that empties no side record leaves the records it began from, and is made
+        // again on a body saved with it to no change.
+        match d.disable {
+            true => disable_polygon(sections, d.polygon, &bodies),
+            false => delete_polygon(sections, d.polygon, &bodies),
+        }
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -293,11 +407,43 @@ mod tests {
         assert_eq!(open.len(), near.len());
         // The cell's one polygon takes its vertices with it, and a split array keeps its chunk.
         let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
-        let refused = polygon_deleted(&m, 0, &bodies).unwrap_err();
+        let refused = deletion(&m, 0, &bodies).unwrap_err();
         assert!(
             matches!(refused, NavDeleteError::ChunkEmpties { .. }),
             "{refused}"
         );
+    }
+
+    /// The built cell with its first edge leading back into its one polygon.
+    fn linked() -> NavMesh {
+        let mut m = cell();
+        m.edges[0].mesh = m.cell;
+        m.edges[0].polygon = 0;
+        m
+    }
+
+    #[test]
+    fn a_view_drawn_again_from_the_cell_keeps_each_record_s_flags_and_each_edge_cut_in_it() {
+        let made = || NavRebuild {
+            mesh: linked(),
+            records: vec![0],
+            edges: vec![0, 1, 2],
+        };
+        let mut before = crate::state::gta6_resource::cell_view(&linked()).expect("a view");
+        let polygons = before.polys_array.as_deref_mut().expect("polygons");
+        polygons.sub_arrays[0].elements[0].set_as_integer1(0x81);
+        let view = view_after(&before, &made()).expect("a view");
+        let flags = |v: &CNavMesh| -> Vec<u32> {
+            let l = v.polys_array.as_deref().expect("polygons");
+            l.iter().map(TNavMeshPoly::as_integer1).collect()
+        };
+        assert_eq!(flags(&view), [0x81]);
+        let open = super::super::gta6_navmesh_edit::open_edges;
+        assert!(open(&view)[0], "edge 0 leads into the polygon");
+        let edges = before.adjacent_polys_array.as_deref_mut().expect("edges");
+        edges.sub_arrays[0].elements[0] = TAdjPoly::leading_to(0, NO_NEIGHBOUR).expect("an edge");
+        let view = view_after(&before, &made()).expect("a view");
+        assert!(!open(&view)[0], "the cut the view made is kept");
     }
 
     #[test]
@@ -309,6 +455,7 @@ mod tests {
         let made = vec![Deletion {
             polygon: 0,
             records: 1,
+            disable: false,
         }];
         deletions().insert(path.clone(), made.clone());
         let mut part = CellPart {
@@ -339,6 +486,7 @@ mod tests {
         let made = vec![Deletion {
             polygon: 0,
             records: 1,
+            disable: false,
         }];
         deletions().insert(path.clone(), made);
         super::super::gta6_navmesh::remember(&path, cell());
@@ -356,6 +504,7 @@ mod tests {
         let made = |records| Deletion {
             polygon: 0,
             records,
+            disable: false,
         };
         write_deletions(&mut s, &[made(5)], &[]).expect("a body saved with it holds it");
         assert_eq!(s, kept);

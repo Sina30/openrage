@@ -15466,9 +15466,6 @@ msgstr "База данных группы {group}, тип {kind}: столбц�
 msgid "Bone tracks it reads: {bones}; tracks of a word whose name is not known it reads: {others}; facial controls it writes: {facial}."
 msgstr "Дорожки костей, которые он читает: {bones}; дорожки слова, имя которого неизвестно, которые он читает: {others}; лицевые контроллеры, которые он записывает: {facial}."
 
-msgid "{name} is a volume texture, whose slices each hold part of every level, so it is not replaced from an image."
-msgstr "{name} — объёмная текстура, каждый срез которой содержит часть каждого уровня, поэтому её нельзя заменить изображением."
-
 msgid "The walk stops at {folders} folders and {archives} archives, so the archives past them are not scanned."
 msgstr "Обход останавливается на пределе: папок — {folders}, архивов — {archives}; дальнейшие архивы не сканируются."
 
@@ -15565,8 +15562,8 @@ msgstr "{group}: hash_{id} {word} ({at} из {total}), {detail}"
 msgid "Expression set hash_{key}, tracks read: {reads}, tracks written: {writes}"
 msgstr "Набор выражений hash_{key}, читаемых дорожек: {reads}, записываемых дорожек: {writes}"
 
-msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the minimum alone, since what enables the maximum is not known."
-msgstr "Значения ключевых кадров, для которых в записях GTA V нет поля, перечислены в конце в сыром виде: угол скорости, три последних безымянных значения цвета и пятое и шестое значения области. Первые два безымянных значения цвета показаны как его минимум и максимум, что выведено; предпросмотр рисует только минимум, так как неизвестно, что включает максимум."
+msgid "Keyframed values GTA V's records have no member for are listed at the end, raw: a velocity's angle, a colour's last three unnamed values and a domain's fifth and sixth. A colour's first two unnamed values are shown as its minimum and maximum, which is inferred; the preview draws the maximum, as GTA V does, where the colour's word at +0x19C counts two or more colours in use, which is inferred too."
+msgstr "Значения ключевых кадров, для которых в записях GTA V нет поля, перечислены в конце в сыром виде: угол скорости, три последних безымянных значения цвета и пятое и шестое значения области. Первые два безымянных значения цвета показаны как его минимум и максимум, что выведено; предпросмотр рисует максимум, как GTA V, где слово цвета по +0x19C насчитывает два или более используемых цвета, что тоже выведено."
 
 msgid "Emitter rule {name}, domain {slot}: keyframed value {value}, whose name is not known, holds {keys}."
 msgstr "Правило излучателя {name}, область {slot}: значение ключевых кадров {value}, имя которого неизвестно, содержит {keys}."
@@ -15706,8 +15703,8 @@ msgstr "не перенесено: {held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "Это проверяет байты тела. Это не проверяет, загружает ли их GTA VI."
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles; its weights, blend indices and its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "Каждая геометрия, которую называет меш, получает его позиции, нормали, касательные, текстурные координаты, цвета и треугольники; её веса, индексы смешивания и прочие каналы сохраняются как есть, и только при её собственном числе вершин."
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
+msgstr "Каждая геометрия, которую называет меш, получает его позиции, нормали, касательные, текстурные координаты, цвета и треугольники, а также веса и индексы смешивания из суставов меша, добавляя в свою палитру недостающую кость; её прочие каналы сохраняются как есть, и только при её собственном числе вершин."
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "Эта запись словаря при открытии не содержала читаемого скелета, поэтому у неё нет костей для редактирования."
@@ -15757,14 +15754,14 @@ msgstr "Уровень {level}: полосы по {frames} кадров, каж�
 msgid "Tetrahedra: each vertex's weight list, counted from its group's first, and its place in the space of the three columns"
 msgstr "Тетраэдры: список весов каждой вершины, считая от первого списка её группы, и её место в пространстве трёх столбцов"
 
-msgid "No name the app knows and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
-msgstr "Ни одно известное приложению имя и ни один слот этого drawable не указывает 32-битный хеш имени этой текстуры, поэтому ни один слот к ней не привязывается."
+msgid "No name the app knows or was given, no drawable of the install it read and no slot of this drawable states this texture's 32-bit name hash, so no slot is bound to it."
+msgstr "Ни одно известное приложению или введённое имя, ни один прочитанный им drawable установки и ни один слот этого drawable не указывает 32-битный хеш имени этой текстуры, поэтому ни один слот к ней не привязывается."
 
 msgid "That parameter is no texture slot of this shader."
 msgstr "Этот параметр не является слотом текстуры этого шейдера."
 
-msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or that another slot of the drawable binds. Save As writes the body as a loose resource."
-msgstr "Константа сохраняет свой размер, поэтому ничего не сдвигается. Пустой слот, которому дан ключ, получает собственную привязку и запись ключа в конце виртуальной секции и принимает только ключ, имя которого известно приложению или который привязывает другой слот этого drawable. «Сохранить как» записывает тело как отдельный ресурс."
+msgid "A constant keeps its size, so nothing moves. An empty slot given a key takes a binding and a key record of its own at the end of the virtual section, and takes only a key whose name the app knows or is typed, or that a slot of the drawable or of a drawable of the install binds. Save As writes the body as a loose resource."
+msgstr "Константа сохраняет свой размер, поэтому ничего не сдвигается. Пустой слот, которому дан ключ, получает собственную привязку и запись ключа в конце виртуальной секции и принимает только ключ, имя которого известно приложению или введено, или который привязывает слот этого drawable или drawable установки. «Сохранить как» записывает тело как отдельный ресурс."
 
 msgid "the shader holds a constant elsewhere than the effect places it"
 msgstr "шейдер содержит константу не там, где её размещает эффект"
@@ -15781,8 +15778,8 @@ msgstr "Эволюционные ключевые кадры эволюции ч
 msgid "The GPU buffers in the physical section are checked: the one at +0x390 copies the rule's floats at +0x1E0, and the one at +0x388 holds two tables of 16 rows whose values are not derived from the rule, so they are kept as stored and may disagree with an edited keyframed value. The preview needs neither."
 msgstr "Буферы GPU в физической секции проверяются: буфер по +0x390 копирует числа правила по +0x1E0, а буфер по +0x388 содержит две таблицы по 16 строк, значения которых не выводятся из правила, поэтому они сохраняются как есть и могут расходиться с изменённым значением по ключевым кадрам. Предпросмотру не нужен ни один из них."
 
-msgid "Save As writes the values the two forms share over the GTA VI list in place. Adding or removing a rule, an event, a behaviour or a key would move the list, so the workspace does not offer it."
-msgstr "«Сохранить как» записывает значения, общие для двух форм, поверх списка GTA VI на месте. Добавление или удаление правила, события, поведения или ключа сдвинуло бы список, поэтому рабочая область этого не предлагает."
+msgid "Save As writes the values the two forms share over the GTA VI list in place, and with them a rule removed or an event bound to another rule. A key added and an effect duplicated are written past the list's end, the copy found by the name Duplicate gives it. A rule made from nothing, or an event or a behaviour added, has no stated value, so the workspace does not offer it."
+msgstr "«Сохранить как» записывает значения, общие для двух форм, поверх списка GTA VI на месте, а вместе с ними удалённое правило или событие, привязанное к другому правилу. Добавленный ключ и дублированный эффект записываются за концом списка, а копия находится по имени, которое ей даёт Duplicate. Правило, созданное с нуля, или добавленное событие или поведение не имеет указанного значения, поэтому рабочая область этого не предлагает."
 
 msgid "Its third spawner starts {effect} where its ptxu_ZCull culls a point, and so does the preview; that its trigger value is a speed the point must reach, as the collision spawner's is, is inferred."
 msgstr "Его третий генератор запускает {effect} там, где его ptxu_ZCull отбрасывает точку, и предпросмотр тоже; то, что его значение срабатывания есть скорость, которой должна достичь точка, как у генератора столкновений, выведено."
@@ -15810,9 +15807,6 @@ msgstr "Идентификатор его значения по ключевым
 
 msgid "{owner}: evolved value {value} under evolution {evolution} has kind {kind}, where 1 is the LOD distance and 2 to 4 the camera's forward, top and side views, and flags {first} and {second}, whose meaning is not known."
 msgstr "{owner}: эволюционное значение {value} при эволюции {evolution} имеет вид {kind}, где 1 означает расстояние LOD, а 2-4 виды камеры спереди, сверху и сбоку, и флаги {first} и {second}, смысл которых неизвестен."
-
-msgid "A GTA VI particle list saves in place, so a rule or an effect cannot be removed from it yet"
-msgstr "Список частиц GTA VI сохраняется на месте, поэтому удалить из него правило или эффект пока нельзя"
 
 msgid "An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own."
 msgstr "Сущность принимает только архетип своего класса, который называет её карта или который содержит открытое или найденное тело типов карты, а интерьер сохраняет свой."
@@ -16149,3 +16143,270 @@ msgid_plural "{count} stations no text names"
 msgstr[0] "{count} станция, которую не называет ни один текст"
 msgstr[1] "{count} станции, которые не называет ни один текст"
 msgstr[2] "{count} станций, которые не называет ни один текст"
+
+msgid "{name} (from the text)"
+msgstr "{name} (из текста)"
+
+msgid "Bytes to the next item"
+msgstr "Байт до следующего элемента"
+
+msgid "Counted elements"
+msgstr "Подсчитанные элементы"
+
+msgid "Each slot a field table or a measured value type places in the item, at its offset, and the bytes between them as they are. A value type is what every item measured holds there, which no table of the file states, so a value may break it; the types are shown only on an item that ends where its layout does."
+msgstr "Каждый слот, который таблица полей или измеренный тип значения помещает в элемент, по его смещению, и байты между ними как есть. Тип значения — это то, что там содержат все измеренные элементы, и ни одна таблица файла его не указывает, поэтому значение может его нарушать; типы показываются только для элемента, который заканчивается там же, где его раскладка."
+
+msgid "reference row"
+msgstr "строка ссылок"
+
+msgid "group slot"
+msgstr "слот группы"
+
+msgid "hash"
+msgstr "хеш"
+
+msgid "wave container"
+msgstr "контейнер волн"
+
+msgid "zero"
+msgstr "ноль"
+
+msgid "unset"
+msgstr "не задано"
+
+msgid "float"
+msgstr "вещественное"
+
+msgid "float or -1"
+msgstr "вещественное или -1"
+
+msgid "{word}, where every item measured holds {held}"
+msgstr "{word}, тогда как все измеренные элементы содержат {held}"
+
+msgid "bytes"
+msgstr "байты"
+
+msgid "index key"
+msgstr "ключ индекса"
+
+msgid "its own key"
+msgstr "собственный ключ"
+
+msgid "number or -1"
+msgstr "число или -1"
+
+msgid "2-bit flags"
+msgstr "2-битные флаги"
+
+msgid "item offset"
+msgstr "смещение элемента"
+
+msgid "{offset}, where the item of the key before it does not start"
+msgstr "{offset}, где не начинается элемент предшествующего ключа"
+
+msgid "byte, zero"
+msgstr "байт, ноль"
+
+msgid "byte, constant"
+msgstr "байт, константа"
+
+msgid "byte, 0 or 1"
+msgstr "байт, 0 или 1"
+
+msgid "byte, few values"
+msgstr "байт, немного значений"
+
+msgid "The first entry after an archive's table, where its header puts it, whose end its bytes do not state: the {count} bytes from it to the next body the list holds. No view reads them, so they show as bytes."
+msgstr "Первая запись после таблицы архива, там, где её помещает заголовок, конец которой её байты не указывают: {count} байт от неё до следующего тела, которое содержит список. Ни один вид их не читает, поэтому они показаны как байты."
+
+msgid "Headerless resource"
+msgstr "Ресурс без заголовка"
+
+msgid "Root block"
+msgstr "Корневой блок"
+
+msgid "{virtual_blocks} virtual and {physical_blocks} physical blocks"
+msgstr "Виртуальных блоков: {virtual_blocks}, физических: {physical_blocks}"
+
+msgid "{entries} entries, {bytes} blob bytes, not read: no key for them is known"
+msgstr "Записей: {entries}, байт в блобах: {bytes}; не прочитаны: ключ к ним неизвестен"
+
+msgid "String table"
+msgstr "Таблица строк"
+
+msgid "{count} at {at}, carried as read"
+msgstr "{count} по адресу {at}, сохранены как прочитаны"
+
+msgid "Ids at 0x50"
+msgstr "Идентификаторы по 0x50"
+
+msgid "Every entry has a version 1 or 4 UUID's version and variant, so each reads as a UUID. What object an entry names is not known."
+msgstr "Каждая запись имеет версию и вариант UUID версии 1 или 4, поэтому каждая читается как UUID. Какой объект называет запись, неизвестно."
+
+msgid "Not every entry has a UUID's version and variant, so each is shown as its bytes. What object an entry names is not known."
+msgstr "Не каждая запись имеет версию и вариант UUID, поэтому каждая показана своими байтами. Какой объект называет запись, неизвестно."
+
+msgid "Its ptxu_Colour counts {count} colours in use; what the colours past the second draw is not known, so the preview draws its minimum and maximum alone."
+msgstr "Его ptxu_Colour насчитывает {count} используемых цветов; что рисуют цвета после второго, неизвестно, поэтому предпросмотр рисует только его минимум и максимум."
+
+msgid "Its ptxu_Colour enables its maximum, which holds no key; what that draws is not known, so the preview draws its minimum alone."
+msgstr "Его ptxu_Colour включает свой максимум, в котором нет ни одного ключа; что это рисует, неизвестно, поэтому предпросмотр рисует только его минимум."
+
+msgid "This drawable already embeds another texture, and a dictionary of two was never measured, so {name} is not embedded."
+msgstr "Этот drawable уже содержит другую встроенную текстуру, а словарь из двух никогда не измерялся, поэтому {name} не встраивается."
+
+msgid "No name or bound entry states the 32-bit name hash of {name}, so it is not embedded."
+msgstr "Ни одно имя и ни одна связанная запись не указывают 32-битный хеш имени {name}, поэтому она не встраивается."
+
+msgid "The fragment holds no such group."
+msgstr "В фрагменте нет такой группы."
+
+msgid "Moved a fragment's child"
+msgstr "Потомок фрагмента перемещён"
+
+msgid "Gave a fragment's child another group"
+msgstr "Потомок фрагмента переведён в другую группу"
+
+msgid "The composite states no type and include entries."
+msgstr "Composite не указывает записей типа и включения."
+
+msgid "Set a child's type and include entry"
+msgstr "Запись типа и включения потомка задана"
+
+msgid "Rewired a triangle"
+msgstr "Треугольник пересоединён"
+
+msgid "Reshape the collision"
+msgstr "Изменить форму коллизии"
+
+msgid "A fragment child moves by its own transform and its composite's matrix follows; a group change keeps where it lies; a rewired triangle links to the triangles it shares an edge with. Save As writes the body as a loose resource."
+msgstr "Потомок фрагмента движется своей собственной трансформацией, и матрица его composite следует за ним; смена группы сохраняет его положение; пересоединённый треугольник связывается с треугольниками, с которыми у него общее ребро. «Сохранить как» записывает тело как отдельный ресурс."
+
+msgid "Fragment child"
+msgstr "Потомок фрагмента"
+
+msgid "Type and include entry"
+msgstr "Запись типа и включения"
+
+msgid "Rewire"
+msgstr "Пересоединить"
+
+msgid "A geometry with no BVH is not reshaped: it carries a shrunk copy of each vertex, and how far a vertex is shrunk is not known."
+msgstr "Геометрия без BVH не меняет форму: она хранит сжатую копию каждой вершины, а насколько сжимается вершина, неизвестно."
+
+msgid "A copy takes the key its name hashes to and the signature of the entry it copies; Save As places it and its tracks or bones after the body's last object."
+msgstr "Копия получает ключ, который даёт хеш её имени, и подпись копируемой записи; «Сохранить как» помещает её с дорожками или костями после последнего объекта тела."
+
+msgid "A dictionary keeps one frame filter or animation record at least."
+msgstr "Словарь сохраняет хотя бы один фильтр кадров или запись анимации."
+
+msgid "A name is printable text with no space."
+msgstr "Имя — это печатаемый текст без пробелов."
+
+msgid "Another entry of the dictionary has the key that name hashes to."
+msgstr "Другая запись словаря имеет ключ, который даёт хеш этого имени."
+
+msgid "Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"
+msgstr "Перед вектором каждого кадра: его слово по 0x90 и, в классе 1, его поворот и числа с плавающей точкой 4–11 его записи"
+
+msgid "Copy a frame filter or animation record"
+msgstr "Копировать фильтр кадров или запись анимации"
+
+msgid "Copy the entry"
+msgstr "Копировать запись"
+
+msgid "Database bytes at {at}"
+msgstr "Байты базы данных по {at}"
+
+msgid "Database words at {at}"
+msgstr "Слова базы данных по {at}"
+
+msgid "Edit a track's id"
+msgstr "Изменить идентификатор дорожки"
+
+msgid "Everything the motion reader reads"
+msgstr "Всё, что читает читатель движений"
+
+msgid "Group {group}, column ranges {ranges}, weight lists {lists}"
+msgstr "Группа {group}, диапазоны столбцов {ranges}, списки весов {lists}"
+
+msgid "Group {group}, constants: {values}"
+msgstr "Группа {group}, константы: {values}"
+
+msgid "Group {group}, database bounds {bounds}, hash at 0x80 {hash}, weight lists {lists}"
+msgstr "Группа {group}, границы базы данных {bounds}, хеш по 0x80 {hash}, списки весов {lists}"
+
+msgid "Group {group}, grid {index}: words {words}, cells {cells}, bounds {bounds}, cell sizes {sizes}, inverses {inverses}"
+msgstr "Группа {group}, сетка {index}: слова {words}, ячейки {cells}, границы {bounds}, размеры ячеек {sizes}, обратные {inverses}"
+
+msgid "Group {group}, lists {lists}, hashes {hashes}"
+msgstr "Группа {group}, списки {lists}, хеши {hashes}"
+
+msgid "Group {group}, phase curve {index}: points {points}, x from {x0} to {x1}, y1 {y1}, {cycles} cycles"
+msgstr "Группа {group}, фазовая кривая {index}: точки {points}, x от {x0} до {x1}, y1 {y1}, циклов: {cycles}"
+
+msgid "Group {group}, range {lo} to {hi}: hashes {hashes}, bounds {bounds}"
+msgstr "Группа {group}, диапазон от {lo} до {hi}: хеши {hashes}, границы {bounds}"
+
+msgid "Group {group}, simplex {index}: {words}"
+msgstr "Группа {group}, симплекс {index}: {words}"
+
+msgid "Matcher bytes at {at}"
+msgstr "Байты сопоставителя по {at}"
+
+msgid "Matcher words at {at}"
+msgstr "Слова сопоставителя по {at}"
+
+msgid "New name"
+msgstr "Новое имя"
+
+msgid "No stored entry of its kind is there to copy, so {name} is not added."
+msgstr "Нет сохранённой записи того же вида для копирования, поэтому {name} не добавляется."
+
+msgid "Parameter objects, by type: {types}"
+msgstr "Объекты параметров по типам: {types}"
+
+msgid "Parameter {name}: words {words}, word {word}, from {min} to {max}"
+msgstr "Параметр {name}: слова {words}, слово {word}, от {min} до {max}"
+
+msgid "Remove a frame filter or animation record"
+msgstr "Удалить фильтр кадров или запись анимации"
+
+msgid "Remove the entry"
+msgstr "Удалить запись"
+
+msgid "That entry is no frame filter or animation record."
+msgstr "Эта запись не является ни фильтром кадров, ни записью анимации."
+
+msgid "The entry {code} is stored as the other kind of entry, so it is not written."
+msgstr "Запись {code} сохранена как запись другого вида, поэтому она не записывается."
+
+msgid "The entry's warp list of {count} points follows no known rule, so it is kept as read."
+msgstr "Список деформации записи из {count} точек не следует никакому известному правилу, поэтому сохраняется как прочитан."
+
+msgid "Time warp {index}: a {a}, b {b}, points {points}"
+msgstr "Деформация времени {index}: a {a}, b {b}, точки {points}"
+
+msgid "Version-1 GUID"
+msgstr "GUID версии 1"
+
+msgid "Weight list {index}: {weights}"
+msgstr "Список весов {index}: {weights}"
+
+msgid "the group already states that id on that track word"
+msgstr "группа уже указывает этот идентификатор для этого слова дорожки"
+
+msgid "{name} hashes to another key than its entry's, so it is not added."
+msgstr "Хеш {name} даёт другой ключ, чем у его записи, поэтому оно не добавляется."
+
+msgid "An event names a rule the GTA VI particle list does not hold: bind it to one of the list's rules."
+msgstr "Событие называет правило, которого нет в списке частиц GTA VI: привяжите его к одному из правил списка."
+
+msgid "A GTA VI particle list takes a new effect only as a copy of one it holds: use Duplicate, and keep the copy's name the name of the effect it copies followed by _copy."
+msgstr "Список частиц GTA VI принимает новый эффект только как копию эффекта, который в нём есть: используйте Duplicate и оставьте копии имя копируемого эффекта с окончанием _copy."
+
+msgid "Polygon {polygon} is not disabled while the bodies of the neighbouring cells {cells} are not open: a side record it empties goes, and their special links may number the records after it. Find the neighbouring cells in the scan first."
+msgstr "Полигон {polygon} не отключается, пока тела соседних ячеек {cells} не открыты: опустевшая из-за этого граничная запись удаляется, а их особые связи могут нумеровать записи после неё. Сначала найдите соседние ячейки в сканировании."
+
+msgid "An interior takes only its own archetype or another interior archetype whose rooms and portals were read."
+msgstr "Интерьер принимает только свой архетип или другой архетип интерьера, комнаты и порталы которого прочитаны."

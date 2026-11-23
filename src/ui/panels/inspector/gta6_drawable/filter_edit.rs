@@ -87,6 +87,7 @@ pub(super) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) 
         return;
     }
     let mut edit = None;
+    let mut entry_action = None;
     egui::CollapsingHeader::new(tr!("Edit frame filters and animation records"))
         .id_salt(("gta6_filter_edit", doc_id))
         .show(ui, |ui| {
@@ -116,6 +117,7 @@ pub(super) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) 
                         ui.selectable_value(&mut pick.code, c, n);
                     }
                 });
+            entry_action = super::filter_entries::draw(ui, doc_id, code, entries.len());
             let row_height = ui.spacing().interact_size.y;
             match entry {
                 Entry::FrameFilter { tracks, .. } => {
@@ -209,5 +211,8 @@ pub(super) fn draw(ui: &mut egui::Ui, state: &mut AppState, doc_id: DocumentId) 
         if let Err(why) = state.edit_gta6_filter(doc_id, code, edit) {
             state.show_warning_toast(why);
         }
+    }
+    if let Some(action) = entry_action {
+        super::filter_entries::apply(state, doc_id, action);
     }
 }

@@ -16,7 +16,7 @@ use super::table_values::*;
 
 use super::sections::{PsoSection, RawPsoSection};
 use super::table_form::{
-    bitset_len, class_of, malformed, TableFormError, ARRAY_INFO_NAME_HASH, BYTES_16, COUNTED_ARRAY,
+    bitset_len, class_of, malformed, ARRAY_INFO_NAME_HASH, BYTES_16, COUNTED_ARRAY,
     COUNTED_POINTER, EMPTY_CONTROL, GROUP_MAP, GROUP_SET, INLINE_BITSET, PADDED_U32, SLOT_MAP,
     SLOT_SET, TAG, TAGGED_ARRAY, TAGGED_POINTER, WIDE_HASH, WIDE_NS_HASH,
 };
@@ -46,6 +46,8 @@ pub(crate) fn free_namespace(namespace: u8) -> (bool, u64) {
 pub(crate) struct Laid {
     pub(crate) blocks: Vec<(u32, Vec<u8>)>,
     pub(crate) root: u32,
+    /// Per block, whether a headerless resource keeps it in its physical section.
+    pub(crate) physical: Vec<bool>,
 }
 
 /// A table-form document's bytes with `instance` laid out in it, refused when the rules do not
@@ -57,7 +59,9 @@ pub(crate) fn write(layout: &PsoLayout, instance: &MetaInstance) -> Result<Vec<u
     let original = super::table_form::decode(&model)?;
     let (laid, held) = lay_out(&model, &original, None)?;
     if emit(&sections, &laid) != stored {
-        return Err(TableFormError::RulesMiss(where_they_miss(&model, &laid)).into());
+        return super::table_canonical::write(
+            &sections, &model, &stored, &original, &laid, &held, instance,
+        );
     }
     let (laid, _) = lay_out(&model, instance, Some(&held))?;
     Ok(emit(&sections, &laid))
@@ -162,7 +166,7 @@ pub(crate) fn lay_out(
     instance: &MetaInstance,
     held: Option<&Held>,
 ) -> Result<(Laid, Held)> {
-    walk(model, instance, held, false)
+    walk(model, instance, held, false, false)
 }
 
 /// [`lay_out`] into the blocks `model` stores, each region where the document had it, refused
@@ -172,14 +176,35 @@ pub(crate) fn lay_out_in_place(
     instance: &MetaInstance,
     held: Option<&Held>,
 ) -> Result<(Laid, Held)> {
-    walk(model, instance, held, true)
+    walk(model, instance, held, true, false)
 }
+
+/// [`lay_out`] for a headerless resource: its blocks in their stored order and a new one after
+/// them, and the regions of a member whose byte 9 sets bit 2 in blocks of their own.
+pub(crate) fn lay_out_headerless(
+    model: &RbmModel,
+    instance: &MetaInstance,
+    held: Option<&Held>,
+) -> Result<(Laid, Held)> {
+    walk(model, instance, held, false, true)
+}
+
+/// A headerless member's byte 9 bit that keeps its regions out of every other member's blocks,
+/// all in one block or each in its own as the resource stored them.
+const OWN_BLOCKS: u8 = 0x04;
+/// The byte 9 bit that puts those blocks in the physical section.
+const PHYSICAL_BLOCKS: u8 = 0x20;
+
+/// The member whose regions take blocks of their own: its structure, its name, and whether the
+/// blocks are physical.
+type Own = (u32, u32, bool);
 
 fn walk(
     model: &RbmModel,
     instance: &MetaInstance,
     held: Option<&Held>,
     in_place: bool,
+    headerless: bool,
 ) -> Result<(Laid, Held)> {
     let index = default_hash_index();
     let by_name = (model.classes.values())
@@ -206,11 +231,16 @@ fn walk(
                 at: 0,
             })
         });
+    let opened = blocks.len();
     let mut w = Writer {
         model,
         by_name,
         blocks,
         in_place,
+        headerless,
+        own: None,
+        sources: vec![None; opened],
+        owners: vec![None; opened],
         index: HashMap::new(),
         trace: None,
         fixups: Vec::new(),
@@ -251,7 +281,15 @@ struct Writer<'m, 'h> {
     blocks: Vec<(u32, Vec<u8>)>,
     /// Whether each region goes where the document had it.
     in_place: bool,
-    /// The blocks of each type, in the order they opened.
+    /// Whether the document is a headerless resource, as [`lay_out_headerless`] lays one out.
+    headerless: bool,
+    /// The member whose own blocks the regions being laid out go to.
+    own: Option<Own>,
+    /// Per block, the first stored block any of its regions was read from.
+    sources: Vec<Option<usize>>,
+    /// Per block, the member it is kept for.
+    owners: Vec<Option<Own>>,
+    /// The blocks of each type no member keeps for itself, in the order they opened.
     index: HashMap<u32, Vec<usize>>,
     /// While a hash table's payloads are tried, the stored `(block, offset)` of each region they
     /// reach.
@@ -290,10 +328,20 @@ impl<'m> Writer<'m, '_> {
                 self.blocks.len()
             )));
         }
-        let order = match self.in_place {
-            true => (0..self.blocks.len()).collect(),
-            false => block_order(&self.blocks)?,
+        let order = match (self.in_place, self.headerless) {
+            (true, _) => (0..self.blocks.len()).collect(),
+            // A block keeps the place of the first stored block it holds a region of; a new one
+            // follows them in the order it opened.
+            (false, true) => {
+                let mut order: Vec<usize> = (0..self.blocks.len()).collect();
+                order.sort_by_key(|&b| (self.sources[b].is_none(), self.sources[b], b));
+                order
+            }
+            (false, false) => block_order(&self.blocks)?,
         };
+        let physical = (order.iter())
+            .map(|&b| self.owners[b].is_some_and(|(_, _, physical)| physical))
+            .collect();
         let mut id = vec![0usize; order.len()];
         for (k, &b) in order.iter().enumerate() {
             id[b] = k + 1;
@@ -312,26 +360,47 @@ impl<'m> Writer<'m, '_> {
         };
         let mut slots: Vec<Option<(u32, Vec<u8>)>> = blocks.into_iter().map(Some).collect();
         let blocks = order.iter().filter_map(|&b| slots[b].take()).collect();
-        Ok((Laid { blocks, root }, self.laid))
+        Ok((
+            Laid {
+                blocks,
+                root,
+                physical,
+            },
+            self.laid,
+        ))
     }
 
     /// `len` bytes after the last region of the first block of type `ty` with room for them, else
-    /// of a new one, from `background` where it holds them.
-    fn alloc(&mut self, ty: u32, len: usize, background: Background) -> Result<(usize, usize)> {
-        let blocks = &self.blocks;
-        let held = self.index.entry(ty).or_default();
-        let room = held.iter().copied().find(|&b| {
-            let used = blocks[b].1.len();
-            len == 0 || used == 0 || used.saturating_add(len) <= BLOCK_CAP
-        });
-        let b = match room {
-            Some(b) => b,
+    /// of a new one, from `background` where it holds them; read from stored block `source`.
+    fn alloc(
+        &mut self,
+        ty: u32,
+        len: usize,
+        source: Option<usize>,
+        background: Background,
+    ) -> Result<(usize, usize)> {
+        let b = match self.own.filter(|_| self.headerless) {
+            Some(own) => self.own_block(ty, own, source),
             None => {
-                held.push(self.blocks.len());
-                self.blocks.push((ty, Vec::new()));
-                self.blocks.len() - 1
+                let blocks = &self.blocks;
+                let room = (self.index.get(&ty).into_iter().flatten().copied()).find(|&b| {
+                    let used = blocks[b].1.len();
+                    len == 0 || used == 0 || used.saturating_add(len) <= BLOCK_CAP
+                });
+                match room {
+                    Some(b) => b,
+                    None => {
+                        let b = self.open(ty, None);
+                        self.index.entry(ty).or_default().push(b);
+                        b
+                    }
+                }
             }
         };
+        if let Some(s) = source {
+            let first = &mut self.sources[b];
+            *first = Some(first.map_or(s, |f| f.min(s)));
+        }
         let data = &mut self.blocks[b].1;
         let at = data.len();
         let end = at
@@ -345,6 +414,25 @@ impl<'m> Writer<'m, '_> {
             None => data.resize(end, 0),
         }
         Ok((b, at))
+    }
+
+    /// A new empty block of type `ty`, kept for `owner` where one is given.
+    fn open(&mut self, ty: u32, owner: Option<Own>) -> usize {
+        self.blocks.push((ty, Vec::new()));
+        self.sources.push(None);
+        self.owners.push(owner);
+        self.blocks.len() - 1
+    }
+
+    /// The block of type `ty` kept for `own` that holds the regions of stored block `source`, else
+    /// a new one: a member stores its regions in one block or each in its own, and a block says which.
+    fn own_block(&mut self, ty: u32, own: Own, source: Option<usize>) -> usize {
+        let found = source.and_then(|s| {
+            (0..self.blocks.len()).find(|&b| {
+                self.owners[b] == Some(own) && self.blocks[b].0 == ty && self.sources[b] == Some(s)
+            })
+        });
+        found.unwrap_or_else(|| self.open(ty, Some(own)))
     }
 
     /// Where a region of `len` bytes of type `ty` goes: after the last of its block, or where the
@@ -361,10 +449,11 @@ impl<'m> Writer<'m, '_> {
             trace.push((s.block, s.at));
         }
         if !self.in_place {
+            let source = stored.map(|s| s.block);
             // A region of no bytes the document pointed at keeps its offset.
             return match (len, stored) {
-                (0, Some(s)) => Ok((self.alloc(ty, 0, background)?.0, s.at)),
-                _ => self.alloc(ty, len, background),
+                (0, Some(s)) => Ok((self.alloc(ty, 0, source, background)?.0, s.at)),
+                _ => self.alloc(ty, len, source, background),
             };
         }
         match stored {
@@ -485,8 +574,28 @@ impl<'m> Writer<'m, '_> {
         written.ok_or_else(|| self.fail(format!("{count} elements do not fit its count member")))
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// [`Self::member_value`] with the regions it reaches kept for it where its byte 9 says so.
     fn member(
+        &mut self,
+        owner: &'m RbmClass,
+        entry: &'m RbmClassEntry,
+        b: usize,
+        at: usize,
+        value: &Value,
+        bg: Background<'m>,
+    ) -> Result<()> {
+        let outer = self.own;
+        self.own = (self.headerless && entry.union_9h & OWN_BLOCKS != 0).then(|| {
+            let physical = entry.union_9h & PHYSICAL_BLOCKS != 0;
+            (owner.name_hash, entry.name_hash, physical)
+        });
+        let written = self.member_value(owner, entry, b, at, value, bg);
+        self.own = outer;
+        written
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn member_value(
         &mut self,
         owner: &'m RbmClass,
         entry: &'m RbmClassEntry,
@@ -639,6 +748,14 @@ impl<'m> Writer<'m, '_> {
                     if !text.is_empty() {
                         header[15] = 0x80 | text.len() as u8;
                     }
+                    // ⚠ An empty text stored as 0x80 in byte 15, the rest zero, keeps that byte,
+                    // whose meaning is not known.
+                    let marked = bg.and_then(|bg| bg.get(..16)).is_some_and(|stored| {
+                        stored[15] == 0x80 && stored[..15].iter().all(|&byte| byte == 0)
+                    });
+                    if text.is_empty() && marked {
+                        header[15] = 0x80;
+                    }
                     self.put(b, at, &header);
                 } else {
                     let len = u16::try_from(text.len())
@@ -648,9 +765,15 @@ impl<'m> Writer<'m, '_> {
                     header[8..10].copy_from_slice(&len.to_le_bytes());
                     header[10..12].copy_from_slice(&(len + 1).to_le_bytes());
                     header[12] = 1;
-                    self.put(b, at, &header);
                     // Bytes 0 to 7 are a pointer only where bit 7 of byte 15 is clear.
                     let bg = bg.filter(|bg| bg.get(15).is_some_and(|&last| last & 0x80 == 0));
+                    // ⚠ The u32 at 12 of a stored text out of place is kept: it is 1 in every
+                    // measured header but two, which hold 0, and what it means is not known.
+                    let pointed = read_le(bg, 0, 8).is_some_and(|raw| raw & 0xFFF != 0);
+                    if let Some(word) = bg.filter(|_| pointed).and_then(|bg| bg.get(12..16)) {
+                        header[12..16].copy_from_slice(word);
+                    }
+                    self.put(b, at, &header);
                     let target = self.text_region(text, bg)?;
                     self.pointer(b, at, target);
                 }
@@ -730,6 +853,14 @@ impl<'m> Writer<'m, '_> {
                 );
                 // Room past the count is zero.
                 self.put(b, at + first, &vec![0; len]);
+                // ⚠ The lanes past a stored Vec2V's or Vec3V's hold live values no value states, so
+                // the elements the document stored keep them.
+                if matches!(element.data_type, Vec2V | Vec3V) {
+                    let stored = read_le(bg, 4, 4).unwrap_or(0).min(items.len());
+                    let room = bg.and_then(|bg| bg.get(first..));
+                    let kept = room.map(|bg| bounded(bg, stride, stored));
+                    self.carry((b, at + first), kept, len);
+                }
                 self.in_place(
                     owner,
                     entry,
@@ -967,20 +1098,23 @@ impl<'m> Writer<'m, '_> {
         self.carry(target, bg, len);
         for (i, (key, value)) in pairs.iter().enumerate() {
             let bg = bg.and_then(|bg| bg.get(size * i..));
-            self.pair(pair, target.0, target.1 + size * i, key, value, bg)?;
+            self.pair(pair, target.0, target.1 + size * i, (key, None), value, bg)?;
         }
         Ok(())
     }
 
+    /// A pair at `at`; with `owner_key`, an enum key is written in its owner's key member's enum,
+    /// which a pair structure several maps share need not name.
     fn pair(
         &mut self,
         pair: &'m RbmClass,
         b: usize,
         at: usize,
-        key: &Value,
+        (key, owner_key): (&Value, Option<&'m RbmClassEntry>),
         value: &Value,
         bg: Background<'m>,
     ) -> Result<()> {
+        use PsoType::{Enum16, Enum32, Enum8};
         let named: Vec<&'m RbmClassEntry> = (pair.entries.iter())
             .filter(|e| e.name_hash != ARRAY_INFO_NAME_HASH)
             .collect();
@@ -990,9 +1124,15 @@ impl<'m> Writer<'m, '_> {
                 class_name(pair)
             )));
         };
-        for (entry, value, what) in [(k, key, "{key}"), (v, value, "{value}")] {
+        // The pair's key member gives the place, its owner's the enum.
+        let enum_key = matches!(k.data_type, Enum8 | Enum16 | Enum32);
+        let written = match owner_key {
+            Some(o) if enum_key && o.data_type == k.data_type => o,
+            _ => k,
+        };
+        for (place, entry, value, what) in [(k, written, key, "{key}"), (v, v, value, "{value}")] {
             self.path.push(what.into());
-            let off = entry.offset as usize;
+            let off = place.offset as usize;
             self.member(
                 pair,
                 entry,
@@ -1201,9 +1341,14 @@ impl<'m> Writer<'m, '_> {
             }
             w.path.push(format!("{{{i}}}"));
             match (&table, pair) {
-                (Table::Pairs(pairs), Some(pair)) => {
-                    w.pair(pair, target.0, target.1 + pos, pairs[i].0, pairs[i].1, bg)?
-                }
+                (Table::Pairs(pairs), Some(pair)) => w.pair(
+                    pair,
+                    target.0,
+                    target.1 + pos,
+                    (pairs[i].0, Some(key)),
+                    pairs[i].1,
+                    bg,
+                )?,
                 _ => w.member(
                     owner,
                     key,
@@ -1251,6 +1396,8 @@ impl<'m> Writer<'m, '_> {
     /// Undoes every region and pointer laid out since `mark`.
     fn rewind(&mut self, (ends, fixups): (Vec<usize>, usize)) {
         self.blocks.truncate(ends.len());
+        self.sources.truncate(ends.len());
+        self.owners.truncate(ends.len());
         for ((_, data), end) in self.blocks.iter_mut().zip(ends) {
             data.truncate(end);
         }

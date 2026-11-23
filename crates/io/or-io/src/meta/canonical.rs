@@ -354,6 +354,7 @@ fn converge_typed(
     };
     let cycle = |instance: &MetaInstance, layout: &MetaLayout| -> Result<(String, Vec<u8>)> {
         if let ContainerLayout::Pso(p) = &layout.container {
+            #[cfg(not(feature = "gta6"))]
             use crate::meta::binary::pso::table_form::TableFormError;
             // ⚠ The table form's types are in no schema, so its XML comes back read without one
             // and is laid out by the document's own tables.
@@ -365,6 +366,16 @@ fn converge_typed(
                 return Ok((xml, bytes));
             }
             if p.is_gta6() {
+                // A P-form's XML is typed by its own tables and laid out anew by the measured rules.
+                #[cfg(feature = "gta6")]
+                {
+                    let xml = export(instance, layout)?;
+                    let typed = typed_by(library, Some(layout));
+                    let (_, tree) = parse(&typed, xml.as_bytes())?;
+                    let bytes = crate::meta::binary::pso::pform_layout::write(p, &tree)?;
+                    return Ok((xml, bytes));
+                }
+                #[cfg(not(feature = "gta6"))]
                 return Err(TableFormError::NoLayoutRules.into());
             }
         }

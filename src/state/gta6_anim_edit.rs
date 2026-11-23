@@ -3,10 +3,11 @@
 //! window, a clip's name, and a track held over the whole clip, added or removed. The sections
 //! they leave are what a save writes.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use or_io::container::rpf::Rpf9Sections;
-use or_io::gta6::anim::{AnimEdit, AnimError, AnimResource, ClipPlay};
+use or_io::gta6::anim::{AnimEdit, AnimError, AnimResource, ClipEntry, ClipPlay, RootKind};
 
 use super::{AppState, Change, ClipFieldSnapshot, DocPayload, DocumentId};
 
@@ -80,19 +81,46 @@ impl AppState {
         }
     }
 
-    /// Sets a GTA VI group entry's window as a step of `doc`'s history; a refusal is shown.
-    pub fn edit_gta6_entry(&mut self, doc: DocumentId, edit: AnimEdit) -> bool {
+    /// Sets a GTA VI group entry's window as a step of `doc`'s history, at the frame rate of the
+    /// set another body holds where its animation is there; a refusal is shown.
+    pub fn edit_gta6_entry(&mut self, doc: DocumentId, mut edit: AnimEdit) -> bool {
         let AnimEdit::EntryWindow {
-            clip, group, entry, ..
+            clip,
+            group,
+            entry,
+            ref mut frame_rate,
+            ..
         } = edit
         else {
             return false;
         };
+        let held = self.gta6_entry(doc, clip, group, entry);
+        if frame_rate.is_none() {
+            *frame_rate = (held.as_ref())
+                .filter(|e| e.animation.is_none())
+                .and_then(|e| self.external_rate(doc, e.key));
+        }
         match self.edit_gta6_anim(doc, &edit) {
             Ok(before) => {
                 let key = format!("gta6 entry {clip}.{group}.{entry}");
                 let change = Change::part(key, before, resource);
+                let top = |state: &Self| {
+                    let history = state.document(doc).map(|d| &d.history);
+                    history
+                        .and_then(|h| h.next(super::EditDirection::Undo))
+                        .map(|s| s.id)
+                };
+                let was = top(self);
                 self.record(doc, tr!("Edit a group entry's window"), change);
+                // A drag folds each frame's value into one step, which is said once.
+                let opened = top(self) != was;
+                let points = held.map_or(0, |e| e.warp_points.len());
+                if opened && !matches!(points, 0 | 3) {
+                    self.show_warning_toast(tr!(
+                        "The entry's warp list of {count} points follows no known rule, so it is kept as read.",
+                        count = points
+                    ));
+                }
                 true
             }
             Err(e) => {
@@ -100,6 +128,50 @@ impl AppState {
                 false
             }
         }
+    }
+
+    /// Entry `entry` of group `group` of clip `clip` of document `doc`'s GTA VI animation resource.
+    fn gta6_entry(
+        &self,
+        doc: DocumentId,
+        clip: usize,
+        group: usize,
+        entry: usize,
+    ) -> Option<ClipEntry> {
+        let DocPayload::Gta6Anim(resource) = &self.document(doc)?.payload else {
+            return None;
+        };
+        let ClipPlay::Groups { groups, .. } = &resource.clips.get(clip)?.play else {
+            return None;
+        };
+        groups.get(group)?.entries.get(entry).cloned()
+    }
+
+    /// The frames a second of the animation keyed `key` that a set another body stores holds,
+    /// where an open body of `doc`'s archive or a search of its scan found that set.
+    fn external_rate(&self, doc: DocumentId, key: u32) -> Option<f32> {
+        let d = self.document(doc)?;
+        let DocPayload::Gta6Anim(resource) = &d.payload else {
+            return None;
+        };
+        // A scanned body's path is its archive's joined with its offset: one parent, one archive.
+        let archive = d.path.as_deref()?.parent()?;
+        let wanted = |r: &AnimResource| {
+            r.root == RootKind::AnimationSet && resource.external_sets.contains(&r.key)
+        };
+        let open = (self.documents.iter())
+            .filter(|o| o.path.as_deref().and_then(Path::parent) == Some(archive))
+            .filter_map(|o| match &o.payload {
+                DocPayload::Gta6Anim(r) if wanted(r) => Some(Arc::clone(r)),
+                _ => None,
+            });
+        let searched = (resource.external_sets.iter())
+            .filter_map(|k| super::gta6_set_finding::found_set(archive, *k));
+        open.chain(searched).find_map(|set| {
+            (set.sets.iter().flat_map(|s| &s.animations))
+                .find(|a| a.key == key)?
+                .rate()
+        })
     }
 
     /// Renames GTA VI clip `clip` as a step of `doc`'s history; a refusal is shown.
