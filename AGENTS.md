@@ -335,11 +335,12 @@ and the full
 Windows suite runs on the self-hosted runner, which is the owner's desktop.
 Nothing waits for any of it before a merge.
 
-⚠ **`ci.yml`, `local-gate.yml` and `main-tip.yml` are disabled for now** (owner, 2026-10-06,
-[recorded](docs/direction/Project_Context.md#ci-is-switched-off-during-the-dev-phase-and-runs-on-every-push-to-main-after-it-2026-10-06)):
-the dev phase has no use for them, so `just ready` is the whole gate and no run starts to be read or
-cancelled. `gh workflow enable` restores each, and the intent stands that CI runs on every push to
-`main` once the phase ends; the table says what each does when it is on.
+⚠ **`ci.yml` is on again, and `local-gate.yml` and `main-tip.yml` are still disabled** (owner, 2026-11-23,
+[recorded](docs/direction/Project_Context.md#hosted-ci-is-on-again-and-the-self-hosted-workflows-stay-off-2026-11-23)):
+the repository has no self-hosted runner, so `just ready` stays the gate before a merge and no run sees
+the corpus. A pull request starts the Linux job; a push straight to `main` starts it only when it
+changes a manifest, the toolchain file or `ci.yml`. `gh workflow enable` restores the other two; the
+table says what each does when it is on.
 
 | Workflow | When | What |
 |---|---|---|

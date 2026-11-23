@@ -26,6 +26,14 @@ A RAGE byte layout exists in one place. Since 2026-09-24 that place is the `or-i
 
 Newest first. An entry records a decision as it was taken; one a later decision overturns says so on a `Superseded` line. or-io's D1–D18 are in full, with the owner's words, in [the specification's table](OR_IO_Specification.md#owner-decisions).
 
+### Hosted CI is on again, and the self-hosted workflows stay off (2026-11-23)
+
+The owner asked, of the public repository: "Make sure the openrage CI pass, and that on a tag it publish a github release with all the builds". `ci.yml` is enabled again (`gh workflow enable`), and `release.yml` published `v0.1.0` with a package for each OS. `local-gate.yml` and `main-tip.yml` stay disabled, because the repository has no self-hosted runner: no automatic check sees the corpus, and `just ready` with a format's `just test-format` stays the gate before a merge.
+
+Not decided: whether `ci.yml` starts on every push to `main`. A push there starts it only when it changes a manifest, the toolchain file or the workflow, and `main-tip.yml`, which checked each landed commit, has no runner.
+
+Supersedes [2026-10-06](#ci-is-switched-off-during-the-dev-phase-and-runs-on-every-push-to-main-after-it-2026-10-06) for `ci.yml`; the other two workflows stay as that entry left them.
+
 ### The window becomes tabs and a rail, in ten rows (2026-11-21)
 
 The owner asked for a review of every view and of the navigation with nothing held as fixed, and of the two restructures it proposed chose the bold one, built in stages ("A, staged"). [R69](Roadmap.md#r69-one-window-of-tabs-and-a-rail) is the plan.
@@ -139,6 +147,10 @@ and CI runs on every push to `main`.
   is untouched and moot while the workflows are off; the cadence of the macOS job
   ([Appendix B](Roadmap.md#appendix-b--judgement-calls-to-confirm), item 6) is a question for the day
   they come back.
+
+Superseded in part on 2026-11-23 by
+[hosted CI is on again](#hosted-ci-is-on-again-and-the-self-hosted-workflows-stay-off-2026-11-23):
+`ci.yml` is enabled, and the other two stay off for want of a runner.
 
 ### Linux and macOS are supported in full, and the tooling is Rust that runs the same on every OS (2026-10-06)
 

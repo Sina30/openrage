@@ -530,9 +530,10 @@ link, which neither option touches.
 
 ## CI
 
-⚠ The three CI workflows are disabled while the project is in its dev phase (owner, 2026-10-06; see
-[Project_Context.md](../direction/Project_Context.md#ci-is-switched-off-during-the-dev-phase-and-runs-on-every-push-to-main-after-it-2026-10-06)),
-so nothing below runs until `gh workflow enable` turns them back on. What follows is what they do when on.
+⚠ `ci.yml` is on again (owner, 2026-11-23; see
+[Project_Context.md](../direction/Project_Context.md#hosted-ci-is-on-again-and-the-self-hosted-workflows-stay-off-2026-11-23)).
+`local-gate.yml` and `main-tip.yml` stay disabled until the repository has a self-hosted runner and
+`gh workflow enable` turns them back on. What follows is what each does when on.
 
 Hosted CI is the cheap, fast signal and the full Windows suite runs on the
 owner's machine: the
