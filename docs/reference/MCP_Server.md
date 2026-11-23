@@ -45,7 +45,7 @@ again from the copy to use.
 
 - Newline-delimited JSON-RPC 2.0: requests on stdin, answers on stdout, one
   object per line, logs on stderr. A notification is not answered.
-- It answers `initialize`, `ping`, `tools/list` and `tools/call`, and offers
+- It answers `initialize`, `ping`, "tools/list" and "tools/call", and offers
   tools only: no resources and no prompts. Any other method is error -32601,
   and a tool it does not have is error -32602.
 - `initialize` answers the protocol revision the client asked for when it is
