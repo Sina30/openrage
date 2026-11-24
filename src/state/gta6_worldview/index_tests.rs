@@ -228,10 +228,7 @@ fn the_mount_gives_a_map_its_modes_its_hold_and_its_group() {
         ]
     );
     let report = counted(&maps);
-    assert_eq!(
-        (report.maps, report.registered, report.at_rest),
-        (7, 3, 2)
-    );
+    assert_eq!((report.maps, report.registered, report.at_rest), (7, 3, 2));
     assert_eq!((report.script_managed, report.empty), (1, 0));
     assert_eq!((report.story, report.minigames), (2, 1));
 

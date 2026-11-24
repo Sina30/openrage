@@ -56,7 +56,11 @@ fn a_map_types_body_whose_pointers_lead_nowhere_gives_no_hours() {
     assert_eq!(hours_in(&body, 9, true), None, "a root past the blocks");
     let mut far = types_body(1);
     far[0].data[ARCHETYPES + 8] = 4;
-    assert_eq!(hours_in(&far, 1, true), None, "more pointers than the block");
+    assert_eq!(
+        hours_in(&far, 1, true),
+        None,
+        "more pointers than the block"
+    );
     let mut cut = types_body(1);
     cut[3].data.truncate(0x10 + 0xBA);
     assert_eq!(hours_in(&cut, 1, true), None, "a record cut short");
