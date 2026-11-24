@@ -212,7 +212,9 @@ fn vs_cast(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
     }
     var out = cornered(c, vertex, -light_travel());
     out.seed = instance;
-    out.clip_pos = camera.view_proj * vec4<f32>(out.world_pos, 1.0);
+    // ⚠ The card drawn faces the camera and the one cast faces the sun: cast from the far side of the crown, so that no card lies behind its own caster and shades itself, while what stands past the crown is shaded still.
+    let behind = light_travel() * max(c.half_size.x, c.half_size.y);
+    out.clip_pos = camera.view_proj * vec4<f32>(out.world_pos + behind, 1.0);
     // What stands between the sun and the near side of the tile still casts: it is laid on that side instead of clipped by it.
     out.clip_pos.z = max(out.clip_pos.z, 0.0);
     return out;
