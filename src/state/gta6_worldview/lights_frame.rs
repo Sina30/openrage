@@ -228,6 +228,7 @@ impl LodList {
 }
 
 /// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` nearest the camera by the edge of their reach, nearest first, as the volumes of the frame's passes.
+#[cfg(test)]
 pub fn frame_lights<'a>(
     lamps: impl IntoIterator<Item = &'a Lamp>,
     eye: Vec3,
