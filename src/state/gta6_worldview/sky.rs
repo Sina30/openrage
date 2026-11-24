@@ -7,9 +7,10 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_renderer::game_shaders::lighting::{night_emissive, Day, Stated};
-use or_renderer::game_shaders::sky_view::SkyView;
+use or_renderer::game_shaders::sky_view::{Clouds, SkyView};
 use or_renderer::game_shaders::tone::ToneSettings;
 use or_renderer::viewport::Metered;
+use or_title::gta6_cloud::{CloudLayer, EXTINCTION};
 use or_title::gta6_day::{read_day, DayTables, Moment};
 use or_title::gta6_sky::Atmosphere;
 
@@ -196,8 +197,10 @@ pub fn day_of_moment(
         moon_fade: moment.bodies.moon_fade,
         exposure: moment.light.exposure,
     };
+    let radiance = sky_radiance(&moment, height);
     let sky_view = SkyView {
-        radiance: sky_radiance(&moment, height),
+        clouds: clouds_of(&moment, &radiance),
+        radiance,
         exposure: moment.light.exposure,
     };
     Day {
@@ -234,6 +237,44 @@ pub fn day_of_moment(
 
 /// The radiance of each texel of a sky table, in cd/m².
 type Radiance = Arc<Vec<[f32; 3]>>;
+
+/// The clouds `moment` states, lit by its leading body through the air and by the sky of `radiance` over them, in the frame's units; none where it states no cover.
+fn clouds_of(moment: &Moment, radiance: &[[f32; 3]]) -> Option<Clouds> {
+    let layer = CloudLayer::of(&moment.own);
+    if layer.cover <= 0.0 {
+        return None;
+    }
+    let lit = &moment.bodies;
+    let exposure = moment.light.exposure;
+    let through = Atmosphere::of(&moment.own).transmittance(lit.body[2]);
+    let strength = lit.fade * lit.illuminance * exposure;
+    Some(Clouds {
+        layer: [layer.base, layer.top, layer.cover, layer.kind],
+        // ponytail: the clouds stand still; the wind's drift waits for a speed the build states.
+        shape: [layer.sphere, EXTINCTION, layer.anisotropy, 0.0],
+        towards: lit.body,
+        light: through.map(|t| t * strength),
+        sky: hemisphere_radiance(radiance).map(|c| c * exposure),
+        haze: moment.light.haze,
+    })
+}
+
+/// The even radiance that lights level ground as the table's upper half does: its irradiance over pi.
+fn hemisphere_radiance(radiance: &[[f32; 3]]) -> [f32; 3] {
+    use or_renderer::game_shaders::sky_view::{direction, AROUND, UP};
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    let mut sum = [0.0f32; 3];
+    for (i, texel) in radiance.iter().enumerate() {
+        let (x, y) = (i as u32 % AROUND, i as u32 / AROUND);
+        let up = direction(x, y).z;
+        // A row is `v² π/2` up, so it spans `π v dv` of elevation.
+        let v = (y as f32 + 0.5) / UP as f32;
+        let solid =
+            (TAU / AROUND as f32) * (2.0 * FRAC_PI_2 * v / UP as f32) * (1.0 - up * up).sqrt();
+        sum = [0, 1, 2].map(|c| sum[c] + texel[c] * up * solid);
+    }
+    sum.map(|c| c / PI)
+}
 
 /// What the sky's radiance table is worked out from.
 #[derive(PartialEq)]
@@ -436,6 +477,17 @@ mod tests {
             "{whole} {curve}"
         );
         assert!(!adapting(), "arrived");
+    }
+
+    #[test]
+    fn an_even_sky_lights_its_clouds_with_its_own_radiance_and_a_clear_cycle_draws_none() {
+        let even = SkyView::of(|_| [2.0, 3.0, 4.0], 1.0);
+        let seen = hemisphere_radiance(&even.radiance);
+        for (got, want) in seen.iter().zip([2.0, 3.0, 4.0]) {
+            assert!((got - want).abs() < 0.02 * want, "{seen:?}");
+        }
+        let day = day_of(&tables(), 12.0, 0.0, WeatherState::Clear, 0.0).expect("a day");
+        assert!(day.sky_view.expect("a table").clouds.is_none());
     }
 
     #[test]
