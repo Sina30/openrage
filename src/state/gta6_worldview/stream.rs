@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_world::streaming::{Forest, Level, NodeId, NodeState, View};
+use or_world::streaming::{Forest, Level, NodeId, NodeState, View, HD_MAX_SPEED};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -103,7 +103,9 @@ pub(super) struct Streamer {
     wanted: HashMap<u32, f32>,
     /// A map that did not read is not asked for again.
     failed: HashSet<u32>,
-    streamed_at: Option<Vec3>,
+    /// Where the wanted maps were last worked out, and whether the camera was too fast then
+    /// for the high tier.
+    streamed_at: Option<(Vec3, bool)>,
     /// What of the game is switched on: a map it does not allow is not wanted.
     enabled: Enabled,
     /// The hour of the day, 0 to 23: a time archetype draws inside its hours alone.
@@ -216,11 +218,12 @@ impl Streamer {
                 }
             }
         }
-        let moved = self
-            .streamed_at
-            .is_none_or(|at| at.distance(view.eye) >= RESTREAM);
+        // ⚠ A camera that stops short of `RESTREAM` past a fast pass still wants the high tier back.
+        let fast = view.velocity.length() >= HD_MAX_SPEED;
+        let moved = (self.streamed_at)
+            .is_none_or(|(at, was_fast)| at.distance(view.eye) >= RESTREAM || was_fast != fast);
         if moved {
-            self.streamed_at = Some(view.eye);
+            self.streamed_at = Some((view.eye, fast));
             self.rewant(view);
         }
         // What is loaded and no longer wanted goes.

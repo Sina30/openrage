@@ -8,7 +8,7 @@ use or_io::gta6::map::Aabb;
 use or_world::streaming::{Extent, Level, ParentRef};
 
 use super::super::index::tests_support::{index_of, index_with};
-use super::super::index::MapRow;
+use super::super::index::{MapRow, ALL_HOURS};
 use super::read::{Instances, List};
 use super::*;
 
@@ -388,7 +388,7 @@ fn a_time_archetype_draws_inside_its_hours_alone_and_is_not_waited_for_outside_t
     // Both trees are of an archetype of the night; the lamps are of every hour.
     read.loaded.drawn[0].hours = NIGHT;
     read.loaded.drawn[1].hours = NIGHT;
-    assert_eq!(read.loaded.drawn[3].hours, 0x00FF_FFFF);
+    assert_eq!(read.loaded.drawn[3].hours, ALL_HOURS);
     let mut streamer = Streamer::new(Arc::clone(&index));
     streamer.wanted.insert(55, 0.0);
     assert!(streamer.insert(55, read));
@@ -510,4 +510,21 @@ fn a_map_is_wanted_only_while_what_is_enabled_allows_it() {
     assert!(streamer.set_enabled(with_story));
     streamer.stream(&view);
     assert_eq!(wanted_by(&streamer), vec![1, 3]);
+}
+
+#[test]
+fn a_camera_that_stops_after_a_fast_pass_wants_the_high_tier_again_where_it_stands() {
+    let near = ([-10.0; 3], [10.0; 3]);
+    // Content flags 0: the high tier.
+    let maps = vec![map_row(1, 0, near.0, near.1, (0, 0))];
+    let index = index_with(vec![PathBuf::from("made-up.rpf")], &[], maps, Vec::new());
+    let mut streamer = Streamer::new(Arc::new(index));
+    let mut view = View::at(Vec3::ZERO, 1.0);
+
+    view.velocity = Vec3::new(50.0, 0.0, 0.0);
+    streamer.stream(&view);
+    assert!(streamer.wanted.is_empty(), "too fast for the high tier");
+    view.velocity = Vec3::ZERO;
+    streamer.stream(&view);
+    assert_eq!(wanted_by(&streamer), vec![1], "at rest on the same spot");
 }
