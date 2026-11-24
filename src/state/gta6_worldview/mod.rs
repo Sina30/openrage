@@ -19,15 +19,18 @@ use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 pub(crate) mod index;
 mod interior;
 pub(crate) mod lights;
+mod lights_frame;
+pub(crate) mod lights_index;
 mod lights_lod;
 mod model;
+mod occluders;
 mod pool;
 pub(crate) mod sky;
 pub(crate) mod stream;
 mod texture;
 pub(crate) mod water;
 
-pub use model::{Bucket, CpuModel, Maps};
+pub use model::{Bucket, Constants, CpuMaterial, CpuModel, Emissive, Family, Layer};
 pub use texture::CpuTexture;
 
 use index::{Enabled, ModelRef, WorldIndex};
@@ -88,6 +91,8 @@ pub struct Viewer {
     pub hour: f32,
     /// Which of the game's modes and script-managed groups stream.
     pub enabled: Enabled,
+    /// Whether the person chose the script-managed groups, which the hour then no longer sets.
+    pub groups_chosen: bool,
     /// The lights of the maps around the camera, once an index is held.
     pub lights: Option<lights::Lights>,
     /// How many models wait to be read.
@@ -123,6 +128,7 @@ impl Default for Viewer {
             lod_scale: 1.0,
             hour: NOON,
             enabled: Enabled::default(),
+            groups_chosen: false,
             lights: None,
             models_waiting: 0,
             textures_waiting: 0,
@@ -249,7 +255,7 @@ impl Viewer {
                 read
             },
         ));
-        let (eye, scale) = (self.camera.position, self.lod_scale);
+        let (eye, scale) = (self.camera.position, self.distance_scale());
         self.world = Some(World::new(Arc::clone(&index), eye, scale));
         self.index = Some(index);
     }
@@ -334,7 +340,14 @@ impl Viewer {
             };
         }
         let told = !models.is_empty();
-        world.look(self.camera.position, self.lod_scale);
+        world.look(self.camera.position, self.distance_scale());
+        // The groups the world-state data has on at this hour and these modes, unless the person chose them.
+        if let (false, Some(index)) = (self.groups_chosen, &self.index) {
+            let on = index.default_on_in(self.hour, self.enabled.modes);
+            if on != self.enabled.groups {
+                self.enabled.groups = on;
+            }
+        }
         let hour = (self.sent.as_ref()).is_none_or(|(hour, _)| *hour != self.hour);
         let enabled = (self.sent.as_ref()).is_none_or(|(_, enabled)| *enabled != self.enabled);
         if hour {
@@ -400,31 +413,46 @@ impl Viewer {
         Some((model, read))
     }
 
-    /// The day the frame is lit by and the lights around the camera, at the viewer's hour.
+    /// The day the frame is lit by, the lights around the camera, and the exposure a material's own light is given at, at the viewer's hour.
     pub fn sky(
         &mut self,
         days: f32,
         weather: crate::state::drivers::WeatherState,
     ) -> (
         Option<or_renderer::game_shaders::lighting::Day>,
-        Vec<or_renderer::PointLight>,
+        (Vec<or_renderer::PointLight>, Vec<or_renderer::SpotLight>),
+        f32,
     ) {
         let (eye, hour) = (self.camera.position, self.hour);
-        let day = (self.root.as_deref())
-            .and_then(sky::tables)
-            .and_then(|tables| sky::day_of(&tables, hour, days, weather, eye.y));
-        let night = day.as_ref().map_or(0.0, |day| day.night_emissive);
+        let tables = self.root.as_deref().and_then(sky::tables);
+        let day = (tables.as_ref())
+            .and_then(|tables| sky::day_of(tables, hour, days, weather, eye.y));
+        let scale = sky::light_scale(tables.as_deref(), hour, weather, eye.y);
         let enabled = self.enabled.clone();
-        let lights = self.lights.as_mut().map_or_else(Vec::new, |lights| {
+        let lights = self.lights.as_mut().map_or_else(Default::default, |lights| {
+            if let Some(tables) = &tables {
+                lights.set_reach(lights_frame::LodReach::of(&tables.visual_settings));
+            }
             lights.set_enabled(&enabled);
             lights.look(eye);
-            lights.point_lights(eye, hour, night, 256)
+            lights.lights(eye, hour, scale, lights::MOST)
         });
-        (day, lights)
+        // The lights take the exposure over pi; a material's own light is a radiance and takes it whole.
+        let exposure = match day {
+            Some(_) => scale * std::f32::consts::PI,
+            None => 1.0,
+        };
+        (day, lights, exposure)
     }
 
-    /// The water of the install shown, once it is read.
-    pub fn water(&self) -> Option<Arc<or_io::gta6::water::WaterData>> {
-        self.root.as_deref().and_then(water::water)
+    /// The water of the install shown once its quads are read, with the ground under it and the day it is seen in.
+    pub fn water(&self, weather: crate::state::drivers::WeatherState) -> Option<water::Seen> {
+        let root = self.root.as_deref()?;
+        water::seen(root, self.hour, weather, self.camera.position.y)
+    }
+
+    /// The scale every distance is multiplied by: the person's, and the lens's where it is narrower than the game's.
+    fn distance_scale(&self) -> f32 {
+        self.lod_scale * or_world::streaming::camera_scale(self.camera.fov_y)
     }
 }
