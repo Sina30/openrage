@@ -5,10 +5,12 @@
 //! there, an occluder that holds the eye is left out, and a texel counts as covered only where
 //! every corner of it is, at the farthest of their depths.
 
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use or_io::gta6::map::occluders::{MapOccluders, OccludeModel, BOX_TRIANGLES};
+use rayon::prelude::*;
 
 /// The raster the occluders are drawn into, in texels.
 const WIDE: usize = 128;
@@ -28,6 +30,8 @@ const MOST_BOXES: usize = 512;
 const MOST_MODELS: usize = 416;
 /// How far along the view a point must lie ahead of the eye to be drawn or tested, in metres.
 const NEAR: f32 = 0.1;
+/// The rows of corners a core fills at a time.
+const BAND: usize = 4;
 
 /// A view's matrix, by its bits, and the occluders drawn for it.
 type DrawnFor = ([u32; 16], Arc<[Arc<MapOccluders>]>);
@@ -83,6 +87,74 @@ fn edge(a: Vec3, b: Vec3, p: Vec3) -> f32 {
     (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
 }
 
+/// The part of a triangle of the world `view_proj` sees ahead of the near plane, put on `flat`
+/// as triangles of the raster whose `z` is one over depth.
+fn cut(view_proj: Mat4, points: [Vec3; 3], flat: &mut Vec<[Vec3; 3]>) {
+    let clips = points.map(|p| view_proj * p.extend(1.0));
+    // Cut by one plane, a triangle leaves no point, three or four.
+    let (mut ahead, mut count) = ([Vec3::ZERO; 4], 0);
+    for k in 0..3 {
+        let (p, q) = (clips[k], clips[(k + 1) % 3]);
+        let mut put = |clip: Vec4| {
+            ahead[count] = screen(clip).extend(1.0 / clip.w);
+            count += 1;
+        };
+        if p.w >= NEAR {
+            put(p);
+        }
+        if (p.w >= NEAR) != (q.w >= NEAR) {
+            put(p.lerp(q, (NEAR - p.w) / (q.w - p.w)));
+        }
+    }
+    for k in 1..count.saturating_sub(1) {
+        flat.push([ahead[0], ahead[k], ahead[k + 1]]);
+    }
+}
+
+/// The columns and the rows of corners a screen triangle may hold; none for one seen edge on
+/// or off the raster.
+fn bounds([a, b, c]: &[Vec3; 3]) -> Option<(RangeInclusive<usize>, RangeInclusive<usize>)> {
+    let (lo, hi) = (a.min(*b).min(*c), a.max(*b).max(*c));
+    if edge(*a, *b, *c).abs() <= f32::EPSILON
+        || hi.x < 0.0
+        || hi.y < 0.0
+        || lo.x > GRID.x
+        || lo.y > GRID.y
+    {
+        return None;
+    }
+    // Float to integer casts hold at the bounds, and a bound past the raster is held to it.
+    let (x0, y0) = (lo.x.max(0.0).ceil() as usize, lo.y.max(0.0).ceil() as usize);
+    let (x1, y1) = (hi.x.min(GRID.x) as usize, hi.y.min(GRID.y) as usize);
+    (y0 <= y1).then_some((x0..=x1, y0..=y1))
+}
+
+/// Mark each corner in `rows`, the rows of corners from `first` on, that the screen triangle
+/// `a`, `b`, `c` holds with its one over depth there, where that is nearer than what is marked.
+fn fill(rows: &mut [f32], first: usize, [a, b, c]: [Vec3; 3]) {
+    let Some((columns, held)) = bounds(&[a, b, c]) else {
+        return;
+    };
+    let twice = edge(a, b, c);
+    let last = first + rows.len() / CORNERS_WIDE;
+    for j in *held.start().max(&first)..=*held.end().min(&(last - 1)) {
+        for i in columns.clone() {
+            let p = Vec3::new(i as f32, j as f32, 0.0);
+            let (u, v, w) = (edge(b, c, p), edge(c, a, p), edge(a, b, p));
+            let inside = if twice > 0.0 {
+                u >= 0.0 && v >= 0.0 && w >= 0.0
+            } else {
+                u <= 0.0 && v <= 0.0 && w <= 0.0
+            };
+            if inside {
+                let near = (u * a.z + v * b.z + w * c.z) / twice;
+                let at = &mut rows[(j - first) * CORNERS_WIDE + i];
+                *at = at.max(near);
+            }
+        }
+    }
+}
+
 /// Keep the `most` largest of `list`, the largest first.
 fn largest<T>(list: &mut Vec<(f32, T)>, most: usize) {
     list.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
@@ -128,20 +200,53 @@ impl Occlusion {
         largest(&mut boxes, MOST_BOXES);
         largest(&mut models, MOST_MODELS);
         self.drawn = (boxes.len(), models.len());
+        let view_proj = self.view_proj;
+        let mut flat = Vec::new();
         for (_, corners) in &boxes {
             for triangle in BOX_TRIANGLES {
-                self.triangle(triangle.map(|k| corners[usize::from(k)]));
+                cut(
+                    view_proj,
+                    triangle.map(|k| corners[usize::from(k)]),
+                    &mut flat,
+                );
             }
         }
-        for (_, model) in &models {
-            for triangle in &model.triangles {
-                let point = |k: u8| model.vertices.get(usize::from(k)).copied().map(Vec3::from);
-                if let [Some(a), Some(b), Some(c)] = triangle.map(point) {
-                    self.triangle([a, b, c]);
+        let modelled: Vec<[Vec3; 3]> = (models.par_iter())
+            .flat_map_iter(|(_, model)| {
+                let mut flat = Vec::new();
+                for triangle in &model.triangles {
+                    let point = |k: u8| model.vertices.get(usize::from(k)).copied().map(Vec3::from);
+                    if let [Some(a), Some(b), Some(c)] = triangle.map(point) {
+                        cut(view_proj, [a, b, c], &mut flat);
+                    }
+                }
+                flat
+            })
+            .collect();
+        flat.extend(modelled);
+        self.raster(&flat);
+        self.reduce();
+    }
+
+    /// Mark every corner each screen triangle of `flat` holds, a band of rows on each core.
+    // ⚠ A corner takes the nearest of the triangles that hold it, which is the same in any order: the buffer is the one a single core draws.
+    fn raster(&mut self, flat: &[[Vec3; 3]]) {
+        let mut binned = vec![Vec::new(); (HIGH + 1).div_ceil(BAND)];
+        for (k, triangle) in flat.iter().enumerate() {
+            if let Some((_, rows)) = bounds(triangle) {
+                for band in &mut binned[*rows.start() / BAND..=*rows.end() / BAND] {
+                    band.push(k);
                 }
             }
         }
-        self.reduce();
+        (self.corners.par_chunks_mut(CORNERS_WIDE * BAND))
+            .zip(binned.par_iter())
+            .enumerate()
+            .for_each(|(band, (rows, list))| {
+                for k in list {
+                    fill(rows, band * BAND, flat[*k]);
+                }
+            });
     }
 
     /// The screen area of the box of these corners in texels of the raster, the whole screen's
@@ -163,60 +268,6 @@ impl Occlusion {
         }
         let size = (hi.min(GRID) - lo.max(Vec2::ZERO)).max(Vec2::ZERO);
         Some(size.x * size.y)
-    }
-
-    /// Draw the part of a triangle of the world that lies ahead of the near plane.
-    fn triangle(&mut self, points: [Vec3; 3]) {
-        let clips = points.map(|p| self.view_proj * p.extend(1.0));
-        // Cut by one plane, a triangle leaves no point, three or four.
-        let (mut ahead, mut count) = ([Vec3::ZERO; 4], 0);
-        for k in 0..3 {
-            let (p, q) = (clips[k], clips[(k + 1) % 3]);
-            let mut put = |clip: Vec4| {
-                ahead[count] = screen(clip).extend(1.0 / clip.w);
-                count += 1;
-            };
-            if p.w >= NEAR {
-                put(p);
-            }
-            if (p.w >= NEAR) != (q.w >= NEAR) {
-                put(p.lerp(q, (NEAR - p.w) / (q.w - p.w)));
-            }
-        }
-        for k in 1..count.saturating_sub(1) {
-            self.fill(ahead[0], ahead[k], ahead[k + 1]);
-        }
-    }
-
-    /// Mark each corner the screen triangle `a`, `b`, `c` holds with its one over depth there,
-    /// where that is nearer than what is marked; `z` of a point is one over its depth.
-    fn fill(&mut self, a: Vec3, b: Vec3, c: Vec3) {
-        let twice = edge(a, b, c);
-        let (lo, hi) = (a.min(b).min(c), a.max(b).max(c));
-        // A triangle seen edge on, or one off the raster, marks nothing.
-        if twice.abs() <= f32::EPSILON || hi.x < 0.0 || hi.y < 0.0 || lo.x > GRID.x || lo.y > GRID.y
-        {
-            return;
-        }
-        // Float to integer casts hold at the bounds, and a bound past the raster is held to it.
-        let (x0, y0) = (lo.x.max(0.0).ceil() as usize, lo.y.max(0.0).ceil() as usize);
-        let (x1, y1) = (hi.x.min(GRID.x) as usize, hi.y.min(GRID.y) as usize);
-        for j in y0..=y1 {
-            for i in x0..=x1 {
-                let p = Vec3::new(i as f32, j as f32, 0.0);
-                let (u, v, w) = (edge(b, c, p), edge(c, a, p), edge(a, b, p));
-                let inside = if twice > 0.0 {
-                    u >= 0.0 && v >= 0.0 && w >= 0.0
-                } else {
-                    u <= 0.0 && v <= 0.0 && w <= 0.0
-                };
-                if inside {
-                    let near = (u * a.z + v * b.z + w * c.z) / twice;
-                    let at = &mut self.corners[j * CORNERS_WIDE + i];
-                    *at = at.max(near);
-                }
-            }
-        }
     }
 
     /// Reduce the corners to the farthest of each 2 x 2 texels.

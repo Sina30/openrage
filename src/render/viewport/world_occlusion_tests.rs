@@ -133,3 +133,35 @@ fn the_buffer_is_drawn_again_only_when_the_view_or_the_occluders_change() {
     occlusion.draw(&walls(&[wall()]), view_proj, Vec3::ZERO);
     assert!(occlusion.any);
 }
+
+/// Numbers from nought to one, the same on every run.
+fn numbers(count: usize) -> Vec<f32> {
+    let mut seed = 7u32;
+    (0..count)
+        .map(|_| {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        })
+        .collect()
+}
+
+#[test]
+fn the_buffer_drawn_a_band_on_each_core_is_the_one_drawn_whole() {
+    // Triangles over several bands, past the raster's edges and through one another.
+    let n = numbers(900 * 3);
+    let flat: Vec<[Vec3; 3]> = (n.chunks_exact(9))
+        .map(|t| {
+            let point = |k: usize| Vec3::new(t[k] * 160.0 - 16.0, t[k + 1] * 90.0 - 9.0, t[k + 2]);
+            [point(0), point(3), point(6)]
+        })
+        .collect();
+    let mut banded = Occlusion::default();
+    banded.corners = vec![0.0; CORNERS];
+    banded.raster(&flat);
+    let mut whole = vec![0.0; CORNERS];
+    for triangle in &flat {
+        fill(&mut whole, 0, *triangle);
+    }
+    assert!(whole.iter().any(|near| *near > 0.0), "something is drawn");
+    assert_eq!(banded.corners, whole);
+}
