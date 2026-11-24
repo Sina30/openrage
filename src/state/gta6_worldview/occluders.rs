@@ -96,7 +96,9 @@ impl Occluders {
         let mut changed = false;
         for (name, read) in self.readers.take(|| true) {
             match read {
-                Some(read) if self.wanted.contains_key(&name) => {
+                Some(read)
+                    if self.wanted.contains_key(&name) && !self.loaded.contains_key(&name) =>
+                {
                     self.loaded.insert(name, Arc::new(read));
                     changed = true;
                 }
@@ -119,12 +121,13 @@ impl Occluders {
             let kept = &self.wanted;
             self.loaded.retain(|name, _| kept.contains_key(name));
             changed |= self.loaded.len() != before;
-            let asked = (self.wanted.iter())
-                .filter(|(name, _)| !self.loaded.contains_key(name) && !self.failed.contains(name))
-                .map(|(name, away)| (*away, *name))
-                .collect();
-            self.readers.want(asked);
         }
+        // Asked on every pass, so a map that arrived leaves the pool's queue.
+        let asked = (self.wanted.iter())
+            .filter(|(name, _)| !self.loaded.contains_key(name) && !self.failed.contains(name))
+            .map(|(name, away)| (*away, *name))
+            .collect();
+        self.readers.want(asked);
         if changed {
             self.held = self.loaded.values().cloned().collect();
         }
@@ -178,10 +181,10 @@ mod tests {
     fn a_script_managed_or_unregistered_occluder_map_waits_for_what_switches_it_on() {
         let near = View::at(Vec3::splat(50.0), 1.0);
         let mut enabled = Enabled::default();
-        assert!(!wanted(&row(OCCLUDERS | 1, 2), &enabled, &near));
+        assert!(!wanted(&row(OCCLUDERS, 2), &enabled, &near));
         assert!(!wanted(&row(OCCLUDERS, 1), &enabled, &near));
         enabled.groups.push(7);
-        assert!(wanted(&row(OCCLUDERS | 1, 2), &enabled, &near));
+        assert!(wanted(&row(OCCLUDERS, 2), &enabled, &near));
         // A mode that is off.
         let story = Enabled {
             modes: 2,
