@@ -130,8 +130,9 @@ pub(crate) struct Cards {
     buffers: [Option<wgpu::Buffer>; 4],
     bound: [u64; 4],
     group: Option<wgpu::BindGroup>,
-    /// The records of each list last set, by its place.
+    /// The records of each list last set, by its place, and the records last uploaded.
     spans: Vec<Range<u32>>,
+    uploaded: Vec<Arc<[[u8; 16]]>>,
     /// The runs of records of the lists shown, those side by side joined.
     shown: Vec<Range<u32>>,
     bake: Bake,
@@ -280,6 +281,7 @@ impl Cards {
             bound: [0; 4],
             group: None,
             spans: Vec::new(),
+            uploaded: Vec::new(),
             shown: Vec::new(),
             bake: Bake::new(device, queue),
         };
@@ -336,23 +338,28 @@ impl Cards {
     }
 
     /// Upload `lists`, each record with the place of its list; a list past the most a storage binding holds is left out. None is shown.
+    // ⚠ Lists whose records are the very ones uploaded last, in the same order, write only their distances and fades: a fade changes them every selection.
     fn set_lists(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, lists: &[CardBatch]) {
         let most = device.limits().max_storage_buffer_binding_size / 16;
         let held: usize = lists.iter().map(|list| list.records.len()).sum();
-        let mut records: Vec<u8> = Vec::with_capacity(held * 16);
-        let mut list_of: Vec<u32> = Vec::with_capacity(held);
+        let again = lists.len() == self.uploaded.len()
+            && (lists.iter().zip(&self.uploaded)).all(|(list, was)| Arc::ptr_eq(&list.records, was));
+        let mut records: Vec<u8> = Vec::with_capacity(if again { 0 } else { held * 16 });
+        let mut list_of: Vec<u32> = Vec::with_capacity(if again { 0 } else { held });
         let mut gpu = Vec::with_capacity(lists.len());
         self.spans.clear();
         self.shown.clear();
+        let mut start = 0u32;
         for (at, list) in lists.iter().enumerate() {
-            let start = list_of.len() as u32;
-            let end = start as u64 + list.records.len() as u64;
+            let end = u64::from(start) + list.records.len() as u64;
             if end > most || end > u64::from(u32::MAX) {
                 tracing::warn!(lists = lists.len() - at, "far stand-ins past what the device binds are left out");
                 break;
             }
-            records.extend_from_slice(bytemuck::cast_slice(&list.records));
-            list_of.extend(std::iter::repeat_n(at as u32, list.records.len()));
+            if !again {
+                records.extend_from_slice(bytemuck::cast_slice(&list.records[..]));
+                list_of.extend(std::iter::repeat_n(at as u32, list.records.len()));
+            }
             let [x, y, z] = list.min;
             let [w, h, d] = list.size;
             let [least, most_scale] = list.scale_range;
@@ -362,15 +369,22 @@ impl Cards {
                 reach: [list.distance, list.fade, 0.0, 0.0],
             });
             self.spans.push(start..end as u32);
+            start = end as u32;
         }
         // ⚠ A binding is never empty: nothing reads past the records the draws name.
-        if records.is_empty() {
-            records.resize(16, 0);
-            list_of.resize(4, 0);
+        if gpu.is_empty() {
             gpu.push(GpuList::zeroed());
         }
-        self.write(device, queue, RECORDS, &records);
-        self.write(device, queue, LIST_OF, bytemuck::cast_slice(&list_of));
+        if !again {
+            if records.is_empty() {
+                records.resize(16, 0);
+                list_of.resize(4, 0);
+            }
+            self.write(device, queue, RECORDS, &records);
+            self.write(device, queue, LIST_OF, bytemuck::cast_slice(&list_of));
+            // Held, so that no other records come to lie where these did and pass for them.
+            self.uploaded = lists.iter().map(|list| Arc::clone(&list.records)).collect();
+        }
         self.write(device, queue, LISTS, bytemuck::cast_slice(&gpu));
         self.regroup(device);
     }
