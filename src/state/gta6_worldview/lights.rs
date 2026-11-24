@@ -33,6 +33,8 @@ const PLACED_REACH: f32 = 150.0;
 const LOD_LIGHTS: u32 = 1 << 7;
 const DISTANT_LIGHTS: u32 = 1 << 8;
 const HIGH_DETAIL: u32 = 1;
+/// What [`super::index::MapRow::held`] says of a map that places nothing.
+const HELD_EMPTY: u32 = 3;
 
 /// What was read of the lights around the camera, for a panel to say.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -231,11 +233,18 @@ impl Lights {
     // ponytail: every map's box is tested each time the camera has moved, as the streamer does.
     fn rewant(&mut self, eye: Vec3) {
         self.wanted.clear();
-        for row in (self.index.maps.iter()).filter(|m| self.enabled.allows(m)) {
+        let modes = u32::from(self.enabled.modes);
+        for row in self.index.maps.iter() {
+            let lists = row.content_flags & (LOD_LIGHTS | DISTANT_LIGHTS) != 0;
+            // A map of light lists places no entity, which the index counts as empty: its lights stream all the same.
+            let empty_list = lists && row.held == HELD_EMPTY && row.modes & modes != 0;
+            if !(self.enabled.allows(row) || empty_list) {
+                continue;
+            }
             let boxes = row.boxes();
             let (min, max) = boxes.entities;
             let away = eye.distance(eye.clamp(min, max));
-            let lists = row.content_flags & (LOD_LIGHTS | DISTANT_LIGHTS) != 0 && boxes.wants(eye);
+            let lists = lists && boxes.wants(eye);
             let near = row.content_flags & HIGH_DETAIL != 0 && away <= PLACED_REACH;
             if lists || near {
                 self.wanted.insert(row.name, away);

@@ -92,6 +92,37 @@ fn lists_that_do_not_pair_light_for_light_draw_nothing() {
 }
 
 #[test]
+fn a_map_of_light_lists_is_wanted_though_it_places_nothing_and_a_held_map_is_not() {
+    let row = |name: u32, content_flags: u32, held: u32| super::super::index::MapRow {
+        name,
+        content_flags,
+        held,
+        modes: 1,
+        boxes: [
+            -100.0, -100.0, -100.0, 100.0, 100.0, 100.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0,
+        ],
+        ..bytemuck::Zeroable::zeroed()
+    };
+    let mut index = WorldIndex::default();
+    index.maps = vec![
+        row(1, LOD_LIGHTS, HELD_EMPTY),
+        row(2, DISTANT_LIGHTS, HELD_EMPTY),
+        row(3, LOD_LIGHTS, 2),
+        row(4, HIGH_DETAIL, HELD_EMPTY),
+        row(5, HIGH_DETAIL, 0),
+    ];
+    let mut lights = Lights::new(Arc::new(index));
+    lights.rewant(Vec3::ZERO);
+    let mut wanted: Vec<u32> = lights.wanted.keys().copied().collect();
+    wanted.sort_unstable();
+    assert_eq!(
+        wanted,
+        [1, 2, 5],
+        "a script-managed list follows its group; an empty map of entities stays out"
+    );
+}
+
+#[test]
 fn the_lights_of_a_body_that_is_no_map_are_none() {
     let mut model = lights_lod::tests::model(&[], &[]);
     model.data_blocks[0].data_type = 1;
