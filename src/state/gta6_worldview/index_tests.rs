@@ -1,3 +1,4 @@
+use super::scan::{container_of, Shard};
 use super::*;
 
 fn archetype(word: u64, model: u64, dictionary: u64, name: u32) -> ArchetypeRow {
@@ -10,7 +11,7 @@ fn archetype(word: u64, model: u64, dictionary: u64, name: u32) -> ArchetypeRow 
         centre: [0.0, 0.0, 1.0],
         radius: 2.0,
         flags: 0,
-        pad: 0,
+        hours: ALL_HOURS,
     }
 }
 
@@ -23,6 +24,7 @@ fn body(word: u64, archive: u32, offset: u64) -> BodyRow {
     }
 }
 
+/// A map of the base game named `name`, held back as `held` says.
 fn map(name: u32, held: u32) -> MapRow {
     MapRow {
         archive: 0,
@@ -33,6 +35,8 @@ fn map(name: u32, held: u32) -> MapRow {
         held,
         parents_from: 0,
         parents_len: 0,
+        group: 0,
+        modes: 1,
         offset: u64::from(name) * 16,
         boxes: [
             -10.0, -10.0, -10.0, 10.0, 10.0, 10.0, -5.0, -5.0, -5.0, 5.0, 5.0, 5.0,
@@ -42,7 +46,11 @@ fn map(name: u32, held: u32) -> MapRow {
 
 /// An index of two maps, three archetypes and the bodies that draw two of them.
 fn made_up(archive: PathBuf) -> WorldIndex {
-    let mut second = map(22, 2);
+    let mut second = MapRow {
+        flags: 1,
+        group: 77,
+        ..map(22, 2)
+    };
     (second.parents_from, second.parents_len) = (0, 1);
     WorldIndex {
         archives: vec![archive],
@@ -50,14 +58,20 @@ fn made_up(archive: PathBuf) -> WorldIndex {
         parents: vec![11],
         archetypes: vec![
             archetype(300, 900, 0, 1),
-            archetype(100, 800, 0, 2),
+            ArchetypeRow {
+                hours: 0x0000_00F0,
+                ..archetype(100, 800, 0, 2)
+            },
             archetype(200, 0, 700, 3),
         ],
         models: vec![body(900, 0, 0x900), body(800, 0, 0x800)],
         dictionaries: vec![body(700, 0, 0x700)],
+        interiors: vec![body(600, 0, 0x650), body(600, 0, 0x600)],
         report: Report {
             maps: 2,
             at_rest: 1,
+            story: 5,
+            permanent_found: 9,
             ..Report::default()
         },
         ..WorldIndex::default()
@@ -112,6 +126,139 @@ fn the_later_of_two_bodies_that_state_one_archetype_stands() {
 }
 
 #[test]
+fn a_map_streams_when_its_mode_is_on_and_a_script_managed_one_when_its_group_is_too() {
+    let at_rest = Enabled::default();
+    assert_eq!((at_rest.modes, at_rest.groups.len()), (1, 0));
+    let story = MapRow {
+        modes: 2,
+        ..map(1, 0)
+    };
+    let managed = MapRow {
+        group: 77,
+        ..map(2, 2)
+    };
+    let both = MapRow {
+        modes: 3,
+        ..map(3, 0)
+    };
+    let rows = [map(0, 0), story, managed, both, map(4, 1), map(5, 3)];
+    let allowed = |enabled: &Enabled| rows.map(|row| enabled.allows(&row));
+    assert_eq!(allowed(&at_rest), [true, false, false, true, false, false]);
+    let with_story = Enabled {
+        modes: 3,
+        groups: vec![],
+    };
+    assert_eq!(
+        allowed(&with_story),
+        [true, true, false, true, false, false]
+    );
+    let story_alone = Enabled {
+        modes: 2,
+        groups: vec![77],
+    };
+    assert_eq!(
+        allowed(&story_alone),
+        [false, true, false, true, false, false],
+        "a group of a mode that is off stays off"
+    );
+    let with_group = Enabled {
+        modes: 1,
+        groups: vec![5, 77],
+    };
+    assert_eq!(
+        allowed(&with_group),
+        [true, false, true, true, false, false]
+    );
+    // A map no pack registers, and one that holds nothing, stream under nothing.
+    let all = Enabled {
+        modes: 7,
+        groups: vec![77, 0],
+    };
+    assert_eq!(allowed(&all), [true, true, true, true, false, false]);
+}
+
+#[test]
+fn the_mount_gives_a_map_its_modes_its_hold_and_its_group() {
+    let fact = |flags, holds| MapFact {
+        archive: 0,
+        container: None,
+        name: 0,
+        block: 0,
+        flags,
+        holds,
+    };
+    let row = |name, flags, group| MapRow {
+        flags,
+        group,
+        modes: 9,
+        ..map(name, 9)
+    };
+    let mut maps = [
+        row(1, 0, 0),
+        row(2, 0, 0),
+        row(3, 1, 55),
+        row(4, 3, 0),
+        row(5, 2, 0),
+        row(6, 0, 66),
+        row(7, 1, 55),
+    ];
+    let facts = [
+        fact(0, true),
+        fact(0, true),
+        fact(1, true),
+        fact(3, false),
+        fact(2, false),
+        fact(0, true),
+        fact(1, true),
+    ];
+    place(&mut maps, &facts, &[1, 0, 1, 4, 2, 3, 0]);
+    let got: Vec<(u32, u32, u32)> = maps.iter().map(|m| (m.modes, m.held, m.group)).collect();
+    assert_eq!(
+        got,
+        [
+            (1, 0, 0),
+            (0, 1, 0),
+            (1, 2, 55),
+            // A script-managed map that states no group is a group of its own, by its name.
+            (4, 2, 4),
+            (2, 3, 0),
+            // A group stated by a map that is not script managed is no group.
+            (3, 0, 0),
+            (0, 1, 55),
+        ]
+    );
+    let report = counted(&maps);
+    assert_eq!(
+        (report.maps, report.registered, report.at_rest),
+        (7, 3, 2)
+    );
+    assert_eq!((report.script_managed, report.empty), (1, 0));
+    assert_eq!((report.story, report.minigames), (2, 1));
+
+    let index = WorldIndex {
+        maps: maps.to_vec(),
+        ..WorldIndex::default()
+    }
+    .finish();
+    assert_eq!(
+        index.groups(),
+        [
+            Group {
+                id: 4,
+                name: 4,
+                maps: 1
+            },
+            Group {
+                id: 55,
+                name: 55,
+                maps: 2
+            }
+        ]
+    );
+    assert_eq!(index.report.groups, 2);
+}
+
+#[test]
 fn a_kept_index_reads_back_as_it_was_until_an_archive_changes() {
     let dir = tempfile::tempdir().expect("a scratch folder");
     let archive = dir.path().join("levels.rpf");
@@ -127,8 +274,15 @@ fn a_kept_index_reads_back_as_it_was_until_an_archive_changes() {
     assert_eq!(read.archetypes, index.archetypes);
     assert_eq!(read.models, index.models);
     assert_eq!(read.dictionaries, index.dictionaries);
+    assert_eq!(read.interiors, index.interiors);
+    assert_eq!(read.interior(600), Some(&body(600, 0, 0x600)));
+    assert_eq!(read.interior(601), None);
     assert_eq!(read.report, index.report);
     assert_eq!(read.map_named(22), Some(1));
+    // The groups are worked out again from the maps, and an archetype keeps its hours.
+    assert_eq!(read.groups(), index.groups());
+    assert_eq!(read.groups().len(), 1);
+    assert_eq!(read.archetype(100).map(|a| a.hours), Some(0xF0));
 
     // A kept index cut short is refused, never read as fewer rows.
     let whole = std::fs::read(&file).expect("the kept bytes");
@@ -178,30 +332,10 @@ fn a_dictionary_word_is_the_one_body_that_holds_a_drawable_under_every_name() {
 }
 
 #[test]
-fn the_level_s_folders_are_counted_from_the_archives_named_on_the_platform_device() {
-    let file = |name: &str| or_title::dlc::RegisteredFile {
-        filename: name.to_string(),
-        ..Default::default()
-    };
-    let files = [
-        file("platform:/levels/made/up/a_metadata.rpf"),
-        file("platform:/LEVELS/made/up/b.rpf"),
-        file("platform:/levels/made/up/c.ityp"),
-        file("platform:/textures/d.rpf"),
-        file("common:/data/levels/e.rpf"),
-        file("platform:/loose.rpf"),
-    ];
-    let refs: Vec<&or_title::dlc::RegisteredFile> = files.iter().collect();
-    let folders = level_folders(&refs);
-    assert_eq!(folders.get("levels"), Some(&2));
-    assert_eq!(folders.get("textures"), Some(&1));
-    assert_eq!(folders.len(), 2);
-}
-
-#[test]
 fn what_a_range_found_before_the_end_of_the_last_body_before_it_is_dropped() {
     let mut shard = Shard {
         models: vec![(1, 90), (2, 120), (3, 300)],
+        types: vec![95, 130],
         archives: vec![80, 150],
         ends: vec![(80, 100), (150, 400)],
         offsets: vec![80, 90, 120, 150, 300],
@@ -209,7 +343,11 @@ fn what_a_range_found_before_the_end_of_the_last_body_before_it_is_dropped() {
     };
     shard.cut_before(100);
     assert_eq!(shard.models, vec![(2, 120), (3, 300)]);
+    assert_eq!(shard.types, vec![130]);
     assert_eq!(shard.archives, vec![150]);
     assert_eq!(shard.ends, vec![(150, 400)]);
     assert_eq!(shard.offsets, vec![120, 150, 300]);
+    // A nested archive with the end its names give it, and one whose names were not found.
+    shard.archives.push(140);
+    assert_eq!(shard.nested(), [(140, None), (150, Some(400))]);
 }

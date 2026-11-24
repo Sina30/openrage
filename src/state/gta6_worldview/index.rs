@@ -1,40 +1,31 @@
-//! The index of a GTA VI install the world viewer streams from: the maps the level registers with
+//! The index of a GTA VI install the world viewer streams from: the maps each pack registers with
 //! their boxes, each archetype by its word, and where each model's body lies. It is built by one
-//! pass over the level's archives on every core, and kept in the configuration folder while the
+//! pass over the world's archives on every core, and kept in the configuration folder while the
 //! archives' sizes and modification times stand.
 //!
 //! ⚠ A map's entities are not in it: a map's body is read when the map streams in.
 
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::UNIX_EPOCH;
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
-use or_io::container::rpf::{Rpf9BodyKind, Rpf9Role, Rpf9Scan, Rpf9ScanFind, Rpf9ZlibRun};
-use or_io::gta6::hash::name_hash64;
-use or_io::gta6::headerless::{read_dictionary, stated_model_word, Entry};
-use or_io::gta6::map::{self, MapBody};
 use or_job::{Cancel, Progress};
-use or_title::gta6_mount::{self, HeldBack, MapFact, Registry};
+use or_title::gta6_mount::{self, HeldBack, MapFact, Mode, SCRIPT_MANAGED};
 use or_world::streaming::MapBox;
 
-/// The bytes of an archive one scan reads before the next worker takes over.
-const RANGE: u64 = 256 << 20;
-/// The inflated bytes kept of a body: more than any map or dictionary was measured to hold.
-const KEEP: usize = 96 << 20;
-/// How far past the end of a range's last body the scan after it is checked against a fresh one.
-const STITCH: u64 = 32 << 20;
-/// An archive larger than this holds no registration document.
-const SMALL: u64 = 1 << 30;
-/// The fewest archives a device's folder must be named for to be scanned as the level's.
-const NAMED: usize = 16;
-const MAGIC: &[u8; 8] = b"ORWIDX\0\0";
-/// The version of the kept index: a change to it, or to what a build reads, takes another.
-const VERSION: u64 = 1;
+#[path = "index_keep.rs"]
+mod keep;
+#[path = "index_mount.rs"]
+mod mount;
+#[path = "index_scan.rs"]
+mod scan;
+#[path = "index_types.rs"]
+mod types;
+
+pub use keep::kept_at;
+pub use types::ALL_HOURS;
 
 /// A map of the index.
 #[repr(C)]
@@ -46,11 +37,15 @@ pub struct MapRow {
     pub block: u32,
     pub flags: u32,
     pub content_flags: u32,
-    /// Why it does not stream at rest: 0 where it does, 1 not registered, 2 script managed, 3 empty.
+    /// Why it does not stream once its mode is on: 0 where it does, 1 no pack registers it, 2 script managed, 3 empty.
     pub held: u32,
     /// The names of the maps its level-of-detail parents lie in: a run of the index's parent names.
     pub parents_from: u32,
     pub parents_len: u32,
+    /// The group a script-managed map is switched with, by the group's id; 0 for a map that is not script managed.
+    pub group: u32,
+    /// The modes whose packs register it: bit 0 the base game, bit 1 story, bit 2 the shared minigames.
+    pub modes: u32,
     pub offset: u64,
     /// The streaming box, lowest corner then highest, then the entities' box.
     pub boxes: [f32; 12],
@@ -80,7 +75,8 @@ pub struct ArchetypeRow {
     pub centre: [f32; 3],
     pub radius: f32,
     pub flags: u32,
-    pub pad: u32,
+    /// The hours it is on, bit `h` for the hour `h` of 0 to 23; all 24 for one that is no time archetype.
+    pub hours: u32,
 }
 
 /// Where a model's body lies, by the word that names it.
@@ -111,6 +107,7 @@ pub struct Report {
     pub named_archives: u64,
     pub bound_archives: u64,
     pub maps: u64,
+    /// The maps the base game registers, and of those the ones at rest, script managed and empty.
     pub registered: u64,
     pub at_rest: u64,
     pub script_managed: u64,
@@ -119,6 +116,61 @@ pub struct Report {
     pub models: u64,
     /// Bodies shaped as a map, a map types or a dictionary that did not read.
     pub unread: u64,
+    /// The maps the story packs register, and the shared minigames'.
+    pub story: u64,
+    pub minigames: u64,
+    /// The groups of script-managed maps.
+    pub groups: u64,
+    /// 1 where the archives' tables bound the maps, 0 where the block maps did.
+    pub by_table: u64,
+    /// The maps of the base game the tables and the block maps bind differently.
+    pub disagree: u64,
+    /// The level's change sets whose file a table lists under a cipher of its own.
+    pub sets_ciphered: u64,
+    /// The permanent map-types files the sets name, and those whose archive holds a map-types body.
+    pub permanent_named: u64,
+    pub permanent_found: u64,
+}
+
+/// What of the world is switched on: the game modes, and the groups of script-managed maps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Enabled {
+    /// Bit 0 the base game, bit 1 story, bit 2 the shared minigames.
+    pub modes: u8,
+    /// The ids of the script-managed groups switched on.
+    pub groups: Vec<u32>,
+}
+
+impl Default for Enabled {
+    fn default() -> Self {
+        Self {
+            modes: Mode::Base.bit(),
+            groups: Vec::new(),
+        }
+    }
+}
+
+impl Enabled {
+    /// Whether `row` streams: a mode that registers it is on, it holds something, and where it is script managed its group is on.
+    pub fn allows(&self, row: &MapRow) -> bool {
+        row.modes & u32::from(self.modes) != 0
+            && match row.held {
+                0 => true,
+                2 => self.groups.contains(&row.group),
+                _ => false,
+            }
+    }
+}
+
+/// A group of script-managed maps that are switched together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Group {
+    /// What [`Enabled::groups`] and [`MapRow::group`] name it by.
+    pub id: u32,
+    /// The 32-bit hash of its name: the id itself, which is the name its maps state, or the map's own name for a map that states none.
+    pub name: u32,
+    /// How many maps it holds.
+    pub maps: u32,
 }
 
 /// The index of one install.
@@ -130,8 +182,10 @@ pub struct WorldIndex {
     archetypes: Vec<ArchetypeRow>,
     models: Vec<BodyRow>,
     dictionaries: Vec<BodyRow>,
+    interiors: Vec<BodyRow>,
     pub report: Report,
     by_name: HashMap<u32, u32>,
+    groups: Vec<Group>,
 }
 
 fn by_word<T>(rows: &[T], word: u64, of: impl Fn(&T) -> u64) -> Option<&T> {
@@ -142,6 +196,11 @@ fn by_word<T>(rows: &[T], word: u64, of: impl Fn(&T) -> u64) -> Option<&T> {
 impl WorldIndex {
     pub fn archetype(&self, word: u64) -> Option<&ArchetypeRow> {
         by_word(&self.archetypes, word, |a| a.word)
+    }
+
+    /// Where the map-types body that states the interior `word` names lies.
+    pub fn interior(&self, word: u64) -> Option<&BodyRow> {
+        by_word(&self.interiors, word, |b| b.word)
     }
 
     /// The body that draws `archetype`; `None` for an interior, or a model no body of the index names.
@@ -168,11 +227,17 @@ impl WorldIndex {
         (self.parents.get(from..from + map.parents_len as usize)).unwrap_or_default()
     }
 
+    /// The groups of script-managed maps, by id.
+    pub fn groups(&self) -> &[Group] {
+        &self.groups
+    }
+
     /// The middle of the boxes of the maps that stream at rest, where a camera starts.
     pub fn middle(&self) -> Option<Vec3> {
+        let at_rest = Enabled::default();
         let mut sum = glam::DVec3::ZERO;
         let mut count = 0u32;
-        for map in self.maps.iter().filter(|m| m.held == 0) {
+        for map in self.maps.iter().filter(|m| at_rest.allows(m)) {
             let b = map.boxes();
             let centre = (b.entities.0 + b.entities.1) / 2.0;
             if centre.is_finite() {
@@ -189,354 +254,85 @@ impl WorldIndex {
         self.archetypes.reverse();
         self.archetypes.dedup_by_key(|a| a.word);
         self.archetypes.reverse();
-        for rows in [&mut self.models, &mut self.dictionaries] {
+        for rows in [
+            &mut self.models,
+            &mut self.dictionaries,
+            &mut self.interiors,
+        ] {
             rows.sort_unstable_by_key(|b| (b.word, b.archive, b.offset));
             rows.dedup_by_key(|b| b.word);
         }
         self.by_name = (self.maps.iter().enumerate())
             .map(|(at, m)| (m.name, at as u32))
             .collect();
+        let mut groups = BTreeMap::<u32, u32>::new();
+        for map in (self.maps.iter()).filter(|m| m.group != 0) {
+            *groups.entry(map.group).or_default() += 1;
+        }
+        self.groups = (groups.into_iter())
+            .map(|(id, maps)| Group { id, name: id, maps })
+            .collect();
         self.report.archetypes = self.archetypes.len() as u64;
         self.report.models = (self.models.len() + self.dictionaries.len()) as u64;
+        self.report.groups = self.groups.len() as u64;
         self
     }
 }
 
-/// What one scan of a range of an archive found.
-#[derive(Default)]
-struct Shard {
-    /// Each map with the names of its parents' maps and whether it holds something to draw.
-    maps: Vec<(MapRow, Vec<u32>, bool)>,
-    archetypes: Vec<ArchetypeRow>,
-    /// The word each drawable or fragment body names itself by, with its offset.
-    models: Vec<(u64, u64)>,
-    /// The codes of the drawables each dictionary body holds, with its offset.
-    keys: Vec<(u64, Vec<u32>)>,
-    /// Each nested archive's header, and where the names that end one end.
-    archives: Vec<u64>,
-    ends: Vec<(u64, u64)>,
-    unread: u64,
-    /// Every offset the scan found a body at, in order.
-    offsets: Vec<u64>,
-}
-
-impl Shard {
-    /// Keep what the body `find`, whose first bytes are `bytes`, gives the index.
-    fn take(&mut self, find: &Rpf9ScanFind, bytes: &[u8]) {
-        self.offsets.push(find.offset);
-        let run = match find.kind {
-            Rpf9BodyKind::Archive(_) => return self.archives.push(find.offset),
-            Rpf9BodyKind::Names { archive } => {
-                let end = find.offset + find.stored_len.unwrap_or(find.span);
-                return self.ends.push((archive, end));
-            }
-            Rpf9BodyKind::Zlib(run) => run,
-            _ => return,
+/// Give each map what the mount says of it: the modes that register it, why it is held back, and
+/// a group of its own where it is script managed and states none.
+fn place(maps: &mut [MapRow], facts: &[MapFact], modes: &[u8]) {
+    for ((row, fact), modes) in maps.iter_mut().zip(facts).zip(modes) {
+        row.modes = u32::from(*modes);
+        row.held = match gta6_mount::held_back(*modes != 0, fact) {
+            None => 0,
+            Some(HeldBack::NotRegistered) => 1,
+            Some(HeldBack::ScriptManaged) => 2,
+            Some(HeldBack::Empty) => 3,
         };
-        let Rpf9ZlibRun {
-            resource: Some(resource),
-            signature,
-            ..
-        } = run
-        else {
-            return;
+        let managed = row.flags & SCRIPT_MANAGED != 0;
+        row.group = match (managed, row.group) {
+            (false, _) => 0,
+            (true, 0) => row.name,
+            (true, group) => group,
         };
-        let whole = bytes.len() as u64 >= resource.virtual_len + resource.physical_len;
-        let (virtual_section, physical) = resource.sections(bytes);
-        match signature.and_then(|s| s.role()) {
-            Some(Rpf9Role::Drawable | Rpf9Role::DrawableWithBound) => {
-                if let Ok(word) = stated_model_word(virtual_section) {
-                    self.models.push((word, find.offset));
-                }
-            }
-            Some(Rpf9Role::Dictionary) if whole => {
-                match read_dictionary(virtual_section, Some(physical)) {
-                    Ok(dictionary) => {
-                        let codes: Vec<u32> = (dictionary.entries.iter())
-                            .filter(|(_, e)| matches!(e, Ok(Entry::Drawable(_))))
-                            .map(|(code, _)| *code)
-                            .collect();
-                        if !codes.is_empty() {
-                            self.keys.push((find.offset, codes));
-                        }
-                    }
-                    Err(_) => self.unread += 1,
-                }
-            }
-            Some(_) => {}
-            // A map body states no signature: its class table stands where one would be read.
-            None => match map::root_type(virtual_section) {
-                Some(map::C_MAP_DATA) if whole => {
-                    match map::stream::open(virtual_section, physical) {
-                        Ok(m) => self.map(find.offset, &m),
-                        Err(_) => self.unread += 1,
-                    }
-                }
-                Some(map::C_MAP_TYPES) if whole => match map::open(virtual_section, physical) {
-                    Ok(MapBody::Types(types)) => {
-                        (self.archetypes).extend(types.archetypes.iter().map(|a| ArchetypeRow {
-                            word: a.name_word,
-                            model: a.drawable | a.fragment,
-                            dictionary: a.drawable_dictionary,
-                            name: a.name,
-                            lod_dist: a.lod_dist,
-                            centre: a.bs_centre,
-                            radius: a.bs_radius,
-                            flags: a.flags,
-                            pad: 0,
-                        }))
-                    }
-                    _ => self.unread += 1,
-                },
-                Some(map::C_MAP_DATA | map::C_MAP_TYPES) => self.unread += 1,
-                _ => {}
-            },
-        }
-    }
-
-    fn map(&mut self, offset: u64, m: &map::stream::StreamMap) {
-        let mut boxes = [0.0; 12];
-        let corners = [
-            m.streaming_extents.min,
-            m.streaming_extents.max,
-            m.entities_extents.min,
-            m.entities_extents.max,
-        ];
-        for (slot, corner) in boxes.chunks_mut(3).zip(corners) {
-            slot.copy_from_slice(&corner);
-        }
-        let row = MapRow {
-            archive: 0,
-            name: m.name,
-            block: m.block,
-            flags: m.flags,
-            content_flags: m.content_flags,
-            held: 0,
-            parents_from: 0,
-            parents_len: 0,
-            offset,
-            boxes,
-        };
-        let holds = !m.entities.is_empty() || !m.prop_lists.is_empty() || m.grass_lists > 0;
-        self.maps.push((row, m.lod_parents.clone(), holds));
-    }
-
-    /// Drop what was found before `offset`, which lies inside a body of the range before.
-    fn cut_before(&mut self, offset: u64) {
-        self.maps.retain(|(m, ..)| m.offset >= offset);
-        self.models.retain(|(_, at)| *at >= offset);
-        self.keys.retain(|(at, _)| *at >= offset);
-        self.archives.retain(|at| *at >= offset);
-        self.ends.retain(|(_, end)| *end > offset);
-        self.offsets.retain(|at| *at >= offset);
-        // ⚠ Archetypes carry no offset: those of a body cut here stay, and the later body's stand.
-    }
-
-    fn append(&mut self, mut more: Shard) {
-        self.maps.append(&mut more.maps);
-        self.archetypes.append(&mut more.archetypes);
-        self.models.append(&mut more.models);
-        self.keys.append(&mut more.keys);
-        self.archives.append(&mut more.archives);
-        self.ends.append(&mut more.ends);
-        self.unread += more.unread;
-        self.offsets.append(&mut more.offsets);
     }
 }
 
-/// One range of an archive as a worker scanned it: its place, where its scan ended, and its finds.
-struct Ranged {
-    index: u64,
-    end: u64,
-    shard: Shard,
-}
-
-/// Scan `from..to` of `file` into `shard`, up to the first body at an offset of `known`: where the
-/// scan ended, and that offset where it stopped at one.
-fn scan_into(
-    file: &File,
-    (from, to): (u64, u64),
-    shard: &mut Shard,
-    stop: &Cancel,
-    known: Option<&HashSet<u64>>,
-) -> io::Result<(u64, Option<u64>)> {
-    let mut scan = (Rpf9Scan::new(file, from..to).map_err(io::Error::other)?).keeping(KEEP);
-    while let Some(find) = scan.next() {
-        // A scan that fails says so once and ends: the rest of its range is not read.
-        let (Ok(find), false) = (find, stop.is_set()) else {
-            break;
-        };
-        if known.is_some_and(|known| known.contains(&find.offset)) {
-            return Ok((find.offset, Some(find.offset)));
-        }
-        let bytes = scan.kept(&find);
-        shard.take(&find, bytes);
-    }
-    Ok((scan.position(), None))
-}
-
-/// Everything one archive gives the index, read a range a worker; `None` once `cancel` is set.
-fn scan_archive(
-    path: &Path,
-    cancel: &Cancel,
-    reached: &(dyn Fn(u64) + Sync),
-) -> io::Result<Option<Shard>> {
-    let len = std::fs::metadata(path)?.len();
-    let ranges = len.div_ceil(RANGE).max(1);
-    let workers = (std::thread::available_parallelism().map_or(4, usize::from) as u64).min(ranges);
-    let next = AtomicU64::new(0);
-    let work = || -> io::Result<Vec<Ranged>> {
-        let file = File::open(path)?;
-        let mut out = Vec::new();
-        loop {
-            let index = next.fetch_add(1, Ordering::Relaxed);
-            if index >= ranges || cancel.is_set() {
-                return Ok(out);
-            }
-            let (start, to) = (index * RANGE, ((index + 1) * RANGE).min(len));
-            let mut shard = Shard::default();
-            let (end, _) = scan_into(&file, (start, to), &mut shard, cancel, None)?;
-            out.push(Ranged { index, end, shard });
-            reached(to - start);
-        }
+/// What the maps count to, mode by mode.
+fn counted(maps: &[MapRow]) -> Report {
+    let at_rest = Enabled::default();
+    let mut report = Report {
+        maps: maps.len() as u64,
+        ..Report::default()
     };
-    let mut ranged = Vec::new();
-    std::thread::scope(|scope| -> io::Result<()> {
-        let running: Vec<_> = (0..workers).map(|_| scope.spawn(work)).collect();
-        for worker in running {
-            let done = worker
-                .join()
-                .map_err(|_| io::Error::other("a scan panicked"))?;
-            ranged.extend(done?);
-        }
-        Ok(())
-    })?;
-    if cancel.is_set() {
-        return Ok(None);
+    for map in maps {
+        let in_mode = |mode: Mode| u64::from(map.modes & u32::from(mode.bit()) != 0);
+        let base = in_mode(Mode::Base);
+        report.registered += base;
+        report.at_rest += u64::from(at_rest.allows(map));
+        report.script_managed += base * u64::from(map.held == 2);
+        report.empty += base * u64::from(map.held == 3);
+        report.story += in_mode(Mode::Story);
+        report.minigames += in_mode(Mode::Minigames);
     }
-    ranged.sort_unstable_by_key(|r| r.index);
-    let file = File::open(path)?;
-    let mut whole = Shard::default();
-    let mut ended = 0u64;
-    for Ranged { mut shard, end, .. } in ranged {
-        // ⚠ A range's scan may start inside the last body of the range before, and read its
-        // streams as bodies of their own until it finds its feet: what it found before that body's
-        // end is dropped, and a scan from that end stands in for it up to where the two agree.
-        shard.cut_before(ended);
-        if ended > 0 && ended < len {
-            let mut bridge = Shard::default();
-            let known: HashSet<u64> = shard.offsets.iter().copied().collect();
-            let window = (ended, (ended + STITCH).min(len));
-            let (_, agreed) = scan_into(&file, window, &mut bridge, cancel, Some(&known))?;
-            if let Some(agreed) = agreed {
-                shard.cut_before(agreed);
-                whole.append(bridge);
-            }
-        }
-        ended = ended.max(end);
-        whole.append(shard);
-    }
-    Ok(Some(whole))
+    report
 }
 
-/// The nested archive that holds the body at `offset`: the last header before it whose names have
-/// not ended it; `None` at the archive's own level.
-fn container_of(archives: &[(u64, Option<u64>)], offset: u64) -> Option<u64> {
-    let mut at = archives.partition_point(|(start, _)| *start <= offset);
-    while at > 0 {
-        at -= 1;
-        let (start, end) = archives[at];
-        if end.is_none_or(|end| offset < end) {
-            return Some(start).filter(|start| *start != 0);
-        }
-    }
-    None
-}
-
-/// Every `.rpf` under `root`, the folder's own first.
-fn archives_under(root: &Path) -> Vec<PathBuf> {
-    let mut found = Vec::new();
-    let mut folders = vec![(root.to_path_buf(), 0)];
-    while let Some((folder, depth)) = folders.pop() {
-        let Ok(entries) = std::fs::read_dir(&folder) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() && depth < 4 {
-                folders.push((path, depth + 1));
-            } else if (path.extension()).is_some_and(|e| e.eq_ignore_ascii_case("rpf")) {
-                found.push(path);
-            }
-        }
-    }
-    found.sort();
-    found
-}
-
-/// The first folder each registered archive of the level is named under on the platform device,
-/// lower-cased, with how many are.
-fn level_folders(files: &[&or_title::dlc::RegisteredFile]) -> HashMap<String, usize> {
-    let mut folders = HashMap::new();
-    for file in files {
-        let name = file.filename.to_ascii_lowercase();
-        let Some(rest) = name.strip_prefix("platform:/") else {
-            continue;
-        };
-        if let (Some((first, _)), true) = (rest.split_once('/'), name.ends_with(".rpf")) {
-            *folders.entry(first.to_string()).or_default() += 1;
-        }
-    }
-    folders
-}
-
-/// Read the registration documents under `root`, bind the level they register to the bodies of its
-/// archives and index them; `None` once `cancel` is set.
+/// Read the registration documents under `root`, bind what the packs register to the bodies of the
+/// world's archives and index them; `None` once `cancel` is set.
 pub fn build(
     root: &Path,
     cancel: &Cancel,
     progress: &Progress,
 ) -> Result<Option<WorldIndex>, String> {
     let stopped = || cancel.is_set();
-    let every = archives_under(root);
-    let mut documents = Vec::new();
-    for path in &every {
-        let small = std::fs::metadata(path).is_ok_and(|m| m.len() <= SMALL);
-        if !small {
-            continue;
-        }
-        if stopped() {
-            return Ok(None);
-        }
-        match gta6_mount::read_documents(path, &stopped) {
-            Ok(found) if !found.is_empty() => documents.push((
-                path.clone(),
-                found.into_iter().map(|f| f.document).collect(),
-            )),
-            Ok(_) => {}
-            Err(error) => tracing::info!(path = %path.display(), %error, "no document read"),
-        }
-    }
-    let registry = Registry::of(documents);
-    let level = registry.level_pack();
-    let files: Vec<&or_title::dlc::RegisteredFile> = (level.iter())
-        .flat_map(|pack| pack.sets.iter().filter(|set| set.level))
-        .flat_map(|set| set.files.iter())
-        .collect();
-    let folders = level_folders(&files);
-    // The archive of a folder the level names many archives under is the level's; with none so
-    // named every archive is read.
-    let named = |path: &Path| {
-        let stem = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_ascii_lowercase());
-        path.parent() == Some(root)
-            && stem.is_some_and(|stem| folders.get(&stem).is_some_and(|n| *n >= NAMED))
+    let every = mount::archives_under(root);
+    let snapshot = mount::keys();
+    let Some(mounted) = mount::read(&every, snapshot.as_ref(), &stopped) else {
+        return Ok(None);
     };
-    let mut archives: Vec<PathBuf> = every.iter().filter(|p| named(p)).cloned().collect();
-    if archives.is_empty() {
-        archives = every.clone();
-    }
+    let archives = mounted.archives(root, &every);
     let total: u64 = (archives.iter())
         .filter_map(|p| std::fs::metadata(p).ok())
         .map(|m| m.len())
@@ -552,10 +348,13 @@ pub fn build(
         ..WorldIndex::default()
     };
     let mut facts = Vec::new();
+    // Where each map-types body lies: its archive and the nested archive that holds it.
+    let mut types_at: HashSet<(u32, u64)> = HashSet::new();
     let mut keys: HashMap<u32, Vec<BodyRow>> = HashMap::new();
+    let mut unread = 0;
     for (at, path) in archives.iter().enumerate() {
         let archive = at as u32;
-        let shard = match scan_archive(path, cancel, &reached) {
+        let shard = match scan::scan_archive(path, cancel, &reached) {
             Ok(Some(shard)) => shard,
             Ok(None) => return Ok(None),
             Err(error) => {
@@ -563,15 +362,11 @@ pub fn build(
                 continue;
             }
         };
-        let mut nested: Vec<(u64, Option<u64>)> = (shard.archives.iter())
-            .map(|start| {
-                let end = (shard.ends.iter())
-                    .find(|(a, _)| a == start)
-                    .map(|(_, end)| *end);
-                (*start, end)
-            })
-            .collect();
-        nested.sort_unstable();
+        let nested = shard.nested();
+        types_at.extend(
+            (shard.types.iter())
+                .filter_map(|offset| Some((archive, scan::container_of(&nested, *offset)?))),
+        );
         for (mut row, parents, holds) in shard.maps {
             row.archive = archive;
             row.parents_from = index.parents.len() as u32;
@@ -579,7 +374,7 @@ pub fn build(
             index.parents.extend(parents);
             facts.push(MapFact {
                 archive,
-                container: container_of(&nested, row.offset),
+                container: scan::container_of(&nested, row.offset),
                 name: row.name,
                 block: row.block,
                 flags: row.flags,
@@ -589,6 +384,12 @@ pub fn build(
         }
         index.archetypes.extend(shard.archetypes);
         (index.models).extend(shard.models.into_iter().map(|(word, offset)| BodyRow {
+            word,
+            offset,
+            archive,
+            pad: 0,
+        }));
+        (index.interiors).extend(shard.interiors.into_iter().map(|(word, offset)| BodyRow {
             word,
             offset,
             archive,
@@ -604,40 +405,29 @@ pub fn build(
                 });
             }
         }
-        index.report.unread += shard.unread;
+        unread += shard.unread;
     }
 
-    let binding = gta6_mount::bind(&files, &facts);
-    for (row, held) in index.maps.iter_mut().zip(&binding.held) {
-        row.held = match held {
-            None => 0,
-            Some(HeldBack::NotRegistered) => 1,
-            Some(HeldBack::ScriptManaged) => 2,
-            Some(HeldBack::Empty) => 3,
-        };
-    }
+    let bound = mounted.bind(&every, &archives, &facts);
+    place(&mut index.maps, &facts, &bound.modes);
     index.dictionaries = dictionaries(&index.archetypes, &keys);
-    let sets = |read: bool| {
-        (level.iter())
-            .map(|pack| match read {
-                true => pack.sets.len(),
-                false => pack.unread.len(),
-            })
-            .sum::<usize>() as u64
-    };
+    let (sets_read, sets_unread, sets_ciphered) = (mounted.registry.level_pack())
+        .map_or((0, 0, 0), |pack| {
+            (pack.sets.len(), pack.unread.len(), pack.ciphered.len())
+        });
     index.report = Report {
-        packs: registry.packs.len() as u64,
-        sets_read: sets(true),
-        sets_unread: sets(false),
-        named_archives: binding.report.named_archives as u64,
-        bound_archives: binding.report.bound_archives as u64,
-        maps: binding.report.maps as u64,
-        registered: binding.report.registered as u64,
-        at_rest: binding.report.at_rest as u64,
-        script_managed: binding.report.script_managed as u64,
-        empty: binding.report.empty as u64,
-        unread: index.report.unread,
-        ..Report::default()
+        packs: mounted.registry.packs.len() as u64,
+        sets_read: sets_read as u64,
+        sets_unread: sets_unread as u64,
+        sets_ciphered: sets_ciphered as u64,
+        named_archives: bound.named_archives as u64,
+        bound_archives: bound.bound_archives as u64,
+        by_table: u64::from(bound.by_table),
+        disagree: bound.disagree as u64,
+        permanent_named: bound.permanent_named as u64,
+        permanent_found: bound.permanent.intersection(&types_at).count() as u64,
+        unread,
+        ..counted(&index.maps)
     };
     Ok(Some(index.finish()))
 }
@@ -674,152 +464,6 @@ fn dictionaries(archetypes: &[ArchetypeRow], keys: &HashMap<u32, Vec<BodyRow>>) 
     found
 }
 
-/// The size and modification time of the archive at `path`, in nanoseconds.
-fn stat(path: &Path) -> Option<(u64, u64)> {
-    let meta = std::fs::metadata(path).ok()?;
-    let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
-    Some((meta.len(), modified.as_nanos() as u64))
-}
-
-fn put_rows<T: Pod>(out: &mut impl Write, rows: &[T]) -> io::Result<()> {
-    out.write_all(&(rows.len() as u64).to_le_bytes())?;
-    out.write_all(bytemuck::cast_slice(rows))
-}
-
-fn word(from: &mut impl Read) -> io::Result<u64> {
-    let mut bytes = [0; 8];
-    from.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
-}
-
-/// The rows the next count of `from` states, read a block at a time so a count the bytes do not
-/// bear out fails at their end and reserves nothing.
-fn rows<T: Pod>(from: &mut impl Read) -> io::Result<Vec<T>> {
-    let count = word(from)?;
-    let mut out = Vec::new();
-    let mut left = count;
-    let mut block = [T::zeroed(); 1024];
-    while left > 0 {
-        let take = left.min(block.len() as u64) as usize;
-        from.read_exact(bytemuck::cast_slice_mut(&mut block[..take]))?;
-        out.extend_from_slice(&block[..take]);
-        left -= take as u64;
-    }
-    Ok(out)
-}
-
-/// Where the index of the install at `root` is kept under the configuration folder `config`.
-pub fn kept_at(config: &Path, root: &Path) -> PathBuf {
-    let name = name_hash64(root.to_string_lossy().as_bytes());
-    config.join("gta6_world").join(format!("{name:016x}.index"))
-}
-
-impl WorldIndex {
-    /// What a kept index starts with: its version, then each archive's path, size and time.
-    fn head(archives: &[PathBuf]) -> Vec<u8> {
-        let mut head = MAGIC.to_vec();
-        head.extend(VERSION.to_le_bytes());
-        head.extend((archives.len() as u64).to_le_bytes());
-        for path in archives {
-            let (len, time) = stat(path).unwrap_or_default();
-            let text = path.to_string_lossy();
-            for value in [len, time, text.len() as u64] {
-                head.extend(value.to_le_bytes());
-            }
-            head.extend(text.as_bytes());
-        }
-        head
-    }
-
-    /// Keep the index at `file`, written whole beside it and then moved there.
-    pub fn keep(&self, file: &Path) -> io::Result<()> {
-        if let Some(folder) = file.parent() {
-            std::fs::create_dir_all(folder)?;
-        }
-        let beside = file.with_extension("tmp");
-        let mut out = BufWriter::new(File::create(&beside)?);
-        let head = Self::head(&self.archives);
-        out.write_all(&(head.len() as u64).to_le_bytes())?;
-        out.write_all(&head)?;
-        put_rows(&mut out, &self.maps)?;
-        put_rows(&mut out, &self.parents)?;
-        put_rows(&mut out, &self.archetypes)?;
-        put_rows(&mut out, &self.models)?;
-        put_rows(&mut out, &self.dictionaries)?;
-        put_rows(&mut out, std::slice::from_ref(&self.report))?;
-        out.flush()?;
-        drop(out);
-        std::fs::rename(beside, file)
-    }
-
-    /// The index kept at `file`, where the archives it was built from are as they were.
-    pub fn kept(file: &Path) -> Option<Self> {
-        let mut from = BufReader::new(File::open(file).ok()?);
-        let len = usize::try_from(word(&mut from).ok()?).ok()?;
-        let mut head = vec![0; len.min(1 << 20)];
-        from.read_exact(&mut head).ok()?;
-        let archives = archives_of(&head)?;
-        if head != Self::head(&archives) {
-            return None;
-        }
-        let read = |from: &mut BufReader<File>| -> io::Result<Self> {
-            let mut index = WorldIndex {
-                archives,
-                maps: rows(from)?,
-                parents: rows(from)?,
-                archetypes: rows(from)?,
-                models: rows(from)?,
-                dictionaries: rows(from)?,
-                ..WorldIndex::default()
-            };
-            let report: Vec<Report> = rows(from)?;
-            index.report = report.first().copied().unwrap_or_default();
-            // A kept run past the names is a file cut short or of another build.
-            let parents = index.parents.len() as u64;
-            let runs = (index.maps.iter())
-                .all(|m| u64::from(m.parents_from) + u64::from(m.parents_len) <= parents);
-            let archives = index.archives.len() as u32;
-            let placed = index.maps.iter().all(|m| m.archive < archives);
-            match runs && placed {
-                true => Ok(index),
-                false => Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "a kept index out of step",
-                )),
-            }
-        };
-        read(&mut from)
-            .inspect_err(|e| tracing::info!("{}: {e}", file.display()))
-            .ok()
-            .map(Self::finish)
-    }
-}
-
-/// The next 64-bit word of `rest`, which moves past it.
-fn next_word(rest: &mut &[u8]) -> Option<u64> {
-    let (value, after) = rest.split_first_chunk::<8>()?;
-    *rest = after;
-    Some(u64::from_le_bytes(*value))
-}
-
-/// The archives a kept index's head names.
-fn archives_of(head: &[u8]) -> Option<Vec<PathBuf>> {
-    let mut rest = head.strip_prefix(MAGIC.as_slice())?;
-    if next_word(&mut rest)? != VERSION {
-        return None;
-    }
-    let count = next_word(&mut rest)?;
-    let mut archives = Vec::new();
-    for _ in 0..count {
-        let (_len, _time) = (next_word(&mut rest)?, next_word(&mut rest)?);
-        let text = usize::try_from(next_word(&mut rest)?).ok()?;
-        let (path, after) = rest.split_at_checked(text)?;
-        rest = after;
-        archives.push(PathBuf::from(String::from_utf8_lossy(path).into_owned()));
-    }
-    Some(archives)
-}
-
 /// Indexes made up for the tests of this folder.
 #[cfg(test)]
 pub(super) mod tests_support {
@@ -849,7 +493,7 @@ pub(super) mod tests_support {
                 centre: [0.0; 3],
                 radius: 1.0,
                 flags: 0,
-                pad: 0,
+                hours: ALL_HOURS,
             });
             index.models.extend(model.map(|offset| BodyRow {
                 word: word + 1,
