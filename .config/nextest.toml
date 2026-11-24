@@ -238,6 +238,8 @@ not (
       | test(/^world_blanket::tests::/)
       | test(/^write::canvas::tests::/)
     ))
+  | binary_id(=or-io::gta6_archive_explorer)
+  | binary_id(=or-io::gta6_mount_every_nested_table)
   | binary_id(=or-io-verify::a_save_pads_a_chain_the_size_word_cannot_state)
   | binary_id(=or-io-verify::bounds)
   | binary_id(=or-io-verify::clip_dict)

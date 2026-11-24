@@ -7,6 +7,8 @@ pub mod entry;
 pub mod gta6_archive;
 #[cfg(feature = "gta6")]
 pub mod gta6_keygate;
+#[cfg(feature = "gta6")]
+pub mod gta6_mount;
 pub mod header;
 mod layout;
 mod lzb16;
@@ -47,11 +49,13 @@ pub use entry::{
 };
 #[cfg(feature = "gta6")]
 pub use gta6_archive::{
-    Gta6Archive, Gta6Entry, NameResolver, NestedArchives, DESCRIPTOR_SIZE_AT, GROUP_DESCRIPTOR,
-    GROUP_NAME64, NESTED_SCAN_CAP,
+    Gta6Archive, Gta6Cipher, Gta6Entry, NameResolver, GROUP_CIPHER, GROUP_ENTRY_ROW,
+    GROUP_ENTRY_ROW_20, GROUP_NAME32, GROUP_NAME64,
 };
 #[cfg(feature = "gta6")]
 pub use gta6_keygate::{decode_masked, encode_masked, gate_key, is_masked, MASKED_MAGIC};
+#[cfg(feature = "gta6")]
+pub use gta6_mount::{open_at, Gta6Mount};
 pub use header::{
     FiPackHeader, RpfEncryption, RpfHeader, RPF7_MAGIC, RPF_AES_MAGIC, RPF_DIRECTORY_OFFSET_MARKER,
     RPF_FILE_ALIGNMENT, RPF_FILE_ALIGNMENT_SHIFT, RPF_MAX_RESOURCE_CONSUMED_SIZE,
