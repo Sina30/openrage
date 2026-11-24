@@ -29,11 +29,14 @@ const MOST_MODELS: usize = 416;
 /// How far along the view a point must lie ahead of the eye to be drawn or tested, in metres.
 const NEAR: f32 = 0.1;
 
+/// A view's matrix, by its bits, and the occluders drawn for it.
+type DrawnFor = ([u32; 16], Arc<[Arc<MapOccluders>]>);
+
 /// The occluders as drawn for one view.
 #[derive(Default)]
 pub(super) struct Occlusion {
     /// The view's matrix and the occluders the buffer was drawn for.
-    drawn_for: Option<([u32; 16], Arc<[Arc<MapOccluders>]>)>,
+    drawn_for: Option<DrawnFor>,
     view_proj: Mat4,
     /// One over the depth of the nearest occluder at each corner of a texel; 0 where none is.
     corners: Vec<f32>,
