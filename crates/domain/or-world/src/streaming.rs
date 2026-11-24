@@ -330,11 +330,6 @@ struct Links {
     next_sibling: Vec<u32>,
     /// How far each node draws once its parent's `child_lod_dist` has taken the place of its own.
     range: Vec<f32>,
-    /// Within this a node's children draw in its place: its own, else the farthest of its children's.
-    child_range: Vec<f32>,
-    /// A child that stands in for the whole of each node, whose scale and band `child_range` takes.
-    // ponytail: the last such child speaks for all; children of mixed levels or categories under one parent are scaled as that one.
-    child_of: Vec<u32>,
     roots: Vec<u32>,
 }
 
@@ -439,13 +434,10 @@ impl Forest {
         links.first_child = vec![NONE; count];
         links.next_sibling = vec![NONE; count];
         links.range = Vec::with_capacity(count);
-        links.child_range = Vec::with_capacity(count);
-        links.child_of = vec![NONE; count];
         for (slot, map) in self.maps.iter().enumerate() {
             for node in &map.nodes {
                 links.slot.push(slot as u32);
                 links.range.push(node.lod_dist);
-                links.child_range.push(node.child_lod_dist);
             }
         }
         let mut at = 0usize;
@@ -468,21 +460,16 @@ impl Forest {
                 at += 1;
             }
         }
-        // A parent that states no distance for its children takes the farthest of theirs, and one
-        // that states one gives it to each child that stands in for the whole of it.
+        // A parent that states a distance for its children gives it to each child that stands in
+        // for the whole of it.
         for child in 0..count {
             let parent = links.parent[child];
-            let node = *self.node_at(&links, child);
-            if parent == NONE || node.instance.is_some() {
+            if parent == NONE || self.node_at(&links, child).instance.is_some() {
                 continue;
             }
-            links.child_of[parent as usize] = child as u32;
             let stated = self.node_at(&links, parent as usize).child_lod_dist;
             if stated > 0.0 {
                 links.range[child] = stated;
-            } else {
-                let far = links.child_range[parent as usize].max(links.range[child]);
-                links.child_range[parent as usize] = far;
             }
         }
         self.links = links;
@@ -565,14 +552,19 @@ impl Pass<'_> {
         (self.node(at)).scaled(self.forest.links.range[at as usize], self.view)
     }
 
-    /// The distance within which the children of node `at` draw whole, by their scale.
-    fn child_reach(&self, at: u32) -> f32 {
-        let links = &self.forest.links;
-        let range = links.child_range[at as usize];
-        match links.child_of[at as usize] {
-            NONE => range,
-            child => self.node(child).scaled(range, self.view),
+    /// Over the children that stand in for the whole of node `at`, each by its own scale and band:
+    /// the farthest one starts to draw from, and the farthest the parent is gone within.
+    fn children_reach(&self, at: u32) -> (f32, f32) {
+        let (mut start, mut gone) = (f32::MIN, f32::MIN);
+        let mut child = self.first_child(at);
+        while child != NONE {
+            if self.node(child).instance.is_none() {
+                let (reach, band) = (self.reach(child), self.band(child));
+                (start, gone) = (start.max(reach + band), gone.max(reach - band));
+            }
+            child = self.next_sibling(child);
         }
+        (start, gone)
     }
 
     /// The band past its distance over which node `at` fades out.
@@ -582,14 +574,6 @@ impl Pass<'_> {
         match level == Level::OrphanHd && self.forest.links.range[at as usize] <= SMALL {
             true => FADE_SMALL,
             false => self.view.fade[level as usize],
-        }
-    }
-
-    /// The band the children of node `at` fade out over.
-    fn child_band(&self, at: u32) -> f32 {
-        match self.forest.links.child_of[at as usize] {
-            NONE => FADE,
-            child => self.band(child),
         }
     }
 
@@ -618,7 +602,7 @@ impl Pass<'_> {
             _ => {}
         }
         let complete = self.forest.maps[self.forest.links.slot[at as usize] as usize].complete;
-        let near = self.away(at) <= self.child_reach(at) + self.child_band(at);
+        let near = self.away(at) <= self.children_reach(at).0;
         let (mut any, mut ready) = (false, true);
         let mut child = if near { self.first_child(at) } else { NONE };
         // Every child is asked, so that each one still loading is waited for.
@@ -687,7 +671,7 @@ impl Pass<'_> {
             }
             // It is whole until its children's band short of the band past their distance, and
             // gone [`FADE`] nearer.
-            let inside = self.child_reach(at) + FADE - self.child_band(at) - self.away(at);
+            let inside = self.children_reach(at).1 + FADE - self.away(at);
             target *= (1.0 - inside / FADE).clamp(0.0, 1.0);
             if target <= 0.0 {
                 return;

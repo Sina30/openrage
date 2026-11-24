@@ -602,6 +602,27 @@ fn a_list_draws_by_its_box_s_centre_less_each_instance_whose_entity_draws() {
 }
 
 #[test]
+fn a_parent_gives_way_by_each_child_s_own_scale_and_the_farthest_of_them() {
+    let mut forest = Forest::new();
+    forest.insert(1, vec![entity([0.0; 3], 1000.0, 100.0, None)]);
+    // The same stated 100 m: a plain child draws whole to 100 m, an environment one of the second
+    // level with a sphere of 50 m to 50 + 0.6 × 50 = 80 m.
+    let mut shorter = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
+    (shorter.category, shorter.radius) = (Category::Environment, 50.0);
+    let plain = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
+    forest.insert(2, vec![plain, shorter]);
+    // 115 m off, inside the plain child's band and past the other's: the plain child draws at a
+    // quarter, and the parent stays whole until the farthest child's band short of it, 80 m + 20 m.
+    let drawn = forest.select(&along(115.0), &all_ready);
+    assert!(close(fade(&drawn, (2, 0)), 0.25));
+    assert!(close(fade(&drawn, (2, 1)), 0.0));
+    assert!(close(fade(&drawn, (1, 0)), 1.0));
+    // At 90 m the parent is half gone, and so is the other child, half into its band.
+    let near = forest.select(&along(90.0), &all_ready);
+    assert!(close(fade(&near, (1, 0)), 0.5) && close(fade(&near, (2, 1)), 0.5));
+}
+
+#[test]
 fn a_list_gives_way_to_the_lists_under_it() {
     let mut forest = Forest::new();
     let mut far = list([0.0; 3], [100.0, 100.0, 10.0], 2000.0, None);
