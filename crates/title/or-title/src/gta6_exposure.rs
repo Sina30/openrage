@@ -301,6 +301,7 @@ pub fn light(
         ],
         dome_sides: [east, west],
         fog: [under, [1.0, 0.0, HORIZON], opposite, [0.0, -1.0, HORIZON]].map(radiance),
+        haze: luminance(air.ground_extinction()) / 1000.0,
     };
     (light, stops)
 }

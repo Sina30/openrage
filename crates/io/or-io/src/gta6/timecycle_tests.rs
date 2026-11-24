@@ -215,6 +215,7 @@ fn noon() -> FrameLight {
             radiance(1000.0, 2000.0, 4000.0),
         ],
         fog: [[4000.0, 4000.0, 4000.0]; 4],
+        haze: 1.5e-5,
     }
 }
 
@@ -353,6 +354,13 @@ fn the_local_atmospheres_fog_is_given_in_the_frames_units() {
     assert_eq!(clear.get("fog_falloff"), None);
     assert_eq!(clear.get("fog_density"), None);
     assert_eq!(clear.get("fog_hdr"), Some(1.0), "the colours are exposed");
+    // The haze is the air's extinction at the ground, and what it fades to a radiance at the exposure.
+    assert_eq!(
+        clear.get("fog_haze_density"),
+        Some(noon().haze * FRAME_FOG_DENSITY)
+    );
+    let haze = clear.get("fog_haze_col_r").expect("filled");
+    assert!((haze - 4000.0 * noon().exposure).abs() < 1e-6, "{haze}");
 }
 
 #[test]

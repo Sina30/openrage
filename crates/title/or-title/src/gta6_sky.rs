@@ -295,6 +295,11 @@ impl Atmosphere {
         depth.map(|d| (-d).exp())
     }
 
+    /// What the air takes out of light per kilometre at the ground.
+    pub fn ground_extinction(&self) -> [f32; 3] {
+        self.extinction(0.0).map(|e| e as f32)
+    }
+
     /// What the air lets through from the camera towards a body whose way has the up part `mu`.
     pub fn transmittance(&self, mu: f32) -> [f32; 3] {
         let through = self.transmittance_from(

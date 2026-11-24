@@ -432,6 +432,7 @@ const WORKED_OUT: &[&str] = &[
     "fog_haze_col_b",
     "fog_hdr",
     "fog_haze_hdr",
+    "fog_haze_density",
     "sky_cloud_hdr",
 ];
 
@@ -485,6 +486,8 @@ pub struct FrameLight {
     pub dome_sides: [[f32; 3]; 2],
     /// The sky's radiance in cd/m² on the horizon under the light, east, opposite the light and south.
     pub fog: [[f32; 3]; 4],
+    /// What the air takes out of light per metre at the ground, by luminance: the haze over distance.
+    pub haze: f32,
 }
 
 /// The variables of a frame built for GTA V's day, worked out from GTA VI's keyframe `own` and the moment's `light`; the frame's own exposure is held at nought, since every light it takes is exposed already.
@@ -604,8 +607,10 @@ pub fn frame_keyframe(own: &Keyframe, light: &FrameLight) -> Keyframe {
     if let Some(falloff) = own.get("local_atmosphere_fog_falloff").filter(|f| *f > 0.0) {
         frame.set("fog_falloff", FRAME_FOG_FALLOFF / falloff);
     }
+    // The haze is the air's own extinction, and what it fades to the sky's radiance at the horizon: a radiance, it takes the exposure whole.
+    frame.set("fog_haze_density", light.haze * FRAME_FOG_DENSITY);
     for (stem, radiance) in FOG.iter().zip(light.fog) {
-        set_rgb(&mut frame, stem, scaled(radiance, lit));
+        set_rgb(&mut frame, stem, scaled(radiance, light.exposure));
     }
     for name in ["fog_hdr", "fog_haze_hdr", "sky_cloud_hdr"] {
         frame.set(name, 1.0);
