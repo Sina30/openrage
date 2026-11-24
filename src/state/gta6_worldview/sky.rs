@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use or_renderer::game_shaders::lighting::{night_emissive, Day};
 use or_renderer::game_shaders::tone::ToneSettings;
-use or_title::gta6_day::{read_day, DayTables};
+use or_title::gta6_day::{read_day, DayTables, Moment};
 
 use crate::state::drivers::WeatherState;
 
@@ -62,6 +62,11 @@ pub fn tables(root: &Path) -> Option<Arc<DayTables>> {
     (!tables.is_empty()).then(|| Arc::clone(tables))
 }
 
+/// The moment of GTA VI's day at `hour` in `weather` for a camera `y` metres north on the map, which a frame takes its day, its lights' scale and its exposure from; `None` where the tables hold no cycle for it.
+pub fn moment(tables: &DayTables, hour: f32, weather: WeatherState, y: f32) -> Option<Moment> {
+    tables.moment(hour, weather_name(weather), y)
+}
+
 /// The day the frame is lit by at `hour` of the `days`th day in `weather`, for a camera `y` metres north on the map; `None` where the tables hold no cycle for it.
 pub fn day_of(
     tables: &DayTables,
@@ -70,9 +75,20 @@ pub fn day_of(
     weather: WeatherState,
     y: f32,
 ) -> Option<Day> {
-    let moment = tables.moment(hour, weather_name(weather), y)?;
+    let moment = moment(tables, hour, weather, y)?;
+    Some(day_of_moment(tables, moment, hour, days, weather))
+}
+
+/// The day the frame is lit by from `moment`, at `hour` of the `days`th day in `weather`.
+pub fn day_of_moment(
+    tables: &DayTables,
+    moment: Moment,
+    hour: f32,
+    days: f32,
+    weather: WeatherState,
+) -> Day {
     let visual = &tables.visual_settings;
-    Some(Day {
+    Day {
         keyframe: moment.keyframe,
         table: moment.table,
         hours: moment.frame_hours,
@@ -81,13 +97,15 @@ pub fn day_of(
         // The Weather bar's own wetness where the install's weather states no rain.
         wetness: moment.wetness.max(weather.wetness()),
         // How far a material's glow has gone to its night value: the cycle's own blend, else on by the night hours.
-        night_emissive: (moment.own.get("global_emissive_scale_blend_value")).unwrap_or_else(|| {
-            night_emissive(
-                hour,
-                visual.get_f32("emissive.night.start.time", 20.0) as u32,
-                visual.get_f32("emissive.night.end.time", 7.0) as u32,
-            )
-        }),
+        night_emissive: (moment.own.get("global_emissive_scale_blend_value")).unwrap_or_else(
+            || {
+                night_emissive(
+                    hour,
+                    visual.get_f32("emissive.night.start.time", 20.0) as u32,
+                    visual.get_f32("emissive.night.end.time", 7.0) as u32,
+                )
+            },
+        ),
         // ⚠ GTA VI's exposure curve has the frame's name and another shape (a natural logarithm, a
         // bending and offsets in place of a power): the moment is exposed by it already and the
         // frame's own exposure held at nought, so the frame is never given it.
@@ -97,13 +115,21 @@ pub fn day_of(
                 false => visual.get_f32(name, default),
             },
         ),
-    })
+    }
 }
 
 /// What a light the game states in its own unit is multiplied by to be the frame's at `hour` in `weather` for a camera `y` metres north: the moment's exposure over pi, and the old stand-in where no GTA VI day is read.
 pub fn light_scale(tables: Option<&DayTables>, hour: f32, weather: WeatherState, y: f32) -> f32 {
-    (tables.and_then(|tables| tables.moment(hour, weather_name(weather), y)))
-        .map_or(NO_DAY_LIGHT_SCALE, |moment| moment.light_scale)
+    scale_of(
+        tables
+            .and_then(|tables| moment(tables, hour, weather, y))
+            .as_ref(),
+    )
+}
+
+/// What a light the game states in its own unit is multiplied by under `moment`: its exposure over pi, and the old stand-in where no GTA VI day is read.
+pub fn scale_of(moment: Option<&Moment>) -> f32 {
+    moment.map_or(NO_DAY_LIGHT_SCALE, |moment| moment.light_scale)
 }
 
 #[cfg(test)]
@@ -173,14 +199,18 @@ mod tests {
             let moment = tables.moment(hour, "Sunny", 0.0).expect("a moment");
             let scale = light_scale(Some(&tables), hour, WeatherState::Clear, 0.0);
             assert_eq!(scale, moment.light_scale);
+            assert_eq!(scale_of(Some(&moment)), scale);
             let exposed = moment.stops.exp2() / std::f32::consts::PI;
             assert!(
                 (scale - exposed).abs() <= 1e-6 * exposed,
                 "{scale} {exposed}"
             );
+            let once = day_of_moment(&tables, moment, hour, 0.0, WeatherState::Clear);
+            assert_eq!(once.hours, day.hours, "at {hour}");
         }
         let none = light_scale(None, 12.0, WeatherState::Clear, 0.0);
         assert_eq!(none, NO_DAY_LIGHT_SCALE);
+        assert_eq!(scale_of(None), NO_DAY_LIGHT_SCALE);
     }
 
     #[test]
