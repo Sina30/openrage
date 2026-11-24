@@ -58,6 +58,8 @@ pub struct Instance {
     pub tint: [f32; 3],
     /// How much of the natural and of the artificial ambient light it takes: outdoors but inside an interior.
     pub ambient: [f32; 2],
+    /// Whether it casts its shadow and is not seen.
+    pub cast_only: bool,
 }
 
 /// A run of a selection's instances that stand together, and the sphere that holds them all: a
@@ -413,6 +415,7 @@ impl Streamer {
             fade,
             tint,
             ambient: or_renderer::OUTDOORS,
+            cast_only: false,
         };
         // The entities of one map stand together: a chunk a map.
         selection.drawn.sort_unstable_by_key(|d| d.node);
@@ -573,6 +576,7 @@ impl Streamer {
                                 fade,
                                 tint: [1.0; 3],
                                 ambient: child.ambient,
+                                cast_only: false,
                             });
                         }
                         Some(false) => {
@@ -602,7 +606,7 @@ impl Streamer {
             };
             for instance in &mut out.instances[..outdoors] {
                 if instance.ambient == or_renderer::OUTDOORS && !sees(instance) {
-                    instance.fade = -instance.fade.abs();
+                    instance.cast_only = true;
                 }
             }
         }

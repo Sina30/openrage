@@ -108,6 +108,7 @@ struct VsIn {
     @location(7) row2:     vec4<f32>,
     @location(8) tint:     vec4<f32>,
     @location(10) ambient: vec2<f32>,
+    @location(11) cast_only: f32,
 };
 
 struct VsOut {
@@ -164,6 +165,10 @@ fn vs_main(in: VsIn) -> VsOut {
     let world = placed(in);
     var out = handed_on(in, world);
     out.clip_pos = camera.view_proj * vec4<f32>(world, 1.0);
+    // One that only casts its shadow is put past the far plane, where every triangle of it is clipped.
+    if (in.cast_only > 0.5) {
+        out.clip_pos = vec4<f32>(0.0, 0.0, 2.0, 1.0);
+    }
     return out;
 }
 
@@ -716,17 +721,10 @@ fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) 
     return vec4<f32>(lit, s.coverage + share - s.coverage * share);
 }
 
-// An instance faded below nought is not seen and casts its shadow as opaque as it would be seen.
-fn casting(in: VsOut) -> VsOut {
-    var out = in;
-    out.fade = abs(in.fade);
-    return out;
-}
-
 // What casts the sun's shadow whole: only the fade of its instance leaves a texel out.
 @fragment
 fn fs_cast(in: VsOut) {
-    if (dropped(casting(in), 1.0, 0.0)) {
+    if (dropped(in, 1.0, 0.0)) {
         discard;
     }
 }
@@ -734,8 +732,7 @@ fn fs_cast(in: VsOut) {
 // A cutout casts the shadow of what it draws.
 @fragment
 fn fs_cast_cutout(in: VsOut) {
-    let c = casting(in);
-    if (dropped(c, cut_coverage(c), CUTOUT_ALPHA)) {
+    if (dropped(in, cut_coverage(in), CUTOUT_ALPHA)) {
         discard;
     }
 }
