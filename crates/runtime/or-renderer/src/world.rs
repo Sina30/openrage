@@ -661,9 +661,8 @@ impl World {
 
     /// Draw what blends into a pass over the frame the game's passes lit, which reads the depth of the frame and writes none: the faces that turn away, then those that face the camera.
     pub(crate) fn draw_lit(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
-        if self.draws_anything() {
-            self.water.draw(pass, camera, &self.light_group);
-        }
+        // ⚠ The water draws where the world has nothing else to, as over the open sea; leaving the world takes its mesh away.
+        self.water.draw(pass, camera, &self.light_group);
         for faces in &self.pipelines.lit {
             self.draw(pass, camera, faces);
         }

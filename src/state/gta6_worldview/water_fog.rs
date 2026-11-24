@@ -23,6 +23,22 @@ pub struct WaterFog {
     pub atlas: GridAtlas,
     pub scattering: FogTexels,
     pub extinction: FogTexels,
+    /// The commonest texel's extinction and scattering: the open sea's, and the water's off the grid.
+    pub commonest: ([f32; 3], [f32; 3]),
+}
+
+/// The pair of texels `extinction` and `scattering` hold together most often.
+fn commonest(extinction: &FogTexels, scattering: &FogTexels) -> ([f32; 3], [f32; 3]) {
+    let mut counts = std::collections::HashMap::<[u32; 6], usize>::new();
+    for (e, s) in extinction.texels().iter().zip(scattering.texels()) {
+        let key = [e[0], e[1], e[2], s[0], s[1], s[2]].map(f32::to_bits);
+        *counts.entry(key).or_default() += 1;
+    }
+    let best = (counts.into_iter().max_by_key(|(key, n)| (*n, *key)))
+        .map(|(key, _)| key.map(f32::from_bits));
+    best.map_or(([0.0; 3], [0.0; 3]), |k| {
+        ([k[0], k[1], k[2]], [k[3], k[4], k[5]])
+    })
 }
 
 type Read = Arc<OnceLock<Option<Arc<WaterFog>>>>;
@@ -60,9 +76,12 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterFog, String> {
             true => extinction = Some(texels),
         }
     }
+    let scattering = scattering.ok_or("the fog's archive holds no first fallback")?;
+    let extinction = extinction.ok_or("the fog's archive holds no second fallback")?;
     Ok(WaterFog {
+        commonest: commonest(&extinction, &scattering),
         atlas,
-        scattering: scattering.ok_or("the fog's archive holds no first fallback")?,
-        extinction: extinction.ok_or("the fog's archive holds no second fallback")?,
+        scattering,
+        extinction,
     })
 }

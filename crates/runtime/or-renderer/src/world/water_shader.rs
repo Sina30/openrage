@@ -195,8 +195,9 @@ fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
     let under = textureSampleLevel(behind, clamped, in.clip.xy * water.screen.xy, 0.0).rgb;
     var extinction = water.extinction.rgb;
     var albedo = water.albedo.rgb;
-    if (water.grid.z > 0.0) {
-        let at = vec2<f32>((in.world.x - water.grid.x) * water.grid.z, (water.grid.y - in.world.y) * water.grid.w);
+    let at = vec2<f32>((in.world.x - water.grid.x) * water.grid.z, (water.grid.y - in.world.y) * water.grid.w);
+    // Off its grid the medium is the one the uniform holds, which with a grid is its commonest.
+    if (water.grid.z > 0.0 && all(at >= vec2<f32>(0.0)) && all(at <= vec2<f32>(1.0))) {
         extinction = max(textureSampleLevel(medium_extinction, clamped, at, 0.0).rgb, vec3<f32>(1e-6));
         let scattering = textureSampleLevel(medium_scattering, clamped, at, 0.0).rgb;
         albedo = min(scattering / extinction, vec3<f32>(1.0));

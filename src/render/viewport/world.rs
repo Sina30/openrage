@@ -754,6 +754,9 @@ impl RenderBridge {
 
     /// Take the world, its lights and its day away where no panel asked for it this frame.
     pub(super) fn end_world(&mut self) {
+        if !self.world.shown {
+            (self.world.water).refresh(&mut self.renderer, &self.device, None, Vec3::ZERO);
+        }
         if !self.world.shown && self.renderer.has_world() {
             (self.renderer).set_world(&self.device, &self.queue, &[], Vec::new());
             self.renderer.set_point_lights(Vec::new());

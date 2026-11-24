@@ -11,7 +11,7 @@ use or_renderer::{ViewportRenderer, WorldBucket, WorldDraw, WorldInstance, World
 use crate::state::gta6_world::worldview::water::{mesh, tint, Seen, SeenKey};
 
 /// How far from the camera the water's quads are drawn, in metres.
-const REACH: f32 = 3_000.0;
+const REACH: f32 = 16_000.0;
 /// How far the camera goes before the mesh is built again, in metres.
 const REBUILD: f32 = 500.0;
 
@@ -69,7 +69,16 @@ impl Water {
         let ground = water.ground.as_deref();
         let (vertices, indices) = mesh(&water.quads.quads, eye, REACH, ground);
         // ⚠ The pass wants the day's medium: until the day is read it draws nothing.
-        let look = medium.as_ref().filter(|_| lit).map(|m| m.look());
+        let look = medium.as_ref().filter(|_| lit).map(|m| {
+            let mut look = m.look();
+            // Off the fog atlas's grid the water is the open sea the atlas holds most of.
+            if let Some((extinction, scattering)) = fog.map(|f| f.commonest) {
+                look.extinction = extinction;
+                look.albedo =
+                    std::array::from_fn(|c| (scattering[c] / extinction[c].max(1e-6)).min(1.0));
+            }
+            look
+        });
         renderer.set_world_water(device, look.map(|look| (&vertices[..], &indices[..], look)));
         self.plain = (!lit && !indices.is_empty()).then(|| {
             let material = renderer.world_material(device, None, None, None, WorldBucket::Blend);

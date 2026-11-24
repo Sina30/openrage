@@ -7,10 +7,12 @@ use or_io::gta6::water::WaterQuad;
 use or_renderer::world::water::WaterLook;
 use or_renderer::MeshVertex;
 
-/// The side of a cell the quads are cut into, and of one within `NEAR` of the camera, in metres.
-// ponytail: two sizes of cell; a cell size that grows with distance if far shores show their steps.
+/// The side of a cell the quads are cut into past `MIDDLE` of the camera, within it, and within `NEAR` of it, in metres.
+// ⚠ Every vertex of a quad stands at its height, so cells of two sizes meet with no crack.
+const FAR: f32 = 512.0;
 const COARSE: f32 = 64.0;
 const FINE: f32 = 16.0;
+const MIDDLE: f32 = 3_000.0;
 const NEAR: f32 = 1_000.0;
 /// The depth over which a shore fades in where the frame's own water pass does not draw it, in metres.
 const SHORE: f32 = 1.0;
@@ -196,19 +198,30 @@ pub fn mesh(
         // Only what lies within reach along each axis is cut into cells.
         let lo = [min[0].max(eye.x - reach), min[1].max(eye.y - reach)];
         let hi = [max[0].min(eye.x + reach), max[1].min(eye.y + reach)];
-        for x in spans(lo[0], hi[0], COARSE) {
-            for y in spans(lo[1], hi[1], COARSE) {
-                let close = nearest([x.0, y.0], [x.1, y.1]).distance(eye) < NEAR;
-                if !close {
-                    quad.cell(x, y, &mut out);
-                    continue;
-                }
-                for fine_x in spans(x.0, x.1, FINE) {
-                    for fine_y in spans(y.0, y.1, FINE) {
-                        quad.cell(fine_x, fine_y, &mut out);
-                    }
-                }
-            }
+        // Each cell is cut again into the next size down while it lies within that size's reach.
+        let mut cells = Vec::new();
+        for x in spans(lo[0], hi[0], FAR) {
+            cells.extend(spans(lo[1], hi[1], FAR).map(|y| (x, y)));
+        }
+        for (step, within) in [(COARSE, MIDDLE), (FINE, NEAR)] {
+            cells = (cells.into_iter())
+                .flat_map(|(x, y)| {
+                    let near = nearest([x.0, y.0], [x.1, y.1]).distance(eye) < within;
+                    let cut = |(lo, hi): (f32, f32)| -> Vec<(f32, f32)> {
+                        match near {
+                            true => spans(lo, hi, step).collect(),
+                            false => vec![(lo, hi)],
+                        }
+                    };
+                    let ys = cut(y);
+                    cut(x)
+                        .into_iter()
+                        .flat_map(move |x| ys.clone().into_iter().map(move |y| (x, y)))
+                })
+                .collect();
+        }
+        for (x, y) in cells {
+            quad.cell(x, y, &mut out);
         }
     }
     out

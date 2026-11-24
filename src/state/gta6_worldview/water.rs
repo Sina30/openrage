@@ -94,7 +94,7 @@ impl super::Viewer {
 }
 
 /// What the mesh of the water is built of, by the place of each part that is held: a part that arrives or changes asks for it again.
-pub type SeenKey = (usize, usize, usize, &'static str);
+pub type SeenKey = (usize, usize, usize, usize, &'static str);
 
 /// The water of an install as a frame takes it: its quads, the ground under them once read, and the day it is seen in.
 #[derive(Clone)]
@@ -137,6 +137,7 @@ impl Seen {
             Arc::as_ptr(&self.quads) as usize,
             of(self.ground.as_ref().map(|g| Arc::as_ptr(g) as usize)),
             of(self.day.as_ref().map(|d| Arc::as_ptr(d) as usize)),
+            of(self.fog.as_ref().map(|f| Arc::as_ptr(f) as usize)),
             self.weather,
         )
     }

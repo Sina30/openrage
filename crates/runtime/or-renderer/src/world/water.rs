@@ -29,7 +29,7 @@ pub struct WaterLook {
     pub reflection: f32,
 }
 
-/// The medium of the water by place: two grids of texels over the world, each row from the north edge, each west to east.
+/// The medium of the water by place: two grids of texels over the world, each row from the north edge, each west to east; off the grid the water is its `WaterLook`.
 #[derive(Debug, Clone, Copy)]
 pub struct WaterMedia<'a> {
     /// The grid's west and north edges and its extent along x and y, in metres.

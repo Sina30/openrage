@@ -106,10 +106,13 @@ fn a_quad_is_cut_along_one_grid_so_its_neighbour_shares_the_points_of_their_edge
     let xs = edge(&near);
     assert_eq!(xs.len(), 8, "every 16 m and the two corners");
     assert_eq!(xs, edge(&plain(&[above], [50.0, 50.0])));
-    // Far from the camera the cells are coarse, and the quad keeps its area.
+    // Farther from the camera the cells are coarse, and past the middle reach coarser, and the quad keeps its area.
+    let middle = plain(&[below], [2_000.0, 0.0]);
+    assert!((area(&middle) - 5_000.0).abs() < 0.1);
+    assert_eq!(edge(&middle).len(), 3);
     let far = plain(&[below], [5_000.0, 0.0]);
     assert!((area(&far) - 5_000.0).abs() < 0.1);
-    assert_eq!(edge(&far).len(), 3);
+    assert_eq!(edge(&far).len(), 2);
 }
 
 #[test]
@@ -208,4 +211,24 @@ fn the_ground_under_a_quad_dries_the_part_of_it_that_stands_over_land() {
             "at {x}: {depth} {alpha}"
         );
     }
+}
+
+#[test]
+fn the_far_sea_is_cut_into_larger_cells_and_still_covers_its_quad_whole() {
+    let sea = quad([0, 0], [8192, 8192], 0);
+    let mesh = plain(&[sea], [0.0, 0.0]);
+    let whole = 8192.0 * 8192.0;
+    assert!((area(&mesh) - whole).abs() < whole * 1e-5);
+    let side = |[a, b, _]: [Vec3; 3]| (b - a).length().max((b - a).abs().max_element());
+    let sides: Vec<f32> = triangles(&mesh).map(side).collect();
+    assert!(
+        sides.iter().any(|s| *s >= 512.0),
+        "cells past the middle reach are 512 m"
+    );
+    assert!(
+        sides.iter().any(|s| *s <= 16.0),
+        "cells about the camera are 16 m"
+    );
+    // Fewer cells than 64 m ones would make: 128 x 128 of them.
+    assert!(mesh.1.len() / 6 < 128 * 128 / 2);
 }
