@@ -345,43 +345,61 @@ fn a_jump_a_fast_camera_or_a_change_of_scale_ends_every_fade_in_time() {
 
 #[test]
 fn each_level_fades_out_over_its_own_band() {
-    // 10 m past a distance of 100 m: half of a band of 20 m, three fifths of one of 25 m.
-    for (level, at_110) in [
+    // 5 m past a distance of 100 m: half of a band of 10 m, three quarters of one of 20 m and
+    // seven eighths of one of 40 m.
+    let bands = [10.0, 40.0, 20.0, 40.0, 10.0, 20.0, 40.0];
+    let view = |x: f32| View {
+        fade: bands,
+        ..along(x)
+    };
+    for (level, at_105) in [
         (Level::Hd, 0.5),
-        (Level::Lod, 0.5),
-        (Level::Slod1, 0.5),
-        (Level::Slod2, 0.6),
-        (Level::Slod3, 0.6),
-        (Level::OrphanHd, 0.5),
-        (Level::Slod4, 0.6),
+        (Level::Lod, 0.875),
+        (Level::Slod1, 0.75),
+        (Level::Slod2, 0.875),
+        (Level::Slod3, 0.5),
+        (Level::OrphanHd, 0.75),
+        (Level::Slod4, 0.875),
     ] {
         let mut forest = lone(level);
-        let drawn = forest.select(&along(110.0), &all_ready);
-        assert!(close(fade(&drawn, (1, 0)), at_110), "{level:?}");
+        let drawn = forest.select(&view(105.0), &all_ready);
+        assert!(close(fade(&drawn, (1, 0)), at_105), "{level:?}");
         assert!(close(
-            fade(&forest.select(&along(100.0), &all_ready), (1, 0)),
+            fade(&forest.select(&view(100.0), &all_ready), (1, 0)),
             1.0
         ));
     }
+    // Where nothing sets them, every level fades out over 20 m.
+    let mut forest = lone(Level::Slod4);
+    assert!(close(
+        fade(&forest.select(&along(110.0), &all_ready), (1, 0)),
+        0.5
+    ));
 }
 
 #[test]
 fn a_parent_fades_down_its_children_s_band_short_of_their_distance() {
-    // Children of a band of 25 m: they draw from 125 m, whole from 100 m; the parent is whole
-    // to 95 m and gone at 75 m.
+    // Children of a band of 30 m: they draw from 130 m, whole from 100 m; the parent is whole
+    // to 90 m and gone at 70 m.
+    let mut bands = [FADE; Level::COUNT];
+    bands[Level::Slod2 as usize] = 30.0;
     let mut forest = Forest::new();
     let parent = leveled(entity([0.0; 3], 5000.0, 100.0, None), Level::Slod3);
     forest.insert(1, vec![parent]);
     let child = entity([1.0, 0.0, 0.0], 40.0, 0.0, Some((1, 0)));
     forest.insert(2, vec![leveled(child, Level::Slod2)]);
     for (away, parent, child) in [
-        (122.0, 1.0, 0.12),
-        (110.0, 1.0, 0.6),
-        (95.0, 1.0, 1.0),
-        (85.0, 0.5, 1.0),
-        (75.0, 0.0, 1.0),
+        (127.0, 1.0, 0.1),
+        (115.0, 1.0, 0.5),
+        (90.0, 1.0, 1.0),
+        (80.0, 0.5, 1.0),
+        (70.0, 0.0, 1.0),
     ] {
-        let drawn = forest.select(&along(away), &all_ready);
+        let view = View {
+            fade: bands,
+            ..along(away)
+        };
+        let drawn = forest.select(&view, &all_ready);
         assert!(close(fade(&drawn, (1, 0)), parent), "the parent at {away}");
         assert!(close(fade(&drawn, (2, 0)), child), "the child at {away}");
     }

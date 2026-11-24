@@ -14,8 +14,6 @@ use glam::Vec3;
 pub const PRESTREAM: f32 = 50.0;
 /// The band inside its children's distance over which a parent fades down, in metres.
 pub const FADE: f32 = 20.0;
-/// The band past the distance a node draws to over which it fades out, by `Level as usize`, in metres.
-pub const FADE_BAND: [f32; Level::COUNT] = [20.0, 20.0, 20.0, 25.0, 25.0, 20.0, 25.0];
 /// The band of an orphan that states 20 m or less, in metres.
 pub const FADE_SMALL: f32 = 5.0;
 /// The farthest an orphan states and still fades over [`FADE_SMALL`], in metres.
@@ -120,15 +118,18 @@ pub struct View {
     pub velocity: Vec3,
     /// What the distances of each level are multiplied by, by `Level as usize`: the camera's scale times the level's own.
     pub scales: [f32; Level::COUNT],
+    /// The band past its distance each level fades out over, by `Level as usize`, in metres.
+    pub fade: [f32; Level::COUNT],
 }
 
 impl View {
-    /// A camera at rest at `eye`, every level scaled by `scale`.
+    /// A camera at rest at `eye`, every level scaled by `scale` and fading out over [`FADE`].
     pub fn at(eye: Vec3, scale: f32) -> Self {
         Self {
             eye,
             velocity: Vec3::ZERO,
             scales: [scale; Level::COUNT],
+            fade: [FADE; Level::COUNT],
         }
     }
 }
@@ -583,7 +584,7 @@ impl Pass<'_> {
         // ⚠ The short band is picked by the distance the node states, before any scale.
         match level == Level::OrphanHd && self.forest.links.range[at as usize] <= SMALL {
             true => FADE_SMALL,
-            false => FADE_BAND[level as usize],
+            false => self.view.fade[level as usize],
         }
     }
 
