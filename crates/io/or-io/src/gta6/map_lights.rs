@@ -148,7 +148,7 @@ pub(super) fn check_table(model: &RbmModel, layouts: &'static Layouts) -> Result
 /// A `CLightAttrDef`: one light, in the space of what owns it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LightAttr {
-    /// A second point (`hash_30ECA388`); what it is beside `posn` is not known.
+    /// Where the light stands (`hash_30ECA388`), from the effect's offset; `posn` is not where it is drawn.
     pub hash_30eca388: [f32; 3],
     pub posn: [f32; 3],
     pub colour: [u8; 3],
@@ -208,7 +208,7 @@ impl LightAttr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LightEffect {
     pub name: u32,
-    /// Added to each light's `posn`.
+    /// Added to each light's `hash_30eca388`.
     pub offset_position: [f32; 3],
     pub instances: Vec<LightAttr>,
     /// A second list of lights (`hash_C4E96A00`); what sets it apart is not known.
@@ -284,7 +284,7 @@ impl Pose {
 
     /// `light` of `effect` in the space the pose stands in.
     pub fn place(&self, effect: &LightEffect, light: &LightAttr) -> PlacedLight {
-        let local = [0, 1, 2].map(|i| effect.offset_position[i] + light.posn[i]);
+        let local = [0, 1, 2].map(|i| effect.offset_position[i] + light.hash_30eca388[i]);
         PlacedLight {
             position: self.apply(local),
             direction: rotate(self.rotation, light.direction),

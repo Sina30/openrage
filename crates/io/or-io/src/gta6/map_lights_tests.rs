@@ -360,7 +360,7 @@ fn an_interior_light_stands_in_the_world_through_its_entity_inside_the_instance(
     let mut effect = the_effect();
     effect.offset_position = [0.0; 3];
     let mut light = light_read(1);
-    light.posn = [1.0, 0.0, 2.0];
+    light.hash_30eca388 = [1.0, 0.0, 2.0];
     light.direction = [1.0, 0.0, 0.0];
     let placed = inside.within(&Pose::of(&instance)).place(&effect, &light);
     let off = |a: [f32; 3], b: [f32; 3]| (0..3).map(|i| (a[i] - b[i]).abs()).fold(0.0, f32::max);
@@ -462,7 +462,7 @@ fn a_light_is_placed_by_its_entity_s_scale_then_turn_then_position() {
     let mut effect = the_effect();
     effect.offset_position = [0.5, 0.0, 0.25];
     let mut light = light_read(1);
-    light.posn = [0.5, 0.0, 0.75];
+    light.hash_30eca388 = [0.5, 0.0, 0.75];
     light.direction = [1.0, 0.0, 0.0];
     let placed = place(&effect, &light, &entity);
     let off = |a: [f32; 3], b: [f32; 3]| (0..3).map(|i| (a[i] - b[i]).abs()).fold(0.0, f32::max);
