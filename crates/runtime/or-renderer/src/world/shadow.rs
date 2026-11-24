@@ -81,7 +81,7 @@ impl Cascades {
         let forward = (camera.target - eye).normalize_or(Vec3::Y);
         let ends = ends(multiplier);
         let far = ends[CASCADES - 1].min(camera.far);
-        if !(far > 0.0) {
+        if far.is_nan() || far <= 0.0 {
             return None;
         }
         let mut near = camera.near.min(far);
