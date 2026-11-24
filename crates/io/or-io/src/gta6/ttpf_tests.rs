@@ -440,6 +440,59 @@ fn every_texture_reads_back_to_the_blocks_it_was_tiled_from() {
 }
 
 #[test]
+fn a_texture_reads_from_a_mip_down_out_of_the_rows_those_mips_lie_in() {
+    let (mut specs, expected) = textures();
+    let (_dir, pack) = pack_of(&specs);
+    // Mip 0 is 64 by 32 blocks of 8 bytes, mip 1 a quarter of that.
+    let (top, second) = (64 * 32 * 8, 32 * 16 * 8);
+    let (first, texture) = pack.texture_from(0, 1).expect("reads");
+    assert_eq!(
+        (first, texture.width, texture.height, texture.levels),
+        (1, 128, 64, 6)
+    );
+    assert!(texture.pixels == expected[0][top..]);
+    let (first, texture) = pack.texture_from(0, 2).expect("reads");
+    assert_eq!(
+        (first, texture.width, texture.height, texture.levels),
+        (2, 64, 32, 5)
+    );
+    assert!(texture.pixels == expected[0][top + second..]);
+    // A mip past the last is the last.
+    let (first, texture) = pack.texture_from(0, 40).expect("reads");
+    assert_eq!(
+        (first, texture.width, texture.height, texture.levels),
+        (6, 4, 2, 1)
+    );
+    let (first, whole) = pack.texture_from(0, 0).expect("reads");
+    assert_eq!(first, 0);
+    assert!(whole == pack.texture(0).expect("reads"));
+
+    // The top mip's row through a coder nothing decodes: the texture reads from the mip under it.
+    specs[0].bodies[1] = Body::Coded {
+        kind: 7,
+        decoded: top as u64,
+    };
+    let (_dir, pack) = pack_of(&specs);
+    assert!(matches!(
+        pack.texture(0),
+        Err(TtpfError::UnidentifiedCodec { kind: 7, .. })
+    ));
+    let (first, texture) = pack.texture_from(0, 0).expect("the mips under the top read");
+    assert_eq!((first, texture.width, texture.levels), (1, 128, 6));
+    assert!(texture.pixels == expected[0][top..]);
+    // And with its first row through one, nothing of it reads.
+    specs[0].bodies[0] = Body::Coded {
+        kind: 7,
+        decoded: 0x2000,
+    };
+    let (_dir, pack) = pack_of(&specs);
+    assert!(matches!(
+        pack.texture_from(0, 3),
+        Err(TtpfError::UnidentifiedCodec { kind: 7, .. })
+    ));
+}
+
+#[test]
 fn a_texture_past_4_gib_of_the_virtual_space_reads() {
     let (specs, expected) = past_4_gib();
     let (_dir, pack) = pack_of(&specs);

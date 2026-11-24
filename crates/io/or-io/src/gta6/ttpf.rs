@@ -955,6 +955,70 @@ impl TexturePack {
         })
     }
 
+    /// Texture `index` from its mip `from` down, or from the largest mip under it whose rows all
+    /// decode, with which mip that is: only the rows those mips lie in are read. A cube, an array
+    /// or a volume reads whole, from mip 0.
+    pub fn texture_from(&self, index: usize, from: u32) -> Result<(u32, Texture), TtpfError> {
+        let Plan {
+            rows,
+            start,
+            layout,
+            ..
+        } = self.layout_of(index)?;
+        if layout.slices > 1 || layout.depth.is_some() {
+            return self.texture(index).map(|texture| (0, texture));
+        }
+        // The chain holds its small levels first: a level and those under it are a prefix of it.
+        let end_of = |level: &Level| level.from() + level.len;
+        let (mut readable, mut refused) = (0, None);
+        for row in rows.clone() {
+            if let Err(e) = self.readable(row) {
+                refused = Some(e);
+                break;
+            }
+            readable = self.rows[row + 1].virtual_address - start;
+        }
+        let asked = (from as usize).min(layout.levels.len().saturating_sub(1));
+        let first = (asked..layout.levels.len()).find(|&l| end_of(&layout.levels[l]) <= readable);
+        let Some(first) = first else {
+            return Err(refused.unwrap_or(TtpfError::RangeNotKnown { index }));
+        };
+        let last = self.row_holding(&rows, start, end_of(&layout.levels[first]) - 1);
+        let mut memory = vec![0u8; (self.rows[last + 1].virtual_address - start) as usize];
+        let mut file = File::open(&self.path).map_err(|source| TtpfError::Io {
+            path: self.path.clone(),
+            source,
+        })?;
+        for row in rows.start..=last {
+            let body = self.body(&mut file, row)?;
+            let at = (self.rows[row].virtual_address - start) as usize;
+            memory[at..at + body.len()].copy_from_slice(&body);
+        }
+        let shift = |side: u32| (side >> first).max(1);
+        let part = Layout {
+            width: shift(layout.width),
+            height: shift(layout.height),
+            levels: layout.levels[first..].to_vec(),
+            ..layout
+        };
+        let (levels, pixels) = part.read(&memory, 0).ok_or_else(|| {
+            malformed(format!(
+                "texture {index}'s mip {first} does not lie in its rows"
+            ))
+        })?;
+        Ok((
+            first as u32,
+            Texture {
+                width: part.width,
+                height: part.height,
+                format: part.format,
+                levels,
+                faces: 1,
+                pixels,
+            },
+        ))
+    }
+
     /// Whether body `row`'s codec is identified and its bytes are on disk.
     fn readable(&self, row: usize) -> Result<(), TtpfError> {
         if self.replaced_row(row).is_some() {
