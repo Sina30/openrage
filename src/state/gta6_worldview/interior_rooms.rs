@@ -58,6 +58,15 @@ pub(super) fn room_of(rooms: &[RoomBox], eye: Vec3) -> Option<usize> {
         .map(|(k, _)| k)
 }
 
+/// The smallest room other than room 0 whose box holds the whole of the sphere of `radius` about `p`.
+pub(super) fn room_around(rooms: &[RoomBox], p: Vec3, radius: f32) -> Option<usize> {
+    let r = Vec3::splat(radius);
+    (rooms.iter().enumerate().skip(1))
+        .filter(|(_, room)| (p - r).cmpge(room.min).all() && (p + r).cmple(room.max).all())
+        .min_by(|(_, a), (_, b)| a.volume().total_cmp(&b.volume()))
+        .map(|(k, _)| k)
+}
+
 /// A plane through the camera: a point `p` is inside where `normal · (p − eye) ≥ 0`.
 type Planes = Vec<Vec3>;
 

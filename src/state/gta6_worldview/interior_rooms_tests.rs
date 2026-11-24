@@ -105,6 +105,15 @@ fn inside_the_sky_s_ambient_light_comes_in_through_the_openings_to_the_outside_a
 }
 
 #[test]
+fn a_sphere_is_in_the_smallest_room_that_holds_the_whole_of_it() {
+    let (rooms, ..) = row();
+    assert_eq!(room_around(&rooms, Vec3::new(2.0, 0.0, 1.0), 0.5), Some(1));
+    // A shell wider than its room, or a prop across a doorway, is in no room.
+    assert_eq!(room_around(&rooms, Vec3::new(2.0, 0.0, 1.5), 3.0), None);
+    assert_eq!(room_around(&rooms, Vec3::new(4.0, 0.0, 1.0), 0.5), None);
+}
+
+#[test]
 fn a_mirror_is_seen_and_nothing_is_seen_through_it() {
     let (rooms, mut portals, middle) = row();
     portals[1].flags = MIRROR;

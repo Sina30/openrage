@@ -19,7 +19,7 @@ use or_world::streaming::{Level, View, FADE_SMALL, SMALL};
 
 use super::index::{BodyRow, ModelRef, WorldIndex};
 use super::interior_rooms::{self, Opening, RoomBox, Seen};
-use super::stream::Rows;
+use super::stream::{Chunk, Instance, Rows};
 
 /// The bytes a body of interiors is read to.
 const BODY_LIMIT: u64 = 256 << 20;
@@ -222,6 +222,29 @@ impl Placed {
         // A camera inside the interior's own sphere is in range whatever distance it states.
         let scale = view.scales[Level::Hd as usize];
         eye.distance(self.centre) <= (self.lod_dist * scale).max(self.radius)
+    }
+
+    /// Give each instance of `chunks` that stands wholly within one of this interior's rooms the
+    /// ambient light of what stands there: a map's props and lists placed inside its shell.
+    // ⚠ Inferred: an instance whose sphere fits in a room is in it; a shell's walls, wider than their
+    // room, keep the outdoors'.
+    pub(super) fn shade(&self, chunks: &[Chunk], instances: &mut [Instance]) {
+        let reach = |c: Vec3, r: f32| c.distance(self.centre) <= r + self.radius;
+        let scale = stretch(self.own);
+        for chunk in chunks.iter().filter(|c| reach(c.centre, c.radius)) {
+            let run = instances.get_mut(chunk.from as usize..chunk.to as usize);
+            for instance in run.into_iter().flatten() {
+                if !reach(instance.centre, instance.radius) {
+                    continue;
+                }
+                let p = self.own.transform_point3(instance.centre);
+                let room = interior_rooms::room_around(&self.rooms, p, instance.radius * scale);
+                if let Some(room) = room {
+                    instance.ambient =
+                        interior_rooms::ambient_of(&self.rooms, &self.portals, room as u32, p);
+                }
+            }
+        }
     }
 
     /// Call `draw` with each child a camera of `view` sees at the hour `hour`, 0 to 23, how far from

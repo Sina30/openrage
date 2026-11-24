@@ -472,6 +472,14 @@ impl Streamer {
             let nearest = waited.entry(model).or_insert(away);
             *nearest = nearest.min(away);
         }
+        // What the maps place inside an interior near the camera takes the interior's ambient light.
+        // ponytail: every selection looks again at each instance near an interior in range; held
+        // per map body if the selection's time shows it.
+        for interior in loaded.values().flat_map(|map| &map.interiors) {
+            if interior.in_range(eye, view) {
+                interior.shade(&out.chunks, &mut out.instances);
+            }
+        }
         // The contents of each interior whose instance draws, or that the camera stands in: a
         // chunk an interior, as opaque as its instance.
         for (name, map) in loaded {
