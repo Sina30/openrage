@@ -306,12 +306,9 @@ pub fn split_extension(path: &str) -> (&str, &str) {
     }
 }
 
-/// Where the entry of the path `path` starts in the top-level archive at `archive`; `None` with no key snapshot, a table that does not decipher, or no such entry.
-pub fn entry_offset(archive: &Path, path: &str) -> Option<u64> {
-    let keys = GtaViKeys::for_install(crate::config::config_dir().as_deref())
-        .inspect_err(|error| tracing::info!(%error, "the GTA VI key snapshot is not read"))
-        .ok()??;
-    let table = Table::open(archive, &keys)
+/// Where the entry of the path `path` starts in the top-level archive at `archive`; `None` where `keys` does not decipher its table or it has no such entry.
+pub fn entry_offset(archive: &Path, path: &str, keys: &GtaViKeys) -> Option<u64> {
+    let table = Table::open(archive, keys)
         .inspect_err(|error| tracing::info!(path = %archive.display(), %error, "no table read"))
         .ok()?;
     table.find(path).map(|entry| entry.offset)

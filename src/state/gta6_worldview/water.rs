@@ -40,8 +40,12 @@ pub fn water(root: &Path) -> Option<Arc<WaterData>> {
             let slot = Read::default();
             held.push((archive.clone(), Arc::clone(&slot)));
             let filled = Arc::clone(&slot);
+            // ⚠ Where the key snapshot lies is found here, on the caller's thread, as the index finds it.
+            let keys = super::index::keys();
             std::thread::spawn(move || {
-                let found = or_title::gta6_mount::table::entry_offset(&archive, ENTRY);
+                let found = keys.as_ref().and_then(|keys| {
+                    or_title::gta6_mount::table::entry_offset(&archive, ENTRY, keys)
+                });
                 let water = match found.map(|offset| read(&archive, offset)) {
                     Some(Ok(water)) => Some(Arc::new(water)),
                     Some(Err(why)) => {
@@ -49,7 +53,7 @@ pub fn water(root: &Path) -> Option<Arc<WaterData>> {
                         None
                     }
                     None => {
-                        tracing::info!(archive = %archive.display(), "the archive's table names no water document");
+                        tracing::info!(archive = %archive.display(), "no key snapshot deciphers the archive's table, or it names no water document");
                         None
                     }
                 };
@@ -64,14 +68,16 @@ pub fn water(root: &Path) -> Option<Arc<WaterData>> {
 /// The mesh of the whole quads of `quads` that are drawn and lie within `reach` metres of `eye`: four corners a quad, in the world, the surface up, the texture coordinate the place in metres and the opacity in the colour.
 pub fn mesh(quads: &[WaterQuad], eye: Vec3, reach: f32) -> (Vec<MeshVertex>, Vec<u32>) {
     let (mut vertices, mut indices) = (Vec::new(), Vec::new());
-    for quad in quads.iter().filter(|q| q.kind == 0 && !q.invisible) {
+    // A quad with no area is passed over before its bounds are clamped to, which a reversed pair panics.
+    let whole = |q: &&WaterQuad| q.min[0] < q.max[0] && q.min[1] < q.max[1];
+    for quad in (quads.iter()).filter(|q| q.kind == 0 && !q.invisible && whole(q)) {
         let (min, max) = (quad.min.map(f32::from), quad.max.map(f32::from));
         let nearest = Vec3::new(
             eye.x.clamp(min[0], max[0]),
             eye.y.clamp(min[1], max[1]),
             eye.z,
         );
-        if nearest.distance(eye) > reach || min[0] >= max[0] || min[1] >= max[1] {
+        if nearest.distance(eye) > reach {
             continue;
         }
         let first = vertices.len() as u32;
@@ -144,6 +150,9 @@ mod tests {
         assert_eq!(vertices[0].position, [50.0, 0.0, 0.0]);
         // A camera over a quad is at no distance from it, however high the reach is counted from.
         assert_eq!(mesh(&[far], Vec3::new(1050.0, 1050.0, 0.0), 1.0).0.len(), 4);
+        // A quad whose bounds are reversed has no area and is left out, not clamped to.
+        let reversed = [quad([10, 0], [0, 10], 0.0), quad([0, 10], [10, 0], 0.0)];
+        assert!(mesh(&reversed, Vec3::ZERO, 100.0).0.is_empty());
     }
 
     #[test]
