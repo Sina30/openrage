@@ -1107,10 +1107,10 @@ fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_pa
     let (tinted, masked) = (material(255, 0.0), material(0, 1.0));
     let (metal, rough) = (128.0_f32 / 255.0, 64.0_f32 / 255.0);
     let kept = unorm((1.0 - metal).sqrt());
-    // The vertex's first colour of one in 255 picks the second column: the albedo is green, less its metal
+    // The third byte of the vertex's first colour of one picks the second column: the albedo is green, less its metal
     let second = coloured_square(
         &device,
-        [1.0 / 255.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0 / 255.0, 1.0],
         [1.0; 4],
         tinted.clone(),
     );
@@ -1128,7 +1128,7 @@ fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_pa
     let (targets, _) = shade(&device, &queue, &mut renderer, &[(first, WHITE)]);
     assert!(near(targets[0], [kept, 0, 0, 255], 2), "{targets:?}");
     // Where material B's alpha masks the tint off, the albedo is the colour map's
-    let off = coloured_square(&device, [1.0 / 255.0, 1.0, 1.0, 1.0], [1.0; 4], masked);
+    let off = coloured_square(&device, [1.0, 1.0, 1.0 / 255.0, 1.0], [1.0; 4], masked);
     let (targets, _) = shade(&device, &queue, &mut renderer, &[(off, WHITE)]);
     assert!(near(targets[0], [kept, kept, kept, 255], 2), "{targets:?}");
     assert!(accepted(scope), "the device accepted every pass");
@@ -1456,7 +1456,8 @@ fn a_terrain_lod_reads_its_material_green_as_a_smoothness_and_its_normal_map_who
         material(WorldFamily::Standard),
     );
     let mut drawn = |material: WorldMaterial| {
-        let mesh = coloured_square(&device, [1.0; 4], [1.0; 4], material);
+        // The palette's first column, which a terrain LOD does not read
+        let mesh = coloured_square(&device, [1.0, 1.0, 0.0, 1.0], [1.0; 4], material);
         shade(&device, &queue, &mut renderer, &[(mesh, WHITE)]).0
     };
     let green = 191.0 / 255.0;

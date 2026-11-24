@@ -261,7 +261,8 @@ fn palette(colour0: vec4<f32>) -> vec3<f32> {
     let width = max(size.x, 1u);
     let rows = max(size.y, 1u);
     let row = min(u32(max(m.palette_row, 0.0)), rows - 1u);
-    let at = row * width + u32(255.0 * colour0.r + 0.5);
+    // ⚠ The column is the third byte of the first colour as stored: a far prop list's meshes hold small whole numbers there, within their palette's length, and in the first byte numbers past it.
+    let at = row * width + u32(255.0 * colour0.b + 0.5);
     let texel = vec2<u32>(at % width, min(at / width, rows - 1u));
     return select(vec3<f32>(1.0), textureLoad(tint_map, texel, 0).rgb, at < width * rows);
 }
