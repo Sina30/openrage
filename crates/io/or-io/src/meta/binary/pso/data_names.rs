@@ -2,30 +2,21 @@
 //! and, with the `gta6` feature, the 64-bit string hash. Schema names hash literally and are not here.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
-use crate::meta::binary::hash_index::default_hash_index;
+use crate::meta::binary::hash_index::{default_hash_index, HashIndex};
 use crate::meta::instance::value::HashedString;
 
 /// Longest text a document's own string may be to name a hash value.
 const NAME_LEN: usize = 256;
 
 #[derive(Debug, Default)]
-pub(crate) struct DataNames {
+struct Names {
     by32: HashMap<u32, String>,
     by64: HashMap<u64, String>,
 }
 
-impl DataNames {
-    /// The names the tree's hash index carries.
-    // ponytail: rebuilt for every document; cache it beside the index if opening many gets slow.
-    pub(crate) fn of_tree() -> Self {
-        let mut names = Self::default();
-        for name in default_hash_index().names() {
-            names.add(name);
-        }
-        names
-    }
-
+impl Names {
     fn add(&mut self, text: &str) {
         let bytes = text.as_bytes();
         self.by32
@@ -36,11 +27,75 @@ impl DataNames {
             .entry(crate::gta6::hash::name_hash64(bytes))
             .or_insert_with(|| text.to_string());
     }
+}
+
+/// The names `index` carries, worked out once for each index the process makes.
+// ⚠ Hashing every name of an index twice costs far more than reading a small document.
+fn of_index(index: &'static HashIndex) -> &'static Names {
+    static MADE: Mutex<Vec<(usize, &'static Names)>> = Mutex::new(Vec::new());
+    let key = std::ptr::from_ref(index) as usize;
+    let mut made = MADE.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((_, names)) = made.iter().find(|(made, _)| *made == key) {
+        return names;
+    }
+    let mut names = Names::default();
+    for name in index.names() {
+        names.add(name);
+    }
+    // At most one for each of the few indexes the process makes, each held to its end.
+    let names: &'static Names = Box::leak(Box::new(names));
+    made.push((key, names));
+    names
+}
+
+#[derive(Debug)]
+pub(crate) struct DataNames {
+    /// The names of the tree's hash index, which stand before a document's own.
+    tree: &'static Names,
+    own: Names,
+}
+
+impl Default for DataNames {
+    fn default() -> Self {
+        static NONE: LazyLock<Names> = LazyLock::new(Names::default);
+        Self {
+            tree: &NONE,
+            own: Names::default(),
+        }
+    }
+}
+
+impl DataNames {
+    /// The names the tree's hash index carries.
+    pub(crate) fn of_tree() -> Self {
+        Self {
+            tree: of_index(default_hash_index()),
+            own: Names::default(),
+        }
+    }
+
+    fn add(&mut self, text: &str) {
+        let bytes = text.as_bytes();
+        if !self.tree.by32.contains_key(&crate::string_hash(bytes)) {
+            self.own
+                .by32
+                .entry(crate::string_hash(bytes))
+                .or_insert_with(|| text.to_string());
+        }
+        #[cfg(feature = "gta6")]
+        if !(self.tree.by64).contains_key(&crate::gta6::hash::name_hash64(bytes)) {
+            self.own
+                .by64
+                .entry(crate::gta6::hash::name_hash64(bytes))
+                .or_insert_with(|| text.to_string());
+        }
+    }
 
     /// A 32-bit data hash, with the name a lower-cased text gives it where one does.
     pub(crate) fn hashed(&self, hash: u32) -> HashedString {
+        let name = (self.tree.by32.get(&hash)).or_else(|| self.own.by32.get(&hash));
         HashedString {
-            raw: self.by32.get(&hash).cloned().unwrap_or_default(),
+            raw: name.cloned().unwrap_or_default(),
             hash,
         }
     }
@@ -58,7 +113,8 @@ impl DataNames {
     }
 
     pub(crate) fn name64(&self, hash: u64) -> Option<&str> {
-        self.by64.get(&hash).map(String::as_str)
+        let name = (self.tree.by64.get(&hash)).or_else(|| self.own.by64.get(&hash));
+        name.map(String::as_str)
     }
 
     /// Adds the texts of `unnamed` that name one of its hash values; false when none does.
@@ -94,5 +150,27 @@ impl Unnamed {
         if !text.is_empty() && text.len() <= NAME_LEN {
             self.texts.push(text.to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tree_s_names_are_worked_out_once_and_a_document_s_own_are_added_beside_them() {
+        assert!(std::ptr::eq(
+            DataNames::of_tree().tree,
+            DataNames::of_tree().tree
+        ));
+        let mut names = DataNames::of_tree();
+        let hash = crate::string_hash(b"a text no index names");
+        assert!(names.add_naming(&Unnamed {
+            narrow: HashSet::from([hash]),
+            wide: HashSet::new(),
+            texts: vec!["a text no index names".into()],
+        }));
+        assert_eq!(names.hashed(hash).raw, "a text no index names");
+        assert_eq!(DataNames::of_tree().hashed(hash).raw, "");
     }
 }
