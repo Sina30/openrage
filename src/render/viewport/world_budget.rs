@@ -15,8 +15,8 @@ const TEXTURES_KEPT: u64 = 1 << 30;
 /// The least of either kept, however little memory the device says it has.
 const LEAST_KEPT: u64 = 256 << 20;
 /// The bytes of a page's vertex buffer and of its index buffer, where the device takes buffers that large.
-const PAGE_VERTICES: u64 = 48 << 20;
-const PAGE_INDICES: u64 = 16 << 20;
+const PAGE_VERTICES: u64 = 192 << 20;
+const PAGE_INDICES: u64 = 64 << 20;
 /// How far ahead in time the camera is taken to be when what loads first is chosen, in seconds,
 /// and the most it is taken to move in that time, in metres.
 const LEAD: f32 = 0.5;
@@ -154,7 +154,7 @@ mod tests {
             ..Default::default()
         };
         let budgets = Budgets::of(&limits, None);
-        assert_eq!(budgets.page, (32 << 20, 16 << 20));
+        assert_eq!(budgets.page, (32 << 20, 32 << 20));
         assert_eq!(budgets.most_buffer, 32 << 20);
     }
 

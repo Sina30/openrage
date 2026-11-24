@@ -478,13 +478,17 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
         let blue_map = texel(&device, &queue, [0, 0, 255, 255]);
         let mapped =
             renderer.world_material(&device, Some(&blue_map), None, None, WorldBucket::Opaque);
-        // A material is its maps and its bucket: a clone is the same, and another made of the same maps is not
+        // A material is its maps and its bucket: a clone is the same, and so is another made of the same maps while the first is alive
         assert!(opaque == plain(&device, &renderer, WorldBucket::Opaque));
         assert_eq!(opaque.key(), opaque.clone().key());
         assert!(opaque != plain(&device, &renderer, WorldBucket::Cutout));
         assert!(
             mapped
-                != renderer.world_material(&device, Some(&blue_map), None, None, mapped.bucket())
+                == renderer.world_material(&device, Some(&blue_map), None, None, mapped.bucket())
+        );
+        let red_map = texel(&device, &queue, [255, 0, 0, 255]);
+        assert!(
+            mapped != renderer.world_material(&device, Some(&red_map), None, None, mapped.bucket())
         );
         assert_ne!(mapped.key(), opaque.key());
         let part = |nth: u32, material: &WorldMaterial| WorldDraw {

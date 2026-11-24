@@ -1,8 +1,9 @@
 //! The world a viewport draws: meshes on the device, each drawn once for every instance that places it, in the bucket of its material.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -249,6 +250,21 @@ pub(crate) struct World {
     casting: RefCell<shadow::Casting>,
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
+    /// The maps and constants of each material made, by [`alike`], so that materials alike bind one group and their draws join; and the size past which the dead are let go.
+    alike: RefCell<(HashMap<[u64; 2], Weak<wgpu::BindGroup>>, usize)>,
+}
+
+/// Two hashes of a material's maps and constants, which materials alike have in common.
+// ponytail: a material is taken for another of the same two 64-bit hashes; store the views themselves if one in 2^128 is too many.
+fn alike(views: &[&wgpu::TextureView; WORLD_MAPS], uniform: &[u8]) -> [u64; 2] {
+    use std::hash::{Hash, Hasher};
+    [0u8, 1].map(|salt| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        salt.hash(&mut hasher);
+        uniform.hash(&mut hasher);
+        views.hash(&mut hasher);
+        hasher.finish()
+    })
 }
 
 /// A material as the pipelines bind it: its maps by slot, the one sampler after them, and its constants after that, the family in front.
@@ -443,6 +459,7 @@ impl World {
             set: 0,
             casting: RefCell::default(),
             exposure: 1.0,
+            alike: RefCell::default(),
             materials,
             sampler,
             stand_ins,
@@ -480,13 +497,27 @@ impl World {
                 };
                 let views = std::array::from_fn(|at| surface.maps[at].unwrap_or(stand_in(at)));
                 let constants = (surface.family, &surface.constants);
-                Arc::new(bound(
-                    device,
-                    &self.materials,
-                    &self.sampler,
-                    views,
-                    constants,
-                ))
+                // ⚠ A bind group alive holds its views, so a view met again under a live entry is the one it was made with.
+                let key = alike(&views, &uniform_bytes(surface.family, &surface.constants));
+                let (made, prune_at) = &mut *self.alike.borrow_mut();
+                match made.get(&key).and_then(Weak::upgrade) {
+                    Some(maps) => maps,
+                    None => {
+                        let maps = Arc::new(bound(
+                            device,
+                            &self.materials,
+                            &self.sampler,
+                            views,
+                            constants,
+                        ));
+                        if made.len() >= *prune_at {
+                            made.retain(|_, group| group.strong_count() > 0);
+                            *prune_at = (2 * made.len()).max(1024);
+                        }
+                        made.insert(key, Arc::downgrade(&maps));
+                        maps
+                    }
+                }
             }
         };
         WorldMaterial {
