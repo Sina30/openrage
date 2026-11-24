@@ -33,6 +33,8 @@ mod layout;
 mod material;
 #[path = "world_pages.rs"]
 mod pages;
+#[path = "world_ready.rs"]
+mod ready;
 #[path = "world_textures.rs"]
 mod textures;
 #[path = "world_water.rs"]
@@ -158,6 +160,8 @@ pub(super) struct WorldGpu {
     changes: u64,
     /// The models that came, will never come (`None`) or left (`false`), not yet told to the world's thread.
     told: Vec<(ModelRef, Option<bool>)>,
+    /// The models on the device not yet told, for the maps they sample are not all there.
+    pending: HashSet<ModelRef>,
     laid_for: Option<LaidFor>,
     layout: Layout,
     /// When the last frame was and where the camera stood in it.
@@ -405,7 +409,7 @@ impl RenderBridge {
                     let before = world.model_bytes;
                     let slot = world.put(&self.device, &self.queue, &budgets, &read, (frame, eye));
                     uploaded += world.model_bytes - before;
-                    world.told.push((model, Some(true)));
+                    world.pending.insert(model);
                     slot
                 }
                 None => {
@@ -434,6 +438,7 @@ impl RenderBridge {
             world.changes += 1;
         }
         world.cost.uploaded.1 = uploaded;
+        world.release_whole(viewer.reads_textures());
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
         let metered = self.renderer.metered();
@@ -672,6 +677,12 @@ impl RenderBridge {
             world.changes += 1;
         }
         wanted.extend(asks.textures);
+        wanted.extend(world.ask_whole(
+            &selected.wanted,
+            (eye, lod_scale),
+            (per_metre, budgets.most_side),
+            frame,
+        ));
         let mut wanted = merged(wanted);
         world.textures.hold(&mut wanted);
         let mut viewer = crate::state::gta6_world::worldview::viewer();

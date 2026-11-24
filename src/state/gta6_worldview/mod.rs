@@ -430,6 +430,11 @@ impl Viewer {
         }
     }
 
+    /// Whether any texture is read: with no pack indexed none is.
+    pub fn reads_textures(&self) -> bool {
+        self.textures.is_some()
+    }
+
     /// The next texture that arrived, with the pixels asked: `None` where none of it reads, smaller than asked where nothing larger does.
     pub fn take_texture(&mut self) -> Option<(u64, u32, Option<CpuTexture>)> {
         let mut first = true;
