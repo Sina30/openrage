@@ -755,6 +755,24 @@ impl FramePasses {
         }
     }
 
+    /// Whether the pass that receives the sun's shadow is built.
+    pub fn has_shadow(&self) -> bool {
+        self.shadow.is_some()
+    }
+
+    /// Write the constants of the pass that receives the shadow, the shadow's own being `shadow`.
+    pub fn write_shadow_with(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        screen: &Screen,
+        shadow: BTreeMap<&'static str, Vec<f32>>,
+    ) {
+        if let Some(pass) = &self.shadow {
+            pass.write_with(queue, engine, screen, shadow);
+        }
+    }
+
     /// Cast the shadow: `cast` draws the surfaces from the sun into the pass it is given.
     pub fn record_shadow_cast(
         &self,
