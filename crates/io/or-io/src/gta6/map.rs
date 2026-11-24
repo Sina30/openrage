@@ -860,6 +860,9 @@ pub mod grow;
 #[path = "map_lights.rs"]
 pub mod lights;
 
+#[path = "map_light_ext.rs"]
+pub mod light_ext;
+
 #[path = "map_lanes.rs"]
 pub mod lanes;
 

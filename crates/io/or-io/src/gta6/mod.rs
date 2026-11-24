@@ -39,5 +39,7 @@ pub mod ui_tree;
 pub mod water;
 #[cfg(feature = "gta5")]
 pub mod weather;
+#[cfg(feature = "meta")]
+pub mod world_state;
 
 pub use ttpf::{Entry, Format, Header, Row, RowRole, Texture, TexturePack, TtpfError};
