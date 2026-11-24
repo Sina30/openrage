@@ -20,6 +20,8 @@ pub struct Census {
     pub drawn: [[usize; Level::COUNT]; 4],
     /// The instances the lists that draw put in the selection.
     pub list_instances: usize,
+    /// Each node that draws, by its map's name and its place among the map's nodes, with how opaque.
+    pub drawn_nodes: Vec<(u32, u32, f32)>,
 }
 
 /// The kind of `node`, the node at `at` of a map with `entities` entities.
@@ -56,12 +58,13 @@ pub(super) fn count(
             }
         }
     }
-    let drawn =
-        (selection.drawn.iter().map(|d| d.node)).chain(selection.lists.iter().map(|l| l.node));
-    for (key, at) in drawn {
+    let drawn = (selection.drawn.iter().map(|d| (d.node, d.fade)))
+        .chain(selection.lists.iter().map(|l| (l.node, l.fade)));
+    for ((key, at), fade) in drawn {
         let map = loaded.get(&(key as u32));
         if let (Some(map), Some(node)) = (map, forest.node((key, at))) {
             census.drawn[kind(node, at as usize, map.entities.len())][node.level as usize] += 1;
+            census.drawn_nodes.push((key as u32, at, fade));
         }
     }
     census

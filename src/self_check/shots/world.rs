@@ -40,7 +40,14 @@ pub(super) enum WorldStep {
     Settle(Duration),
     /// What the viewer wants and draws at its camera, written as JSON to this file beside the shots.
     Dump(String),
+    /// The game modes that stream: bit 0 the base game, bit 1 story, bit 2 the shared minigames.
+    Modes(u8),
+    /// The camera moved at this velocity, in metres a second, for this long, a frame at a time.
+    Fly(glam::Vec3, Duration),
 }
+
+/// The words `world modes` takes, each with its bit.
+const MODES: [(&str, u8); 3] = [("base", 1), ("story", 2), ("minigames", 4)];
 
 /// The step the words after `world` name.
 pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
@@ -72,8 +79,27 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
         }
         // ⚠ A name, not a path: a dump lands beside the shots, never in the tree.
         "dump" => file_stem(rest).map(WorldStep::Dump),
+        "modes" if !args.is_empty() => (args.iter())
+            .try_fold(0, |bits, word| {
+                let (_, bit) = (MODES.iter().find(|(name, _)| name == word))
+                    .ok_or(format!("no mode `{word}`; use base, story or minigames"))?;
+                Ok(bits | bit)
+            })
+            .map(WorldStep::Modes),
+        "fly" => {
+            let [x, y, z, seconds] = numbers::<4>(&args)?;
+            if seconds <= 0.0 || seconds > MOST_SECONDS {
+                return Err(format!(
+                    "a flight lasts a number of seconds above 0, {MOST_SECONDS} at most"
+                ));
+            }
+            Ok(WorldStep::Fly(
+                glam::Vec3::new(x, y, z),
+                Duration::from_secs_f32(seconds),
+            ))
+        }
         other => Err(format!(
-            "no world step `{other}`; use camera, hour, clean, settle or dump"
+            "no world step `{other}`; use camera, hour, clean, settle, dump, modes or fly"
         )),
     }
 }
@@ -179,6 +205,11 @@ fn dump(path: &Path) -> Result<(), String> {
     let pose = Pose::of(&viewer.camera);
     let (census, s) = (&selected.census, selected.streaming);
     let records: usize = selected.cards.iter().map(|list| list.records.len()).sum();
+    // ⚠ A node's fade is written as `MAP:INDEX:FADE`, so a fade in time can be judged against the distance's.
+    let mut drawn_nodes: Vec<String> = (census.drawn_nodes.iter())
+        .map(|(map, at, fade)| format!("{map:08X}:{at}:{fade:.3}"))
+        .collect();
+    drawn_nodes.sort_unstable();
     let json = serde_json::json!({
         "camera": {
             "pos": [pose.position.x, pose.position.y, pose.position.z],
@@ -202,6 +233,7 @@ fn dump(path: &Path) -> Result<(), String> {
         "nodes_by_level": by_level(&census.nodes),
         "drawn_by_level": by_level(&census.drawn),
         "list_instances": census.list_instances,
+        "drawn_nodes": drawn_nodes,
         "cards": { "lists": selected.cards.len(), "records": records },
     });
     drop(viewer);
@@ -243,8 +275,29 @@ impl Shell {
             WorldStep::Clean(on) => state.panels.get::<Capture>().clean = *on,
             WorldStep::Settle(deadline) => self.settle(state, *deadline)?,
             WorldStep::Dump(name) => dump(&out.join(name))?,
+            // The groups follow the modes, as they do on the screen until a group is ticked.
+            WorldStep::Modes(modes) => viewer().enabled.modes = *modes,
+            WorldStep::Fly(velocity, seconds) => self.fly(state, *velocity, *seconds)?,
         }
         Ok(())
+    }
+
+    /// Draw frames for `seconds`, the camera moved at `velocity` by the time each is drawn.
+    fn fly(
+        &mut self,
+        state: &mut AppState,
+        velocity: glam::Vec3,
+        seconds: Duration,
+    ) -> Result<(), String> {
+        let (started, from) = (Instant::now(), viewer().camera.position);
+        loop {
+            let flown = started.elapsed().min(seconds);
+            viewer().camera.position = from + velocity * flown.as_secs_f32();
+            self.idle(state, 1)?;
+            if flown >= seconds {
+                return Ok(());
+            }
+        }
     }
 
     /// Draw frames until the install's index is held.
@@ -321,6 +374,12 @@ mod tests {
             parse("dump truth-01.json"),
             Ok(WorldStep::Dump("truth-01.json".into()))
         );
+        assert_eq!(parse("modes base story"), Ok(WorldStep::Modes(3)));
+        assert_eq!(parse("modes minigames"), Ok(WorldStep::Modes(4)));
+        assert_eq!(
+            parse("fly 30 0 -1.5 2"),
+            Ok(WorldStep::Fly(glam::Vec3::new(30.0, 0.0, -1.5), at(2000)))
+        );
     }
 
     #[test]
@@ -361,6 +420,11 @@ mod tests {
             "dump ../out.json",
             "dump C:/out.json",
             "dump two words",
+            "modes",
+            "modes base online",
+            "fly 1 2 3",
+            "fly 1 2 3 0",
+            "fly 1 2 3 soon",
         ] {
             assert!(parse(bad).is_err(), "`world {bad}` should be refused");
         }
