@@ -486,6 +486,27 @@ fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
         said(ui, tr!("The index holds no script-managed group"));
         return;
     }
+    let on = viewer.enabled.groups.len();
+    said(
+        ui,
+        &match viewer.groups_chosen {
+            false => tr!("{on} groups on: the game's own at this hour", on = on),
+            true => tr!("{on} groups on, as you chose them", on = on),
+        },
+    );
+    let own = ui.add_enabled(
+        viewer.groups_chosen,
+        egui::Button::new(tr!("The game's own groups")),
+    );
+    if own
+        .on_hover_text(tr!(
+            "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+        ))
+        .clicked()
+    {
+        viewer.enabled.groups = index.default_on(viewer.hour);
+        viewer.groups_chosen = false;
+    }
     let row_height = ui.spacing().interact_size.y;
     let title = tr!(
         "Script-managed groups: {on} of {groups} on",
@@ -495,10 +516,7 @@ fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
     egui::CollapsingHeader::new(title)
         .id_salt("world_viewer_groups")
         .show(ui, |ui| {
-            said(
-                ui,
-                tr!("Nothing says which are on at rest: a group ticked streams its maps in"),
-            );
+            said(ui, tr!("A group ticked streams its maps in"));
             egui::ScrollArea::vertical()
                 .id_salt("world_viewer_group_rows")
                 .max_height(row_height * GROUP_ROWS)
@@ -512,6 +530,8 @@ fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
                             maps = group.maps,
                         );
                         if ui.checkbox(&mut on, label).changed() {
+                            // ⚠ A list the person changed is theirs: the hour no longer resets it.
+                            viewer.groups_chosen = true;
                             match on {
                                 true => viewer.enabled.groups.push(group.id),
                                 false => viewer.enabled.groups.retain(|id| *id != group.id),
