@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_world::streaming::{Forest, NodeId, NodeState, View, HD_MAX_SPEED};
+use or_world::streaming::{Forest, NodeId, NodeState, View};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -103,9 +103,8 @@ pub(super) struct Streamer {
     wanted: HashMap<u32, f32>,
     /// A map that did not read is not asked for again.
     failed: HashSet<u32>,
-    /// Where the wanted maps were last worked out, and whether the camera was too fast then
-    /// for the high tier.
-    streamed_at: Option<(Vec3, bool)>,
+    /// Where the wanted maps were last worked out.
+    streamed_at: Option<Vec3>,
     /// What of the game is switched on: a map it does not allow is not wanted.
     enabled: Enabled,
     /// The hour of the day, 0 to 23: a time archetype draws inside its hours alone.
@@ -218,12 +217,9 @@ impl Streamer {
                 }
             }
         }
-        // ⚠ A camera that stops short of `RESTREAM` past a fast pass still wants the high tier back.
-        let fast = view.velocity.length() >= HD_MAX_SPEED;
-        let moved = (self.streamed_at)
-            .is_none_or(|(at, was_fast)| at.distance(view.eye) >= RESTREAM || was_fast != fast);
+        let moved = (self.streamed_at).is_none_or(|at| at.distance(view.eye) >= RESTREAM);
         if moved {
-            self.streamed_at = Some((view.eye, fast));
+            self.streamed_at = Some(view.eye);
             self.rewant(view);
         }
         // What is loaded and no longer wanted goes.
@@ -365,15 +361,12 @@ impl Streamer {
             let model = models.ix(model);
             let skipped = &selection.skipped[draw.skipped.clone()];
             let from = out.instances.len();
+            // ⚠ An instance's own distances take the list's whole scale, grass's included.
+            let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
             // An instance that fades by its own distance fades with its list too.
-            list.each(
-                eye,
-                view.scales[list.level as usize],
-                skipped,
-                |rows, fade| {
-                    (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
-                },
-            );
+            list.each(eye, scale, skipped, |rows, fade| {
+                (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
+            });
             close(&mut out, from);
         }
         // Each model waited for once, by the nearest node that waits for it.
@@ -539,7 +532,7 @@ impl Drop for World {
 fn run(index: Arc<WorldIndex>, shared: &Shared) {
     let mut streamer = Streamer::new(index);
     let mut ready: HashMap<ModelRef, Option<bool>> = HashMap::new();
-    let mut selected_at: Option<(Vec3, f32, Instant)> = None;
+    let mut selected_at: Option<(Vec3, f32)> = None;
     let mut passed_at: Option<(Vec3, Instant)> = None;
     let (mut velocity, mut fading, mut version) = (Vec3::ZERO, false, 0);
     loop {
@@ -583,15 +576,14 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
         let mut view = View::at(eye, scale);
         view.velocity = velocity;
         stale |= streamer.stream(&view);
-        stale |= selected_at.is_none_or(|(at, by, _)| at.distance(eye) >= RESELECT || by != scale);
+        stale |= selected_at.is_none_or(|(at, by)| at.distance(eye) >= RESELECT || by != scale);
         if stale {
-            view.dt = selected_at.map_or(0.0, |(.., then)| now.duration_since(then).as_secs_f32());
             let state = |model: ModelRef| ready.get(&model).copied().unwrap_or(Some(false));
             let mut selected = streamer.select(&view, &state);
             version += 1;
             selected.version = version;
             fading = selected.fading;
-            selected_at = Some((eye, scale, now));
+            selected_at = Some((eye, scale));
             *shared.latest.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(selected);
         }
     }

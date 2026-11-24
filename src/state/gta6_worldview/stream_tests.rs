@@ -5,7 +5,7 @@ use or_io::gta6::map::stream::{
     GrassInstance, StreamEntity, StreamGrassList, StreamLink, StreamMap, StreamPropList,
 };
 use or_io::gta6::map::Aabb;
-use or_world::streaming::{Extent, Level, ParentRef};
+use or_world::streaming::{Category, Extent, Kind, Level, ParentRef};
 
 use super::super::index::tests_support::{index_of, index_with};
 use super::super::index::{MapRow, ALL_HOURS};
@@ -267,8 +267,14 @@ fn a_selection_draws_each_entity_and_each_instance_with_its_model_and_waits_for_
             assert!(chunk.centre.distance(i.centre) + i.radius <= chunk.radius + 1e-3);
         }
     }
-    // Each instance bears the fade its selection gave it: well inside every distance, all of it.
-    assert!(all.instances.iter().all(|i| i.fade == 1.0));
+    // Each instance bears the fade its selection gave it, well inside every distance: the trees,
+    // of the high level, whole at once; the lamps, a list of level 1 with no parent that was
+    // waited for a selection ago, one step in.
+    for i in &all.instances {
+        let lamp = all.models[i.model as usize].offset == 0x2000;
+        let expected = if lamp { 51.0 / 255.0 } else { 1.0 };
+        assert!((i.fade - expected).abs() < 1e-4, "{}", i.fade);
+    }
     // A model that will never come draws nothing and is not waited for.
     let never = streamer.select(&view, &|_| None);
     assert!(never.wanted.is_empty() && never.instances.is_empty());
@@ -321,16 +327,21 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
     let abrupt = List {
         instances: Instances::Placed(Vec::new()),
         reach: Some((8191.0, 100.0)),
-        level: Level::OrphanHd,
     };
     assert_eq!(
         (abrupt.fade(99.0, 1.0), abrupt.fade(101.0, 1.0)),
         (Some(1.0), None)
     );
 
-    // In a selection: a chunk for the list, each instance with the fade of its own distance.
+    // In a selection the grass scale of 0.8 takes the fade from 32 m to 40 m: the fern at 45 m
+    // is gone.
     let mut streamer = streamer_with(&grown());
-    let all = streamer.select(&View::at(Vec3::ZERO, 1.0), &|_| Some(true));
+    let at_rest = streamer.select(&View::at(Vec3::ZERO, 1.0), &|_| Some(true));
+    assert_eq!(count(&at_rest, 0x3000), 1);
+    // A camera that draws a quarter farther gives the ferns the distances they state: a chunk for
+    // the list, each instance with the fade of its own distance.
+    let mut streamer = streamer_with(&grown());
+    let all = streamer.select(&View::at(Vec3::ZERO, 1.25), &|_| Some(true));
     assert_eq!(count(&all, 0x3000), 2);
     assert_eq!(count(&all, 0x4000), 0, "the far stand-ins");
     let ferns: Vec<&Instance> = (all.instances.iter())
@@ -338,6 +349,29 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
         .collect();
     assert!(ferns[0].fade == 1.0 && (ferns[1].fade - 0.5).abs() < 1e-3);
     assert_eq!(all.chunks.len(), 3, "the entities, the lamps, the ferns");
+}
+
+#[test]
+fn a_map_s_nodes_say_what_scales_them_in_whole_metres() {
+    let mut map = grown();
+    map.entities[0].lod_dist = 40.7;
+    map.entities[0].child_lod_dist = 12.9;
+    let read = read_map(&made_up_index(), &map);
+    let nodes = &read.nodes;
+    assert_eq!((nodes[0].lod_dist, nodes[0].child_lod_dist), (40.0, 12.0));
+    // An entity keeps its archetype's sphere; a list keeps its box's half diagonal.
+    assert_eq!((nodes[0].kind, nodes[0].radius), (Kind::Entity, 1.0));
+    let lamps = Vec3::new(30.0, 10.0, 10.0).length() / 2.0;
+    assert_eq!((nodes[3].kind, nodes[3].radius), (Kind::Props, lamps));
+    assert_eq!(nodes[4].kind, Kind::Grass);
+    // An archetype of no load flags is of no category.
+    assert!(nodes.iter().all(|n| n.category == Category::Other));
+    // A plain grass list keeps the 200 m it states; one of far stand-ins draws as far as its
+    // farthest instance, and scales as an entity.
+    assert_eq!(nodes[4].lod_dist, 200.0);
+    let farthest = (Vec3::splat(655.35).length() / 2.0 + 50.0).trunc();
+    assert!(farthest > 200.0);
+    assert_eq!((nodes[5].lod_dist, nodes[5].kind), (farthest, Kind::Entity));
 }
 
 #[test]
@@ -539,18 +573,14 @@ fn a_map_is_wanted_only_while_what_is_enabled_allows_it() {
 }
 
 #[test]
-fn a_camera_that_stops_after_a_fast_pass_wants_the_high_tier_again_where_it_stands() {
+fn a_fast_camera_still_wants_the_high_tier() {
     let near = ([-10.0; 3], [10.0; 3]);
     // Content flags 0: the high tier.
     let maps = vec![map_row(1, 0, near.0, near.1, (0, 0))];
     let index = index_with(vec![PathBuf::from("made-up.rpf")], &[], maps, Vec::new());
     let mut streamer = Streamer::new(Arc::new(index));
     let mut view = View::at(Vec3::ZERO, 1.0);
-
-    view.velocity = Vec3::new(50.0, 0.0, 0.0);
+    view.velocity = Vec3::new(300.0, 0.0, 0.0);
     streamer.stream(&view);
-    assert!(streamer.wanted.is_empty(), "too fast for the high tier");
-    view.velocity = Vec3::ZERO;
-    streamer.stream(&view);
-    assert_eq!(wanted_by(&streamer), vec![1], "at rest on the same spot");
+    assert_eq!(wanted_by(&streamer), vec![1]);
 }

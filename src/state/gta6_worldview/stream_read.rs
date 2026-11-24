@@ -6,7 +6,7 @@
 
 use glam::{Mat4, Quat, Vec3};
 use or_io::gta6::map::stream::{StreamGrassList, StreamLink, StreamMap};
-use or_world::streaming::{Extent, Level, Node, ParentRef};
+use or_world::streaming::{Category, Extent, Kind, Level, Node, ParentRef};
 
 use super::super::index::{ModelRef, WorldIndex, ALL_HOURS};
 use super::grass;
@@ -61,8 +61,8 @@ pub(super) struct List {
     pub(super) instances: Instances,
     /// Where an instance starts to fade and where it is gone, in metres from the camera; `None`
     /// for a list that draws whole.
+    /// Scaled by the list's node's scale.
     pub(super) reach: Option<(f32, f32)>,
-    pub(super) level: Level,
 }
 
 impl List {
@@ -154,27 +154,31 @@ fn link(map: &StreamMap, own: u32, link: Option<StreamLink>) -> (Option<ParentRe
     (parent, link.instance.map(u32::from))
 }
 
-/// The node of a list in the box `min` to `max`: it is measured to the box, and one that states
-/// no distance takes its archetype's.
+/// `stated` where it is above 0, else the archetype's, in whole metres.
+fn distance(stated: f32, archetype: f32) -> f32 {
+    if stated > 0.0 { stated } else { archetype }.trunc()
+}
+
+/// The node of a list in the box `min` to `max`, scaled as a prop list: it is measured to the box,
+/// and one that states no distance takes its archetype's.
 fn list_node(
     (min, max): (Vec3, Vec3),
     (lod_dist, archetype_dist): (f32, f32),
     child_lod_dist: f32,
     parent: Option<ParentRef>,
-    level: u8,
+    (level, category): (u8, Category),
 ) -> Node {
     Node {
         position: (min + max) / 2.0,
         extent: Extent::Box(min, max),
-        lod_dist: if lod_dist > 0.0 {
-            lod_dist
-        } else {
-            archetype_dist
-        },
-        child_lod_dist,
+        lod_dist: distance(lod_dist, archetype_dist),
+        child_lod_dist: child_lod_dist.trunc(),
         parent,
         instance: None,
         level: Level::from_raw(level),
+        kind: Kind::Props,
+        category,
+        radius: (max - min).length() / 2.0,
     }
 }
 
@@ -185,10 +189,13 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
     let of = |word: u64| {
         let archetype = index.archetype(word);
         let model = archetype.and_then(|a| index.model(a));
-        let (centre, radius, lod_dist, hours) = archetype
-            .map_or((Vec3::ZERO, 0.0, 0.0, ALL_HOURS), |a| {
-                (Vec3::from(a.centre), a.radius, a.lod_dist, a.hours)
-            });
+        let (centre, radius, lod_dist, hours, category) = archetype.map_or(
+            (Vec3::ZERO, 0.0, 0.0, ALL_HOURS, Category::Other),
+            |a| {
+                let category = Category::of(a.load_flags);
+                (Vec3::from(a.centre), a.radius, a.lod_dist, a.hours, category)
+            },
+        );
         (
             Drawn {
                 model,
@@ -197,25 +204,27 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
                 hours,
             },
             lod_dist,
+            category,
         )
     };
     let mut entities = Vec::with_capacity(map.entities.len());
     for e in &map.entities {
-        let (what, archetype_dist) = of(e.archetype_word);
+        let (what, archetype_dist, category) = of(e.archetype_word);
         let (parent, instance) = link(map, map.name, e.parent);
         nodes.push(Node {
             position: Vec3::from(e.position),
             extent: Extent::Point,
-            // An entity that states no distance takes its archetype's.
-            lod_dist: if e.lod_dist > 0.0 {
-                e.lod_dist
-            } else {
-                archetype_dist
-            },
-            child_lod_dist: e.child_lod_dist,
+            // An entity that states no distance takes its archetype's, and no orphan draws farther.
+            lod_dist: distance(e.lod_dist, archetype_dist),
+            child_lod_dist: e.child_lod_dist.trunc(),
             parent,
             instance,
             level: Level::from_raw(e.lod_level),
+            kind: Kind::Entity,
+            category,
+            // ponytail: the sphere's radius alone, the index keeps no box to measure the sphere's
+            // offset from; add `|M·(box centre − sphere centre)|` once the archetype row has one.
+            radius: what.radius,
         });
         // An interior has no model of its own: its contents are placed by `interior::read_placed`.
         drawn.push(Drawn {
@@ -230,7 +239,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
     }
     let mut lists = Vec::with_capacity(map.prop_lists.len() + map.grass.len());
     for list in &map.prop_lists {
-        let (what, archetype_dist) = of(list.archetype_word);
+        let (what, archetype_dist, category) = of(list.archetype_word);
         let (parent, _) = link(map, map.name, list.parent);
         let corners = (
             Vec3::from(list.batch_aabb.min),
@@ -241,7 +250,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             (list.lod_dist, archetype_dist),
             list.child_lod_dist,
             parent,
-            list.lod_level,
+            (list.lod_level, category),
         ));
         drawn.push(what);
         // A list states each instance as its three axes, each with one part of the translation.
@@ -256,23 +265,35 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         lists.push(List {
             instances: Instances::Placed(list.instances.iter().map(rows).collect()),
             reach: alone.then_some((list.instance_lod_dist, list.instance_lod_dist)),
-            level: Level::from_raw(list.lod_level),
         });
     }
     for list in &map.grass {
-        let (what, archetype_dist) = of(list.archetype_word);
+        let (what, archetype_dist, category) = of(list.archetype_word);
         let corners = (
             Vec3::from(list.batch_aabb.min),
             Vec3::from(list.batch_aabb.max),
         );
         // A grass list names no parent and states no distance for children.
-        nodes.push(list_node(
+        let node = list_node(
             corners,
             (list.lod_dist, archetype_dist),
             0.0,
             None,
-            list.lod_level,
-        ));
+            (list.lod_level, category),
+        );
+        // A list of far stand-ins draws at least as far as its farthest instance does, and scales
+        // as an entity; a plain one keeps the distance it states.
+        nodes.push(match list.slod {
+            true => Node {
+                lod_dist: (node.lod_dist).max((node.radius + list.instance_lod_dist).trunc()),
+                kind: Kind::Entity,
+                ..node
+            },
+            false => Node {
+                kind: Kind::Grass,
+                ..node
+            },
+        });
         drawn.push(Drawn {
             model: what.model.filter(|_| !list.slod),
             ..what
@@ -283,7 +304,6 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
                 false => Instances::Grass(list.clone()),
             },
             reach: Some((list.lod_fade_start_dist, list.instance_lod_dist)),
-            level: Level::from_raw(list.lod_level),
         });
     }
     ReadMap {
