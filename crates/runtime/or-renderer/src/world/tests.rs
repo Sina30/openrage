@@ -398,7 +398,10 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
         );
         // The first two are one call; the third samples other maps, which the cast of a shadow has no use for
         assert_eq!(renderer.world.batches, [0..2, 2..3]);
-        assert_eq!(renderer.world.cast_batches, std::iter::once(0..3).collect::<Vec<_>>());
+        assert_eq!(
+            renderer.world.cast_batches,
+            std::iter::once(0..3).collect::<Vec<_>>()
+        );
         let image = frame(&device, &queue, &renderer, &camera, ShadingMode::Material);
         let at = |place: [f32; 2]| image[pixel_of(&camera, Vec3::new(place[0], place[1], 0.0))];
         let (red, green, blue) = (at(places[0]), at(places[1]), at(places[2]));
