@@ -198,9 +198,9 @@ pub fn coloured(
     // ⚠ A model's vertex keeps the second coordinate in the first two floats of its colour, the first colour in the bits of the third, the third coordinate as two halves in the bits of the fourth, and the second colour in the bits of its depth bias, as a material of [`WorldConstants::MODEL_VERTEX`] reads it.
     let at = |colours: Option<&[[f32; 4]]>, index: usize| {
         let colour = colours.and_then(|colours| colours.get(index)).copied();
-        let [b, g, r, a] =
-            (colour.unwrap_or([1.0; 4])).map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
-        [r, g, b, a]
+        colour
+            .unwrap_or([1.0; 4])
+            .map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8)
     };
     for (index, vertex) in vertices.iter_mut().enumerate() {
         let uv = |set: Option<&[[f32; 2]]>| set.and_then(|s| s.get(index)).copied();

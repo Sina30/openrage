@@ -186,8 +186,8 @@ fn a_four_layer_mesh_takes_its_weights_from_colour_channel_25_and_every_mesh_its
             .to_le_bytes()
     };
     // The one-layer mesh's first colour is channel 24, the four-layer mesh's channel 25
-    assert_eq!(first(0), [0, 0, 255, 255]);
-    assert_eq!(first(1), [255, 0, 0, 255]);
+    assert_eq!(first(0), [255, 0, 0, 255]);
+    assert_eq!(first(1), [0, 0, 255, 255]);
     assert_eq!(model.lods[0].meshes[1].vertices[0].colour[..2], [0.5, 0.25]);
 }
 
