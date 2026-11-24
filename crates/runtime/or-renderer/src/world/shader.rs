@@ -9,7 +9,7 @@ struct Camera {
     camera_misc: vec4<f32>,
     key_light: vec4<f32>,
 };
-// The light of the game's frame, in the units its lighting passes sum, and in `frame.x` how far the night emissives are on.
+// The light of the game's frame, in the units its lighting passes sum, in `frame.x` how far the night emissives are on and in `frame.y` the exposure a material's own light is multiplied by.
 struct Light {
     sun_travel: vec4<f32>,
     sun_colour: vec4<f32>,
@@ -337,9 +337,9 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
     return leaning(maps.n0, m.bumpiness.x);
 }
 
-// The strength of a material's own light at this hour: its night value where it states one, by how far the night emissives are on.
+// The strength of a material's own light at this hour: its night value where it states one, by how far the night emissives are on, at the day's exposure.
 fn emissive_strength() -> f32 {
-    return select(mix(m.emissive_multiplier, m.emissive_night, light.frame.x), m.emissive_multiplier, m.emissive_night < 0.0);
+    return light.frame.y * select(mix(m.emissive_multiplier, m.emissive_night, light.frame.x), m.emissive_multiplier, m.emissive_night < 0.0);
 }
 
 // ⚠ Every map is sampled and every derivative taken before anything is discarded, and in control flow every pixel shares.

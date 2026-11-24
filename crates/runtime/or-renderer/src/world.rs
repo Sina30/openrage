@@ -13,6 +13,7 @@ use crate::game_shaders::shadow::TILE;
 use crate::game_shaders::stand_in::constant_view;
 use crate::viewport::{MeshVertex, OrbitCamera, ViewportRenderer};
 
+pub mod cards;
 mod material;
 mod pipelines;
 mod shader;
@@ -215,6 +216,10 @@ pub(crate) struct World {
     /// The arguments of each draw, where the device issues several draws by one call.
     indirect: Option<wgpu::Buffer>,
     multi: bool,
+    /// The far stand-ins, drawn where the cutouts draw.
+    cards: cards::Cards,
+    /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
+    exposure: f32,
 }
 
 /// A material as the pipelines bind it: its maps by slot, the one sampler after them, and its constants after that, the family in front.
@@ -399,6 +404,8 @@ impl World {
         });
         Self {
             pipelines: Pipelines::new(device, camera_bgl, &materials, &light_layout, colour_format),
+            cards: cards::Cards::new(device, queue, camera_bgl, colour_format),
+            exposure: 1.0,
             materials,
             sampler,
             stand_ins,
@@ -562,12 +569,14 @@ impl World {
     /// Draw every bucket of the world lit as the plain modes light a surface, into a pass over the viewport's colour and depth.
     pub(crate) fn draw_forward(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
         self.draw(pass, camera, &self.pipelines.forward);
+        self.cards.draw_forward(pass, camera);
     }
 
     /// Draw what is opaque, then the decals over it, into a pass that fills the G-buffer for the game's lighting passes to light.
     pub(crate) fn draw_gbuffer(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
         pass.set_stencil_reference(MATERIAL_DEFAULT);
         self.draw(pass, camera, &self.pipelines.gbuffer);
+        self.cards.draw_gbuffer(pass, camera);
     }
 
     /// Draw what blends into a pass over the frame the game's passes lit, which reads the depth of the frame and writes none: the faces that turn away, then those that face the camera.
@@ -591,7 +600,7 @@ impl World {
         let mut light = [sun.travel.normalize_or_zero(), sun.colour, down, up]
             .map(|vector| vector.extend(0.0).to_array())
             .to_vec();
-        light.push([night, 0.0, 0.0, 0.0]);
+        light.push([night, self.exposure, 0.0, 0.0]);
         queue.write_buffer(&self.light, 0, bytemuck::cast_slice(&light));
     }
 
@@ -603,7 +612,7 @@ impl World {
         camera: &OrbitCamera,
         aspect: f32,
     ) -> Option<Cascades> {
-        if self.cast_batches.is_empty() {
+        if self.cast_batches.is_empty() && !self.cards.draws_anything() {
             return None;
         }
         let cascades = Cascades::about(engine, camera, aspect)?;
@@ -617,10 +626,11 @@ impl World {
 
     /// Cast the world into the map of the sun's shadow, each cascade into its tile: `pass` is the one the game's map is cast in, and [`Self::cascades`] wrote the views this frame.
     pub(crate) fn draw_shadow(&self, pass: &mut wgpu::RenderPass<'_>) {
-        let Some(instances) = self.instances.as_ref().filter(|_| self.draws_anything()) else {
-            return;
-        };
-        pass.set_vertex_buffer(1, instances.slice(..));
+        match self.instances.as_ref().filter(|_| self.draws_anything()) {
+            Some(instances) => pass.set_vertex_buffer(1, instances.slice(..)),
+            None if self.cards.draws_anything() => {}
+            None => return,
+        }
         for (tile, (_, view)) in self.cascades.iter().enumerate() {
             // The tiles are one above the other, the nearest cascade at the top
             let top = tile as u32 * TILE;
@@ -628,6 +638,7 @@ impl World {
             pass.set_scissor_rect(0, top, TILE, TILE);
             pass.set_bind_group(0, view, &[]);
             self.record(pass, &self.cast_batches, &self.pipelines.cast);
+            self.cards.draw_shadow(pass);
         }
     }
 }
@@ -669,6 +680,11 @@ impl ViewportRenderer {
         draws: Vec<WorldDraw>,
     ) {
         self.world.set(device, queue, instances, draws);
+    }
+
+    /// Multiply every material's own light by `exposure`, the exposure the day's light is given at; 1 leaves it as the material states it.
+    pub fn set_world_exposure(&mut self, exposure: f32) {
+        self.world.exposure = exposure;
     }
 
     /// How many instances the world draws.
