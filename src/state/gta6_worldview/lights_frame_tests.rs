@@ -212,3 +212,23 @@ fn the_reach_of_each_size_class_is_read_from_the_visual_settings() {
         LodReach::default()
     );
 }
+
+#[test]
+fn a_light_that_states_no_exponent_reaches_the_frame_with_one_above_nought() {
+    let mut lamps = [
+        placed(LightKind::Point, 1.0, ALL_HOURS),
+        placed(LightKind::Spot, 2.0, ALL_HOURS),
+        placed(LightKind::Capsule, 3.0, ALL_HOURS),
+    ];
+    for lamp in &mut lamps {
+        lamp.light.falloff_exponent = 0.0;
+    }
+    let frame = frame_lights(&lamps, Vec3::ZERO, 12.0, 1.0, 8);
+    assert!(!frame.points.is_empty() && !frame.spots.is_empty() && !frame.capsules.is_empty());
+    let falloffs = (frame.points.iter().map(|p| p.falloff))
+        .chain(frame.spots.iter().map(|s| s.falloff))
+        .chain(frame.capsules.iter().map(|c| c.falloff));
+    for falloff in falloffs {
+        assert!(falloff > 0.0);
+    }
+}
