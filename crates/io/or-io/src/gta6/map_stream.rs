@@ -1,16 +1,44 @@
 //! A GTA VI map body as a streamer takes it: one read of a `CMapData` gives what places and levels
-//! each entity and each instance of its prop lists, and where each one's level-of-detail parent is.
+//! each entity and each instance of its prop and grass lists, and where each one's
+//! level-of-detail parent is.
 //!
 //! ⚠ An entity alone takes a parent in its own map, and only an earlier entity: any other index
 //! with no parent map picked is of no known meaning, so the element reads with no parent and the
 //! body still reads, as the link reader takes it.
 
+use super::lights::{check_table, Layouts};
 use super::links::{self, Links, LodLink, MapLinks};
 use super::{
-    broken, f32_at, field, floats, u64_at, Aabb, Blocks, MapBody, MapData, Result, LOD_LEVELS,
-    PROP_INSTANCE, PROP_LIST, PROP_LIST_SIZE,
+    broken, f32_at, field, floats, u16_at, u64_at, Aabb, Blocks, MapBody, MapData, Result, ARRAY,
+    FLOAT, LOD_LEVELS, PROP_INSTANCE, PROP_LIST, PROP_LIST_SIZE, U32, VEC3,
 };
+use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::rbm::schema::RbmModel;
+
+pub use grass::{GrassInstance, StreamGrassList};
+
+/// The type of a block of 16-bit signed numbers.
+const S16_BLOCK: u32 = 0x12;
+
+/// The members of a prop list this reads beyond those the map and link readers check.
+pub(super) const LAYOUTS: &Layouts = &[
+    (
+        PROP_LIST,
+        "rage__fwPropInstanceListDef",
+        &[
+            (lit(b"position"), 0x38, VEC3),
+            (0xCFBC_3397, 0x80, ARRAY),
+            (lit(b"InstanceLodDist"), 0x168, FLOAT),
+        ],
+        None,
+    ),
+    (
+        PROP_INSTANCE,
+        "rage__fwPropInstanceListDef__InstanceData",
+        &[(lit(b"Tint"), 0x34, U32)],
+        None,
+    ),
+];
 
 /// A map body as a streamer takes it: what places and levels each entity and each prop instance.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +57,8 @@ pub struct StreamMap {
     pub prop_lists: Vec<StreamPropList>,
     /// How many grass lists it holds: a parent index counts past the entities and the prop lists into them.
     pub grass_lists: usize,
+    /// Its grass lists, `grass_lists` of them.
+    pub grass: Vec<StreamGrassList>,
 }
 
 /// An entity as a streamer takes it.
@@ -68,15 +98,23 @@ pub struct StreamLink {
 pub struct StreamPropList {
     pub archetype_word: u64,
     pub archetype_name: u32,
-    /// −1 where the archetype's applies.
+    /// Where `lod_dist` is measured from.
+    pub position: [f32; 3],
+    /// `instance_lod_dist` and how far the farthest instance stands from `position`.
     pub lod_dist: f32,
     pub child_lod_dist: f32,
+    /// How far from the camera one instance draws.
+    pub instance_lod_dist: f32,
     /// An index into [`LOD_LEVELS`].
     pub lod_level: u8,
     pub parent: Option<StreamLink>,
     pub batch_aabb: Aabb,
     /// Each instance's placing: three rows of four, the model's axes with the translation in the fourth column.
     pub instances: Vec<[[f32; 4]; 3]>,
+    /// The instance of the parent list each instance stands in for; empty in a list with no parent.
+    pub parent_instances: Vec<u16>,
+    /// Each instance's `Tint`: red, green, blue, alpha.
+    pub tints: Vec<[u8; 4]>,
 }
 
 /// Where an instance's placing puts a point of its model: row `k` is where the model's axis `k` points, and the fourth column moves it.
@@ -140,6 +178,7 @@ pub fn read(model: &RbmModel) -> Result<StreamMap> {
         entities,
         prop_lists: prop_lists(model, &map, &links)?,
         grass_lists: map.grass_lists.len(),
+        grass: grass::lists(model, &map, &links)?,
     })
 }
 
@@ -158,8 +197,10 @@ fn parent(link: &LodLink, earlier: usize) -> Option<StreamLink> {
 }
 
 /// Each prop list of a body the map and link readers accepted, with what neither holds: its
-/// archetype's word, its own level-of-detail fields and each instance's `InstMat`.
+/// archetype's word, its own level-of-detail fields, each instance's `InstMat` and `Tint`, and
+/// the parent's instance each one stands in for.
 fn prop_lists(model: &RbmModel, map: &MapData, links: &MapLinks) -> Result<Vec<StreamPropList>> {
+    check_table(model, LAYOUTS)?;
     let blocks = Blocks::new(&model.data_blocks);
     let root = blocks.block(u64::from(model.root_block_id), "the root block")?;
     let records = blocks.records(
@@ -183,8 +224,8 @@ fn prop_lists(model: &RbmModel, map: &MapData, links: &MapLinks) -> Result<Vec<S
                 format!("its lodLevel {lod_level} is no LODTYPES_DEPTH value"),
             ));
         }
-        let instances = (blocks.records(record, 0x90, PROP_INSTANCE, 0x40, &what)?)
-            .into_iter()
+        let placed = blocks.records(record, 0x90, PROP_INSTANCE, 0x40, &what)?;
+        let instances = (placed.iter())
             .map(|i| {
                 Ok([
                     floats(i, 0x00, &what)?,
@@ -193,20 +234,52 @@ fn prop_lists(model: &RbmModel, map: &MapData, links: &MapLinks) -> Result<Vec<S
                 ])
             })
             .collect::<Result<Vec<_>>>()?;
+        let tints = (placed.iter())
+            .map(|i| field(i, 0x34))
+            .collect::<Result<Vec<_>>>()?;
+        let parent_instances = match blocks.array(record, 0x80, &what)? {
+            None => Vec::new(),
+            Some((S16_BLOCK, rest, count))
+                if count == instances.len() && rest.len() >= 2 * count =>
+            {
+                (0..count)
+                    .map(|at| u16_at(rest, 2 * at))
+                    .collect::<Result<Vec<_>>>()?
+            }
+            Some((_, _, count)) => {
+                return Err(broken(
+                    what,
+                    format!(
+                        "its array at 0x80 holds {count} elements, not a 16-bit instance of its parent for each of its {}",
+                        instances.len()
+                    ),
+                ))
+            }
+        };
+        if parent_instances.iter().any(|at| *at > i16::MAX as u16) {
+            return Err(broken(what, "it stands in for an instance below 0"));
+        }
         Ok(StreamPropList {
             archetype_word: u64_at(record, 0x20)?,
             archetype_name: list.archetype_name,
+            position: floats(record, 0x38, &what)?,
             lod_dist: f32_at(record, 0x60, &what)?,
             child_lod_dist: f32_at(record, 0x64, &what)?,
+            instance_lod_dist: f32_at(record, 0x168, &what)?,
             lod_level,
             // A prop list takes no parent in its own map.
             parent: parent(link, 0),
             batch_aabb: list.batch_aabb,
             instances,
+            parent_instances,
+            tints,
         })
     })
     .collect()
 }
+
+#[path = "map_grass.rs"]
+pub mod grass;
 
 #[cfg(test)]
 #[path = "map_stream_tests.rs"]

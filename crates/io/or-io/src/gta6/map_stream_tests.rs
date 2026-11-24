@@ -50,8 +50,9 @@ fn bytes<const N: usize>(words: &[[u8; N]]) -> Vec<u8> {
 
 /// Two parent maps and three entities, blocks 5 to 7: one of level 2 with no parent, one of level 1
 /// under it in the map itself, and an interior under instance 3 of element 5 of the second parent
-/// map; one prop list, block 8, of two instances under element 4 of the first; two grass lists.
-fn stream_model() -> RbmModel {
+/// map; one prop list, block 8, of two instances under element 4 of the first, which stand in for
+/// its instances 1 and 0 (block 11); two grass lists of no instance.
+pub(super) fn stream_model() -> RbmModel {
     let mut root = vec![0u8; MAP_DATA_SIZE];
     put(&mut root, 0x08, &0x1111_0001u32.to_le_bytes());
     put(&mut root, 0x18, &bytes(&[2u32.to_le_bytes(); 2]));
@@ -73,7 +74,10 @@ fn stream_model() -> RbmModel {
 
     let mut props = vec![0u8; PROP_LIST_SIZE as usize];
     put(&mut props, 0x20, &0xD1D1_0000_0000_00D1u64.to_le_bytes());
+    put_floats(&mut props, 0x38, &[1.5, 2.5, 3.5]);
     put(&mut props, 0x44, &0xD1u32.to_le_bytes());
+    array(&mut props, 0x80, ptr(11, 0), 2);
+    put_floats(&mut props, 0x168, &[60.0]);
     put(&mut props, 0x5C, &4i16.to_le_bytes());
     put(&mut props, 0x5E, &(-1i16).to_le_bytes());
     put_floats(&mut props, 0x60, &[80.0, 20.0]);
@@ -83,15 +87,21 @@ fn stream_model() -> RbmModel {
     let mut instances = vec![0u8; 2 * 0x40];
     put_floats(&mut instances, 0x00, TURNED.as_flattened());
     put_floats(&mut instances, 0x40, SCALED.as_flattened());
+    put(&mut instances, 0x34, &[10, 20, 30, 255]);
+    put(&mut instances, 0x74, &[40, 50, 60, 255]);
 
     let mut grass = vec![0u8; 2 * GRASS_LIST_SIZE as usize];
     for list in 0..2 {
-        let at = list * GRASS_LIST_SIZE as usize + 0x5C;
-        put(&mut grass, at, &(-1i16).to_le_bytes());
+        let at = list * GRASS_LIST_SIZE as usize;
+        put(&mut grass, at + 0x5C, &(-1i16).to_le_bytes());
+        put_floats(&mut grass, at + 0xA0, &[1.0, 1.0]);
     }
 
     model_of(
-        super::super::LAYOUTS.iter().chain(links::LAYOUTS),
+        (super::super::LAYOUTS.iter())
+            .chain(links::LAYOUTS)
+            .chain(LAYOUTS)
+            .chain(grass::LAYOUTS),
         1,
         vec![
             block(C_MAP_DATA, root),
@@ -113,8 +123,32 @@ fn stream_model() -> RbmModel {
             block(PROP_LIST, props),
             block(PROP_INSTANCE, instances),
             block(GRASS_LIST, grass),
+            block(0x12, bytes(&[1u16, 0].map(u16::to_le_bytes))),
         ],
     )
+}
+
+/// A grass list of no instance and no field set but a scale of 1.
+fn bare_grass() -> StreamGrassList {
+    let nought = Aabb {
+        min: [0.0; 3],
+        max: [0.0; 3],
+    };
+    StreamGrassList {
+        archetype_word: 0,
+        archetype_name: 0,
+        position: [0.0; 3],
+        lod_dist: 0.0,
+        lod_level: 0,
+        batch_aabb: nought,
+        scale_range: [1.0, 1.0],
+        lod_fade_start_dist: 0.0,
+        instance_lod_dist: 0.0,
+        orient_to_terrain: 0.0,
+        slod: false,
+        archetypes: Vec::new(),
+        instances: Vec::new(),
+    }
 }
 
 fn streamed() -> StreamMap {
@@ -173,8 +207,10 @@ fn streamed() -> StreamMap {
         prop_lists: vec![StreamPropList {
             archetype_word: 0xD1D1_0000_0000_00D1,
             archetype_name: 0xD1,
+            position: [1.5, 2.5, 3.5],
             lod_dist: 80.0,
             child_lod_dist: 20.0,
+            instance_lod_dist: 60.0,
             lod_level: 1,
             parent: Some(StreamLink {
                 map: Some(0),
@@ -186,8 +222,11 @@ fn streamed() -> StreamMap {
                 max: [4.0, 5.0, 6.0],
             },
             instances: vec![TURNED, SCALED],
+            parent_instances: vec![1, 0],
+            tints: vec![[10, 20, 30, 255], [40, 50, 60, 255]],
         }],
         grass_lists: 2,
+        grass: vec![bare_grass(), bare_grass()],
     }
 }
 
@@ -269,6 +308,21 @@ fn a_body_of_another_root_and_one_a_reader_refuses_are_refused() {
                 put_floats(&mut m.data_blocks[8].data, 0x44, &[f32::INFINITY])
             }),
             "PropInstanceList[0]: the number at 0x4 is not finite",
+        ),
+        (
+            Box::new(|m: &mut RbmModel| m.data_blocks[10].data.truncate(2)),
+            "PropInstanceList[0]: its array at 0x80 holds 2 elements",
+        ),
+        (
+            Box::new(|m: &mut RbmModel| m.data_blocks[10].data[1] = 0x80),
+            "PropInstanceList[0]: it stands in for an instance below 0",
+        ),
+        (
+            Box::new(|m: &mut RbmModel| {
+                let class = m.classes.get_mut(&PROP_LIST).expect("declared");
+                class.entries.retain(|member| member.offset != 0x168);
+            }),
+            "rage__fwPropInstanceListDef's member",
         ),
         (
             Box::new(|m: &mut RbmModel| {
