@@ -22,6 +22,8 @@ pub mod map_grid;
 pub mod mission_other;
 pub mod mission_tables;
 pub mod move_network;
+#[cfg(test)]
+pub(crate) mod mutated_tests;
 pub mod names;
 pub mod other_bodies;
 pub mod save;

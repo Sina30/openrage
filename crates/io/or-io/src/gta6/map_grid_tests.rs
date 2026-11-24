@@ -166,3 +166,10 @@ fn bytes_that_are_no_region_list_are_refused() {
         Err(MapGridError::Body(_))
     ));
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    crate::gta6::mutated_tests::every_change(&list_of(&regions()), |bytes| {
+        let _ = read(bytes);
+    });
+}

@@ -150,3 +150,18 @@ fn a_grid_atlas_states_its_grid_and_the_names_of_its_tiles() {
         Err(WaterError::NotAnAtlas(_))
     ));
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    let bytes = document(
+        &[
+            quad([-10, -20], [30, 40], 0.3, 0),
+            quad([5, 6], [7, 8], 28.5, 3),
+        ],
+        2,
+        QUAD,
+    );
+    crate::gta6::mutated_tests::every_change(&bytes, |bytes| {
+        let _ = WaterData::open(bytes);
+    });
+}

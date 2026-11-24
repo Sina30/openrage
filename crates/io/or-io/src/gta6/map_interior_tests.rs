@@ -329,3 +329,12 @@ fn no_truncated_block_panics() {
         }
     }
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [types_model(), map_model()] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = (read(m), read_instances(m));
+        });
+    }
+}

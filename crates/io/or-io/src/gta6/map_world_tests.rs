@@ -335,3 +335,16 @@ fn a_row_places_a_model_s_box_by_its_scale_then_turn_then_position() {
     assert!(off(lo, [8.0, 0.0, 0.0]) < 1e-5, "{lo:?}");
     assert!(off(hi, [10.0, 2.0, 3.0]) < 1e-5, "{hi:?}");
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [links_model(3), group_model(3)] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = (
+                read_group(m),
+                area_body(WorldKind::MapData, m),
+                area_body(WorldKind::LaneLinks, m),
+            );
+        });
+    }
+}

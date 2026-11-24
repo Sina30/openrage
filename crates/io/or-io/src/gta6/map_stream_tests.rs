@@ -357,3 +357,12 @@ fn every_truncated_block_is_an_error_and_never_a_panic() {
         }
     }
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [stream_model()] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = read(m);
+        });
+    }
+}

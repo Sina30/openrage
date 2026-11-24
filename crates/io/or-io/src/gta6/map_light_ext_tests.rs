@@ -149,3 +149,12 @@ fn a_type_no_frame_draws_is_no_light_and_the_four_kinds_are_named() {
     odd.light_type = 8;
     assert_eq!(Light::of(effect, &odd), None);
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [lit_types()] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = archetype_lights(m);
+        });
+    }
+}

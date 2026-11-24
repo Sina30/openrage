@@ -480,3 +480,12 @@ fn a_light_is_placed_by_its_entity_s_scale_then_turn_then_position() {
         "{placed:?}"
     );
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [lit_map(), interior_with_a_set()] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = read(m);
+        });
+    }
+}

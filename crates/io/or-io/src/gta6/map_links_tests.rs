@@ -496,3 +496,12 @@ fn prop_lists_that_alias_one_instance_block_are_refused_before_they_multiply() {
         "{refused}"
     );
 }
+
+#[test]
+fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
+    for whole in [map_model(), types_model()] {
+        crate::gta6::mutated_tests::every_block_change(&whole, |m| {
+            let _ = read(m);
+        });
+    }
+}
