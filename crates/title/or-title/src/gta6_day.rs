@@ -12,7 +12,8 @@ use or_io::gta5::data::timecycle::{Keyframe, TimeTable, Timecycle};
 use or_io::gta5::data::visual_settings::VisualSettings;
 use or_io::gta6::timecycle::{
     apply_modifier, blend_modifiers, frame_hours, frame_keyframe, high_level_vars, modifiers,
-    sun_angle, sun_roll, sun_round, sun_towards, DayTable, Modifier, FRAME_DIFFUSE, LATITUDE,
+    sun_angle, sun_roll, sun_round, sun_towards, DayTable, FrameLight, Modifier, FRAME_DIFFUSE,
+    LATITUDE,
 };
 use or_io::gta6::weather::{WeatherData, WeatherSet};
 
@@ -61,6 +62,8 @@ pub struct Moment {
     pub moon: [f32; 3],
     /// The exposure the moment's light is given at, in stops.
     pub stops: f32,
+    /// The moment's light, which [`frame_keyframe`] gives the frame again at another exposure.
+    pub light: FrameLight,
     /// What a light the game states in its own unit is multiplied by to be the frame's: the exposure over pi.
     pub light_scale: f32,
     pub moon_dim: f32,
@@ -243,6 +246,7 @@ impl DayTables {
             moon,
             stops,
             light_scale: light.exposure * FRAME_DIFFUSE,
+            light,
             moon_dim: visual.get_f32("misc.MoonDimMult", 1.0),
             wetness: rain(from) + (rain(to) - rain(from)) * along,
         })
