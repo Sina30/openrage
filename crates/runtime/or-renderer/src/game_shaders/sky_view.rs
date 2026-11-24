@@ -246,8 +246,8 @@ fn clouded(view: vec3<f32>, behind: vec3<f32>, pixel: vec2<f32>) -> vec4<f32> {
     }
     let span = min(end - start, LONGEST);
     let dt = span / f32(STEPS);
-    // Interleaved gradient noise starts each pixel's march a little apart, so that the steps do not show as bands.
-    let jitter = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+    // Each pixel starts its march a random part of a step in, so that the steps do not show as bands.
+    let jitter = hash(vec3<f32>(pixel, 7.0));
     let towards = frame.towards.xyz;
     let c = dot(view, towards);
     let g = frame.shape.z;
@@ -274,9 +274,13 @@ fn clouded(view: vec3<f32>, behind: vec3<f32>, pixel: vec2<f32>) -> vec4<f32> {
                 sun = sun + share * exp(-share * tau) * henyey_greenstein(c, share * g);
                 share = share * 0.5;
             }
-            // The sky and the light the cloud above has scattered reach in as far as the slab above lets them.
-            let down = frame.sky.rgb + frame.light.rgb * max(towards.z, 0.0) * 0.31830989;
-            let lit = frame.light.rgb * sun + down * through_slab(here.y);
+            // The sky reaches in as far as the slab above lets an even light through, and the body's
+            // light as much as that slab scatters on down of it, beside what it lets straight through.
+            let up = max(towards.z, 0.05);
+            let slab = through_slab(here.y);
+            let scattered = max(slab - exp(-here.y / up), 0.0);
+            let down = frame.sky.rgb * slab + frame.light.rgb * up * 0.31830989 * scattered;
+            let lit = frame.light.rgb * sun + down;
             let kept = exp(-s * dt);
             light = light + through * lit * (1.0 - kept);
             weighted = weighted + through * (1.0 - kept) * t;
