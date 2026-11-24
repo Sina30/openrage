@@ -54,6 +54,8 @@ pub enum JobKind {
     AudioLinks,
     /// A GTA VI audio stream's Opus decoded to play or export, or encoded from a WAV.
     OpusAudio,
+    /// The coder's tables of GTA VI texture packs fitted from the packs of a folder.
+    TextureCalibration,
 }
 
 impl JobKind {
@@ -88,6 +90,7 @@ impl JobKind {
             Self::WorldIndex => tr!("GTA VI world index"),
             Self::AudioLinks => tr!("GTA VI audio links"),
             Self::OpusAudio => tr!("Opus audio"),
+            Self::TextureCalibration => tr!("GTA VI texture calibration"),
         }
     }
 }
@@ -238,6 +241,7 @@ impl AppState {
         .chain(super::gta6_dialogue::job())
         .chain(self.awc_opus_job())
         .chain(super::gta6_install_scan::job())
+        .chain(super::ttpf_document::calibration::job())
         .collect()
     }
 
@@ -366,6 +370,11 @@ impl AppState {
                 self.stop_awc_opus();
                 false
             }
+            // ⚠ Its end is said once its worker sees the stop, by `poll_texture_calibration`.
+            JobKind::TextureCalibration => {
+                super::ttpf_document::calibration::stop();
+                false
+            }
         };
         if dropped {
             self.jobs.record(
@@ -466,6 +475,7 @@ impl AppState {
         self.poll_map_search();
         self.poll_awc_opus();
         self.poll_install_scan();
+        self.poll_texture_calibration();
     }
 
     fn poll_search(&mut self) {
