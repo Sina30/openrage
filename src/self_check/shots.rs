@@ -326,7 +326,7 @@ impl Shell {
                 )?;
                 println!("shot  {}", path.display());
             }
-            Step::World(step) => self.world(state, step)?,
+            Step::World(step) => self.world(state, step, out)?,
             Step::Compare(step) => {
                 if let Err(why) = compare::run(step, out) {
                     println!("FAILED  {why}");

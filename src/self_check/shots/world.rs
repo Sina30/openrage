@@ -1,11 +1,13 @@
 //! The `world` steps of a shots script, which make a frame of the GTA VI world one that draws the
-//! same again: a camera, an hour, a clean frame and a wait for what streams in.
+//! same again: a camera, an hour, a clean frame, a wait for what streams in, and a dump of what
+//! the viewer wants and draws for a check against what the game loads.
 //!
 //! ⚠ The viewer is locked for a statement at a time and never across a frame, which locks it too.
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
-use super::script::{numbers, split_word};
+use super::script::{file_stem, numbers, split_word};
 use super::Shell;
 use crate::state::gta6_world::worldview::viewer;
 use crate::state::AppState;
@@ -20,6 +22,10 @@ const SETTLE_DEADLINE: Duration = Duration::from_secs(180);
 const MOST_SECONDS: f32 = 86_400.0;
 /// How long `world camera` waits for the install's index: a first build reads every archive of the level.
 const INDEX_DEADLINE: Duration = Duration::from_secs(1800);
+/// The levels of detail in the order a map numbers them, named as the truth model names them.
+const LEVELS: [&str; 7] = ["HD", "LOD", "SLOD1", "SLOD2", "SLOD3", "ORPHANHD", "SLOD4"];
+/// The kinds of node a selection's census counts, in its order.
+const KINDS: [&str; 4] = ["entity", "prop list", "grass list", "far grass list"];
 
 /// A step that acts on the World screen.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +38,8 @@ pub(super) enum WorldStep {
     Clean(bool),
     /// Frames drawn until nothing arrives any more, for this long at most.
     Settle(Duration),
+    /// What the viewer wants and draws at its camera, written as JSON to this file beside the shots.
+    Dump(String),
 }
 
 /// The step the words after `world` name.
@@ -62,8 +70,10 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
             }
             Ok(WorldStep::Settle(Duration::from_secs_f32(seconds)))
         }
+        // ⚠ A name, not a path: a dump lands beside the shots, never in the tree.
+        "dump" => file_stem(rest).map(WorldStep::Dump),
         other => Err(format!(
-            "no world step `{other}`; use camera, hour, clean or settle"
+            "no world step `{other}`; use camera, hour, clean, settle or dump"
         )),
     }
 }
@@ -141,9 +151,76 @@ fn found() -> Result<Found, String> {
     })
 }
 
+/// A census's counts as `"KIND LEVEL": count`, leaving out what it counts none of.
+fn by_level(counts: &[[usize; 7]; 4]) -> serde_json::Map<String, serde_json::Value> {
+    let mut out = serde_json::Map::new();
+    for (kind, row) in KINDS.iter().zip(counts) {
+        for (level, n) in LEVELS.iter().zip(row) {
+            if *n > 0 {
+                out.insert(format!("{kind} {level}"), (*n).into());
+            }
+        }
+    }
+    out
+}
+
+/// 32-bit names as eight hexadecimal digits, sorted.
+fn hex(names: &[u32]) -> Vec<String> {
+    let mut out: Vec<String> = names.iter().map(|n| format!("{n:08X}")).collect();
+    out.sort_unstable();
+    out
+}
+
+/// Write what the viewer wants and draws at its camera to `path` as JSON: the maps by name, the
+/// nodes and those drawn by kind and level, the lists' instances and the far cards.
+fn dump(path: &Path) -> Result<(), String> {
+    let mut viewer = viewer();
+    let selected = (viewer.selected(&mut Vec::new()))
+        .ok_or("no world streams yet: put `world settle` before `world dump`")?;
+    let pose = Pose::of(&viewer.camera);
+    let (census, s) = (&selected.census, selected.streaming);
+    let records: usize = selected.cards.iter().map(|list| list.records.len()).sum();
+    let json = serde_json::json!({
+        "camera": {
+            "pos": [pose.position.x, pose.position.y, pose.position.z],
+            "yaw": pose.yaw,
+            "pitch": pose.pitch,
+            "fov": pose.fov,
+        },
+        "hour": viewer.hour,
+        "lod_scale": viewer.lod_scale,
+        "modes": viewer.enabled.modes,
+        "groups_on": hex(&viewer.enabled.groups),
+        "streaming": {
+            "maps_wanted": s.maps_wanted,
+            "maps_loaded": s.maps_loaded,
+            "maps_waiting": s.maps_waiting,
+            "nodes": s.nodes,
+            "drawn": s.drawn,
+        },
+        "wanted_map_names": hex(&census.wanted),
+        "loaded_map_names": hex(&census.loaded),
+        "nodes_by_level": by_level(&census.nodes),
+        "drawn_by_level": by_level(&census.drawn),
+        "list_instances": census.list_instances,
+        "cards": { "lists": selected.cards.len(), "records": records },
+    });
+    drop(viewer);
+    let text = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    println!("dump  {}", path.display());
+    Ok(())
+}
+
 impl Shell {
-    /// Run a `world` step on the World screen, which the script has put up before it.
-    pub(super) fn world(&mut self, state: &mut AppState, step: &WorldStep) -> Result<(), String> {
+    /// Run a `world` step on the World screen, which the script has put up before it; a dump is
+    /// written into `out`.
+    pub(super) fn world(
+        &mut self,
+        state: &mut AppState,
+        step: &WorldStep,
+        out: &Path,
+    ) -> Result<(), String> {
         // Every step ends on drawn frames, so with the World screen up its viewer has opened the install.
         if state.active_workspace != Workspace::World || !world_viewer::offered(state) {
             return Err(
@@ -167,6 +244,7 @@ impl Shell {
             }
             WorldStep::Clean(on) => state.panels.get::<Capture>().clean = *on,
             WorldStep::Settle(deadline) => self.settle(state, *deadline)?,
+            WorldStep::Dump(name) => dump(&out.join(name))?,
         }
         Ok(())
     }
@@ -241,6 +319,22 @@ mod tests {
         assert_eq!(parse("clean off"), Ok(WorldStep::Clean(false)));
         assert_eq!(parse("settle"), Ok(WorldStep::Settle(SETTLE_DEADLINE)));
         assert_eq!(parse("settle 2.5"), Ok(WorldStep::Settle(at(2500))));
+        assert_eq!(
+            parse("dump truth-01.json"),
+            Ok(WorldStep::Dump("truth-01.json".into()))
+        );
+    }
+
+    #[test]
+    fn a_census_is_written_by_kind_and_level_and_names_as_sorted_hexadecimal() {
+        let mut counts = [[0; 7]; 4];
+        (counts[0][0], counts[2][5], counts[3][2]) = (12, 3, 1);
+        let written = by_level(&counts);
+        assert_eq!(written.len(), 3, "a count of none is left out: {written:?}");
+        assert_eq!(written["entity HD"], 12);
+        assert_eq!(written["grass list ORPHANHD"], 3);
+        assert_eq!(written["far grass list SLOD1"], 1);
+        assert_eq!(hex(&[0xABC, 0x1, 0xFFFF_FFFF]), ["00000001", "00000ABC", "FFFFFFFF"]);
     }
 
     #[test]
@@ -262,6 +356,10 @@ mod tests {
             "settle soon",
             "settle 1 2",
             "settle 1e30",
+            "dump",
+            "dump ../out.json",
+            "dump C:/out.json",
+            "dump two words",
         ] {
             assert!(parse(bad).is_err(), "`world {bad}` should be refused");
         }
