@@ -33,6 +33,8 @@ pub(super) struct Shard {
     pub(super) types: Vec<u64>,
     /// The word each drawable or fragment body names itself by, with its offset.
     pub(super) models: Vec<(u64, u64)>,
+    /// The word of each interior a map-types body states, with the body's offset.
+    pub(super) interiors: Vec<(u64, u64)>,
     /// The codes of the drawables each dictionary body holds, with its offset.
     pub(super) keys: Vec<(u64, Vec<u32>)>,
     /// Each nested archive's header, and where the names that end one end.
@@ -120,19 +122,27 @@ impl Shard {
             tracing::debug!(offset, "the hours of a map-types body are not read");
         }
         self.types.push(offset);
-        (self.archetypes).extend(body.archetypes.iter().enumerate().map(|(k, a)| {
-            ArchetypeRow {
-                word: a.name_word,
-                model: a.drawable | a.fragment,
-                dictionary: a.drawable_dictionary,
-                name: a.name,
-                lod_dist: a.lod_dist,
-                centre: a.bs_centre,
-                radius: a.bs_radius,
-                flags: a.flags,
-                hours: hours.as_ref().map_or(ALL_HOURS, |h| h[k]),
-            }
-        }));
+        (self.interiors).extend(
+            (body.archetypes.iter())
+                .filter(|a| a.class == map::ArchetypeClass::Interior)
+                .map(|a| (a.name_word, offset)),
+        );
+        (self.archetypes).extend(
+            body.archetypes
+                .iter()
+                .enumerate()
+                .map(|(k, a)| ArchetypeRow {
+                    word: a.name_word,
+                    model: a.drawable | a.fragment,
+                    dictionary: a.drawable_dictionary,
+                    name: a.name,
+                    lod_dist: a.lod_dist,
+                    centre: a.bs_centre,
+                    radius: a.bs_radius,
+                    flags: a.flags,
+                    hours: hours.as_ref().map_or(ALL_HOURS, |h| h[k]),
+                }),
+        );
         Some(())
     }
 
@@ -170,6 +180,7 @@ impl Shard {
         self.maps.retain(|(m, ..)| m.offset >= offset);
         self.types.retain(|at| *at >= offset);
         self.models.retain(|(_, at)| *at >= offset);
+        self.interiors.retain(|(_, at)| *at >= offset);
         self.keys.retain(|(at, _)| *at >= offset);
         self.archives.retain(|at| *at >= offset);
         self.ends.retain(|(_, end)| *end > offset);
@@ -182,6 +193,7 @@ impl Shard {
         self.archetypes.append(&mut more.archetypes);
         self.types.append(&mut more.types);
         self.models.append(&mut more.models);
+        self.interiors.append(&mut more.interiors);
         self.keys.append(&mut more.keys);
         self.archives.append(&mut more.archives);
         self.ends.append(&mut more.ends);
