@@ -57,21 +57,50 @@ pub(crate) fn vocabulary() -> Arc<Vocabulary> {
     let mut slot = served();
     let served = slot.get_or_insert_with(Served::default);
     if !std::mem::replace(&mut served.asked, true) {
-        if let Some(root) = super::prefs::config_root() {
-            std::thread::spawn(move || {
-                let kept = Vocabulary::load(&names::vocabulary_file(&root));
-                // A harvest that ended meanwhile serves more than the file read before it.
-                if !kept.is_empty() && vocabulary().is_empty() {
-                    serve(kept);
-                }
+        let root = super::prefs::config_root();
+        std::thread::spawn(move || {
+            let kept = root.map_or_else(Vocabulary::default, |root| {
+                Vocabulary::load(&names::vocabulary_file(&root))
             });
-        }
+            // A harvest that ended meanwhile serves more than the file read before it.
+            let corpus = !corpus().is_empty();
+            if (!kept.is_empty() || corpus) && vocabulary().is_empty() {
+                serve(kept);
+            }
+        });
     }
     Arc::clone(&served.vocabulary)
 }
 
-/// Serve `vocabulary` from now on, and read each archive's labels again when next asked.
-fn serve(vocabulary: Vocabulary) {
+/// Where the recovered-names corpus lies: a folder whose `vocabulary.txt` holds one name a line.
+const CORPUS: &str = "OPENRAGE_GTA6_NAMES";
+
+/// The recovered-names corpus the folder [`CORPUS`] names, read once: names the game's files state that no harvest of this install gave.
+fn corpus() -> &'static Vocabulary {
+    static READ: std::sync::OnceLock<Vocabulary> = std::sync::OnceLock::new();
+    READ.get_or_init(|| {
+        let Some(folder) = std::env::var_os(CORPUS) else {
+            return Vocabulary::default();
+        };
+        let file = Path::new(&folder).join("vocabulary.txt");
+        let kept = Vocabulary::load(&file);
+        if !kept.is_empty() {
+            return kept;
+        }
+        let mut read = Vocabulary::default();
+        for line in std::fs::read_to_string(&file).unwrap_or_default().lines() {
+            let line = line.trim();
+            if !line.is_empty() && !line.starts_with("//") {
+                read.add(line, None);
+            }
+        }
+        read
+    })
+}
+
+/// Serve `vocabulary` and the corpus from now on, and read each archive's labels again when next asked.
+fn serve(mut vocabulary: Vocabulary) {
+    vocabulary.merge(corpus());
     let now = Served {
         vocabulary: Arc::new(vocabulary),
         asked: true,
