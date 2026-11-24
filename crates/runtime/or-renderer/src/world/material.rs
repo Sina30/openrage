@@ -189,11 +189,16 @@ pub fn colour1(rgba: [u8; 4]) -> f32 {
     f32::from_bits(u32::from_le_bytes(rgba))
 }
 
+/// A mesh's colours of one channel, one a vertex, if it has them.
+type Colours<'a> = Option<&'a [[f32; 4]]>;
+/// A mesh's texture coordinates of one set, one a vertex, if it has them.
+type Coordinates<'a> = Option<&'a [[f32; 2]]>;
+
 /// Give each of `vertices` of a model its two colours, each white where the mesh has none, and its second and third texture coordinates, each its first where the mesh has none.
 pub fn coloured(
     vertices: &mut [MeshVertex],
-    (first, second): (Option<&[[f32; 4]]>, Option<&[[f32; 4]]>),
-    (uv1, uv2): (Option<&[[f32; 2]]>, Option<&[[f32; 2]]>),
+    (first, second): (Colours, Colours),
+    (uv1, uv2): (Coordinates, Coordinates),
 ) {
     // ⚠ A model's vertex keeps the second coordinate in the first two floats of its colour, the first colour in the bits of the third, the third coordinate as two halves in the bits of the fourth, and the second colour in the bits of its depth bias, as a material of [`WorldConstants::MODEL_VERTEX`] reads it.
     let at = |colours: Option<&[[f32; 4]]>, index: usize| {
