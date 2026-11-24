@@ -30,6 +30,9 @@ const KEPT: u32 = 128;
 
 type Read = Arc<OnceLock<Option<Arc<WaterGround>>>>;
 
+/// What [`held`] keeps: each install's root and its slot, empty while it is read.
+pub(super) type Slots<T> = Mutex<Vec<(PathBuf, Arc<OnceLock<Option<Arc<T>>>>)>>;
+
 static HELD: Mutex<Vec<(PathBuf, Read)>> = Mutex::new(Vec::new());
 
 /// The ground under the water of the install at `root`, read once on a worker and held: `None` until it is read, and where the install's tables give none or it does not read.
@@ -39,7 +42,7 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
 
 /// What `read` makes of the install at `root`, read once on a worker and held in `slots`: `None` until it is read, and where it does not read.
 pub(super) fn held<T: Send + Sync + 'static>(
-    slots: &'static Mutex<Vec<(PathBuf, Arc<OnceLock<Option<Arc<T>>>>)>>,
+    slots: &'static Slots<T>,
     root: &Path,
     what: &'static str,
     read: fn(&Path, &GtaViKeys) -> Result<T, String>,
@@ -79,10 +82,7 @@ pub(super) fn held<T: Send + Sync + 'static>(
 }
 
 /// Whether what `slots` holds for `root` was asked for and is still being read.
-pub(super) fn reading<T>(
-    slots: &Mutex<Vec<(PathBuf, Arc<OnceLock<Option<Arc<T>>>>)>>,
-    root: &Path,
-) -> bool {
+pub(super) fn reading<T>(slots: &Slots<T>, root: &Path) -> bool {
     let held = slots.lock().unwrap_or_else(|p| p.into_inner());
     (held.iter()).any(|(path, slot)| path == root && slot.get().is_none())
 }
