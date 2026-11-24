@@ -74,8 +74,7 @@ pub struct WaterQuad {
     pub alpha: [u8; 4],
     /// The height of its surface.
     pub z: f32,
-    /// 0 a whole rectangle; 1 to 4 the triangle of it without its north-east, south-east,
-    /// south-west or north-west corner, measured by how the quads tile.
+    /// 0 a whole rectangle; 1 to 4 the triangle of it without its north-east, south-east, south-west or north-west corner.
     pub kind: u8,
     pub ocean: bool,
     pub invisible: bool,
