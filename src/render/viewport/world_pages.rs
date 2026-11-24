@@ -23,7 +23,9 @@ struct Free {
 impl Free {
     fn new(len: u32) -> Self {
         Self {
-            runs: if len == 0 { Vec::new() } else { vec![0..len] },
+            runs: std::iter::once(0..len)
+                .filter(|run| !run.is_empty())
+                .collect(),
         }
     }
 
@@ -59,7 +61,7 @@ impl Free {
 
     /// Whether none of its `len` is taken.
     fn is_whole(&self, len: u32) -> bool {
-        self.runs == [0..len]
+        matches!(self.runs.as_slice(), [run] if *run == (0..len))
     }
 }
 
@@ -259,9 +261,9 @@ mod tests {
         assert_eq!(free.runs, [20..40, 60..80]);
         // Between two free runs: the three are one.
         free.give(40..60);
-        assert_eq!(free.runs, [20..80]);
+        assert_eq!(free.runs, std::iter::once(20..80).collect::<Vec<_>>());
         free.give(80..100);
-        assert_eq!(free.runs, [20..100]);
+        assert_eq!(free.runs, std::iter::once(20..100).collect::<Vec<_>>());
         free.give(0..20);
         assert!(free.is_whole(100));
         // Nothing given back changes nothing.
