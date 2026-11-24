@@ -328,6 +328,54 @@ fn a_condition_holds_by_three_values() {
 }
 
 #[test]
+fn a_time_of_day_whose_start_is_not_earlier_wraps_and_chance_holds_only_when_sure() {
+    let time = |start, end| Condition::TimeOfDay { start, end };
+    // A start equal to the end goes round the clock.
+    assert_eq!(time(9, 9).holds(3), Some(true));
+    assert_eq!(time(9, 9).holds(9), Some(true));
+    assert_eq!(Condition::Random(0.0).holds(3), Some(false));
+    assert_eq!(Condition::Random(1.0).holds(3), Some(true));
+    assert_eq!(Condition::Random(0.5).holds(3), None);
+}
+
+#[test]
+fn a_rule_on_another_selector_follows_that_selector_s_pick() {
+    let config = |key, on: u64| Config {
+        key,
+        on: vec![on],
+        ..Config::default()
+    };
+    let watched = Selector {
+        key: 7,
+        default: DAY,
+        configs: vec![config(DAY, OPEN)],
+        ..Selector::default()
+    };
+    let follower = |from_start| Selector {
+        key: 8,
+        default: DAY,
+        configs: vec![config(DAY, 0x11), config(NIGHT, CLOSED)],
+        rules: vec![Rule {
+            config: NIGHT,
+            condition: Condition::InConfig {
+                selector: 7,
+                config: DAY,
+                from_start,
+            },
+        }],
+    };
+    let keys = |s: &[&Selector]| -> Vec<Option<u32>> {
+        picks(s, 12).iter().map(|c| c.map(|c| c.key)).collect()
+    };
+    let follows = follower(true);
+    assert_eq!(keys(&[&follows, &watched]), [Some(NIGHT), Some(DAY)]);
+    // A least span of time has not passed at the start; and with the other absent, it is in nothing.
+    let waits = follower(false);
+    assert_eq!(keys(&[&waits, &watched]), [Some(DAY), Some(DAY)]);
+    assert_eq!(keys(&[&follows]), [Some(DAY)]);
+}
+
+#[test]
 fn a_rule_nothing_evaluates_never_picks_and_the_default_follows() {
     let config = |key, on: u64| Config {
         key,
