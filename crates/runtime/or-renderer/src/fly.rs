@@ -142,5 +142,24 @@ impl Frustum {
     }
 }
 
+/// The centre and the radius of the smallest sphere about the part of a view between `near` and `far` ahead of `eye`, which looks along the unit `forward` with a field of `fov_y` in a frame of `aspect`.
+pub fn slice_sphere(
+    eye: Vec3,
+    forward: Vec3,
+    fov_y: f32,
+    aspect: f32,
+    near: f32,
+    far: f32,
+) -> (Vec3, f32) {
+    // The square of how far a corner of the view lies from its axis, one unit ahead
+    let half = (fov_y * 0.5).tan();
+    let corner = half * half * (1.0 + aspect * aspect);
+    // The point of the axis as far from the near corners as from the far ones, or the far plane's where that lies past it.
+    // The radius comes of the field, the aspect and the two distances alone: a camera that turns or moves keeps it.
+    let ahead = (0.5 * (near + far) * (1.0 + corner)).min(far);
+    let radius = ((far - ahead).powi(2) + far * far * corner).sqrt();
+    (eye + forward * ahead, radius)
+}
+
 #[cfg(test)]
 mod tests;

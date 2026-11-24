@@ -133,3 +133,46 @@ fn a_sphere_is_held_only_while_no_plane_cuts_it() {
     assert!(!frustum.holds_sphere(Vec3::new(edge, 10.0, 0.0), 1.0));
     assert!(!frustum.holds_sphere(Vec3::new(0.0, -10.0, 0.0), 1.0));
 }
+
+#[test]
+fn the_sphere_about_a_slice_of_the_view_holds_its_eight_corners_and_keeps_its_size_as_the_camera_turns()
+{
+    let camera = FlyCamera {
+        position: Vec3::new(40.0, -7.0, 12.0),
+        yaw: 1.1,
+        pitch: -0.3,
+        ..FlyCamera::default()
+    };
+    let up = camera.right().cross(camera.forward());
+    // A wide view is held by a sphere about the middle of its far side, and a narrow deep one by a sphere within it
+    for (fov_y, aspect, near, far, about_the_far_side) in [
+        (camera.fov_y, 16.0 / 9.0, 0.05, 8.0, true),
+        (10f32.to_radians(), 1.0, 10.0, 100.0, false),
+    ] {
+        let half = (fov_y * 0.5).tan();
+        let (centre, radius) =
+            slice_sphere(camera.position, camera.forward(), fov_y, aspect, near, far);
+        let ahead = (centre - camera.position).dot(camera.forward());
+        assert_eq!(ahead >= far - 1e-3, about_the_far_side, "{ahead}");
+        let mut furthest = 0.0f32;
+        for (depth, x, y) in [near, far]
+            .into_iter()
+            .flat_map(|d| [(d, 1.0, 1.0), (d, -1.0, 1.0), (d, 1.0, -1.0), (d, -1.0, -1.0)])
+        {
+            let corner = camera.position
+                + (camera.forward() + camera.right() * (x * half * aspect) + up * (y * half))
+                    * depth;
+            furthest = furthest.max((corner - centre).length());
+        }
+        // Every corner is inside, and the furthest is on it: no smaller sphere about that centre holds them
+        assert!((furthest - radius).abs() < radius * 1e-4, "{furthest} {radius}");
+        let turned = FlyCamera {
+            position: Vec3::new(-900.0, 300.0, 5.0),
+            yaw: -2.0,
+            pitch: 0.9,
+            ..camera.clone()
+        };
+        let (_, same) = slice_sphere(turned.position, turned.forward(), fov_y, aspect, near, far);
+        assert_eq!(same, radius);
+    }
+}
