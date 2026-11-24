@@ -456,7 +456,7 @@ impl World {
         });
         Self {
             pipelines: Pipelines::new(device, camera_bgl, &materials, &light_layout, colour_format),
-            cards: cards::Cards::new(device, queue, camera_bgl, colour_format),
+            cards: cards::Cards::new(device, queue, camera_bgl, &materials, colour_format),
             water: water::WaterPass::new(device, queue, camera_bgl, &light_layout),
             calls: WorldCalls::default(),
             given: Vec::new(),

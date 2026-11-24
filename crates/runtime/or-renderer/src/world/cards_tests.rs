@@ -3,20 +3,22 @@ use std::sync::Arc;
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
-use super::shader::{BAKE_SHADER, CARDS_SHADER, MIP_SHADER};
+use super::shader::{bake_shader, CARDS_SHADER, MIP_SHADER};
 use super::*;
 use crate::game_shaders::frame::read_back;
 use crate::game_shaders::test_pack::gpu;
 use crate::viewport::{MeshVertex, OrbitCamera, ShadingMode};
+use crate::world::WorldBucket;
 
 const SIZE: u32 = 64;
 const BACKGROUND: [f32; 4] = [0.1, 0.2, 0.3, 1.0];
 
 #[test]
 fn every_program_of_the_cards_parses_and_validates() {
+    let bake = bake_shader();
     for (name, source) in [
         ("cards", CARDS_SHADER),
-        ("bake", BAKE_SHADER),
+        ("bake", bake.as_str()),
         ("mip", MIP_SHADER),
     ] {
         let module = naga::front::wgsl::parse_str(source)
@@ -121,16 +123,43 @@ fn cube(device: &wgpu::Device, half: f32, centre: Vec3) -> (wgpu::Buffer, wgpu::
     cube_buffers(device, &vertices)
 }
 
-/// The same cube with its vertices packed as a world model's are, each colour white.
-fn model_cube(device: &wgpu::Device, half: f32) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+/// The same cube with its vertices packed as a world model's are, each first colour `first`.
+fn model_cube(
+    device: &wgpu::Device,
+    half: f32,
+    first: [f32; 4],
+) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let mut vertices: Vec<MeshVertex> = (0..8)
         .map(|at| {
             let corner = [0, 1, 2].map(|axis| if (at >> axis) & 1 == 1 { half } else { -half });
             MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], [1.0; 4])
         })
         .collect();
-    crate::world::coloured(&mut vertices, (None, None), (None, None));
+    let colours = [first; 8];
+    crate::world::coloured(&mut vertices, (Some(&colours), None), (None, None));
     cube_buffers(device, &vertices)
+}
+
+/// A standard material of a model in `bucket`, its colour map `colour` and its palette `palette`.
+fn model_material(
+    renderer: &ViewportRenderer,
+    device: &wgpu::Device,
+    colour: &wgpu::TextureView,
+    palette: Option<&wgpu::TextureView>,
+    bucket: WorldBucket,
+) -> crate::world::WorldMaterial {
+    let mut maps = [None; crate::world::WORLD_MAPS];
+    maps[crate::world::slot::colour(0)] = Some(colour);
+    maps[crate::world::slot::TINT] = palette;
+    let mut constants = crate::world::WorldConstants::default();
+    constants.flags |= crate::world::WorldConstants::MODEL_VERTEX;
+    let surface = crate::world::WorldSurface {
+        family: crate::world::WorldFamily::Standard,
+        bucket,
+        maps,
+        constants,
+    };
+    renderer.world_surface(device, &surface)
 }
 
 fn cube_buffers(
@@ -214,7 +243,7 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         radius,
         slot,
     };
-    // The places of the red pixels, row by row, and how many cards were drawn.
+    // The places of the red pixels, row by row, how many cards were drawn, and how many pixels are green.
     let reds = |renderer: &mut ViewportRenderer,
                 camera: &OrbitCamera,
                 lists: &[CardBatch],
@@ -232,13 +261,16 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
             SIZE,
         );
         let red: Vec<usize> = (read.bytes.as_chunks::<4>().0.iter().enumerate())
-            .filter(|(_, p)| p[0] > 2 * p[1].max(p[2]) && p[0] > 40)
+            .filter(|(_, p)| u16::from(p[0]) > 2 * u16::from(p[1].max(p[2])) && p[0] > 40)
             .map(|(at, _)| at)
             .collect();
-        (red, renderer.card_instances())
+        let green = (read.bytes.as_chunks::<4>().0.iter())
+            .filter(|p| u16::from(p[1]) > 2 * u16::from(p[0].max(p[2])) && p[1] > 40)
+            .count();
+        (red, renderer.card_instances(), green)
     };
     let drawn = |renderer: &mut ViewportRenderer, lists: &[CardBatch], shown: &[u32]| {
-        let (red, instances) = reds(renderer, &camera, lists, shown);
+        let (red, instances, _) = reds(renderer, &camera, lists, shown);
         (red.len(), instances)
     };
     let one = [list(&[record(0)], 1.0)];
@@ -254,8 +286,7 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         base_vertex: 0,
         first_index: 0,
         index_count: count,
-        colour: Some(&red),
-        cutout: false,
+        material: renderer.world_material(&device, Some(&red), None, None, WorldBucket::Opaque),
     };
     assert!(renderer.bake_card_slot(&device, &queue, 0, [0.0; 3], radius, &[mesh]));
     renderer.set_card_species(&device, &queue, &[species(Some(0))]);
@@ -292,8 +323,7 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         base_vertex: 0,
         first_index: 0,
         index_count: off_count,
-        colour: Some(&red),
-        cutout: false,
+        material: renderer.world_material(&device, Some(&red), None, None, WorldBucket::Opaque),
     };
     assert!(renderer.bake_card_slot(&device, &queue, 1, [0.0; 3], 1.6, &[mesh]));
     let aside = CardSpecies {
@@ -303,7 +333,7 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
     };
     renderer.set_card_species(&device, &queue, &[aside]);
     let near = OrbitCamera::default();
-    let (red_at, _) = reds(&mut renderer, &near, &one, &[0]);
+    let (red_at, _, _) = reds(&mut renderer, &near, &one, &[0]);
     assert!(!red_at.is_empty());
     let column = red_at
         .iter()
@@ -318,20 +348,50 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         "the red lies at column {column}, the model's side is at {expected}"
     );
     // A cutout of a world model is covered where its map is, whatever its vertex packing puts in the colour's floats
-    let (model_vertices, model_indices, model_count) = model_cube(&device, 1.0);
+    let (model_vertices, model_indices, model_count) = model_cube(&device, 1.0, [1.0; 4]);
     let mesh = CardMesh {
         vertices: &model_vertices,
         indices: &model_indices,
         base_vertex: 0,
         first_index: 0,
         index_count: model_count,
-        colour: Some(&red),
-        cutout: true,
+        material: model_material(&renderer, &device, &red, None, WorldBucket::Cutout),
     };
     assert!(renderer.bake_card_slot(&device, &queue, 2, [0.0; 3], radius, &[mesh]));
     renderer.set_card_species(&device, &queue, &[species(Some(2))]);
     let cut = drawn(&mut renderer, &one, &[0]).0;
     assert!(cut * 10 > whole * 9, "{cut} of {whole}");
+    // A white leaf whose vertex picks the palette's second column is baked that column's green, as the near model is drawn
+    let white = crate::game_shaders::stand_in::constant_view(&device, &queue, [1.0; 4]);
+    let palette = crate::game_shaders::stand_in::row_view(
+        &device,
+        &queue,
+        &[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]],
+    );
+    let (tinted_vertices, tinted_indices, tinted_count) =
+        model_cube(&device, 1.0, [1.0, 1.0, 1.0 / 255.0, 1.0]);
+    let mesh = CardMesh {
+        vertices: &tinted_vertices,
+        indices: &tinted_indices,
+        base_vertex: 0,
+        first_index: 0,
+        index_count: tinted_count,
+        material: model_material(
+            &renderer,
+            &device,
+            &white,
+            Some(&palette),
+            WorldBucket::Cutout,
+        ),
+    };
+    assert!(renderer.bake_card_slot(&device, &queue, 3, [0.0; 3], radius, &[mesh]));
+    renderer.set_card_species(&device, &queue, &[species(Some(3))]);
+    let (red_at, _, greens) = reds(&mut renderer, &camera, &one, &[0]);
+    assert!(
+        red_at.is_empty() && greens * 10 > whole * 9,
+        "{} red and {greens} green of {whole}",
+        red_at.len()
+    );
     // A slot past the device's is refused
     let past = renderer.card_slots(&device);
     let mesh = CardMesh {
@@ -340,8 +400,7 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         base_vertex: 0,
         first_index: 0,
         index_count: count,
-        colour: None,
-        cutout: false,
+        material: renderer.world_material(&device, None, None, None, WorldBucket::Opaque),
     };
     assert!(!renderer.bake_card_slot(&device, &queue, past, [0.0; 3], radius, &[mesh]));
     assert!(

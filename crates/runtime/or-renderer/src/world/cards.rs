@@ -41,15 +41,14 @@ pub struct CardSpecies {
     pub slot: Option<u32>,
 }
 
-/// A mesh a species is baked from, in its model's own space: a range of buffers of `MeshVertex` and `u32` indices, its colour map, and whether texels of under half coverage are left out.
+/// A mesh a species is baked from, in its model's own space: a range of buffers of `MeshVertex` and `u32` indices, and the material the world draws it with, whose arithmetic its colour is worked out by; a cutout's texels of under half coverage are left out.
 pub struct CardMesh<'a> {
     pub vertices: &'a wgpu::Buffer,
     pub indices: &'a wgpu::Buffer,
     pub base_vertex: i32,
     pub first_index: u32,
     pub index_count: u32,
-    pub colour: Option<&'a wgpu::TextureView>,
-    pub cutout: bool,
+    pub material: super::WorldMaterial,
 }
 
 /// The frames of a species' grid along each side.
@@ -148,6 +147,7 @@ impl Cards {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         camera_bgl: &wgpu::BindGroupLayout,
+        materials: &wgpu::BindGroupLayout,
         colour_format: wgpu::TextureFormat,
     ) -> Self {
         let storage = |binding| wgpu::BindGroupLayoutEntry {
@@ -283,7 +283,7 @@ impl Cards {
             spans: Vec::new(),
             uploaded: Vec::new(),
             shown: Vec::new(),
-            bake: Bake::new(device, queue),
+            bake: Bake::new(device, materials),
         };
         cards.write(
             device,

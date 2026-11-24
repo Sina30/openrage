@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use glam::Vec3;
 use or_renderer::world::cards::{CardBatch, CardMesh, CardSpecies};
+use or_renderer::world::{WorldSurface, WORLD_MAPS};
 use or_renderer::{Frustum, ViewportRenderer, WorldBucket};
 
 use super::textures::ABSENT;
@@ -54,61 +55,79 @@ impl WorldGpu {
         self.cards.shown.clear();
     }
 
-    /// The meshes of the least detailed level of `model` whose every colour map is on the device
-    /// or known never to come, with the colour maps of its least detailed level that have not
-    /// arrived put in `absent`; what blends or lies on a surface is left out of a stand-in.
+    /// The meshes of the least detailed level of `model` whose every map is on the device or
+    /// known never to come, each with the material the world draws it with, and the maps of its
+    /// least detailed level that have not arrived put in `absent` with whether each is read
+    /// whole; what blends or lies on a surface is left out of a stand-in.
+    // ponytail: every map a material names is waited for, normal maps too, which a bake reads
+    // nothing of; wait for those of colour and coverage alone if the bakes are seen to lag.
     fn card_meshes<'a>(
         &'a self,
+        (renderer, device): (&ViewportRenderer, &wgpu::Device),
         model: &ModelRef,
         grey: &'a wgpu::TextureView,
-        absent: &mut Vec<u64>,
+        absent: &mut Vec<(u64, bool)>,
     ) -> Option<Vec<CardMesh<'a>>> {
         let Some(Slot::Ready { lods, .. }) = self.models.get(model) else {
             return None;
         };
         for (tried, lod) in lods.iter().rev().enumerate() {
-            let mut meshes = Vec::with_capacity(lod.meshes.len());
+            let mut ready = Vec::with_capacity(lod.meshes.len());
             let mut waits = false;
             for mesh in &lod.meshes {
                 let Some(material) = self.materials.get(mesh.material as usize) else {
                     continue;
                 };
-                let cutout = match material.bucket {
-                    WorldBucket::Opaque | WorldBucket::Emissive => false,
-                    WorldBucket::Cutout => true,
-                    WorldBucket::Decal | WorldBucket::Blend => continue,
-                };
-                let colour = match material.maps[0].map(|key| (key, self.textures.of(key))) {
-                    None => None,
-                    Some((_, (_, Some(view)))) => Some(view),
-                    // Not arrived yet: the level waits for it.
-                    Some((key, (ABSENT, None))) => {
-                        waits = true;
-                        if tried == 0 {
-                            absent.push(key);
-                        }
-                        continue;
-                    }
-                    // No pack holds it: the stand-in is the mid grey the world draws it with.
-                    Some((_, (_, None))) => Some(grey),
-                };
-                let Some((vertices, indices)) = self.pages.buffers(mesh.place.page) else {
-                    waits = true;
+                if matches!(material.bucket, WorldBucket::Decal | WorldBucket::Blend) {
                     continue;
-                };
-                meshes.push(CardMesh {
-                    vertices,
-                    indices,
-                    base_vertex: mesh.place.base_vertex as i32,
-                    first_index: mesh.place.first_index,
-                    index_count: mesh.place.indices,
-                    colour,
-                    cutout,
-                });
+                }
+                // As the world binds them: a model's own palette, a map on the device, a mid grey for a colour map no pack holds
+                let mut maps = [None; WORLD_MAPS];
+                for (at, key) in material.maps.iter().enumerate() {
+                    let Some(key) = *key else {
+                        continue;
+                    };
+                    maps[at] = match (self.palettes.get(&key), self.textures.of(key)) {
+                        (Some(palette), _) => Some(palette),
+                        (None, (_, Some(view))) => Some(view),
+                        // Not arrived yet: the level waits for it.
+                        (None, (ABSENT, None)) => {
+                            waits = true;
+                            if tried == 0 {
+                                absent.push((key, material.whole[at]));
+                            }
+                            None
+                        }
+                        (None, (_, None)) => material.colours[at].then_some(grey),
+                    };
+                }
+                match self.pages.buffers(mesh.place.page) {
+                    Some(buffers) => ready.push((mesh, material, maps, buffers)),
+                    None => waits = true,
+                }
             }
-            if !waits && !meshes.is_empty() {
-                return Some(meshes);
+            if waits || ready.is_empty() {
+                continue;
             }
+            let meshes = (ready.into_iter())
+                .map(|(mesh, material, maps, (vertices, indices))| {
+                    let surface = WorldSurface {
+                        family: material.family,
+                        bucket: material.bucket,
+                        maps,
+                        constants: material.constants,
+                    };
+                    CardMesh {
+                        vertices,
+                        indices,
+                        base_vertex: mesh.place.base_vertex as i32,
+                        first_index: mesh.place.first_index,
+                        index_count: mesh.place.indices,
+                        material: renderer.world_surface(device, &surface),
+                    }
+                })
+                .collect();
+            return Some(meshes);
         }
         None
     }
@@ -204,7 +223,8 @@ impl WorldGpu {
                 }
                 Some(Slot::Ready { .. }) => {}
             }
-            let Some(meshes) = self.card_meshes(&model, &grey, &mut absent) else {
+            let Some(meshes) = self.card_meshes((&*renderer, device), &model, &grey, &mut absent)
+            else {
                 continue;
             };
             if bakes == 0 {
@@ -234,10 +254,18 @@ impl WorldGpu {
                 .collect();
             renderer.set_card_species(device, queue, &table);
         }
+        // ⚠ A palette is read texel by texel: a smaller copy of it moves every column.
+        let whole = (self.budgets.as_ref()).map_or(BAKED_PIXELS, |budgets| budgets.most_side);
         CardAsks {
             // Asked for after everything the camera sees, at the size a frame of the atlas needs.
             textures: (absent.into_iter())
-                .map(|key| (ASKED_LAST, key, BAKED_PIXELS))
+                .map(|(key, read_whole)| {
+                    (
+                        ASKED_LAST,
+                        key,
+                        if read_whole { whole } else { BAKED_PIXELS },
+                    )
+                })
                 .collect(),
             models,
             more,

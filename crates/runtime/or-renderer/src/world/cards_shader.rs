@@ -320,53 +320,26 @@ fn fs_cast(in: VsOut) {
 }
 "#;
 
-/// A species' model drawn into one frame of its atlas: the frame's view is a uniform at a dynamic offset.
-pub(super) const BAKE_SHADER: &str = r#"
-struct View {
-    view_proj: mat4x4<f32>,
-};
-@group(0) @binding(0) var<uniform> view: View;
-@group(1) @binding(0) var colour_tex: texture_2d<f32>;
-@group(1) @binding(1) var colour_smp: sampler;
-
-struct VsIn {
-    @location(0) position:   vec3<f32>,
-    @location(1) normal:     vec3<f32>,
-    @location(2) uv:         vec2<f32>,
-    @location(3) colour:     vec4<f32>,
-    @location(4) depth_bias: f32,
-};
-
-struct VsOut {
-    @builtin(position) clip_pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) colour: vec4<f32>,
-};
-
-@vertex
-fn vs_bake(in: VsIn) -> VsOut {
-    var out: VsOut;
-    out.clip_pos = view.view_proj * vec4<f32>(in.position, 1.0);
-    out.uv = in.uv;
-    // ⚠ A world model's vertex keeps its first colour in the bits of the colour's third float, as `material::coloured` packs it: read as a float, its alpha is noise that cuts every leaf away.
-    out.colour = unpack4x8unorm(bitcast<u32>(in.colour.z));
-    return out;
+/// A species' model drawn into one frame of its atlas by the world's own program, its frame's view in the camera's place at a dynamic offset: these entry points follow it.
+pub(super) fn bake_shader() -> String {
+    format!("{}{BAKE_ENTRIES}", super::super::shader::WORLD_SHADER)
 }
 
-// Whatever is drawn covers its texel whole. A vertex's colour is a palette index or layer weights, never albedo: only its alpha counts, as coverage.
+const BAKE_ENTRIES: &str = r#"
+// The albedo the world's G-buffer takes of the surface, its palette, its second map and its metal worked as the near model's are, and no light: a card is lit where it stands.
 @fragment
-fn fs_bake(in: VsOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(textureSample(colour_tex, colour_smp, in.uv).rgb, 1.0);
+fn fs_bake(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+    return vec4<f32>(diffuse_of(surface_of(in, front_facing)), 1.0);
 }
 
+// ⚠ Cut by the colour map's first level, as the world cuts: a frame 32 texels wide samples a level that has averaged the leaves away.
 @fragment
-fn fs_bake_cutout(in: VsOut) -> @location(0) vec4<f32> {
-    let colour = textureSample(colour_tex, colour_smp, in.uv);
-    // ⚠ Cut by the map's first level, as the world cuts: a frame 32 texels wide samples a level that has averaged the leaves away.
-    if (textureSampleLevel(colour_tex, colour_smp, in.uv, 0.0).a * in.colour.a < 0.5) {
+fn fs_bake_cutout(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+    let s = surface_of(in, front_facing);
+    if (dropped(in, cut_coverage(in), CUTOUT_ALPHA)) {
         discard;
     }
-    return vec4<f32>(colour.rgb, 1.0);
+    return vec4<f32>(diffuse_of(s), 1.0);
 }
 "#;
 
