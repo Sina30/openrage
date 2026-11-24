@@ -17,7 +17,9 @@ use or_io::gta6::timecycle::{
 };
 use or_io::gta6::weather::{WeatherData, WeatherSet};
 
-use crate::gta6_exposure::{adapt, light, moon_towards, target_stops, ExposureSettings};
+use crate::gta6_exposure::{
+    adapt, bodies, light, moon_towards, target_stops, Bodies, ExposureSettings,
+};
 
 /// What a text of the day may inflate to; a longer one is passed over.
 const BODY_LIMIT: u64 = 16 << 20;
@@ -68,6 +70,8 @@ pub struct Moment {
     pub light_scale: f32,
     pub moon_dim: f32,
     pub wetness: f32,
+    /// Which body lights the moment, how faded, and the way its light comes from.
+    pub bodies: Bodies,
 }
 
 type Vars = BTreeMap<String, [f32; 2]>;
@@ -261,6 +265,7 @@ impl DayTables {
             moon_towards(day, roll.to_radians(), wobble)
         };
         let (light, stops) = light(&own, sun, moon, &self.exposure_settings());
+        let lit = bodies(&own, sun, moon);
         let rain = |weather: &str| {
             self.data_of(weather)
                 .map_or(0.0, |d| d.rain.clamp(0.0, 1.0))
@@ -287,6 +292,7 @@ impl DayTables {
             light,
             moon_dim: visual.get_f32("misc.MoonDimMult", 1.0),
             wetness: rain(from) + (rain(to) - rain(from)) * along,
+            bodies: lit,
         })
     }
 

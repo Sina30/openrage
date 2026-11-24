@@ -14,6 +14,7 @@ use super::pack::GamePack;
 use super::pipeline::{DrawState, Target};
 use super::screen::{ScreenPass, Space};
 use super::sky::Sky;
+use super::sky_view::{SkyView, SkyViewPass};
 use super::stand_in::Provided;
 
 const EFFECT: &str = "sky_system";
@@ -233,6 +234,8 @@ pub struct SkyPass {
     moon: Option<Disc>,
     /// None where the install gave no noise to cut clouds from: the sky is then drawn without them.
     noise: Option<Noise>,
+    /// The sky of a day that states it as a table, added over the dome's clouds and stars.
+    view: SkyViewPass,
 }
 
 impl SkyPass {
@@ -248,6 +251,7 @@ impl SkyPass {
             sun: None,
             moon: None,
             noise: None,
+            view: SkyViewPass::new(device),
         };
         // A pack with no dome for the plainest sky has no sky
         pass.dome(0)?;
@@ -418,8 +422,16 @@ impl SkyPass {
         values
     }
 
-    /// Write the constants of this frame.
-    pub fn write(&self, queue: &wgpu::Queue, engine: &EngineConstants, sky: &Sky, far: f32) {
+    /// Write the constants of this frame, with the table of the sky where the day states one.
+    pub fn write(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        sky: &Sky,
+        far: f32,
+        view: Option<&SkyView>,
+    ) {
+        self.view.write(queue, engine, view);
         let clouds = self.noise.is_some() && self.textures.detail.is_some();
         let mut variant = sky.variant(self.textures.stars.is_some(), clouds);
         if self.dome(variant).is_none() {
@@ -460,6 +472,7 @@ impl SkyPass {
         if let Some(moon) = &self.moon {
             moon.record(pass);
         }
+        self.view.record(pass);
     }
 }
 

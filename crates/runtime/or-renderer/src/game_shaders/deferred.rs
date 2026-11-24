@@ -719,9 +719,10 @@ impl FramePasses {
         engine: &EngineConstants,
         sky: &super::sky::Sky,
         far: f32,
+        view: Option<&super::sky_view::SkyView>,
     ) {
         if let Some(pass) = &self.sky {
-            pass.write(queue, engine, sky, far);
+            pass.write(queue, engine, sky, far, view);
         }
     }
 

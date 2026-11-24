@@ -263,11 +263,16 @@ impl ViewportRenderer {
         frame.meter.collect(device);
         frame.meter.bind(device, &frame.hdr);
         if frame.reflection_of != Some(revision) {
-            let map = crate::game_shaders::sky::ReflectionMap::of(
-                &sky,
-                REFLECTION_WIDTH,
-                REFLECTION_LEVELS as usize,
-            );
+            use crate::game_shaders::sky::ReflectionMap;
+            let (width, levels) = (REFLECTION_WIDTH, REFLECTION_LEVELS as usize);
+            let map = match self.day.as_ref().and_then(|d| d.sky_view.as_ref()) {
+                Some(view) => ReflectionMap::of_colours(
+                    &|d| sky.colour_over(d, view.sample(d)),
+                    width,
+                    levels,
+                ),
+                None => ReflectionMap::of(&sky, width, levels),
+            };
             frame.reflection.write(queue, &map);
             frame.reflection_of = Some(revision);
         }
@@ -641,9 +646,15 @@ impl ViewportRenderer {
         self.gpu_mark(encoder, "lighting");
         let sky_shown = self.shows_sky(deferred);
         if sky_shown {
+            // A day that states its sky as a table has it drawn over the dome's clouds and stars alone
+            let view = self.day.as_ref().and_then(|d| d.sky_view.as_ref());
+            let sky = match view {
+                Some(_) => self.sky().without_atmosphere(),
+                None => self.sky(),
+            };
             deferred
                 .passes
-                .write_sky(queue, &engine, &self.sky(), camera.far);
+                .write_sky(queue, &engine, &sky, camera.far, view);
             deferred.passes.record_sky_noise(encoder);
             let mut pass = over_the_frame(
                 encoder,

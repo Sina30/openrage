@@ -388,8 +388,30 @@ impl Sky {
         }
     }
 
+    /// This sky with no colour of its own in its dome, which then draws only its clouds, stars, sun and moon over a sky drawn from a table.
+    pub fn without_atmosphere(self) -> Self {
+        Self {
+            east: Vec3::ZERO,
+            west: Vec3::ZERO,
+            transition: Vec3::ZERO,
+            zenith: Vec3::ZERO,
+            zenith_transition: Vec3::ZERO,
+            ..self
+        }
+    }
+
+    /// The colour of the sky towards `view` where the atmosphere there is `radiance` as drawn: what reflections read of a sky drawn from a table.
+    pub fn colour_over(&self, view: Vec3, radiance: Vec3) -> Vec3 {
+        self.colour_of(view, radiance * (self.hdr / self.drawn_hdr.max(1e-6)))
+    }
+
     /// The colour of the sky towards `view`, a unit vector with the third axis up: the atmosphere, the glow of the sun in it, and below the horizon the ground.
     pub fn colour(&self, view: Vec3) -> Vec3 {
+        self.colour_of(view, self.atmosphere(view) * self.hdr)
+    }
+
+    /// The colour towards `view` over an atmosphere of `atmosphere` as reflections are lit.
+    fn colour_of(&self, view: Vec3, atmosphere: Vec3) -> Vec3 {
         // The sky's phase is worked out from the angle to the way the light travels, which is away from the sun
         let cos = -view.dot(self.toward_sun);
         let phase = (1.0 + cos * cos)
@@ -397,7 +419,7 @@ impl Sky {
                 .max(1e-4)
                 .powf(1.5)
             * self.constant_times_scatter;
-        let sky = self.atmosphere(view) * self.hdr * (1.0 - phase.clamp(0.0, 1.0))
+        let sky = atmosphere * (1.0 - phase.clamp(0.0, 1.0))
             + self.sun_colour * phase.clamp(0.0, 1.0) * self.mie_intensity;
         // The ground takes over under the horizon over a little way, as a horizon is not a line
         let below = (-view.z / 0.2).clamp(0.0, 1.0);
@@ -434,6 +456,11 @@ pub struct ReflectionMap {
 impl ReflectionMap {
     /// The map of `sky`, `width` texels across and half as many down, with `levels` levels.
     pub fn of(sky: &Sky, width: u32, levels: usize) -> Self {
+        Self::of_colours(&|d| sky.colour(d), width, levels)
+    }
+
+    /// The map of the sky whose colour towards each way `colour` gives, `width` texels across and half as many down, with `levels` levels.
+    pub fn of_colours(colour: &dyn Fn(Vec3) -> Vec3, width: u32, levels: usize) -> Self {
         let height = (width / 2).max(1);
         let mut first = Vec::with_capacity((width * height) as usize);
         for y in 0..height {
@@ -442,8 +469,8 @@ impl ReflectionMap {
                 let v = (y as f32 + 0.5) / height as f32;
                 // A texel outside both paraboloids holds what the nearest edge does
                 let colour = paraboloid_direction(u, v)
-                    .map(|d| sky.colour(d))
-                    .unwrap_or_else(|| sky.colour(Vec3::new(1.0, 0.0, 0.0).cross(Vec3::Z)));
+                    .map(colour)
+                    .unwrap_or_else(|| colour(Vec3::new(1.0, 0.0, 0.0).cross(Vec3::Z)));
                 first.push([colour.x, colour.y, colour.z, 1.0]);
             }
         }

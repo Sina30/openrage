@@ -38,6 +38,8 @@ pub(super) fn day_of(
         tone: ToneSettings::from_visual(&|name, default| {
             data.visual_settings.get_f32(name, default)
         }),
+        stated: None,
+        sky_view: None,
     })
 }
 

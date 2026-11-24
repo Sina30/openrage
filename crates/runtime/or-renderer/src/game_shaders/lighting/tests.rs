@@ -67,6 +67,7 @@ fn at(hours: f32, k: &Keyframe, table: &TimeTable) -> Lighting {
         moon_dim: 0.3,
         wetness: 0.0,
         night_emissive: 0.0,
+        stated: None,
     };
     Lighting::at(&moment, &view())
 }
@@ -105,6 +106,7 @@ fn the_sun_is_gone_in_the_night_and_a_moon_far_from_full_gives_less_than_a_full_
             moon_dim: 0.3,
             wetness: 0.0,
             night_emissive: 0.0,
+            stated: None,
         };
         Lighting::at(&moment, &view()).directional_colour.x
     };
@@ -206,6 +208,8 @@ fn a_day_works_its_lights_out_from_what_it_holds_and_the_view() {
         wetness: 0.0,
         night_emissive: 0.0,
         tone: Default::default(),
+        stated: None,
+        sky_view: None,
     };
     assert_eq!(day.lighting(&view()), at(12.0, &keyframe(), &table()));
     // The fog depends on how high the camera is
@@ -255,6 +259,8 @@ fn a_wet_day_writes_how_wet_the_world_is_where_the_pass_reads_it_and_a_dry_one_n
         wetness,
         night_emissive: 0.0,
         tone: Default::default(),
+        stated: None,
+        sky_view: None,
     };
     let values = |wetness: f32| {
         let lighting = day(wetness).lighting(&view());
@@ -300,8 +306,43 @@ fn a_moment_carries_its_night_emissives_to_the_lights_the_engine_writes() {
             moon_dim: 0.3,
             wetness: 0.0,
             night_emissive,
+            stated: None,
         };
         Lighting::at(&moment, &view()).night_emissive
     };
     assert_eq!((night(0.0), night(1.0)), (0.0, 1.0));
+}
+
+#[test]
+fn a_day_that_states_its_light_whole_is_lit_from_its_own_bodies_and_faded_by_nothing_more() {
+    // At midnight the frame's own hours would light by a moon faded by its height and phase.
+    let towards = Vec3::new(0.3, -0.2, 0.9).normalize();
+    let moon = Vec3::new(0.6, 0.0, -0.05);
+    let day = Day {
+        keyframe: keyframe(),
+        table: table(),
+        hours: 0.0,
+        cycle_time: 0.0,
+        moon_dim: 0.1,
+        stated: Some(Stated {
+            sun: -Vec3::Z,
+            moon,
+            towards_light: towards,
+            sun_fade: 0.0,
+            moon_fade: 1.0,
+        }),
+        ..Day::default()
+    };
+    let lighting = day.lighting(&view());
+    assert!((-lighting.directional_light.truncate() - towards).length() < 1e-5);
+    let whole = Vec3::new(1.0, 0.5, 0.25) * 64.0;
+    assert!((lighting.directional_colour.truncate() - whole).length() < 1e-4);
+    let (_, drawn_moon) = lighting.sun_and_moon();
+    assert!((drawn_moon - moon.normalize()).length() < 1e-5);
+    let unstated = Day {
+        stated: None,
+        ..day
+    };
+    let faded = unstated.lighting(&view()).directional_colour.truncate();
+    assert!(faded.length() < whole.length() * 0.99, "{faded}");
 }

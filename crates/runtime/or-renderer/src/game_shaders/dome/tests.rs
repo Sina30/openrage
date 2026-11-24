@@ -155,7 +155,7 @@ fn drawn_with(
         ),
         ..EngineConstants::default()
     };
-    pass.write(queue, &engine, sky, far);
+    pass.write(queue, &engine, sky, far, None);
     let mut encoder = device.create_command_encoder(&Default::default());
     pass.record_noise(&mut encoder);
     {

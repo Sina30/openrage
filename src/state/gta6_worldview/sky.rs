@@ -5,10 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-use or_renderer::game_shaders::lighting::{night_emissive, Day};
+use glam::Vec3;
+use or_renderer::game_shaders::lighting::{night_emissive, Day, Stated};
+use or_renderer::game_shaders::sky_view::SkyView;
 use or_renderer::game_shaders::tone::ToneSettings;
 use or_renderer::viewport::Metered;
 use or_title::gta6_day::{read_day, DayTables, Moment};
+use or_title::gta6_sky::Atmosphere;
 
 use crate::state::drivers::WeatherState;
 
@@ -22,6 +25,8 @@ const NO_DAY_LIGHT_SCALE: f32 = 0.1;
 const LATITUDE_STEP: f32 = 100.0;
 /// The least change of exposure, in stops, the frame is given a new day for.
 const STEADY: f32 = 0.01;
+/// The up part of the way to a body below which it lights no sky: some twenty degrees under the horizon.
+const LOWEST_BODY: f32 = -0.35;
 
 type Read = Arc<OnceLock<Arc<DayTables>>>;
 
@@ -168,6 +173,18 @@ pub fn day_of_moment(
     weather: WeatherState,
 ) -> Day {
     let visual = &tables.visual_settings;
+    // The moment's light is stated whole, faded already by its own bodies.
+    let stated = Stated {
+        sun: Vec3::from(moment.sun),
+        moon: Vec3::from(moment.moon),
+        towards_light: Vec3::from(moment.bodies.towards),
+        sun_fade: moment.bodies.sun_fade,
+        moon_fade: moment.bodies.moon_fade,
+    };
+    let sky_view = SkyView {
+        radiance: sky_radiance(&moment),
+        exposure: moment.light.exposure,
+    };
     Day {
         keyframe: moment.keyframe,
         table: moment.table,
@@ -195,7 +212,61 @@ pub fn day_of_moment(
                 false => visual.get_f32(name, default),
             },
         ),
+        stated: Some(stated),
+        sky_view: Some(sky_view),
     }
+}
+
+/// What the sky's radiance table is worked out from.
+#[derive(PartialEq)]
+struct SkyOf {
+    air: Atmosphere,
+    sun: [f32; 3],
+    moon: [f32; 3],
+    illuminance: [f32; 2],
+    tint: [f32; 3],
+}
+
+/// The sky's radiance in every way of the table at `moment`: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour; worked out again only when one of those changes.
+fn sky_radiance(moment: &Moment) -> Arc<Vec<[f32; 3]>> {
+    // ponytail: one table held, a few tenths of a second to work out; per moment it changes with the hour and the weather.
+    static HELD: Mutex<Option<(SkyOf, Arc<Vec<[f32; 3]>>)>> = Mutex::new(None);
+    let own = &moment.own;
+    let of = SkyOf {
+        air: Atmosphere::of(own),
+        sun: moment.sun,
+        moon: moment.moon,
+        illuminance: [
+            moment.light.sun_illuminance,
+            own.get_or("sky_scattering_moon_illuminance", 0.0)
+                * own.get_or("sky_scattering_moon_intensity_multiplier", 1.0),
+        ],
+        tint: ["r", "g", "b"].map(|c| own.get_or(&format!("sky_scattering_sky_col_{c}"), 1.0)),
+    };
+    let mut held = HELD.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((_, table)) = held.as_ref().filter(|(was, _)| *was == of) {
+        return Arc::clone(table);
+    }
+    // A body far under the horizon lights no air the camera sees.
+    let lit = |body: [f32; 3], lux: f32| lux > 0.0 && body[2] > LOWEST_BODY;
+    let bodies: Vec<([f32; 3], f32)> = [(of.sun, of.illuminance[0]), (of.moon, of.illuminance[1])]
+        .into_iter()
+        .filter(|(body, lux)| lit(*body, *lux))
+        .collect();
+    let table = SkyView::of(
+        |view| {
+            let mut sum = [0.0f32; 3];
+            for (body, lux) in &bodies {
+                let seen = of.air.radiance(view.to_array(), *body, *lux);
+                sum = [0, 1, 2].map(|c| sum[c] + seen[c]);
+            }
+            [0, 1, 2].map(|c| sum[c] * of.tint[c])
+        },
+        1.0,
+    )
+    .radiance;
+    *held = Some((of, Arc::clone(&table)));
+    table
 }
 
 /// What a light the game states in its own unit is multiplied by to be the frame's at `hour` in `weather` for a camera `y` metres north: the moment's exposure over pi, and the old stand-in where no GTA VI day is read.

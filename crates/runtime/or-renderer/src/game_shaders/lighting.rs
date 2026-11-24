@@ -44,6 +44,18 @@ pub struct Moment<'a> {
     pub wetness: f32,
     /// How far the night emissives are on, from nought by day to one by night.
     pub night_emissive: f32,
+    /// The bodies of a day whose keyframe states its light whole; none works them out from the hours.
+    pub stated: Option<Stated>,
+}
+
+/// Where a day that states its light whole puts the sun and the moon, the way its light comes from, and how much each body shows: its directional light is then faded by nothing more.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stated {
+    pub sun: Vec3,
+    pub moon: Vec3,
+    pub towards_light: Vec3,
+    pub sun_fade: f32,
+    pub moon_fade: f32,
 }
 
 /// What the lights need to know of the view: where the camera is and how it projects.
@@ -68,6 +80,10 @@ pub struct Day {
     pub night_emissive: f32,
     /// What the install's visual settings state of how the frame is mapped to the screen.
     pub tone: ToneSettings,
+    /// The bodies of a day whose keyframe states its light whole.
+    pub stated: Option<Stated>,
+    /// The sky of a day that states it as a table of radiance, drawn in place of the dome's colours.
+    pub sky_view: Option<super::sky_view::SkyView>,
 }
 
 impl Day {
@@ -92,6 +108,7 @@ impl Day {
                 moon_dim: self.moon_dim,
                 wetness: self.wetness,
                 night_emissive: self.night_emissive,
+                stated: self.stated,
             },
             view,
         )
@@ -147,6 +164,16 @@ struct Sky {
 }
 
 fn sky(moment: &Moment<'_>) -> Sky {
+    if let Some(stated) = moment.stated {
+        return Sky {
+            sun: stated.sun.normalize_or_zero(),
+            moon: stated.moon.normalize_or_zero(),
+            towards_light: stated.towards_light.normalize_or_zero(),
+            sun_fade: stated.sun_fade,
+            moon_fade: stated.moon_fade,
+            strength: 1.0,
+        };
+    }
     let (hours, table, k) = (moment.hours, moment.table, moment.keyframe);
     // The angle the sun has turned through: up at the sunrise hour, over at the sunset hour
     let angle = if hours < SUN_RISE {
