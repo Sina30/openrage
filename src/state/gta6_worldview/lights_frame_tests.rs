@@ -284,6 +284,57 @@ fn a_lamp_the_camera_cannot_see_is_not_chosen_and_one_it_can_takes_its_place() {
     assert_eq!(all[0].0.position[0], -10.0);
 }
 
+/// A straight ramp across the cosine, from the outer half angle (0) to the inner (1), as the spot pass fades a cone.
+fn ramp(c: f32, outer: f32, inner: f32) -> f32 {
+    let (o, i) = (outer.to_radians().cos(), inner.to_radians().cos());
+    ((c - o) / (i - o)).clamp(0.0, 1.0)
+}
+
+/// What the pieces of a cone give together at the cosine `c` from the light's axis.
+fn pieces_at(pieces: &[(f32, f32, f32, f32)], c: f32) -> f32 {
+    (pieces.iter())
+        .map(|&(way, outer, inner, share)| match outer >= 180.0 {
+            true => share,
+            false => share * ramp(way * c, outer.min(89.0), inner),
+        })
+        .sum()
+}
+
+#[test]
+fn a_cone_wider_than_a_right_angle_is_a_point_less_the_cone_behind_it() {
+    assert_eq!(cones_within(20.0, 60.0), [(1.0, 60.0, 20.0, 1.0)]);
+    for (inner, outer) in [(40.0f32, 120.0f32), (100.0, 150.0), (10.0, 95.0)] {
+        let pieces = cones_within(inner, outer);
+        // Away from the degree either side of a right angle that the pass cannot reach.
+        for degrees in [0.0f32, 30.0, 60.0, 80.0, 100.0, 120.0, 140.0, 170.0, 180.0] {
+            let c = degrees.to_radians().cos();
+            let (got, wanted) = (pieces_at(&pieces, c), ramp(c, outer, inner));
+            assert!(
+                (got - wanted).abs() < 0.03,
+                "{inner} {outer} at {degrees}: {got} {wanted}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_area_light_shines_from_one_side_as_the_cosine_from_its_axis() {
+    let mut area = placed(LightKind::Area, 10.0, ALL_HOURS);
+    area.light.direction = [0.0, 0.0, -1.0];
+    let frame = frame_lights(&[area], Vec3::ZERO, 12.0, 1.0, 8);
+    assert!(frame.points.is_empty() && !frame.spots.is_empty());
+    let spot = frame.spots[0];
+    assert_eq!(
+        (spot.direction, spot.outer_degrees, spot.inner_degrees),
+        (Vec3::NEG_Z, 89.0, 0.0)
+    );
+    let pieces = cones_within(0.0, 90.0);
+    for degrees in [0.0f32, 45.0, 60.0, 85.0] {
+        let c = degrees.to_radians().cos();
+        assert!((pieces_at(&pieces, c) - c).abs() < 0.03, "{degrees}");
+    }
+}
+
 #[test]
 fn a_light_that_only_draws_a_corona_lights_nothing() {
     let mut corona = placed(LightKind::Point, 5.0, ALL_HOURS);

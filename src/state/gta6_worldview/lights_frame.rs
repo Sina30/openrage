@@ -276,6 +276,35 @@ pub fn choose<'a>(
     lit.into_iter().map(|(_, chosen)| chosen).collect()
 }
 
+/// The cones a spot of half angles `inner` and `outer` is drawn as by a pass that holds a cone within 89°, each as which way it points (1 along the light, −1 against it), its outer and inner half angles and its share; a share of a cone of 180° is a point. A ramp across a cone wider than a right angle is a point less the ramp of the cone behind it, split at the right angle where the inner cone is narrower than one.
+pub fn cones_within(inner: f32, outer: f32) -> Vec<(f32, f32, f32, f32)> {
+    const RIGHT: f32 = 90.0;
+    if outer <= MOST_CONE {
+        return vec![(1.0, outer, inner, 1.0)];
+    }
+    let (cos_in, cos_out) = (inner.to_radians().cos(), outer.to_radians().cos());
+    if inner >= RIGHT {
+        // Lit all round but within the cone behind it, which fades the other way.
+        return vec![
+            (1.0, 180.0, 0.0, 1.0),
+            (-1.0, 180.0 - inner, 180.0 - outer, -1.0),
+        ];
+    }
+    // The ramp from the outer cone to the right angle, and from the right angle to the inner cone.
+    let span = (cos_in - cos_out).max(1e-6);
+    let (behind, ahead) = (-cos_out / span, cos_in / span);
+    let mut out = vec![
+        (1.0, 180.0, 0.0, behind),
+        (-1.0, RIGHT, 180.0 - outer, -behind),
+        (1.0, RIGHT, inner, ahead),
+    ];
+    out.retain(|piece| piece.3.abs() > 1e-4);
+    out
+}
+
+/// The widest cone the spot pass draws, in degrees.
+const MOST_CONE: f32 = 89.0;
+
 /// The volumes of `chosen` lit at `hour`, their intensity times `scale`.
 pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
     let mut out = FrameLights {
@@ -298,8 +327,14 @@ pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
         let pieces: Vec<(f32, f32, f32, f32)> = match kind {
             LightKind::Spot => (spot_cones(inner, l.cone_outer).iter())
                 .filter(|(_, part)| *part > 0.0)
-                .map(|&(o, part)| (1.0, o, inner, part))
+                .flat_map(|&(o, part)| {
+                    cones_within(inner, o)
+                        .into_iter()
+                        .map(move |(way, o, i, share)| (way, o, i, share * part))
+                })
                 .collect(),
+            // An area light shines from one side, as the cosine of the angle from its axis: one straight ramp across a right angle.
+            LightKind::Area => cones_within(0.0, 90.0),
             _ => Vec::new(),
         };
         // The law's strength is the stated intensity over d², so each volume's is over R².
@@ -314,7 +349,7 @@ pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
                 falloff: SHELL_EXPONENT,
             };
             match kind {
-                LightKind::Spot => {
+                LightKind::Spot | LightKind::Area => {
                     for &(way, o, i, part) in &pieces {
                         if o >= 180.0 {
                             out.points.push(point(intensity * part));
@@ -327,7 +362,7 @@ pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
                             intensity: intensity * part,
                             radius,
                             falloff: SHELL_EXPONENT,
-                            outer_degrees: o,
+                            outer_degrees: o.min(MOST_CONE),
                             inner_degrees: i,
                         });
                     }
@@ -341,8 +376,7 @@ pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
                     radius,
                     falloff: SHELL_EXPONENT,
                 }),
-                // ponytail: an area light shines as a point from its middle; the frame has no pass for a quad.
-                LightKind::Point | LightKind::Area => out.points.push(point(intensity)),
+                LightKind::Point => out.points.push(point(intensity)),
             }
         }
     }
