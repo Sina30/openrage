@@ -94,6 +94,8 @@ pub struct Viewer {
     /// Why there is no index, where a build failed.
     pub failed: Option<String>,
     pub camera: FlyCamera,
+    /// How many times the camera was put down somewhere else rather than flown there: each is a cut the exposure starts again at.
+    pub cuts: u32,
     /// The scale every level-of-detail distance is multiplied by.
     pub lod_scale: f32,
     /// The hour of the day, from 0 to 24: what is placed for some hours alone draws inside them.
@@ -136,6 +138,7 @@ impl Default for Viewer {
                 near: 0.5,
                 far: 20_000.0,
             },
+            cuts: 0,
             lod_scale: 1.0,
             hour: NOON,
             enabled: Enabled::default(),
@@ -252,6 +255,7 @@ impl Viewer {
         }
         if let Some(middle) = index.middle() {
             self.camera.position = middle + Vec3::Z * START_HEIGHT;
+            self.cuts += 1;
         }
         let index = Arc::new(index);
         self.lights = Some(lights::Lights::new(Arc::clone(&index)));
@@ -471,7 +475,13 @@ impl Viewer {
                 ),
                 None => sky::moment(tables, hour, weather, eye.y),
             }?;
-            Some(sky::exposed(tables, moment, (hour, weather), eye, metered))
+            Some(sky::exposed(
+                tables,
+                moment,
+                (hour, weather),
+                self.cuts,
+                metered,
+            ))
         });
         let scale = sky::scale_of(moment.as_ref());
         let day = (tables.as_ref()).zip(moment).map(|(tables, moment)| {

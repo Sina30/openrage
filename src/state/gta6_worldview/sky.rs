@@ -27,8 +27,6 @@ const LATITUDE_STEP: f32 = 100.0;
 const STEADY: f32 = 0.01;
 /// The up part of the way to a body below which it lights no sky: some twenty degrees under the horizon.
 const LOWEST_BODY: f32 = -0.35;
-/// How far, in metres, the camera moves between two frames for the move to be a cut to another place.
-const CUT: f32 = 200.0;
 /// How near, in stops, the exposure comes to what the curve wants before it counts as arrived: the meter's own noise from frame to frame is less.
 const REACHED: f32 = 0.1;
 /// How far, in metres, the camera climbs or falls before the sky's table is worked out again from its new height.
@@ -101,10 +99,10 @@ pub fn moment(tables: &DayTables, hour: f32, weather: WeatherState, y: f32) -> O
     moment
 }
 
-/// Where the frame's exposure stands: the moment it was metered for, where the camera stood, its stops and when they were set, whether the next reading is the first of that moment, and whether the last reading had reached what the curve wants.
+/// Where the frame's exposure stands: the moment it was metered for, the camera's cut it began at, its stops and when they were set, whether the next reading is the first of that moment, and whether the last reading had reached what the curve wants.
 struct Adapting {
     of: (u32, WeatherState),
-    eye: Vec3,
+    cut: u32,
     stops: f32,
     at: Instant,
     fresh: bool,
@@ -120,25 +118,24 @@ pub fn adapting() -> bool {
     held.as_ref().is_some_and(|a| a.fresh || !a.reached)
 }
 
-/// `moment` exposed by the frame's own luminance, `metered` as last read from a frame drawn under the day set now, for a camera at `eye`: adapted from frame to frame at the pace of the settings, taken whole at the first reading of a new hour or weather or after the camera is cut to another place, and held where nothing was read.
+/// `moment` exposed by the frame's own luminance, `metered` as last read from a frame drawn under the day set now, for a camera last cut to its place at `cut`: adapted from frame to frame at the pace of the settings, taken whole at the first reading of a new hour or weather or after a cut, and held where nothing was read.
+// ⚠ A cut is the camera put down somewhere, never how far it went: a camera flown fast adapts as it flies.
 pub fn exposed(
     tables: &DayTables,
     moment: Moment,
     (hour, weather): (f32, WeatherState),
-    eye: Vec3,
+    cut: u32,
     metered: Option<&Metered>,
 ) -> Moment {
     let of = (hour.to_bits(), weather);
     let now = Instant::now();
     let mut held = ADAPTING.lock().unwrap_or_else(|p| p.into_inner());
-    let kept = held
-        .as_mut()
-        .filter(|a| a.of == of && a.eye.distance(eye) <= CUT);
+    let kept = held.as_mut().filter(|a| a.of == of && a.cut == cut);
     let Some(adapting) = kept else {
         // ⚠ What is read now was drawn under the hour or the place before: the new one waits for its own frame.
         *held = Some(Adapting {
             of,
-            eye,
+            cut,
             stops: moment.stops,
             at: now,
             fresh: true,
@@ -146,7 +143,6 @@ pub fn exposed(
         });
         return moment;
     };
-    adapting.eye = eye;
     // ⚠ Inferred: the build names these percentages; they are taken as parts of the frame.
     let low = moment.own.get_or("postfx_exposure_lowlights_percent", 0.0);
     let high = moment.own.get_or("postfx_exposure_highlights_percent", 0.0);
@@ -396,13 +392,7 @@ mod tests {
         let tables = tables();
         let at = |metered: Option<&Metered>| {
             let moment = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
-            exposed(
-                &tables,
-                moment,
-                (9.5, WeatherState::Clear),
-                Vec3::ZERO,
-                metered,
-            )
+            exposed(&tables, moment, (9.5, WeatherState::Clear), 0, metered)
         };
         let unread = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
         // What is read in the first frame of an hour was drawn under the hour before.
@@ -429,11 +419,10 @@ mod tests {
         let wanted = curve - 2.0 * 4f32.ln();
         assert!(next <= first.stops && next > wanted, "{next} {wanted}");
         assert!(adapting(), "still on its way");
-        // A cut to another place starts again, and its first reading is taken whole.
-        let far = Vec3::new(CUT * 2.0, 0.0, 0.0);
+        // A cut of the camera starts again, and its first reading is taken whole.
         let cut = |metered: Option<&Metered>| {
             let moment = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
-            exposed(&tables, moment, (9.5, WeatherState::Clear), far, metered)
+            exposed(&tables, moment, (9.5, WeatherState::Clear), 1, metered)
         };
         assert_eq!(cut(Some(&brighter)).stops, unread.stops);
         // A scene of one candela a square metre, as the frame drawn at the cut's first stops holds it.

@@ -336,7 +336,9 @@ impl Shell {
             WorldStep::Camera(pose) => {
                 // ⚠ The viewer puts its camera over the middle of the maps as it takes the index, so a camera is set after that.
                 self.indexed(state)?;
-                pose.put(&mut viewer().camera);
+                let mut viewer = viewer();
+                pose.put(&mut viewer.camera);
+                viewer.cuts += 1;
             }
             WorldStep::Hour(hour) => {
                 // What is placed for some hours alone follows the viewer's hour and the light follows the day's: a frame has one.
