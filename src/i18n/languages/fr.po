@@ -16600,3 +16600,72 @@ msgstr "Vue du monde"
 
 msgid "{textures} textures on the device, {unread} not read, {waiting} waited for"
 msgstr "{textures} textures sur la carte graphique, {unread} non lues, {waiting} attendues"
+
+msgid "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn"
+msgstr "Lumières de {maps} cartes : {placed} placées, {lod} de niveau de détail, {distant} lointaines, {probes} sondes de réflexion ; {drawn} dessinées"
+
+msgid "Capture"
+msgstr "Capture"
+
+msgid "Clean frame"
+msgstr "Image épurée"
+
+msgid "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
+msgstr "Dessiner le monde seul sur toute la fenêtre, sans ligne ni panneau par-dessus ; Échap les fait revenir"
+
+msgid "Copy the camera"
+msgstr "Copier la caméra"
+
+msgid "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
+msgstr "Copier l'endroit où la caméra se tient et ce qu'elle regarde, en une ligne que lit un script de captures et que prend le champ ci-dessous"
+
+msgid "Paste a camera line, then press Enter"
+msgstr "Collez une ligne de caméra, puis appuyez sur Entrée"
+
+msgid "A camera line to jump to"
+msgstr "Une ligne de caméra où sauter"
+
+msgid "That is not a camera line: copy one with Copy the camera"
+msgstr "Ce n'est pas une ligne de caméra : copiez-en une avec « Copier la caméra »"
+
+msgid "Time and modes"
+msgstr "Heure et modes"
+
+msgid "Hour"
+msgstr "Heure"
+
+msgid "The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"
+msgstr "L'heure du jour : ce qui est placé pour certaines heures se dessine pendant celles-ci, et le monde est éclairé par sa journée à cette heure"
+
+msgid "Story pack"
+msgstr "Pack de l'histoire"
+
+msgid "Stream the maps the story pack adds"
+msgstr "Charger en streaming les cartes qu'ajoute le pack de l'histoire"
+
+msgid "Shared minigames"
+msgstr "Mini-jeux partagés"
+
+msgid "Stream the maps the shared minigames add"
+msgstr "Charger en streaming les cartes qu'ajoutent les mini-jeux partagés"
+
+msgid "The index holds no script-managed group"
+msgstr "L'index ne contient aucun groupe géré par script"
+
+msgid "Script-managed groups: {on} of {groups} on"
+msgstr "Groupes gérés par script : {on} sur {groups} activés"
+
+msgid "Nothing says which are on at rest: a group ticked streams its maps in"
+msgstr "Rien n'indique lesquels sont activés par défaut : un groupe coché charge ses cartes en streaming"
+
+msgid "{name}, {maps} maps"
+msgstr "{name}, {maps} cartes"
+
+msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
+msgstr "{story} cartes sont celles du pack de l'histoire et {minigames} celles des mini-jeux partagés ; {groups} groupes gérés par script"
+
+msgid "Bound by block maps: no key snapshot was found"
+msgstr "Association par les cartes de blocs : aucun instantané de clés n'a été trouvé"
+
+msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
+msgstr "Association par les tables des archives ; {ciphered} des jeux de modifications du niveau sont chiffrés"
