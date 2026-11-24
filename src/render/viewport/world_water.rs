@@ -13,10 +13,12 @@ const REACH: f32 = 3_000.0;
 /// How far the camera goes before the mesh is built again, in metres.
 const REBUILD: f32 = 500.0;
 
+/// The mesh, what it was built of, where the camera stood and the tint it is drawn with.
+type Built = (Option<Arc<WorldMesh>>, SeenKey, Vec3, [f32; 3]);
+
 #[derive(Default)]
 pub(super) struct Water {
-    /// The mesh, what it was built of, where the camera stood and the tint it is drawn with.
-    built: Option<(Option<Arc<WorldMesh>>, SeenKey, Vec3, [f32; 3])>,
+    built: Option<Built>,
 }
 
 impl Water {
