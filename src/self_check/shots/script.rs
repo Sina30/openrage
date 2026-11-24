@@ -76,6 +76,10 @@ pub(super) enum Step {
         name: String,
         category: SettingsCategory,
     },
+    /// A step of the World screen: a camera, an hour, a clean frame or a wait for what streams in.
+    World(super::world::WorldStep),
+    /// A shot measured against a reference image.
+    Compare(super::compare::Compare),
 }
 
 /// Every step with its line number and text, or the first line that is wrong.
@@ -301,6 +305,8 @@ fn parse_step(line: &str) -> Result<Step, String> {
                 category,
             })
         }
+        "world" => super::world::parse(rest).map(Step::World),
+        "compare" => super::compare::parse(rest).map(Step::Compare),
         other => Err(format!("no step `{other}`")),
     }
 }
@@ -588,5 +594,35 @@ mod tests {
             assert!(file_stem(bad).is_err(), "`{bad}` should be refused");
         }
         assert_eq!(file_stem("02-ws-texture.v2"), Ok("02-ws-texture.v2".into()));
+    }
+
+    #[test]
+    fn a_script_reads_the_steps_of_a_repeatable_frame_of_the_world() {
+        use super::super::compare::Compare;
+        use super::super::world::WorldStep;
+
+        let script = "world clean on\nworld hour 9\nworld camera 1 2 3 45 -10\nworld settle 30\n\
+                      shot city\ncompare city C:\\ref frames\\city.png 2";
+        let steps: Vec<Step> = (parse(script).expect("valid").into_iter())
+            .map(|(_, _, step)| step)
+            .collect();
+        assert_eq!(steps[0], Step::World(WorldStep::Clean(true)));
+        assert_eq!(steps[1], Step::World(WorldStep::Hour(9.0)));
+        assert!(matches!(steps[2], Step::World(WorldStep::Camera(_))));
+        assert_eq!(
+            steps[3],
+            Step::World(WorldStep::Settle(Duration::from_secs(30)))
+        );
+        assert_eq!(steps[4], Step::Shot("city".into()));
+        assert_eq!(
+            steps[5],
+            Step::Compare(Compare {
+                shot: "city".into(),
+                reference: PathBuf::from("C:\\ref frames\\city.png"),
+                tolerance: 2.0,
+            })
+        );
+        let wrong = parse("shot a\nworld hour 24").expect_err("no such hour");
+        assert!(wrong.starts_with("line 2:"), "{wrong}");
     }
 }

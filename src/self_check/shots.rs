@@ -73,6 +73,7 @@ fn run_script(script: &Path, out: &Path) -> Result<(), String> {
         dropped: Vec::new(),
         hovering: Vec::new(),
         held: false,
+        failed: Vec::new(),
     };
     for (number, line, step) in &steps {
         println!("> {line}");
@@ -80,7 +81,14 @@ fn run_script(script: &Path, out: &Path) -> Result<(), String> {
             .step(&mut state, step, out)
             .map_err(|why| format!("line {number}: {why}"))?;
     }
-    Ok(())
+    match shell.failed.is_empty() {
+        true => Ok(()),
+        false => Err(format!(
+            "{} comparison(s) failed:\n{}",
+            shell.failed.len(),
+            shell.failed.join("\n")
+        )),
+    }
 }
 
 struct Shell {
@@ -97,6 +105,8 @@ struct Shell {
     hovering: Vec<PathBuf>,
     /// The pollers that take a worker's result do not run: a `hold`.
     held: bool,
+    /// The comparisons that failed so far, which fail the run at its end so that it judges every one.
+    failed: Vec<String>,
     target: Option<(u32, u32, wgpu::Texture)>,
 }
 
@@ -315,6 +325,13 @@ impl Shell {
                     crate::ui::panels::settings::draw_settings_window_body,
                 )?;
                 println!("shot  {}", path.display());
+            }
+            Step::World(step) => self.world(state, step)?,
+            Step::Compare(step) => {
+                if let Err(why) = compare::run(step, out) {
+                    println!("FAILED  {why}");
+                    self.failed.push(why);
+                }
             }
         }
         // Every step ends on drawn frames, so the next one acts on a settled screen.
