@@ -40,6 +40,12 @@ fn scanned_title_of_the_tab(state: &AppState) -> Option<Game> {
     })
 }
 
+/// GTA VI while the World screen flies through the GTA VI folder Settings names, which is read by scan and never the open install.
+fn world_title(state: &AppState) -> Option<Game> {
+    let on = state.active_workspace == crate::ui::dock::Workspace::World;
+    (on && crate::ui::panels::world_viewer::offered(state)).then_some(Game::GtaVI)
+}
+
 /// The game whose install a launch opens; a click lists the installs found to switch to.
 fn draw_game_switcher(ui: &mut egui::Ui, state: &mut AppState) {
     let (label, hover) = match state.prefs.active_game {
@@ -51,7 +57,7 @@ fn draw_game_switcher(ui: &mut egui::Ui, state: &mut AppState) {
                 edition_label = game.generation().edition_label()
             ),
         ),
-        None => match scanned_title_of_the_tab(state) {
+        None => match scanned_title_of_the_tab(state).or_else(|| world_title(state)) {
             Some(title) => (title.label(), title.profile().description().to_string()),
             None => (
                 tr!("No game"),
