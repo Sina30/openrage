@@ -233,9 +233,7 @@ fn occlude_model(blocks: &Blocks, m: &[u8], what: &str) -> Result<OccludeModel> 
     let vertices = (0..vertex_bytes / 12)
         .map(|k| floats(points, 12 * k, what))
         .collect::<Result<Vec<[f32; 3]>>>()?;
-    let triangles: Vec<[u8; 3]> = (indices.chunks_exact(3))
-        .map(|t| [t[0], t[1], t[2]])
-        .collect();
+    let triangles: Vec<[u8; 3]> = indices.as_chunks::<3>().0.to_vec();
     if (triangles.iter().flatten()).any(|index| usize::from(*index) >= vertices.len()) {
         return Err(broken(
             what,
