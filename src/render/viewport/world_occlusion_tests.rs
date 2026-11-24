@@ -8,7 +8,7 @@ use super::*;
 fn walls(boxes: &[(Vec3, Vec3)]) -> Arc<[Arc<MapOccluders>]> {
     let boxes = (boxes.iter())
         .map(|(min, max)| BoxOccluder {
-            corners: box_corners(*min, *max).map(Vec3::to_array),
+            corners: box_corners(*min, *max).map(|c| c.to_array()),
         })
         .collect();
     Arc::from([Arc::new(MapOccluders {
@@ -102,7 +102,7 @@ fn what_is_small_on_the_screen_is_not_drawn() {
 #[test]
 fn an_occlude_model_hides_as_a_box_does() {
     let (min, max) = wall();
-    let vertices: Vec<[f32; 3]> = box_corners(min, max).map(Vec3::to_array).to_vec();
+    let vertices: Vec<[f32; 3]> = box_corners(min, max).map(|c| c.to_array()).to_vec();
     let model = OccludeModel {
         bounds: Aabb {
             min: min.to_array(),
