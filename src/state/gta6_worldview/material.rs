@@ -98,6 +98,8 @@ pub struct Constants {
     pub tint_multiplies: bool,
     /// A tree's leaves and bark: its material A's red is one less its translucency, not a metalness.
     pub foliage: bool,
+    /// It states a palette record whose slot holds no texture.
+    pub palette_unbound: bool,
     /// The colour of a region-tint prop list's material, which names no map of it.
     pub region_tint: Option<RegionTint>,
 }
@@ -147,6 +149,7 @@ impl Default for Constants {
             ground_heights: None,
             tint_multiplies: false,
             foliage: false,
+            palette_unbound: false,
             region_tint: None,
         }
     }
@@ -442,6 +445,7 @@ fn constants_of(r: &Records) -> Constants {
             .then(|| [r.float(GROUND_LOW, 0.0), r.float(GROUND_HIGH, 1.0)]),
         tint_multiplies: r.flag(TINT_MULTIPLIES, d.tint_multiplies),
         foliage: r.words(TREE_WIND).is_some(),
+        palette_unbound: r.states(PALETTE) && r.key(PALETTE).is_none(),
         region_tint: match r.0.name_hash {
             REGION_TINT => Some(RegionTint::Instance),
             REGION_TINT_BY_VERTEX => Some(RegionTint::OverInstance),

@@ -472,6 +472,18 @@ fn a_ground_decal_states_the_heights_its_blend_spans_and_whether_its_tint_multip
 }
 
 #[test]
+fn a_palette_record_with_an_empty_slot_is_unbound_and_one_with_a_key_or_none_stated_is_not() {
+    let with = |key| {
+        let mut records = one_layer();
+        records.push((h("TintPaletteTex"), key));
+        of(&shader(&records, &[]), 2).constants.palette_unbound
+    };
+    assert!(with(None));
+    assert!(!with(Some(0x9)));
+    assert!(!of(&shader(&one_layer(), &[]), 2).constants.palette_unbound);
+}
+
+#[test]
 fn a_tree_is_foliage_by_the_wind_thresholds_its_effect_states_and_a_plain_material_is_not() {
     let tree = shader(&one_layer(), &[(h("WindMinMaxThreshholds0"), &[0.8, 1.1])]);
     assert!(of(&tree, 0).constants.foliage);
