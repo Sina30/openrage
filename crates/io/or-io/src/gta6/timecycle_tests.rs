@@ -253,12 +253,12 @@ fn every_light_the_frame_takes_is_physical_times_the_exposure_and_the_frames_own
     assert!((down - 16000.0 * 0.25 * lit).abs() < 1e-4, "{down}");
     assert_eq!(frame.get("light_natural_amb_down_col_b"), Some(1.0));
     assert_eq!(frame.get("light_natural_amb_down_col_r"), Some(0.25));
-    // From below: a fifth of what reaches the ground, by the bounce's intensity.
+    // From below: a fifth of what reaches the ground, by the bounce's intensity; red is its largest part.
     let up = frame
         .get("light_natural_amb_up_intensity")
         .expect("worked out");
-    let reaching_b = 1.5 * 100_000.0 * 0.6 + 16000.0 * 0.25;
-    assert!((up - 0.2 * 2.0 * reaching_b * lit).abs() < 1e-3, "{up}");
+    let reaching_r = 1.5 * 100_000.0 * 0.9 + 4000.0 * 0.25;
+    assert!((up - 0.2 * 2.0 * reaching_r * lit).abs() < 1e-3, "{up}");
 }
 
 #[test]
