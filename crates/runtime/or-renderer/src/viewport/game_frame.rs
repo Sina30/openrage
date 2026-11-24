@@ -601,8 +601,20 @@ impl ViewportRenderer {
         deferred
             .passes
             .write_capsule_lights(queue, &engine, &screen, &self.capsule_lights);
-        let (size, distant) = &self.distant_lights;
-        (deferred.passes).write_distant_lights(queue, &engine, &screen, (*size, distant));
+        let (look, distant) = &self.distant_lights;
+        (deferred.passes).write_distant_lights(queue, &engine, &screen, (*look, distant));
+        let coronas = (self.coronas.as_ref()).map(|(look, c)| (*look, c.as_slice()));
+        let coronas = coronas.filter(|(_, c)| !c.is_empty());
+        let none = (
+            crate::CoronaLook {
+                occlusion_share: 0.0,
+                occlusion_pixels: 0.0,
+                screen_edge: 0.0,
+            },
+            &[][..],
+        );
+        let has_coronas = coronas.is_some();
+        (deferred.passes).write_coronas(queue, &engine, &screen, coronas.unwrap_or(none));
         deferred.passes.write_fog(
             queue,
             &engine,
@@ -652,7 +664,11 @@ impl ViewportRenderer {
                 cascades.as_ref().map(|c| c.views()),
             );
         }
-        deferred.passes.record_ambient(encoder, occlusion, refracts);
+        // The coronas read how far the opaque surfaces lie as well
+        let depth_wanted = refracts || has_coronas;
+        deferred
+            .passes
+            .record_ambient(encoder, occlusion, depth_wanted);
         self.gpu_mark(encoder, "ambient occlusion");
         {
             let mut pass = over_the_frame(

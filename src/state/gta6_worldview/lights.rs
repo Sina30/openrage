@@ -9,17 +9,21 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
 
+use std::f32::consts::PI;
+
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
 use or_io::gta6::map::light_ext;
 use or_io::gta6::map::lights::{self as effects, LightOwner, Pose};
 use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
+use or_renderer::game_shaders::distant_lights::SpriteLook;
 
 use super::index::{Enabled, WorldIndex};
 use super::interior::{self, RoomsSeen};
+use super::lights_corona::{self, CoronaReach, View};
 use super::lights_distant::{self, DistantReach};
-use super::lights_frame::{self, FrameLights, Lamp, LodList, LodReach, Placed};
+use super::lights_frame::{self, Chosen, FrameLights, Lamp, LodList, LodReach, Placed};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
 
@@ -200,6 +204,8 @@ pub struct Lights {
     enabled: Enabled,
     reach: LodReach,
     distant_reach: DistantReach,
+    /// How the placed lights' coronas are sized and lit; none draws none.
+    corona_reach: Option<CoronaReach>,
     /// Each loaded map's level-of-detail lamps, None while its parent is not loaded.
     lists: HashMap<u32, Option<LodList>>,
     /// The placed lights of the maps loaded, and where they stand, the interiors' among them.
@@ -207,9 +213,26 @@ pub struct Lights {
     near: Placed,
     /// The lights of the interiors' contents of the maps loaded, each with its map, interior and room.
     inside: Vec<(Lamp, [u32; 3])>,
-    /// The frame's lights as last handed out, with the camera, hour, scale, most and rooms seen they were for; none once the lamps change.
-    framed: Option<([u32; 7], FrameLights)>,
+    /// The lamps last chosen to be drawn as volumes, with what they were chosen for; none once the lamps change.
+    chosen: Option<Choice>,
+    /// The distant lights' sprites as last worked out, and the eye they were for; none once the lamps change.
+    sprites: Option<(Vec3, Arc<[or_renderer::DistantLight]>)>,
 }
+
+/// The lamps chosen to be drawn as volumes, and the eye, the way it looked, the hour, the most and the rooms seen they were chosen for.
+struct Choice {
+    eye: Vec3,
+    forward: Vec3,
+    hour: u32,
+    most: usize,
+    rooms: u32,
+    chosen: Vec<Chosen>,
+}
+
+/// How far the camera turns before the lamps are chosen again, in degrees: the cone they are chosen in is as much wider than the view.
+const TURN: f32 = 5.0;
+/// The widest screen the cone the lamps are chosen in allows for, width over height.
+const WIDEST: f32 = 2.4;
 
 impl Lights {
     pub fn new(index: Arc<WorldIndex>) -> Self {
@@ -256,11 +279,13 @@ impl Lights {
             enabled: Enabled::default(),
             reach: LodReach::default(),
             distant_reach: DistantReach::default(),
+            corona_reach: None,
             lists: HashMap::new(),
             placed: Vec::new(),
             near: Placed::default(),
             inside: Vec::new(),
-            framed: None,
+            chosen: None,
+            sprites: None,
         }
     }
 
@@ -279,7 +304,7 @@ impl Lights {
             self.reach = reach;
             self.lists.clear();
             relist(&self.loaded, &self.reach, &mut self.lists);
-            self.framed = None;
+            self.chosen = None;
         }
     }
 
@@ -287,8 +312,13 @@ impl Lights {
     pub fn set_distant_reach(&mut self, reach: DistantReach) {
         if self.distant_reach != reach {
             self.distant_reach = reach;
-            self.framed = None;
+            self.sprites = None;
         }
+    }
+
+    /// Say how the placed lights' coronas are sized and lit.
+    pub fn set_corona_reach(&mut self, reach: CoronaReach) {
+        self.corona_reach = Some(reach);
     }
 
     /// Ask for the lights of the maps within reach of `eye` and take in those read since; whether any came or went.
@@ -330,7 +360,8 @@ impl Lights {
             .chain(self.inside.iter().map(|(lamp, _)| *lamp))
             .collect();
         self.near = Placed::of(&all);
-        self.framed = None;
+        self.chosen = None;
+        self.sprites = None;
     }
 
     // ponytail: every map's box is tested each time the camera has moved, as the streamer does.
@@ -364,39 +395,84 @@ impl Lights {
         }
     }
 
-    /// The lights lit at `hour` (0 to 24) nearest `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with, and the distant lights as sprites; an interior's lamps those of the rooms of `rooms` the camera sees.
+    /// The lights lit at `hour` (0 to 24) the camera of `view` can see lit, nearest first and at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with, the distant lights as sprites and the placed lights' coronas; an interior's lamps those of the rooms of `rooms` the camera sees.
     pub(super) fn lights(
         &mut self,
-        (eye, hour, scale, most): (Vec3, f32, f32, usize),
+        view: &View,
+        (hour, scale, most): (f32, f32, usize),
         rooms: &RoomsSeen,
     ) -> FrameLights {
-        let key = [eye.x, eye.y, eye.z, hour, scale].map(f32::to_bits);
-        let key = [
-            key[0],
-            key[1],
-            key[2],
-            key[3],
-            key[4],
-            most as u32,
-            digest(rooms),
-        ];
-        // ⚠ Worked out over every lamp of the maps loaded, which are many: only when what they are for changed.
-        if let Some((_, out)) = self.framed.as_ref().filter(|(was, _)| *was == key) {
-            return out.clone();
+        let turned = |was: Vec3| was.dot(view.forward) < TURN.to_radians().cos();
+        let digest = digest(rooms);
+        let fresh = (self.chosen.as_ref()).is_some_and(|c| {
+            c.eye == view.eye
+                && c.hour == hour.to_bits()
+                && c.most == most
+                && c.rooms == digest
+                && !turned(c.forward)
+        });
+        if !fresh {
+            self.chosen = Some(self.choose(view, hour, most, rooms));
         }
-        let near = (self.placed.as_slice(), &self.near);
-        let inside = (self.inside.iter())
-            .filter(|(_, [map, at, room])| interior::lit(rooms, (*map, *at), *room))
-            .map(|(lamp, _)| lamp);
-        let lamps = lamps_seen(&self.loaded, &self.lists, near, eye).chain(inside);
-        let mut out = lights_frame::frame_lights(lamps, eye, hour, scale, most);
+        // ⚠ Worked out over every distant light of the maps loaded, which are many: only when the eye moves or the lamps change.
+        if self.sprites.as_ref().is_none_or(|(at, _)| *at != view.eye) {
+            let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
+            let sprites = lights_distant::sprites(lists, view.eye, &self.distant_reach);
+            self.sprites = Some((view.eye, sprites.into()));
+        }
+        let chosen = self
+            .chosen
+            .as_ref()
+            .map_or(&[][..], |c| c.chosen.as_slice());
+        let mut out = lights_frame::volumes_of(chosen, hour, scale);
         self.drawn = out.lights;
-        let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
-        let kept = lights_frame::Places::of(out.kept.iter().copied());
-        out.sprites = lights_distant::sprites(lists, eye, scale, &self.distant_reach, &kept);
-        out.sprite_size = self.distant_reach.size;
-        self.framed = Some((key, out.clone()));
+        // The frame's units for a radiance are the stated ones times the exposure, which `scale` holds over pi.
+        let exposure = scale * PI;
+        if let Some((_, sprites)) = &self.sprites {
+            out.sprites = Arc::clone(sprites);
+        }
+        out.sprite_look = SpriteLook {
+            exposure,
+            ..self.distant_reach.look
+        };
+        out.coronas = (self.corona_reach.as_ref()).map(|reach| {
+            let placed = self.placed.iter().chain(self.inside_lit(rooms));
+            (
+                reach.look,
+                lights_corona::coronas(placed, view, hour, exposure, reach),
+            )
+        });
         out
+    }
+
+    /// The lamps the camera of `view` can see lit at `hour`, at most `most`: those whose reach lies within a cone about the view as wide as the widest screen and [`TURN`] more.
+    // ⚠ Worked out over every lamp of the maps loaded, which are many: only when the eye moves, the hour changes or the camera turns past what the cone allows for.
+    fn choose(&self, view: &View, hour: f32, most: usize, rooms: &RoomsSeen) -> Choice {
+        let (eye, forward) = (view.eye, view.forward);
+        let wide = (view.tan_half * WIDEST.hypot(1.0)).atan() + TURN.to_radians();
+        let seen = |p: Vec3, radius: f32| {
+            let toward = p - eye;
+            let d = toward.length();
+            // Within a sphere about the axis of the cone that holds it, by the angle the sphere spans.
+            d <= radius || toward.dot(forward) / d >= (wide + (radius / d).asin()).min(PI).cos()
+        };
+        let near = (self.placed.as_slice(), &self.near);
+        let lamps = lamps_seen(&self.loaded, &self.lists, near, eye).chain(self.inside_lit(rooms));
+        Choice {
+            eye,
+            forward,
+            hour: hour.to_bits(),
+            most,
+            rooms: digest(rooms),
+            chosen: lights_frame::choose(lamps, eye, hour, most, &seen),
+        }
+    }
+
+    /// The lamps of the interiors' contents whose room `rooms` says is seen.
+    fn inside_lit<'a>(&'a self, rooms: &'a RoomsSeen) -> impl Iterator<Item = &'a Lamp> + 'a {
+        (self.inside.iter())
+            .filter(|(_, [map, at, room])| interior::lit(rooms, (*map, *at), *room))
+            .map(|(lamp, _)| lamp)
     }
 
     /// The maps whose lights are wanted and not read yet.

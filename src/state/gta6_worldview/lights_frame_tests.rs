@@ -267,6 +267,24 @@ fn a_light_that_states_no_exponent_reaches_the_frame_with_one_above_nought() {
 }
 
 #[test]
+fn a_lamp_the_camera_cannot_see_is_not_chosen_and_one_it_can_takes_its_place() {
+    let lamps = [
+        placed(LightKind::Point, -10.0, ALL_HOURS),
+        placed(LightKind::Point, 30.0, ALL_HOURS),
+        placed(LightKind::Point, 60.0, ALL_HOURS),
+    ];
+    let ahead = |p: Vec3, radius: f32| p.x + radius > 0.0;
+    let one = choose(&lamps, Vec3::ZERO, 12.0, 1, &ahead);
+    assert_eq!(one.len(), 1);
+    assert_eq!(
+        one[0].0.position[0], 30.0,
+        "the nearer lamp behind lights nothing seen"
+    );
+    let all = choose(&lamps, Vec3::ZERO, 12.0, 8, &|_, _| true);
+    assert_eq!(all[0].0.position[0], -10.0);
+}
+
+#[test]
 fn a_light_that_only_draws_a_corona_lights_nothing() {
     let mut corona = placed(LightKind::Point, 5.0, ALL_HOURS);
     corona.light.flags = or_io::gta6::map::light_ext::CORONA_ONLY;

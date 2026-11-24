@@ -6,6 +6,7 @@ pub mod bindings;
 pub mod bloom;
 pub mod capsule_lights;
 pub mod constants;
+pub mod coronas;
 pub mod deferred;
 pub mod distant_lights;
 pub mod dome;

@@ -29,6 +29,7 @@ pub use context::{RenderContext, CLEAR_COLOR};
 pub use error::RenderError;
 pub use fly::{FlyCamera, Frustum};
 pub use game_shaders::capsule_lights::CapsuleLight;
+pub use game_shaders::coronas::{Corona, CoronaLook};
 pub use game_shaders::distant_lights::DistantLight;
 pub use game_shaders::fog_volumes::{FogLight, FogVolume};
 pub use game_shaders::point_lights::PointLight;

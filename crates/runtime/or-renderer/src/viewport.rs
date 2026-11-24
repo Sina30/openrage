@@ -273,9 +273,11 @@ pub struct ViewportRenderer {
     spot_lights: Vec<crate::game_shaders::spot_lights::SpotLight>,
     capsule_lights: Vec<crate::game_shaders::capsule_lights::CapsuleLight>,
     distant_lights: (
-        crate::game_shaders::distant_lights::SpriteSize,
-        Vec<crate::game_shaders::distant_lights::DistantLight>,
+        crate::game_shaders::distant_lights::SpriteLook,
+        Arc<[crate::game_shaders::distant_lights::DistantLight]>,
     ),
+    /// The coronas of the lights, and how the pass reads the depth about each; none draws no corona.
+    coronas: Option<(crate::CoronaLook, Vec<crate::Corona>)>,
     fog_volumes: Vec<crate::game_shaders::fog_volumes::FogVolume>,
     /// The stars and the face of the moon the install gives, which a sky background draws at night.
     sky_textures: crate::game_shaders::dome::SkyTextures,
@@ -395,10 +397,15 @@ impl ViewportRenderer {
     /// Show `lights` seen from afar in Shaded as sprites of `size`, which the game's distant lights pass draws.
     pub fn set_distant_lights(
         &mut self,
-        size: crate::game_shaders::distant_lights::SpriteSize,
-        lights: Vec<crate::game_shaders::distant_lights::DistantLight>,
+        size: crate::game_shaders::distant_lights::SpriteLook,
+        lights: Arc<[crate::game_shaders::distant_lights::DistantLight]>,
     ) {
         self.distant_lights = (size, lights);
+    }
+
+    /// Show the glow of the lights' sources in Shaded, which the game's corona pass draws where nothing nearer hides them.
+    pub fn set_coronas(&mut self, coronas: Option<(crate::CoronaLook, Vec<crate::Corona>)>) {
+        self.coronas = coronas;
     }
 
     /// Fill the air of Shaded with `volumes`, which the game's fog volume pass draws over the lit frame.

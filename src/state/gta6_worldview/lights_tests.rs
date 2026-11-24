@@ -162,7 +162,12 @@ fn an_interior_s_lamp_lights_while_its_room_is_seen_alone() {
     };
     lights.loaded.insert(7, map);
     lights.relamp();
-    let mut drawn = |rooms: &RoomsSeen| lights.lights((Vec3::ZERO, 12.0, 1.0, MOST), rooms).lights;
+    let view = View {
+        eye: Vec3::ZERO,
+        forward: Vec3::X,
+        tan_half: 0.5,
+    };
+    let mut drawn = |rooms: &RoomsSeen| lights.lights(&view, (12.0, 1.0, MOST), rooms).lights;
     assert_eq!(
         drawn(&RoomsSeen::new()),
         1,

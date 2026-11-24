@@ -9,7 +9,8 @@ use super::antialias::AntiAliasPass;
 use super::bindings::Requirement;
 use super::bloom::BloomPass;
 use super::capsule_lights::{CapsuleLight, CapsuleLights};
-use super::distant_lights::{DistantLight, DistantLights, SpriteSize};
+use super::coronas::{Corona, CoronaLook, Coronas};
+use super::distant_lights::{DistantLight, DistantLights, SpriteLook};
 use super::dome::SkyPass;
 use super::engine::EngineConstants;
 use super::fog_volumes::{FogSky, FogVolume, FogVolumes};
@@ -544,6 +545,8 @@ pub struct FramePasses {
     fog: Option<FogVolumes>,
     /// None where the pack has no pass for it: a light seen from afar then shows no glow.
     distant: Option<DistantLights>,
+    /// None where the pack has no pass for it or no depth at half size to read: a light's source then shows no glow.
+    coronas: Option<Coronas>,
     lighting: LightingPass,
     resolve: ResolvePass,
 }
@@ -583,6 +586,11 @@ impl FramePasses {
         let distant = DistantLights::new(device, queue, pack, hdr)
             .map_err(|error| tracing::warn!(%error, "the distant lights are not drawn"))
             .ok();
+        let coronas = (ambient.as_ref()).and_then(|ambient| {
+            Coronas::new(device, queue, pack, hdr, ambient.depth())
+                .map_err(|error| tracing::warn!(%error, "the coronas are not drawn"))
+                .ok()
+        });
         let bloom = BloomPass::new(device, queue, pack, inputs)
             .map_err(|error| tracing::warn!(%error, "the game's bloom is not drawn"))
             .ok();
@@ -598,6 +606,7 @@ impl FramePasses {
             capsules,
             fog,
             distant,
+            coronas,
             lighting: LightingPass::new(device, queue, pack, hdr, inputs)?,
             resolve,
         })
@@ -607,6 +616,9 @@ impl FramePasses {
     pub fn bind(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, inputs: &Inputs<'_>) {
         if let Some(ambient) = &mut self.ambient {
             ambient.bind(device, queue, inputs);
+            if let Some(coronas) = &mut self.coronas {
+                coronas.bind(device, queue, ambient.depth());
+            }
         }
         if let Some(antialias) = &mut self.antialias {
             antialias.bind(device, queue, inputs);
@@ -709,10 +721,10 @@ impl FramePasses {
         queue: &wgpu::Queue,
         engine: &EngineConstants,
         screen: &Screen,
-        (size, lights): (SpriteSize, &[DistantLight]),
+        (look, lights): (SpriteLook, &std::sync::Arc<[DistantLight]>),
     ) {
         if let Some(pass) = &self.distant {
-            pass.write(queue, engine, screen, size, lights);
+            pass.write(queue, engine, screen, look, lights);
         }
     }
 
@@ -720,6 +732,22 @@ impl FramePasses {
     pub fn record_distant_lights(&self, pass: &mut wgpu::RenderPass<'_>) {
         if let Some(distant) = &self.distant {
             distant.record(pass);
+        }
+        if let Some(coronas) = &self.coronas {
+            coronas.record(pass);
+        }
+    }
+
+    /// Write the coronas of this frame, which [`Self::record_distant_lights`] draws after the distant lights; they read the depth at half size, which [`Self::record_ambient`] makes when asked.
+    pub fn write_coronas(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        screen: &Screen,
+        (look, coronas): (CoronaLook, &[Corona]),
+    ) {
+        if let Some(pass) = &self.coronas {
+            pass.write(queue, engine, screen, (look, coronas));
         }
     }
 

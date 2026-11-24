@@ -5,7 +5,7 @@
 use glam::Vec3;
 use or_io::gta5::data::visual_settings::VisualSettings;
 use or_io::gta6::map::light_ext::{Light, LightKind};
-use or_renderer::game_shaders::distant_lights::SpriteSize;
+use or_renderer::game_shaders::distant_lights::SpriteLook;
 use or_renderer::{CapsuleLight, DistantLight, PointLight, SpotLight};
 
 use super::lights_law::{spot_cones, SHELLS, SHELL_EXPONENT};
@@ -28,9 +28,11 @@ pub struct FrameLights {
     pub lights: usize,
     /// Where each light drawn as volumes stands, and how much of it its reach leaves.
     pub kept: Vec<(Vec3, f32)>,
-    /// The distant lights drawn as sprites, and how large a sprite is.
-    pub sprites: Vec<DistantLight>,
-    pub sprite_size: SpriteSize,
+    /// The distant lights drawn as sprites, shared so that a frame that hands the same ones copies none, and how a sprite is drawn.
+    pub sprites: std::sync::Arc<[DistantLight]>,
+    pub sprite_look: SpriteLook,
+    /// The coronas of the placed lights, and how the pass reads the depth about each.
+    pub coronas: Option<(or_renderer::CoronaLook, Vec<or_renderer::Corona>)>,
 }
 /// A level-of-detail light stands for a placed light this near it, in metres.
 const SAME_PLACE: f32 = 0.02;
@@ -126,43 +128,6 @@ pub fn lod_lamps(lod: &MapLod, parent: &MapLod, reach: &LodReach) -> Vec<Lamp> {
             })
         })
         .collect()
-}
-
-/// Places, each with a value, found again by any point within [`SAME_PLACE`] of one.
-pub struct Places(std::collections::HashMap<[i64; 3], Vec<(Vec3, f32)>>);
-
-impl Places {
-    fn cell(p: Vec3) -> [i64; 3] {
-        p.to_array().map(|x| (x / SAME_PLACE).floor() as i64)
-    }
-
-    pub fn of(places: impl IntoIterator<Item = (Vec3, f32)>) -> Self {
-        let mut at = std::collections::HashMap::<_, Vec<_>>::new();
-        for (p, value) in places {
-            at.entry(Self::cell(p)).or_default().push((p, value));
-        }
-        Self(at)
-    }
-
-    /// How far from `p` the farthest place lies, and [`SAME_PLACE`] beyond; nought where there is none.
-    pub fn farthest_from(&self, p: Vec3) -> f32 {
-        (self.0.values().flatten())
-            .map(|(q, _)| q.distance(p) + SAME_PLACE)
-            .fold(0.0, f32::max)
-    }
-
-    /// The value of a place within [`SAME_PLACE`] of `p`.
-    pub fn near(&self, p: Vec3) -> Option<f32> {
-        let [x, y, z] = Self::cell(p);
-        let cells = (-1..=1).flat_map(|dx| {
-            (-1..=1).flat_map(move |dy| (-1..=1).map(move |dz| [x + dx, y + dy, z + dz]))
-        });
-        cells
-            .filter_map(|c| self.0.get(&c))
-            .flatten()
-            .find(|(q, _)| q.distance(p) <= SAME_PLACE)
-            .map(|(_, value)| *value)
-    }
 }
 
 /// Where the placed lights stand, to find the level-of-detail lights they stand in for.
@@ -270,24 +235,37 @@ pub fn frame_lights<'a>(
     scale: f32,
     most: usize,
 ) -> FrameLights {
-    let mut lit: Vec<(f32, Light, f32)> = (lamps.into_iter())
+    let chosen = choose(lamps, eye, hour, most, &|_, _| true);
+    volumes_of(&chosen, hour, scale)
+}
+
+/// A lamp the frame draws as volumes: the light, and how much of it its reach leaves.
+pub type Chosen = (Light, f32);
+
+/// The lamps lit at `hour`, within reach of `eye` and of which `seen` holds a sphere at their place as large as their reach, the `most` nearest the camera by the edge of their reach, nearest first.
+pub fn choose<'a>(
+    lamps: impl IntoIterator<Item = &'a Lamp>,
+    eye: Vec3,
+    hour: f32,
+    most: usize,
+    seen: &dyn Fn(Vec3, f32) -> bool,
+) -> Vec<Chosen> {
+    let mut lit: Vec<(f32, Chosen)> = (lamps.into_iter())
         .filter_map(|lamp| {
             let l = lamp.light;
-            if !l.lights_around() {
+            if !(l.lights_around() && l.radius > 0.0 && l.colour.iter().any(|c| *c > 0.0)) {
                 return None;
             }
-            let distance = Vec3::from(l.position).distance(eye);
+            let position = Vec3::from(l.position);
+            let distance = position.distance(eye);
             let reach = reach_strength(lamp.reach, distance);
-            let intensity = l.intensity * scale * hour_strength(l.hours, hour) * reach;
-            if !(intensity > 0.0 && l.radius > 0.0 && l.colour.iter().any(|c| *c > 0.0)) {
+            if !(l.intensity * hour_strength(l.hours, hour) * reach > 0.0
+                && seen(position, l.radius))
+            {
                 return None;
             }
             // The nearest by the edge of their reach are kept: a light past them is a distant light's sprite.
-            Some((
-                -(distance - l.radius).max(0.0),
-                Light { intensity, ..l },
-                reach,
-            ))
+            Some((-(distance - l.radius).max(0.0), (l, reach)))
         })
         .collect();
     if lit.len() > most && most > 0 {
@@ -295,15 +273,20 @@ pub fn frame_lights<'a>(
     }
     lit.truncate(most);
     lit.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+    lit.into_iter().map(|(_, chosen)| chosen).collect()
+}
+
+/// The volumes of `chosen` lit at `hour`, their intensity times `scale`.
+pub fn volumes_of(chosen: &[Chosen], hour: f32, scale: f32) -> FrameLights {
     let mut out = FrameLights {
-        lights: lit.len(),
-        kept: lit
-            .iter()
-            .map(|(_, l, reach)| (Vec3::from(l.position), *reach))
+        lights: chosen.len(),
+        kept: (chosen.iter())
+            .map(|(l, reach)| (Vec3::from(l.position), *reach))
             .collect(),
         ..FrameLights::default()
     };
-    for (_, l, _) in lit {
+    for &(l, reach) in chosen {
+        let intensity = l.intensity * scale * hour_strength(l.hours, hour) * reach;
         let (position, colour) = (Vec3::from(l.position), Vec3::from(l.colour));
         let direction = Vec3::from(l.direction).normalize_or_zero();
         // A spot or a capsule with no axis shines all round.
@@ -311,24 +294,43 @@ pub fn frame_lights<'a>(
             true => LightKind::Point,
             false => l.kind,
         };
-        let cones = spot_cones(l.cone_inner, l.cone_outer);
+        let inner = l.cone_inner;
+        let pieces: Vec<(f32, f32, f32, f32)> = match kind {
+            LightKind::Spot => (spot_cones(inner, l.cone_outer).iter())
+                .filter(|(_, part)| *part > 0.0)
+                .map(|&(o, part)| (1.0, o, inner, part))
+                .collect(),
+            _ => Vec::new(),
+        };
         // The law's strength is the stated intensity over d², so each volume's is over R².
-        let per_area = l.intensity / (l.radius * l.radius);
+        let per_area = intensity / (l.radius * l.radius);
         for (share, strength) in SHELLS {
             let (radius, intensity) = (l.radius * share.sqrt(), per_area * strength);
+            let point = |intensity| PointLight {
+                position,
+                colour,
+                intensity,
+                radius,
+                falloff: SHELL_EXPONENT,
+            };
             match kind {
                 LightKind::Spot => {
-                    let cones = cones.iter().filter(|(_, part)| *part > 0.0);
-                    out.spots.extend(cones.map(|&(outer, part)| SpotLight {
-                        position,
-                        direction,
-                        colour,
-                        intensity: intensity * part,
-                        radius,
-                        falloff: SHELL_EXPONENT,
-                        outer_degrees: outer,
-                        inner_degrees: l.cone_inner,
-                    }))
+                    for &(way, o, i, part) in &pieces {
+                        if o >= 180.0 {
+                            out.points.push(point(intensity * part));
+                            continue;
+                        }
+                        out.spots.push(SpotLight {
+                            position,
+                            direction: direction * way,
+                            colour,
+                            intensity: intensity * part,
+                            radius,
+                            falloff: SHELL_EXPONENT,
+                            outer_degrees: o,
+                            inner_degrees: i,
+                        });
+                    }
                 }
                 LightKind::Capsule => out.capsules.push(CapsuleLight {
                     position,
@@ -340,13 +342,7 @@ pub fn frame_lights<'a>(
                     falloff: SHELL_EXPONENT,
                 }),
                 // ponytail: an area light shines as a point from its middle; the frame has no pass for a quad.
-                LightKind::Point | LightKind::Area => out.points.push(PointLight {
-                    position,
-                    colour,
-                    intensity,
-                    radius,
-                    falloff: SHELL_EXPONENT,
-                }),
+                LightKind::Point | LightKind::Area => out.points.push(point(intensity)),
             }
         }
     }

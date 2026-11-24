@@ -1,6 +1,7 @@
 //! Lights seen from afar drawn as the glow of their source: each one a camera-facing sprite of the pack's `DistantLights` pass, added into the lit frame where nothing nearer stands.
 
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 use glam::Vec3;
 use or_io::gta5::shaders::spirv_pack::SignatureElement;
@@ -25,21 +26,44 @@ pub const MOST: usize = 1 << 18;
 /// The side of the texture a sprite's shape is read from, in texels.
 const DOT: u32 = 32;
 
-/// One distant light: where it stands, its colour, and what the pass multiplies the colour by.
+/// One distant light: where it stands, its colour, and its sprite's strength before the terms of the view.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DistantLight {
     pub position: Vec3,
     pub colour: Vec3,
-    /// The sprite's radiance at its middle, in the frame's units, before the pass's own distance terms.
+    /// Its stated intensity times the settings' gain and its fade.
     pub strength: f32,
 }
 
-/// How the sprites are sized: their side in metres, and how much it grows a metre along the view, past where that makes it larger.
+/// How GTA VI draws a distant light: a sprite of a constant share of the screen's height, whose radiance at its middle is its strength times the screen's height in pixels and `area`, over the tangent of half the lens's upright angle and the distance along the view, times what the air lets through.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct SpriteSize {
-    pub side: f32,
-    pub per_metre: f32,
+pub struct SpriteLook {
+    /// The sprite's side, as a share of half the screen's height.
+    pub coverage: f32,
+    pub area: f32,
+    /// What the air takes a metre along the view, as an exponent.
+    pub extinction: f32,
+    /// What every sprite's strength is multiplied by for the frame's units, which the pass applies, so that a change of it writes no sprite again.
+    pub exposure: f32,
 }
+
+impl SpriteLook {
+    /// The radiance at its middle of a sprite of `strength` `z` metres along the view, on a screen `height` pixels high seen through a lens whose half upright angle has tangent `tan_half`.
+    pub fn radiance(&self, strength: f32, z: f32, height: f32, tan_half: f32) -> f32 {
+        if !(z > 0.0 && tan_half > 0.0) {
+            return 0.0;
+        }
+        strength * height * self.area / (tan_half * z) * (-self.extinction * z).exp()
+    }
+
+    /// What the pass is given for that radiance: it lays a sprite out as large as its side times its distance along the view, divides its colour by that distance squared, and gains with the distance `distance`.
+    fn given(&self, strength: f32, z: f32, distance: f32, height: f32, tan_half: f32) -> f32 {
+        self.radiance(strength, z, height, tan_half) * z.max(1.0).powi(2) / distance_gain(distance)
+    }
+}
+
+/// What the lights were last written for: the list, held so that no other list takes its place, the view and the screen.
+type WrittenFor = (Arc<[DistantLight]>, [u32; 16], [u32; 2], u32, [u32; 3]);
 
 /// What the pass multiplies a sprite `distance` metres from the eye by, on top of its strength: one to 500 m, rising to sixteen at 2,500 m.
 pub fn distance_gain(distance: f32) -> f32 {
@@ -64,7 +88,7 @@ pub fn dot_coverage() -> f32 {
     sum / (DOT * DOT) as f32
 }
 
-fn dot() -> Provided {
+pub(super) fn dot() -> Provided {
     let rgba = (0..DOT * DOT)
         .flat_map(|i| {
             let v = dot_texel(i % DOT, i / DOT);
@@ -106,6 +130,7 @@ pub struct DistantLights {
     corners: wgpu::Buffer,
     instances: wgpu::Buffer,
     drawn: AtomicU32,
+    written: Mutex<Option<WrittenFor>>,
 }
 
 impl DistantLights {
@@ -192,31 +217,57 @@ impl DistantLights {
             corners,
             instances,
             drawn: AtomicU32::new(0),
+            written: Mutex::new(None),
         })
     }
 
-    /// Write the constants of this frame and the first [`MOST`] of `lights`, sized as `size` says.
+    /// Write the constants of this frame and the first [`MOST`] of `lights`, drawn as `look` says.
     pub fn write(
         &self,
         queue: &wgpu::Queue,
         engine: &EngineConstants,
         screen: &Screen,
-        size: SpriteSize,
-        lights: &[DistantLight],
+        look: SpriteLook,
+        lights: &Arc<[DistantLight]>,
     ) {
+        let all = lights;
         let lights = &lights[..lights.len().min(MOST)];
         self.drawn.store(lights.len() as u32, Ordering::Relaxed);
         if lights.is_empty() {
             return;
         }
+        let tan_half = 1.0 / engine.projection.y_axis.y;
+        let height = screen.height.max(1) as f32;
         let mut values = engine.values();
         values.extend(lighting_values(engine, screen));
         // The pass's own fade by distance is off, and every light is drawn from where it stands: the caller fades each one.
         values.insert("refMipBlurParams", vec![0.0, 0.0, 1.0, 0.0]);
-        values.insert("GeneralParams0", vec![size.side, 0.0, 0.0, 1.0]);
+        // A side of the share of the screen at one metre along the view, which the pass grows by the distance along it.
+        let side = look.coverage * tan_half;
+        values.insert("GeneralParams0", vec![side, 0.0, 0.0, look.exposure]);
         // The noise is a white stand-in, so a twinkle of one takes nothing away.
-        values.insert("GeneralParams1", vec![size.per_metre, 1.0, 0.0, 1.0]);
+        values.insert("GeneralParams1", vec![1.0, 1.0, 0.0, 1.0]);
         self.pass.write(queue, &values);
+        // ⚠ A quarter of a million lights, each worked out and written: only when they or the view changed.
+        let view = engine.view.to_cols_array().map(f32::to_bits);
+        let key: WrittenFor = (
+            Arc::clone(all),
+            view,
+            [tan_half.to_bits(), height.to_bits()],
+            screen.width,
+            [look.coverage, look.area, look.extinction].map(f32::to_bits),
+        );
+        let mut written = self.written.lock().unwrap_or_else(|p| p.into_inner());
+        let same = |was: &WrittenFor| {
+            Arc::ptr_eq(&was.0, &key.0)
+                && (was.1, was.2, was.3, was.4) == (key.1, key.2, key.3, key.4)
+        };
+        if written.as_ref().is_some_and(same) {
+            return;
+        }
+        *written = Some(key);
+        let camera = engine.view.inverse();
+        let (eye, forward) = (camera.w_axis.truncate(), -camera.z_axis.truncate());
         let streams = self.pass.streams();
         let stride = streams.instance_stride as usize;
         // Each attribute's place in a record and the semantic it reads, found once.
@@ -232,8 +283,19 @@ impl DistantLights {
             .collect();
         let mut bytes = vec![0u8; stride * lights.len()];
         for (record, light) in bytes.chunks_exact_mut(stride.max(1)).zip(lights) {
+            let toward = light.position - eye;
+            let given = DistantLight {
+                strength: look.given(
+                    light.strength,
+                    toward.dot(forward),
+                    toward.length(),
+                    height,
+                    tan_half,
+                ),
+                ..*light
+            };
             for &(offset, words, semantic) in &slots {
-                let values = light_value(semantic, light);
+                let values = light_value(semantic, &given);
                 for (i, v) in values.iter().take(words).enumerate() {
                     let at = offset + 4 * i;
                     record[at..at + 4].copy_from_slice(&v.to_le_bytes());
@@ -272,6 +334,26 @@ mod tests {
         let coverage = dot_coverage();
         let exact = std::f32::consts::PI / 60.0;
         assert!((coverage - exact).abs() < 0.1 * exact, "{coverage} {exact}");
+    }
+
+    #[test]
+    fn a_sprite_falls_with_the_distance_along_the_view_and_the_pass_s_own_terms_are_taken_out() {
+        let look = SpriteLook {
+            coverage: 0.011,
+            area: 0.05,
+            extinction: 0.0007,
+            exposure: 1.0,
+        };
+        let (height, tan_half) = (720.0, 0.5);
+        let at = |z: f32| look.radiance(10.0, z, height, tan_half);
+        let wanted = 10.0 * 720.0 * 0.05 / (0.5 * 400.0) * (-0.28f32).exp();
+        assert!((at(400.0) - wanted).abs() < 1e-4 * wanted, "{}", at(400.0));
+        assert!((at(200.0) / at(400.0) - 2.0 * (0.14f32).exp()).abs() < 1e-4);
+        assert_eq!(at(-1.0), 0.0, "behind the eye");
+        // The pass multiplies by its gain and divides by the distance along the view squared.
+        let given = look.given(10.0, 1200.0, 1300.0, height, tan_half);
+        let seen = given * distance_gain(1300.0) / (1200.0f32 * 1200.0);
+        assert!((seen - at(1200.0)).abs() < 1e-4 * at(1200.0));
     }
 
     #[test]

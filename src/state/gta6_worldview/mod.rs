@@ -20,6 +20,7 @@ pub(crate) mod index;
 mod interior;
 mod interior_rooms;
 pub(crate) mod lights;
+mod lights_corona;
 mod lights_distant;
 pub(crate) mod lights_frame;
 pub(crate) mod lights_index;
@@ -502,11 +503,18 @@ impl Viewer {
                     lights.set_distant_reach(lights_distant::DistantReach::of(
                         &tables.visual_settings,
                     ));
+                    (lights)
+                        .set_corona_reach(lights_corona::CoronaReach::of(&tables.visual_settings));
                 }
                 lights.set_enabled(&enabled);
                 lights.look(eye);
+                let view = lights_corona::View {
+                    eye,
+                    forward: self.camera.forward(),
+                    tan_half: (self.camera.fov_y * 0.5).tan(),
+                };
                 let none = interior::RoomsSeen::new();
-                lights.lights((eye, hour, scale, lights::MOST), rooms.unwrap_or(&none))
+                lights.lights(&view, (hour, scale, lights::MOST), rooms.unwrap_or(&none))
             });
         // The lights take the exposure over pi; a material's own light is a radiance and takes it whole.
         let exposure = match day {
