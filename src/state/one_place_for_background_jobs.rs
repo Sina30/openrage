@@ -405,6 +405,9 @@ fn held(kind: JobKind) -> Held {
         JobKind::ArchetypeSearch => {
             Held::By("an_archetype_a_map_names_is_found_among_the_bodies_of_its_scan_as_a_job")
         }
+        JobKind::WorldIndex => Held::By(
+            "the_world_index_is_a_job_of_its_own_and_a_folder_with_no_game_fails_naming_it",
+        ),
         JobKind::AudioLinks => Held::By(
             "what_gta_vi_audio_game_data_links_to_is_found_in_its_scan_as_a_job_and_opens",
         ),
@@ -415,7 +418,7 @@ fn held(kind: JobKind) -> Held {
 }
 
 /// Every kind of job there is.
-const EVERY: [JobKind; 28] = [
+const EVERY: [JobKind; 29] = [
     JobKind::Extraction,
     JobKind::Defragment,
     JobKind::OverlayCopy,
@@ -442,6 +445,7 @@ const EVERY: [JobKind; 28] = [
     JobKind::NeighbourCells,
     JobKind::SetSearch,
     JobKind::ArchetypeSearch,
+    JobKind::WorldIndex,
     JobKind::AudioLinks,
     JobKind::OpusAudio,
 ];

@@ -48,6 +48,8 @@ pub enum JobKind {
     SetSearch,
     /// A GTA VI archive's map types bodies read for the archetypes a map names.
     ArchetypeSearch,
+    /// The index of a GTA VI install the World screen flies through, built on a worker.
+    WorldIndex,
     /// A GTA VI archive's audio containers and bodies read for what audio game data links to.
     AudioLinks,
     /// A GTA VI audio stream's Opus decoded to play or export, or encoded from a WAV.
@@ -83,6 +85,7 @@ impl JobKind {
             Self::NeighbourCells => tr!("GTA VI neighbouring cells"),
             Self::SetSearch => tr!("GTA VI animation sets"),
             Self::ArchetypeSearch => tr!("GTA VI archetypes"),
+            Self::WorldIndex => tr!("GTA VI world index"),
             Self::AudioLinks => tr!("GTA VI audio links"),
             Self::OpusAudio => tr!("Opus audio"),
         }
@@ -345,6 +348,11 @@ impl AppState {
             // ⚠ Its end is said once its worker sees the stop, by `poll_map_search`.
             JobKind::ArchetypeSearch => {
                 self.stop_map_search();
+                false
+            }
+            // ⚠ Its end is said once its worker sees the stop, by `poll_map_search`.
+            JobKind::WorldIndex => {
+                super::gta6_world::worldview::viewer().stop();
                 false
             }
             // ⚠ Its end shows in the audio game data's view once its worker sees the stop.

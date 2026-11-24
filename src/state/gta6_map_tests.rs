@@ -348,3 +348,36 @@ fn an_entity_s_model_is_the_drawable_body_of_its_scan_whose_stated_name_its_arch
         state.error_dialog_message
     );
 }
+
+#[test]
+fn the_world_index_is_a_job_of_its_own_and_a_folder_with_no_game_fails_naming_it() {
+    use crate::state::gta6_world::worldview::Viewer;
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    std::fs::write(folder.path().join("readme.txt"), "no game").expect("a file that is no game");
+    let mut viewer = Viewer::default();
+    viewer.open(folder.path());
+    let job = viewer.job().expect("the build is listed while it runs");
+    assert_eq!(job.kind, JobKind::WorldIndex);
+    assert_eq!(JobKind::WorldIndex.label(), "GTA VI world index");
+    let until = Instant::now() + Duration::from_secs(60);
+    while viewer.building().is_some() {
+        assert!(Instant::now() < until, "the build never ended");
+        viewer.poll();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let (outcome, said) = viewer.ended().expect("the build says how it ended");
+    assert_eq!(outcome, Outcome::Failed, "{said}");
+    let folder_named = folder.path().display().to_string();
+    assert!(
+        said.contains("no GTA VI files were found") && said.contains(&folder_named),
+        "{said}"
+    );
+    assert!(viewer.index.is_none() && viewer.failed.is_some());
+
+    viewer.rebuild();
+    viewer.stop();
+    assert!(
+        viewer.job().is_some_and(|job| job.stopping),
+        "Stop reaches the build"
+    );
+}

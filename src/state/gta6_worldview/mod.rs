@@ -15,6 +15,7 @@ use or_job::{Cancel, Progress};
 use or_renderer::FlyCamera;
 
 use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
+use crate::ui::panels::log::grouped;
 
 pub(crate) mod index;
 mod interior;
@@ -244,11 +245,23 @@ impl Viewer {
                         dictionaries,
                     })
                 };
+                // ⚠ A folder with no game builds an index of nothing, which is no world: it is not kept, and says so.
+                let no_game = || {
+                    Built::Failed(
+                        tr!(
+                            "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives",
+                            folder = root.display()
+                        )
+                        .to_string(),
+                    )
+                };
                 match held {
+                    Some(index) if index.report.maps == 0 => no_game(),
                     Some(index) => Built::Index(Box::new(index), places(&cancel)),
                     None => {
                         let fresh = kept.as_deref().map(index::fresh_beside);
                         match index::build(&root, fresh.as_deref(), &cancel, &progress) {
+                            Ok(Some(index)) if index.report.maps == 0 => no_game(),
                             Ok(Some(index)) => {
                                 if let Some(Err(error)) = kept.map(|file| index.keep(&file)) {
                                     tracing::warn!(%error, "the world index was not kept");
@@ -324,9 +337,9 @@ impl Viewer {
             Built::Index(index, places) => {
                 let said = tr!(
                     "The GTA VI world is indexed: {maps} maps stream at rest, {archetypes} archetypes, {models} models",
-                    maps = index.report.at_rest,
-                    archetypes = index.report.archetypes,
-                    models = index.report.models,
+                    maps = grouped(index.report.at_rest),
+                    archetypes = grouped(index.report.archetypes),
+                    models = grouped(index.report.models),
                 );
                 self.take(*index, places);
                 (Outcome::Done(Then::Nothing), said)
@@ -354,7 +367,7 @@ impl Viewer {
     pub(in crate::state) fn job(&self) -> Option<RunningJob> {
         let build = self.build.as_ref()?;
         Some(RunningJob {
-            kind: JobKind::ArchetypeSearch,
+            kind: JobKind::WorldIndex,
             doing: tr!("Indexing the GTA VI world").to_string(),
             fraction: Some(build.progress.snapshot().fraction()),
             detail: String::new(),
