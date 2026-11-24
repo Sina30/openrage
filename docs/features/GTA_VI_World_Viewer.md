@@ -35,7 +35,10 @@ World panel switches the story pack's and the shared minigames' maps on.
 
 A script-managed map belongs to a group of maps a script switches together. With a key snapshot, the
 world-state selectors of each mode's game-shape archive pick, hour by hour, which script-managed
-groups are on, as a new game shows them; without one, none is. The same section lists the groups,
+groups are on, as a new game shows them; without one, none is. Only the selectors of the layers the
+archive's layer manifest says the level loads count: a layer a mission or a system loads when it asks
+switches nothing at rest. A rule on the player reads as a new game: no wanted level, nothing unlocked
+and nothing held. The same section lists the groups,
 and a group ticked there streams its maps in; from then on the hour no longer sets them, until
 **The game's own groups** puts them back.
 
