@@ -51,7 +51,12 @@ impl WorldGpu {
     /// The meshes of the least detailed level of `model` whose every colour map is on the device
     /// or known never to come, with the colour maps of its least detailed level that have not
     /// arrived put in `absent`; what blends or lies on a surface is left out of a stand-in.
-    fn card_meshes(&self, model: &ModelRef, absent: &mut Vec<u64>) -> Option<Vec<CardMesh<'_>>> {
+    fn card_meshes<'a>(
+        &'a self,
+        model: &ModelRef,
+        grey: &'a wgpu::TextureView,
+        absent: &mut Vec<u64>,
+    ) -> Option<Vec<CardMesh<'a>>> {
         let Some(Slot::Ready { lods, .. }) = self.models.get(model) else {
             return None;
         };
@@ -78,8 +83,8 @@ impl WorldGpu {
                         }
                         continue;
                     }
-                    // No pack holds it: the stand-in is the colour of its vertices.
-                    Some((_, (_, None))) => None,
+                    // No pack holds it: the stand-in is the mid grey the world draws it with.
+                    Some((_, (_, None))) => Some(grey),
                 };
                 let Some((vertices, indices)) = self.pages.buffers(mesh.place.page) else {
                     waits = true;
@@ -150,6 +155,7 @@ impl WorldGpu {
         }
         // ponytail: one bake a layout, of the first species by id that can be baked; nearest first if the bakes are seen to lag.
         let (mut settled, mut absent) = (Vec::new(), Vec::new());
+        let grey = self.textures.grey(device, queue);
         let mut baking = true;
         for (id, kind) in species.iter().enumerate() {
             if kind.radius <= 0.0 || self.cards.slots.contains_key(&id) {
@@ -159,7 +165,7 @@ impl WorldGpu {
                 settled.push((id, None));
                 continue;
             };
-            let Some(meshes) = self.card_meshes(&model, &mut absent) else {
+            let Some(meshes) = self.card_meshes(&model, &grey, &mut absent) else {
                 continue;
             };
             if !baking {
