@@ -215,6 +215,22 @@ fn a_level_of_detail_light_with_a_placed_light_in_its_place_gives_way_to_it() {
 }
 
 #[test]
+fn a_list_is_passed_over_only_where_none_of_its_lamps_would_light() {
+    let lod = |x: f32| Lamp {
+        light: light(LightKind::Point, x, ALL_HOURS),
+        reach: Some([500.0, 100.0]),
+    };
+    let list = LodList::of(vec![lod(0.0), lod(20.0)]);
+    let at = |x: f32| Vec3::new(x, 0.0, 0.0);
+    assert!(list.reaches(at(510.0)) && list.reaches(at(-480.0)));
+    assert!(frame_lights(&list.lamps, at(519.0), 12.0, 1.0, 8).lights > 0);
+    // Past the reach of the nearer lamp, with a metre to spare, nothing of it would light.
+    assert!(!list.reaches(at(521.5)));
+    assert_eq!(frame_lights(&list.lamps, at(521.5), 12.0, 1.0, 8).lights, 0);
+    assert!(!LodList::of(Vec::new()).reaches(Vec3::ZERO));
+}
+
+#[test]
 fn the_reach_of_each_size_class_is_read_from_the_visual_settings() {
     let settings = VisualSettings::parse(
         "lodlight.small.range 10\nlodlight.medium.range 20\nlodlight.large.range 30\n\

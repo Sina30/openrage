@@ -18,7 +18,7 @@ use or_io::meta::binary::rbm::schema::RbmModel;
 
 use super::index::{Enabled, WorldIndex};
 use super::lights_distant::{self, DistantReach};
-use super::lights_frame::{self, FrameLights, Lamp, LodReach};
+use super::lights_frame::{self, FrameLights, Lamp, LodList, LodReach, Placed};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
 
@@ -107,31 +107,61 @@ fn lights_of(model: &RbmModel, index: &WorldIndex) -> Option<MapLights> {
     Some(out)
 }
 
-/// Every lamp of `loaded`: the placed lights, and the level-of-detail lights of each map whose parent is loaded but for those a placed light stands in.
-///
-/// `lists` keeps each map's level-of-detail lamps, made again only where the map or its parent came or went.
-fn lamps_of(
+/// Make `lists` the level-of-detail lamps of each map of `loaded` whose parent is loaded too, making again only those of a map or parent that came or went.
+fn relist(
     loaded: &HashMap<u32, MapLights>,
     reach: &LodReach,
-    lists: &mut HashMap<u32, Option<Vec<Lamp>>>,
-) -> Vec<Lamp> {
-    let placed: Vec<Lamp> = (loaded.values())
-        .flat_map(|m| m.placed.iter().copied())
-        .collect();
+    lists: &mut HashMap<u32, Option<LodList>>,
+) {
     lists.retain(|name, list| {
         (loaded.get(name)).is_some_and(|m| list.is_some() == loaded.contains_key(&m.parent))
     });
-    let mut lod: Vec<Lamp> = Vec::new();
     for (name, m) in loaded {
-        let list = lists.entry(*name).or_insert_with(|| {
+        lists.entry(*name).or_insert_with(|| {
             let parent = &loaded.get(&m.parent)?.lod;
-            Some(lights_frame::lod_lamps(&m.lod, parent, reach))
+            Some(LodList::of(lights_frame::lod_lamps(&m.lod, parent, reach)))
         });
-        lod.extend(list.iter().flatten());
     }
-    let mut lamps = lights_frame::without_placed(lod, &placed);
-    lamps.extend(placed);
-    lamps
+}
+
+/// The placed lights of `loaded`, a map after another.
+fn placed_of(loaded: &HashMap<u32, MapLights>) -> Vec<Lamp> {
+    (loaded.values())
+        .flat_map(|m| m.placed.iter().copied())
+        .collect()
+}
+
+/// The lamps the frame may draw seen from `eye`: the level-of-detail lights of each map in `lists` within reach, but for those a placed light stands in, then the placed lights.
+fn lamps_seen<'a>(
+    loaded: &'a HashMap<u32, MapLights>,
+    lists: &'a HashMap<u32, Option<LodList>>,
+    (placed, near): (&'a [Lamp], &'a Placed),
+    eye: Vec3,
+) -> impl Iterator<Item = &'a Lamp> {
+    let reached = (loaded.keys())
+        .filter_map(|name| lists.get(name)?.as_ref())
+        .filter(move |list| list.reaches(eye));
+    (reached.flat_map(|list| &list.lamps))
+        .filter(|lamp| !near.stands_at(lamp.light.position))
+        .chain(placed)
+}
+
+/// Every lamp of `loaded` from anywhere, as [`lamps_seen`] gives them.
+#[cfg(test)]
+fn lamps_of(
+    loaded: &HashMap<u32, MapLights>,
+    reach: &LodReach,
+    lists: &mut HashMap<u32, Option<LodList>>,
+) -> Vec<Lamp> {
+    relist(loaded, reach, lists);
+    let placed = placed_of(loaded);
+    let near = Placed::of(&placed);
+    (loaded.keys())
+        .filter_map(|name| lists.get(name)?.as_ref())
+        .flat_map(|list| list.lamps.iter().copied())
+        .filter(|lamp| !near.stands_at(lamp.light.position))
+        .chain(placed.iter().copied())
+        .collect()
 }
 
 /// The lights of the maps around the camera, read on workers.
@@ -147,10 +177,11 @@ pub struct Lights {
     enabled: Enabled,
     reach: LodReach,
     distant_reach: DistantReach,
-    /// Every lamp of the maps loaded, worked out again when they or the reach change.
-    lamps: Vec<Lamp>,
     /// Each loaded map's level-of-detail lamps, None while its parent is not loaded.
-    lists: HashMap<u32, Option<Vec<Lamp>>>,
+    lists: HashMap<u32, Option<LodList>>,
+    /// The placed lights of the maps loaded, and where they stand.
+    placed: Vec<Lamp>,
+    near: Placed,
     /// The frame's lights as last handed out, with the camera, hour, scale and most they were for; none once the lamps change.
     framed: Option<([u32; 6], FrameLights)>,
 }
@@ -198,8 +229,9 @@ impl Lights {
             enabled: Enabled::default(),
             reach: LodReach::default(),
             distant_reach: DistantReach::default(),
-            lamps: Vec::new(),
             lists: HashMap::new(),
+            placed: Vec::new(),
+            near: Placed::default(),
             framed: None,
         }
     }
@@ -218,7 +250,7 @@ impl Lights {
         if self.reach != reach {
             self.reach = reach;
             self.lists.clear();
-            self.lamps = lamps_of(&self.loaded, &self.reach, &mut self.lists);
+            relist(&self.loaded, &self.reach, &mut self.lists);
             self.framed = None;
         }
     }
@@ -255,7 +287,9 @@ impl Lights {
             self.readers.want(asked);
         }
         if changed {
-            self.lamps = lamps_of(&self.loaded, &self.reach, &mut self.lists);
+            relist(&self.loaded, &self.reach, &mut self.lists);
+            self.placed = placed_of(&self.loaded);
+            self.near = Placed::of(&self.placed);
             self.framed = None;
         }
         changed
@@ -300,7 +334,9 @@ impl Lights {
         if let Some((_, out)) = self.framed.as_ref().filter(|(was, _)| *was == key) {
             return out.clone();
         }
-        let mut out = lights_frame::frame_lights(&self.lamps, eye, hour, scale, most);
+        let near = (self.placed.as_slice(), &self.near);
+        let lamps = lamps_seen(&self.loaded, &self.lists, near, eye);
+        let mut out = lights_frame::frame_lights(lamps, eye, hour, scale, most);
         self.drawn = out.lights;
         let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
         let kept = lights_frame::Places::of(out.kept.iter().copied());

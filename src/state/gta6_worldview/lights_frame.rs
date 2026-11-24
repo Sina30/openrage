@@ -164,17 +164,112 @@ impl Places {
     }
 }
 
+/// Where the placed lights stand, to find the level-of-detail lights they stand in for.
+#[derive(Debug, Default)]
+pub struct Placed {
+    at: std::collections::HashMap<[i64; 3], Vec<Vec3>>,
+    /// The box of them, [`SAME_PLACE`] wider each way.
+    low: Vec3,
+    high: Vec3,
+}
+
+fn cell(p: Vec3) -> [i64; 3] {
+    p.to_array().map(|x| (x / SAME_PLACE).floor() as i64)
+}
+
+impl Placed {
+    pub fn of(placed: &[Lamp]) -> Self {
+        let mut out = Self {
+            low: Vec3::INFINITY,
+            high: Vec3::NEG_INFINITY,
+            ..Self::default()
+        };
+        for lamp in placed {
+            let p = Vec3::from(lamp.light.position);
+            out.at.entry(cell(p)).or_default().push(p);
+            (out.low, out.high) = (out.low.min(p), out.high.max(p));
+        }
+        (out.low, out.high) = (out.low - SAME_PLACE, out.high + SAME_PLACE);
+        out
+    }
+
+    /// Whether a placed light stands within [`SAME_PLACE`] of `p`.
+    pub fn stands_at(&self, p: [f32; 3]) -> bool {
+        let p = Vec3::from(p);
+        // ⚠ The placed lights stand near the camera and the lists' reach for kilometres: most of a list is no placed light's.
+        if p.cmplt(self.low).any() || p.cmpgt(self.high).any() {
+            return false;
+        }
+        let [x, y, z] = cell(p);
+        (-1..=1).any(|dx| {
+            (-1..=1).any(|dy| {
+                (-1..=1).any(|dz| {
+                    (self.at.get(&[x + dx, y + dy, z + dz]).into_iter().flatten())
+                        .any(|q| q.distance(p) <= SAME_PLACE)
+                })
+            })
+        })
+    }
+}
+
 /// `lod` without the lights a lamp of `placed` stands within [`SAME_PLACE`] of: the placed one is drawn instead.
+#[cfg(test)]
 pub fn without_placed(lod: Vec<Lamp>, placed: &[Lamp]) -> Vec<Lamp> {
-    let at = Places::of(placed.iter().map(|l| (Vec3::from(l.light.position), 0.0)));
+    let near = Placed::of(placed);
     (lod.into_iter())
-        .filter(|l| at.near(Vec3::from(l.light.position)).is_none())
+        .filter(|l| !near.stands_at(l.light.position))
         .collect()
 }
 
+/// A map's level-of-detail lamps, with the box they stand in and how far they are drawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LodList {
+    pub lamps: Vec<Lamp>,
+    low: Vec3,
+    high: Vec3,
+    range: f32,
+}
+
+impl LodList {
+    pub fn of(lamps: Vec<Lamp>) -> Self {
+        let (mut low, mut high) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
+        let mut range = 0.0f32;
+        for lamp in &lamps {
+            let p = Vec3::from(lamp.light.position);
+            (low, high) = (low.min(p), high.max(p));
+            range = range.max(lamp.reach.map_or(f32::INFINITY, |[range, _]| range));
+        }
+        Self {
+            lamps,
+            low,
+            high,
+            range,
+        }
+    }
+
+    /// Whether a lamp of it may be drawn from `eye`: none past the reach of every one of them is.
+    pub fn reaches(&self, eye: Vec3) -> bool {
+        if self.lamps.is_empty() {
+            return false;
+        }
+        // A position that is not a number makes no box: such a list is never passed over
+        if !self.low.cmple(self.high).all() {
+            return true;
+        }
+        // A metre to spare, so that a lamp on the box's face is never judged by a distance rounded differently.
+        eye.distance(eye.clamp(self.low, self.high)) < self.range + 1.0
+    }
+}
+
 /// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` nearest the camera by the edge of their reach, nearest first, as the volumes of the frame's passes.
-pub fn frame_lights(lamps: &[Lamp], eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
-    let mut lit: Vec<(f32, Light, f32)> = (lamps.iter())
+pub fn frame_lights<'a>(
+    lamps: impl IntoIterator<Item = &'a Lamp>,
+    eye: Vec3,
+    hour: f32,
+    scale: f32,
+    most: usize,
+) -> FrameLights {
+    let mut lit: Vec<(f32, Light, f32)> = (lamps.into_iter())
         .filter_map(|lamp| {
             let l = lamp.light;
             let distance = Vec3::from(l.position).distance(eye);
