@@ -103,9 +103,16 @@ does nothing.
 - The far stand-ins of vegetation draw as cards: one quad a stand-in, facing the camera, in the
   passes and buckets the cut-out meshes draw in and into the sun's shadow. Each species is baked
   once, from a fixed set of directions, into an atlas from the least detailed level of its own
-  model, once that model and its colour maps are on the device; until then its cards draw nothing.
-  Which species each stand-in names is worked out at index build from the far stand-in lists of
-  every map.
+  model, once that model and its colour maps are on the device; a species the world never draws
+  near is read for its atlas alone, after everything that draws, and until it is baked its cards
+  draw nothing. Which species each stand-in names is worked out at index build from the far
+  stand-in lists of every map. A stand-in is hidden while the prop that takes its place near the
+  camera draws.
+- A cut-out surface is cut by its colour map's first level, whatever level the screen samples, so
+  that leaves and grass keep their coverage far from the camera; a far stand-in's card the same
+  by its atlas.
+- A grass instance is tinted by its own colour, as far as its material's grass tint and the
+  vertex's second colour let it.
 - A fading instance is drawn through an ordered dither, the same in every pass.
 - In Shaded the instances are written into the frame the game's own lighting passes light, where a
   game shader pack is read, and the sun casts their shadow in four cascades about what the camera
@@ -170,10 +177,11 @@ the frame against a reference image ([screenshots](../guides/Development_Workflo
 
 ## Limits
 
-- A far stand-in's card is baked from its species' own model, not read from the game's own atlas;
-  a species seen nowhere near the camera has no model on the device and draws no card. A stand-in
-  and the prop that takes its place near the camera both draw at the edge between them.
-- A grass instance's colour and a prop instance's tint are read and not drawn.
+- A far stand-in's card is baked from its species' own model, not read from the game's own atlas,
+  and its colour and normal are the bake's, not the game's.
+- A cut-out surface cut by its first level sparkles as the camera moves.
+- A prop instance's tint is read and not drawn: every material read states its amount as nought.
+- A tree's own imposter model, which the game draws as a card, is drawn as a plain mesh.
 - An interior's contents come and go at their distance with no fade, and draw at every hour.
 - The atmosphere scatters light once, so the sky and its light are dimmer than the game's; the
   clouds are not drawn. The exposure is metered on the moment's light, not on the frame drawn.
