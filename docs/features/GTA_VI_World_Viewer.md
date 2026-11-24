@@ -102,7 +102,7 @@ does nothing.
   to its night value by the day's own blend, at the day's exposure.
 - The far stand-ins of vegetation draw as cards: one quad a stand-in, facing the camera, in the
   passes and buckets the cut-out meshes draw in and into the sun's shadow. Each species is baked
-  once, from 64 directions, into an atlas from the least detailed level of its own model, once that
+  once, from a fixed set of directions, into an atlas from the least detailed level of its own model, once that
   model and its colour maps are on the device; until then its cards draw nothing. Which species each
   stand-in names is worked out at index build from the far stand-in lists of every map.
 - A fading instance is drawn through an ordered dither, the same in every pass.
