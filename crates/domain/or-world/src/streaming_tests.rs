@@ -371,7 +371,7 @@ fn each_level_fades_out_over_its_own_band() {
         let drawn = forest.select(&view(105.0), &all_ready);
         assert!(close(fade(&drawn, (1, 0)), at_105), "{level:?}");
         assert!(close(
-            fade(&forest.select(&view(100.0), &all_ready), (1, 0)),
+            fade(&lone(level).select(&view(100.0), &all_ready), (1, 0)),
             1.0
         ));
     }
