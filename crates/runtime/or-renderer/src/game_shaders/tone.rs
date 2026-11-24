@@ -187,6 +187,8 @@ pub struct Tone {
     pub bloom: Bloom,
     /// How much of each size of blur of the bloom is added to the next size up.
     pub bloom_blend: [f32; 3],
+    /// How far the curve is blended from the bright one to the dark, where that is fixed rather than read from the frame's stops.
+    pub blend: Option<f32>,
 }
 
 impl Tone {
@@ -219,6 +221,7 @@ impl Tone {
                 intensity: moment.get_or("postfx_intensity_bloom", 0.0),
             },
             bloom_blend: settings.bloom_blend,
+            blend: None,
         };
         // A moment may state its own curves in place of the install's: the dark one alone for both, or each
         let dark_stated = moment.get_or("postfx_tonemap_filmic_override_dark", 0.0) > 0.0;
@@ -247,14 +250,31 @@ impl Tone {
         tone
     }
 
+    /// This tone with its curves blended by the linear `exposure` the light was taken at, against the curves' exposures, as GTA VI's tone mapping blends them.
+    pub fn blended_by(self, exposure: f32) -> Self {
+        let range = self.dark_exposure - self.bright_exposure;
+        let t = match range == 0.0 {
+            true => 1.0,
+            false => ((exposure - self.bright_exposure) / range).clamp(0.0, 1.0),
+        };
+        Self {
+            blend: Some(t),
+            ..self
+        }
+    }
+
+    /// How far the curve is blended from the bright one to the dark.
+    fn dark_share(&self) -> f32 {
+        let range = self.dark_exposure - self.bright_exposure;
+        self.blend.unwrap_or(match range == 0.0 {
+            true => 1.0,
+            false => ((self.stops - self.bright_exposure) / range).clamp(0.0, 1.0),
+        })
+    }
+
     /// One over the white point of the curve this exposure maps by, which the bright pass divides the light by.
     pub fn one_over_white_point(&self) -> f32 {
-        let range = self.dark_exposure - self.bright_exposure;
-        let t = if range == 0.0 {
-            1.0
-        } else {
-            ((self.stops - self.bright_exposure) / range).clamp(0.0, 1.0)
-        };
+        let t = self.dark_share();
         1.0 / (self.bright.w + (self.dark.w - self.bright.w) * t).max(1e-4)
     }
 
@@ -278,7 +298,10 @@ impl Tone {
             ("DarkTonemapParams1", self.dark.second()),
             (
                 "TonemapParams",
-                vec![1.0 / range, -self.bright_exposure / range],
+                match self.blend {
+                    Some(t) => vec![0.0, t],
+                    None => vec![1.0 / range, -self.bright_exposure / range],
+                },
             ),
             ("ColorCorrectHighLum", self.correct.to_vec()),
             ("ColorShiftLowLum", self.shift.to_vec()),

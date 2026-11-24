@@ -56,6 +56,8 @@ pub struct Stated {
     pub towards_light: Vec3,
     pub sun_fade: f32,
     pub moon_fade: f32,
+    /// The linear exposure every light of the day was given at, which the tone curves are blended by.
+    pub exposure: f32,
 }
 
 /// What the lights need to know of the view: where the camera is and how it projects.
@@ -89,7 +91,11 @@ pub struct Day {
 impl Day {
     /// How a frame lit by `lighting` is mapped to the screen at this moment.
     pub fn tone(&self, lighting: &Lighting) -> Tone {
-        Tone::new(&self.tone, Some(&self.keyframe), lighting)
+        let tone = Tone::new(&self.tone, Some(&self.keyframe), lighting);
+        match self.stated {
+            Some(stated) => tone.blended_by(stated.exposure),
+            None => tone,
+        }
     }
 
     /// How strongly the ambient light is darkened where surfaces stand close around a pixel: nothing where the day states none.

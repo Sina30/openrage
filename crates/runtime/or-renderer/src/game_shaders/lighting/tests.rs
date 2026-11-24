@@ -330,6 +330,7 @@ fn a_day_that_states_its_light_whole_is_lit_from_its_own_bodies_and_faded_by_not
             towards_light: towards,
             sun_fade: 0.0,
             moon_fade: 1.0,
+            exposure: 1.0,
         }),
         ..Day::default()
     };

@@ -469,7 +469,7 @@ impl Viewer {
                 ),
                 None => sky::moment(tables, hour, weather, eye.y),
             }?;
-            Some(sky::exposed(tables, moment, hour, weather, metered))
+            Some(sky::exposed(tables, moment, (hour, weather), eye, metered))
         });
         let scale = sky::scale_of(moment.as_ref());
         let day = (tables.as_ref())

@@ -142,9 +142,11 @@ pub(super) struct Found {
     pub waiting: [usize; 4],
     /// What stands streamed in: a change in it is something that came or went.
     pub standing: [usize; 4],
+    /// The frame's exposure is still on its way to what its meter wants.
+    pub adapting: bool,
 }
 
-/// The rule `world settle` waits by: an index held, nothing waited for, and nothing changed for [`QUIET`].
+/// The rule `world settle` waits by: an index held, nothing waited for, the exposure arrived, and nothing changed for [`QUIET`].
 // ⚠ Nothing waited for is not enough: for a frame or two after the camera jumps, the world's
 // thread has not yet asked for the maps of the new place.
 #[derive(Debug, Default)]
@@ -156,7 +158,7 @@ pub(super) struct Settle {
 impl Settle {
     /// Whether the world has settled at `now`, a time on a clock that only runs forward, given what this frame found.
     pub(super) fn settled(&mut self, now: Duration, found: Found) -> bool {
-        let quiet = found.indexed && found.waiting == [0; 4];
+        let quiet = found.indexed && found.waiting == [0; 4] && !found.adapting;
         if !quiet || self.last != Some(found) {
             (self.last, self.since) = (Some(found), now);
             return false;
@@ -169,6 +171,11 @@ impl Settle {
         match self.last {
             None => "no frame was drawn".into(),
             Some(found) if !found.indexed => "no index of the install is held".into(),
+            Some(Found {
+                waiting: [0, 0, 0, 0],
+                adapting: true,
+                ..
+            }) => "the exposure was still adapting".into(),
             Some(Found {
                 waiting: [0, 0, 0, 0], ..
             }) => "what is streamed in was still changing".into(),
@@ -203,6 +210,7 @@ fn found() -> Result<Found, String> {
             streaming.nodes,
             streaming.drawn,
         ],
+        adapting: crate::state::gta6_world::worldview::sky::adapting(),
     })
 }
 
@@ -380,6 +388,7 @@ mod tests {
         indexed: true,
         waiting: [0; 4],
         standing: [40, 40, 900, 700],
+        adapting: false,
     };
 
     fn at(millis: u64) -> Duration {

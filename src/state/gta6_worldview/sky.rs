@@ -27,6 +27,10 @@ const LATITUDE_STEP: f32 = 100.0;
 const STEADY: f32 = 0.01;
 /// The up part of the way to a body below which it lights no sky: some twenty degrees under the horizon.
 const LOWEST_BODY: f32 = -0.35;
+/// How far, in metres, the camera moves between two frames for the move to be a cut to another place.
+const CUT: f32 = 200.0;
+/// How near, in stops, the exposure comes to what the curve wants before it counts as arrived: the meter's own noise from frame to frame is less.
+const REACHED: f32 = 0.1;
 
 type Read = Arc<OnceLock<Arc<DayTables>>>;
 
@@ -95,38 +99,52 @@ pub fn moment(tables: &DayTables, hour: f32, weather: WeatherState, y: f32) -> O
     moment
 }
 
-/// Where the frame's exposure stands: the moment it was metered for, its stops and when they were set, and whether the next reading is the first of that moment.
+/// Where the frame's exposure stands: the moment it was metered for, where the camera stood, its stops and when they were set, whether the next reading is the first of that moment, and whether the last reading had reached what the curve wants.
 struct Adapting {
     of: (u32, WeatherState),
+    eye: Vec3,
     stops: f32,
     at: Instant,
     fresh: bool,
+    reached: bool,
 }
 
 // ponytail: one exposure for the one World view; a second view would share it.
 static ADAPTING: Mutex<Option<Adapting>> = Mutex::new(None);
 
-/// `moment` exposed by the frame's own luminance, `metered` as last read from a frame drawn under the day set now: adapted from frame to frame at the pace of the settings, taken whole at the first reading of a new hour or weather, and held where nothing was read.
+/// Whether the frame's exposure is still on its way: no reading of its own moment taken yet, or the last short of what the curve wants of it.
+pub fn adapting() -> bool {
+    let held = ADAPTING.lock().unwrap_or_else(|p| p.into_inner());
+    held.as_ref().is_some_and(|a| a.fresh || !a.reached)
+}
+
+/// `moment` exposed by the frame's own luminance, `metered` as last read from a frame drawn under the day set now, for a camera at `eye`: adapted from frame to frame at the pace of the settings, taken whole at the first reading of a new hour or weather or after the camera is cut to another place, and held where nothing was read.
 pub fn exposed(
     tables: &DayTables,
     moment: Moment,
-    hour: f32,
-    weather: WeatherState,
+    (hour, weather): (f32, WeatherState),
+    eye: Vec3,
     metered: Option<&Metered>,
 ) -> Moment {
     let of = (hour.to_bits(), weather);
     let now = Instant::now();
     let mut held = ADAPTING.lock().unwrap_or_else(|p| p.into_inner());
-    let Some(adapting) = held.as_mut().filter(|a| a.of == of) else {
-        // ⚠ What is read now was drawn under the hour before: the new one waits for its own frame.
+    let kept = held
+        .as_mut()
+        .filter(|a| a.of == of && a.eye.distance(eye) <= CUT);
+    let Some(adapting) = kept else {
+        // ⚠ What is read now was drawn under the hour or the place before: the new one waits for its own frame.
         *held = Some(Adapting {
             of,
+            eye,
             stops: moment.stops,
             at: now,
             fresh: true,
+            reached: false,
         });
         return moment;
     };
+    adapting.eye = eye;
     // ⚠ Inferred: the build names these percentages; they are taken as parts of the frame.
     let low = moment.own.get_or("postfx_exposure_lowlights_percent", 0.0);
     let high = moment.own.get_or("postfx_exposure_highlights_percent", 0.0);
@@ -137,12 +155,11 @@ pub fn exposed(
         true => 0.0,
         false => now.duration_since(adapting.at).as_secs_f32(),
     };
-    let exposed = moment.metered(
-        &tables.exposure_settings(),
-        luminance,
-        adapting.stops,
-        seconds,
-    );
+    let settings = tables.exposure_settings();
+    let scene = luminance / adapting.stops.exp2();
+    let target = or_title::gta6_exposure::target_stops(&settings, &moment.own, scene);
+    let exposed = moment.metered(&settings, luminance, adapting.stops, seconds);
+    adapting.reached = (target - exposed.stops).abs() < REACHED;
     // ponytail: a step too small to see is not taken, so that a still frame keeps its day.
     if (exposed.stops - adapting.stops).abs() < STEADY {
         return moment.exposed_at(adapting.stops);
@@ -150,7 +167,6 @@ pub fn exposed(
     (adapting.stops, adapting.at) = (exposed.stops, now);
     exposed
 }
-
 /// The day the frame is lit by at `hour` of the `days`th day in `weather`, for a camera `y` metres north on the map; `None` where the tables hold no cycle for it.
 #[cfg(test)]
 pub fn day_of(
@@ -180,6 +196,7 @@ pub fn day_of_moment(
         towards_light: Vec3::from(moment.bodies.towards),
         sun_fade: moment.bodies.sun_fade,
         moon_fade: moment.bodies.moon_fade,
+        exposure: moment.light.exposure,
     };
     let sky_view = SkyView {
         radiance: sky_radiance(&moment),
@@ -370,7 +387,13 @@ mod tests {
         let tables = tables();
         let at = |metered: Option<&Metered>| {
             let moment = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
-            exposed(&tables, moment, 9.5, WeatherState::Clear, metered)
+            exposed(
+                &tables,
+                moment,
+                (9.5, WeatherState::Clear),
+                Vec3::ZERO,
+                metered,
+            )
         };
         let unread = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
         // What is read in the first frame of an hour was drawn under the hour before.
@@ -396,6 +419,25 @@ mod tests {
         let next = at(Some(&brighter)).stops;
         let wanted = curve - 2.0 * 4f32.ln();
         assert!(next <= first.stops && next > wanted, "{next} {wanted}");
+        assert!(adapting(), "still on its way");
+        // A cut to another place starts again, and its first reading is taken whole.
+        let far = Vec3::new(CUT * 2.0, 0.0, 0.0);
+        let cut = |metered: Option<&Metered>| {
+            let moment = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
+            exposed(&tables, moment, (9.5, WeatherState::Clear), far, metered)
+        };
+        assert_eq!(cut(Some(&brighter)).stops, unread.stops);
+        // A scene of one candela a square metre, as the frame drawn at the cut's first stops holds it.
+        let lit = Metered::of(vec![unread.stops.exp2(); 16]);
+        let whole = cut(Some(&lit)).stops;
+        let scene = 1.0;
+        let settings = tables.exposure_settings();
+        let curve = or_title::gta6_exposure::target_stops(&settings, &unread.own, scene);
+        assert!(
+            whole != unread.stops && (whole - curve).abs() < 1e-3,
+            "{whole} {curve}"
+        );
+        assert!(!adapting(), "arrived");
     }
 
     #[test]
