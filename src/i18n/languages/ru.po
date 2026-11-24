@@ -16739,3 +16739,72 @@ msgstr "Вид мира"
 
 msgid "{textures} textures on the device, {unread} not read, {waiting} waited for"
 msgstr "Текстур на видеокарте: {textures}, не прочитано: {unread}, ожидается: {waiting}"
+
+msgid "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn"
+msgstr "Источники света карт ({maps}): размещённых: {placed}, уровня детализации: {lod}, дальних: {distant}, зондов отражения: {probes}; отрисовано: {drawn}"
+
+msgid "Capture"
+msgstr "Захват"
+
+msgid "Clean frame"
+msgstr "Чистый кадр"
+
+msgid "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
+msgstr "Рисовать только мир на всё окно, без строк и панелей поверх; Esc возвращает их"
+
+msgid "Copy the camera"
+msgstr "Копировать камеру"
+
+msgid "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
+msgstr "Копировать, где стоит камера и куда она смотрит, в виде строки, которую читает скрипт снимков и принимает поле ниже"
+
+msgid "Paste a camera line, then press Enter"
+msgstr "Вставьте строку камеры и нажмите Enter"
+
+msgid "A camera line to jump to"
+msgstr "Строка камеры для перехода"
+
+msgid "That is not a camera line: copy one with Copy the camera"
+msgstr "Это не строка камеры: скопируйте строку командой «Копировать камеру»"
+
+msgid "Time and modes"
+msgstr "Время и режимы"
+
+msgid "Hour"
+msgstr "Час"
+
+msgid "The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"
+msgstr "Час дня: то, что размещено для определённых часов, рисуется в эти часы, а мир освещается своим днём в этот час"
+
+msgid "Story pack"
+msgstr "Пак сюжета"
+
+msgid "Stream the maps the story pack adds"
+msgstr "Загружать карты, которые добавляет пак сюжета"
+
+msgid "Shared minigames"
+msgstr "Общие мини-игры"
+
+msgid "Stream the maps the shared minigames add"
+msgstr "Загружать карты, которые добавляют общие мини-игры"
+
+msgid "The index holds no script-managed group"
+msgstr "В индексе нет групп, управляемых скриптом"
+
+msgid "Script-managed groups: {on} of {groups} on"
+msgstr "Группы, управляемые скриптом: включено {on} из {groups}"
+
+msgid "Nothing says which are on at rest: a group ticked streams its maps in"
+msgstr "Ничто не говорит, какие включены по умолчанию: отмеченная группа загружает свои карты"
+
+msgid "{name}, {maps} maps"
+msgstr "{name}, карт: {maps}"
+
+msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
+msgstr "Карт пака сюжета: {story}, общих мини-игр: {minigames}; групп, управляемых скриптом: {groups}"
+
+msgid "Bound by block maps: no key snapshot was found"
+msgstr "Сопоставлено по картам блоков: снимок ключей не найден"
+
+msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
+msgstr "Сопоставлено по таблицам архивов; зашифровано наборов изменений уровня: {ciphered}"
