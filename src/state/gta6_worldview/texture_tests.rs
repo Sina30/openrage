@@ -146,3 +146,36 @@ fn a_key_no_pack_holds_reads_from_the_texture_archive_s_dictionary_that_holds_it
     assert!(read.width > 0 && !read.levels.is_empty());
     assert!(read_texture(&mut HashMap::new(), &places, key ^ 1, 256).is_none());
 }
+
+#[test]
+fn the_texture_archive_s_keys_are_kept_and_read_back_while_the_archive_is_as_it_was() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let (made, _) = crate::state::gta6_edit::tests::dictionary_file(dir.path());
+    let root = dir.path().join("install");
+    std::fs::create_dir(&root).expect("a folder");
+    let archive = root.join("textures.rpf");
+    std::fs::copy(&made, &archive).expect("copied");
+    let key = name_hash64(b"zq_paint");
+    let (cancel, progress) = (or_job::Cancel::new(), or_job::Progress::new());
+    let bodies = || {
+        let places = crate::state::gta6_texture_index::pack_places(&root);
+        let (.., (_, bodies)) = places(&cancel, &progress).expect("indexed");
+        bodies
+    };
+    assert_eq!(bodies(), HashMap::from([(key, 0)]), "scanned");
+
+    // The same size and time with bytes no scan reads: only what was kept can name the key
+    let meta = std::fs::metadata(&archive).expect("its size and time");
+    let modified = meta.modified().expect("a time");
+    std::fs::write(&archive, vec![0u8; meta.len() as usize]).expect("written");
+    let file = std::fs::OpenOptions::new().write(true).open(&archive);
+    file.and_then(|f| f.set_modified(modified))
+        .expect("its time");
+    assert_eq!(bodies(), HashMap::from([(key, 0)]), "read back as kept");
+
+    let later = modified + std::time::Duration::from_secs(1);
+    let file = std::fs::OpenOptions::new().write(true).open(&archive);
+    file.and_then(|f| f.set_modified(later))
+        .expect("another time");
+    assert!(bodies().is_empty(), "scanned again once its time moved");
+}

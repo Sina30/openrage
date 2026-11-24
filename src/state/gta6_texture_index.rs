@@ -27,6 +27,8 @@ const MOST_BYTES: usize = 1 << 28;
 /// A pack's size and modification time when it was read, then a key for each of its textures, 0
 /// for one that is not on disk or has no key, with the format code its directory states.
 type KeptPack = ((u64, u64), Vec<(u64, u16)>);
+/// A kept row of the texture archive: a texture's key, its dictionary's offset, its format code.
+const ARCHIVE_ROW: usize = 18;
 
 /// Where the index of one folder is kept in the configuration folder, a file a folder, each pack
 /// by its path under the folder: a pack is read again only once its size or its modification time
@@ -80,6 +82,62 @@ impl Kept {
             packs.insert(path, (stat, keys));
         }
         Ok(packs)
+    }
+
+    /// Where the keys of the folder's texture archive are kept, beside its packs' index.
+    fn archive(&self) -> Self {
+        let file = self.file.with_extension("archive");
+        Self {
+            file,
+            of: self.of.clone(),
+        }
+    }
+
+    /// The archive's keys as kept for it at `stat`, the archive's size and modification time;
+    /// none where none is kept for it as it is now, or what is kept does not read.
+    fn archive_textures(&self, stat: (u64, u64)) -> Option<HashMap<u64, (u64, u16)>> {
+        let sealed = std::fs::read(&self.file).ok()?;
+        let read = || -> io::Result<Option<HashMap<u64, (u64, u16)>>> {
+            let plain = unseal_rpf9_scan(&sealed, MOST_BYTES)?;
+            let Some(bytes) = &mut plain.strip_prefix(self.of.as_slice()) else {
+                return Ok(None);
+            };
+            if (word(bytes)?, word(bytes)?) != stat {
+                return Ok(None);
+            }
+            let (rows, rest) = stated(bytes)?.as_chunks::<ARCHIVE_ROW>();
+            if !rest.is_empty() {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
+            let word_at = |row: &[u8; ARCHIVE_ROW], at: usize| {
+                u64::from_le_bytes(std::array::from_fn(|k| row[at + k]))
+            };
+            let rows = rows.iter().map(|row| {
+                let format = u16::from_le_bytes([row[16], row[17]]);
+                (word_at(row, 0), (word_at(row, 8), format))
+            });
+            Ok(Some(rows.collect()))
+        };
+        read()
+            .inspect_err(|e| tracing::info!("{}: {e}", self.file.display()))
+            .ok()
+            .flatten()
+    }
+
+    /// Keep `found`, the archive's keys at `stat`, in place of any kept before.
+    fn keep_archive_textures(&self, stat: (u64, u64), found: &HashMap<u64, (u64, u16)>) {
+        let mut plain = self.of.clone();
+        plain.extend([stat.0, stat.1].into_iter().flat_map(u64::to_le_bytes));
+        let rows: Vec<u8> = (found.iter())
+            .flat_map(|(key, (offset, format))| {
+                let row = [key.to_le_bytes(), offset.to_le_bytes()].concat();
+                row.into_iter().chain(format.to_le_bytes())
+            })
+            .collect();
+        put(&mut plain, &rows);
+        if let Err(error) = self.keep(&plain) {
+            tracing::warn!(%error, "the keys of the texture archive were not kept");
+        }
     }
 
     /// Keep `plain`, what [`Self::read`] reads, in place of any index kept before.
@@ -300,7 +358,7 @@ pub(super) fn pack_places(
         let (mut index, _) = index(&root, kept.as_ref(), cancel, progress)?;
         let archive = root.join(TEXTURE_ARCHIVE);
         let mut bodies = HashMap::new();
-        for (key, (offset, format)) in dictionary_textures(&archive, cancel)? {
+        for (key, (offset, format)) in archive_textures(&archive, kept.as_ref(), cancel)? {
             if !index.keys.contains_key(&key) {
                 bodies.insert(key, offset);
                 index.formats.insert(key, format);
@@ -310,10 +368,29 @@ pub(super) fn pack_places(
     }
 }
 
+/// [`dictionary_textures`] of the archive at `archive`, as `kept` keeps it beside the packs' index
+/// while the archive's size and modification time are what is kept, else scanned and kept.
+fn archive_textures(
+    archive: &Path,
+    kept: Option<&Kept>,
+    cancel: &or_job::Cancel,
+) -> Option<HashMap<u64, (u64, u16)>> {
+    let (kept, stat) = (kept.map(Kept::archive), stat(archive));
+    if let Some(found) = (kept.as_ref().zip(stat)).and_then(|(kept, at)| kept.archive_textures(at))
+    {
+        return Some(found);
+    }
+    // ⚠ Taken before the archive is scanned: one written in between is then scanned again at the next start.
+    let found = dictionary_textures(archive, cancel)?;
+    if let Some((kept, stat)) = kept.zip(stat) {
+        kept.keep_archive_textures(stat, &found);
+    }
+    Some(found)
+}
+
 /// Each texture that reads in a dictionary of the archive at `archive`, by its key: the offset of
 /// its dictionary's body and the format code a pack would state for it; none where there is no
 /// such archive, and `None` once `cancel` is set.
-// ponytail: the archive is scanned at every start, a few seconds; keep what it gives beside the packs' index if that grows.
 fn dictionary_textures(
     archive: &Path,
     cancel: &or_job::Cancel,
