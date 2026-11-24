@@ -133,8 +133,6 @@ pub(super) struct Loaded {
     pub(super) entities: Vec<Rows>,
     /// The prop lists, then the grass lists.
     pub(super) lists: Vec<List>,
-    /// How many of `lists` are prop lists: the grass lists follow them.
-    pub(super) props: usize,
     /// The interiors the map places, each with its contents in the world.
     pub(super) interiors: Vec<super::super::interior::Placed>,
 }
@@ -322,7 +320,6 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             drawn,
             entities,
             lists,
-            props: map.prop_lists.len(),
             interiors: Vec::new(),
         },
     }
