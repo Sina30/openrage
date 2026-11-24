@@ -220,6 +220,8 @@ const EMISSIVE_MAP: u32 = name_hash32(b"EmissiveTex");
 /// The hash of the constant a material that glows scales its glow by.
 pub(super) const GLOW: u32 = name_hash32(b"emissivemultiplier");
 const NIGHT: u32 = 0x823D_5749;
+/// The two-layer interior effect's annotation of the night strength, which its drawables state instead.
+const NIGHT_INTERIOR: u32 = 0x605D_899E;
 const GLOW_SCALE: u32 = 0x7AB0_FD74;
 const GLOW_POWER: u32 = 0x5FCB_8723;
 const GLOW_FACING: u32 = 0x7FBC_292C;
@@ -363,7 +365,7 @@ fn emissive_of(r: &Records) -> Option<Emissive> {
     Some(Emissive {
         map: r.key(EMISSIVE_MAP)?,
         multiplier: r.float(GLOW, 1.0),
-        night: r.float(NIGHT, -1.0),
+        night: r.float(NIGHT, r.float(NIGHT_INTERIOR, -1.0)),
         scale: r.floats(GLOW_SCALE, [1.0; 3]),
         power: r.floats(GLOW_POWER, [1.0; 3]),
         facing: r.float(GLOW_FACING, 0.0),

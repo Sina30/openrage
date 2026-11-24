@@ -322,6 +322,13 @@ fn a_one_layer_decal_grass_and_emissive_materials_constants_are_read() {
         diffuse: 1.0,
     };
     assert_eq!(bare, Some(defaults));
+
+    // The two-layer interior effect states its night strength under an annotation of its own.
+    let mut interior = two_layer();
+    interior.push((h("EmissiveTex"), Some(0xE)));
+    let night: [(u32, &[f32]); 2] = [(h("emissivemultiplier"), &[5.0]), (0x605D_899E, &[1.0])];
+    let interior = of(&shader(&interior, &night), 0).emissive;
+    assert_eq!(interior.map(|e| e.night), Some(1.0));
 }
 
 #[test]
