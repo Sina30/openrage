@@ -26,7 +26,7 @@ mod states;
 #[path = "index_types.rs"]
 mod types;
 
-pub use keep::kept_at;
+pub use keep::{fresh_beside, kept_at};
 pub(crate) use mount::keys;
 pub use types::ALL_HOURS;
 
@@ -181,11 +181,26 @@ pub struct Group {
     pub maps: u32,
     /// The 64-bit word of its name, which the world-state data names it by; 0 where no map states one.
     pub word: u64,
-    /// The hours it is on at rest under each set of modes: bit `h` of `hours[modes]` for the hour `h`.
+    /// The hours it is on at rest under each set of modes by the data alone: bit `h` of `hours[modes]` for the hour `h`.
     pub hours: [u32; 8],
+    /// The same with what a fresh game is taken to have beyond the data.
+    pub inferred: [u32; 8],
 }
 
-/// A group's word and the hours the world-state data has it on, as the index keeps them.
+impl Group {
+    /// Whether what a fresh game is taken to have turns it on or off at `hour` under `modes`, against the data alone.
+    pub fn by_inference(&self, hour: f32, modes: u8) -> bool {
+        let (bit, modes) = (hour_bit(hour), usize::from(modes & 0b111));
+        (self.hours[modes] ^ self.inferred[modes]) & bit != 0
+    }
+}
+
+/// The bit of the whole hour of `hour`, a day past coming round again and a NaN hour being midnight.
+fn hour_bit(hour: f32) -> u32 {
+    1 << (hour.rem_euclid(24.0) as u32).min(23)
+}
+
+/// A group's word and the hours the world-state data has it on, alone and with what a fresh game is taken to have, as the index keeps them.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
 struct GroupRow {
@@ -193,6 +208,7 @@ struct GroupRow {
     id: u32,
     pad: u32,
     hours: [u32; 8],
+    inferred: [u32; 8],
 }
 
 /// The index of one install.
@@ -210,6 +226,8 @@ pub struct WorldIndex {
     pub slod: Vec<u64>,
     /// Each group's word and hours at rest, by id.
     switches: Vec<GroupRow>,
+    /// A word of the file of what a fresh game is taken to have that the index was built with; 0 for none.
+    assumed: u64,
     pub report: Report,
     by_name: HashMap<u32, u32>,
     groups: Vec<Group>,
@@ -259,13 +277,12 @@ impl WorldIndex {
         &self.groups
     }
 
-    /// The ids of the groups the world-state data switches on at `hour` under the selectors of the modes `modes`, as [`Enabled::modes`] states them.
-    pub fn default_on_in(&self, hour: f32, modes: u8) -> Vec<u32> {
-        // A NaN hour is midnight.
-        let bit = 1 << (hour.rem_euclid(24.0) as u32).min(23);
+    /// The ids of the groups the world-state data switches on at `hour` under the selectors of the modes `modes`, as [`Enabled::modes`] states them: with what a fresh game is taken to have, or by the data alone where `proven`.
+    pub fn default_on_in(&self, hour: f32, modes: u8, proven: bool) -> Vec<u32> {
+        let bit = hour_bit(hour);
         let modes = usize::from(modes & 0b111);
         (self.groups.iter())
-            .filter(|g| g.hours[modes] & bit != 0)
+            .filter(|g| (if proven { g.hours } else { g.inferred })[modes] & bit != 0)
             .map(|g| g.id)
             .collect()
     }
@@ -325,6 +342,7 @@ impl WorldIndex {
                     maps,
                     word: row.map_or(0, |s| s.word),
                     hours: row.map_or([0; 8], |s| s.hours),
+                    inferred: row.map_or([0; 8], |s| s.inferred),
                 }
             })
             .collect();
@@ -376,9 +394,11 @@ fn counted(maps: &[MapRow]) -> Report {
 }
 
 /// Read the registration documents under `root`, bind what the packs register to the bodies of the
-/// world's archives and index them; `None` once `cancel` is set.
+/// world's archives and index them, with what the file `fresh` takes of a fresh game where there is
+/// one; `None` once `cancel` is set.
 pub fn build(
     root: &Path,
+    fresh: Option<&Path>,
     cancel: &Cancel,
     progress: &Progress,
 ) -> Result<Option<WorldIndex>, String> {
@@ -472,7 +492,9 @@ pub fn build(
     let Some(selectors) = states::selectors(&mounted, &every, cancel) else {
         return Ok(None);
     };
-    index.switches = states::switches(&words, &selectors);
+    let (assumed, word) = fresh.map_or_else(Default::default, states::assumed);
+    index.switches = states::switches(&words, &selectors, &assumed);
+    index.assumed = word;
 
     let bound = mounted.bind(&every, &archives, &facts);
     place(&mut index.maps, &facts, &bound.modes);

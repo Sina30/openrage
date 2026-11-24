@@ -412,7 +412,7 @@ fn streams(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
                     "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
                 ));
                 if own.clicked() {
-                    viewer.enabled.groups = index.default_on_in(viewer.hour, viewer.enabled.modes);
+                    viewer.enabled.groups = index.default_on_in(viewer.hour, viewer.enabled.modes, viewer.groups_proven);
                     viewer.groups_chosen = false;
                 }
             }

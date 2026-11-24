@@ -2,9 +2,10 @@
 //! nodes, each node's selectors choosing a configuration that switches script-managed map groups
 //! and game-shape layers on and off, and the rules that pick a configuration.
 //!
-//! A selector takes the configuration of the highest request on it, and its default with none; a
-//! rule set requests the configuration of its first rule that holds. Scripts and scenes request
-//! too, which nothing here sees.
+//! A selector takes the configuration of the highest request on it, the first made of equal ones,
+//! and its default with none; a rule set requests the configuration of its first rule that holds.
+//! Scripts and scenes request too, which the data does not state: [`Assumed`] carries such
+//! requests, and the flags set, where a caller supplies them.
 
 use std::collections::{HashMap, HashSet};
 
@@ -71,6 +72,11 @@ const IN_CONFIG: u32 = 0x507E_EB10;
 const IN_CONFIG_SELECTOR: u32 = 0xAABB_E900;
 const MIN_SECONDS: u32 = lit(b"Min");
 const MIN_GAME_HOURS: u32 = 0x11D8_B2D9;
+/// The priority a rule set requests its configuration with.
+const REQUEST_PRIORITY: u32 = lit(b"RequestPriority");
+/// A flag of the game's flag set is set: scripts, a save and volumes near the player set them.
+const FLAG_SET: u32 = 0x666A_479D;
+const FLAG: u32 = 0x9645_61C1;
 /// Whether anyone owns a property: none does in a new game.
 const PROPERTY_OWNED: u32 = 0x0EB4_8027;
 const ANY_OWNER: u32 = lit(b"Any");
@@ -107,8 +113,31 @@ pub struct Selector {
     /// The key of the configuration it takes when no rule holds; 0 for none.
     pub default: u32,
     pub configs: Vec<Config>,
-    /// In the order the body states them.
+    /// The rule sets of its node that request a configuration of it, in the order the body states them.
+    pub rule_sets: Vec<RuleSet>,
+}
+
+/// A rule set: its rules in the order the body states them, and the priority it requests with.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RuleSet {
+    pub priority: i32,
     pub rules: Vec<Rule>,
+}
+
+/// A request the data does not state, made of the selector of key `selector` at the hours of the mask `hours` (bit `h` for the hour `h`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Request {
+    pub selector: u32,
+    pub config: u32,
+    pub priority: i32,
+    pub hours: u32,
+}
+
+/// What is taken of a game beyond the data: requests scripts make, and the flags set; `None` where the flags are not known.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Assumed {
+    pub requests: Vec<Request>,
+    pub flags: Option<HashSet<u32>>,
 }
 
 /// A configuration: the group words its changes switch on, off and to state 2, and the layers it loads.
@@ -158,6 +187,8 @@ pub enum Condition {
         config: u32,
         from_start: bool,
     },
+    /// The flag of this hash is in the game's flag set.
+    Flag(u32),
     /// A class this does not evaluate, by the name the value tree gives it.
     Other(String),
 }
@@ -170,7 +201,18 @@ impl Condition {
 
     /// The same where `in_config(selector, config)` says whether a selector is in a configuration.
     pub fn holds_in(&self, hour: u32, in_config: &dyn Fn(u32, u32) -> bool) -> Option<bool> {
+        self.holds_with(hour, in_config, None)
+    }
+
+    /// The same where `flags`, where known, is the game's flag set.
+    pub fn holds_with(
+        &self,
+        hour: u32,
+        in_config: &dyn Fn(u32, u32) -> bool,
+        flags: Option<&HashSet<u32>>,
+    ) -> Option<bool> {
         let hour_i = hour as i32;
+        let inner = |c: &Condition| c.holds_with(hour, in_config, flags);
         Some(match self {
             Self::TimeOfDay { start, end } => match start < end {
                 true => *start <= hour_i && hour_i <= *end,
@@ -185,9 +227,9 @@ impl Condition {
                     false => now <= to || from <= now,
                 }
             }
-            Self::Not(inner) => !inner.holds_in(hour, in_config)?,
+            Self::Not(not) => !inner(not)?,
             Self::And(all) => {
-                let held: Vec<_> = all.iter().map(|c| c.holds_in(hour, in_config)).collect();
+                let held: Vec<_> = all.iter().map(inner).collect();
                 if held.contains(&Some(false)) {
                     false
                 } else {
@@ -195,7 +237,7 @@ impl Condition {
                 }
             }
             Self::Or(any) => {
-                let held: Vec<_> = any.iter().map(|c| c.holds_in(hour, in_config)).collect();
+                let held: Vec<_> = any.iter().map(inner).collect();
                 if held.contains(&Some(true)) {
                     true
                 } else {
@@ -213,22 +255,51 @@ impl Condition {
                 config,
                 from_start,
             } => *from_start && in_config(*selector, *config),
+            Self::Flag(flag) => flags?.contains(flag),
             Self::Other(_) => return None,
         })
     }
 }
 
 impl Selector {
-    /// The configuration taken at the whole hour `hour` in a new game: the first rule that holds picks it, else the default; `None` for a key no configuration has, or no default.
+    /// The configuration taken at the whole hour `hour` in a new game, by the data alone; `None` for a key no configuration has, or no default.
     pub fn pick(&self, hour: u32) -> Option<&Config> {
         self.pick_in(hour, &|_, _| false)
     }
 
     /// The same where `in_config` says which configuration other selectors are in.
     pub fn pick_in(&self, hour: u32, in_config: &dyn Fn(u32, u32) -> bool) -> Option<&Config> {
-        let key = (self.rules.iter())
-            .find(|rule| rule.condition.holds_in(hour, in_config) == Some(true))
-            .map_or(self.default, |rule| rule.config);
+        self.pick_with(hour, in_config, &Assumed::default())
+    }
+
+    /// The same with what `assumed` takes of the game: the highest request wins, the first of
+    /// equal ones, where a rule set requests the configuration of its first rule that holds; with
+    /// none, or a request of configuration 0, the default.
+    pub fn pick_with(
+        &self,
+        hour: u32,
+        in_config: &dyn Fn(u32, u32) -> bool,
+        assumed: &Assumed,
+    ) -> Option<&Config> {
+        let flags = assumed.flags.as_ref();
+        let by_rules = (self.rule_sets.iter()).filter_map(|set| {
+            let rule = (set.rules.iter())
+                .find(|r| r.condition.holds_with(hour, in_config, flags) == Some(true))?;
+            Some((set.priority, rule.config))
+        });
+        let by_requests = (assumed.requests.iter())
+            .filter(|r| r.selector == self.key && r.hours & 1 << hour.min(31) != 0)
+            .map(|r| (r.priority, r.config));
+        let mut best: Option<(i32, u32)> = None;
+        for (priority, config) in by_rules.chain(by_requests) {
+            if best.is_none_or(|(top, _)| priority > top) {
+                best = Some((priority, config));
+            }
+        }
+        let key = match best {
+            Some((_, config)) if config != 0 => config,
+            _ => self.default,
+        };
         (key != 0)
             .then(|| self.configs.iter().find(|c| c.key == key))
             .flatten()
@@ -237,6 +308,15 @@ impl Selector {
 
 /// The configuration each of `selectors` takes at the whole hour `hour`, rules on another selector's configuration answered by the others' picks until they agree.
 pub fn picks<'a>(selectors: &[&'a Selector], hour: u32) -> Vec<Option<&'a Config>> {
+    picks_with(selectors, hour, &Assumed::default())
+}
+
+/// The same with what `assumed` takes of the game.
+pub fn picks_with<'a>(
+    selectors: &[&'a Selector],
+    hour: u32,
+    assumed: &Assumed,
+) -> Vec<Option<&'a Config>> {
     let mut taken: HashMap<u32, u32> = HashMap::new();
     let mut picked = Vec::new();
     // Each round settles one more link of a chain of selectors; a cycle that never agrees stops.
@@ -244,7 +324,7 @@ pub fn picks<'a>(selectors: &[&'a Selector], hour: u32) -> Vec<Option<&'a Config
         let in_config = |selector, config| taken.get(&selector) == Some(&config);
         picked = selectors
             .iter()
-            .map(|s| s.pick_in(hour, &in_config))
+            .map(|s| s.pick_with(hour, &in_config, assumed))
             .collect();
         let next: HashMap<u32, u32> = (selectors.iter().zip(&picked))
             .filter_map(|(s, c)| Some((s.key, c.as_ref()?.key)))
@@ -301,15 +381,16 @@ impl WorldState {
                 }
             };
             let (rule_class, selector_class) = (name(RULE_COMPONENT), name(SELECTOR_COMPONENT));
-            // The rule set of a selector names its key, in the same node; a later one stands.
-            let mut rules: Vec<(u32, Vec<Rule>)> = Vec::new();
+            // A rule set names the key of its selector, in the same node; each requests on its own.
+            let mut rule_sets: Vec<(u32, RuleSet)> = Vec::new();
             for component in components.iter().filter(|c| c.type_name == rule_class) {
                 for (_, set) in pairs(component, RULE_SETS) {
                     let Some(key) = set.get(&name(RULE_SELECTOR)).and_then(key32) else {
                         continue;
                     };
-                    rules.retain(|(k, _)| *k != key);
-                    rules.push((key, rules_of(set)));
+                    let rules = rules_of(set);
+                    let priority = number(set, REQUEST_PRIORITY);
+                    rule_sets.push((key, RuleSet { priority, rules }));
                 }
             }
             for component in components.iter().filter(|c| c.type_name == selector_class) {
@@ -324,8 +405,10 @@ impl WorldState {
                             .and_then(key32)
                             .unwrap_or(0),
                         configs,
-                        rules: (rules.iter().find(|(k, _)| *k == key))
-                            .map_or_else(Vec::new, |(_, r)| r.clone()),
+                        rule_sets: (rule_sets.iter())
+                            .filter(|(k, _)| *k == key)
+                            .map(|(_, set)| set.clone())
+                            .collect(),
                     });
                 }
             }
@@ -481,6 +564,7 @@ fn condition_of(c: &MetaInstance) -> Condition {
         RANDOM,
         IN_CONFIG,
         PROPERTY_OWNED,
+        FLAG_SET,
     ]
     .into_iter()
     .find(|class| c.type_name == name(*class));
@@ -527,6 +611,10 @@ fn condition_of(c: &MetaInstance) -> Condition {
             from_start: float(c, MIN_SECONDS) <= 0.0 && float(c, MIN_GAME_HOURS) <= 0.0,
         },
         Some(PROPERTY_OWNED) if number(c, ANY_OWNER) != 0 => Condition::NewGame(false),
+        Some(FLAG_SET) => match c.get(&name(FLAG)).and_then(key32) {
+            Some(flag) => Condition::Flag(flag),
+            None => Condition::Other(c.type_name.clone()),
+        },
         _ => Condition::Other(c.type_name.clone()),
     }
 }

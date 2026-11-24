@@ -76,6 +76,7 @@ fn made_up(archive: PathBuf) -> WorldIndex {
             id: 77,
             pad: 0,
             hours: [0b101; 8],
+            inferred: [0b110; 8],
         }],
         report: Report {
             maps: 2,
@@ -256,6 +257,7 @@ fn the_mount_gives_a_map_its_modes_its_hold_and_its_group() {
                 maps: 1,
                 word: 0,
                 hours: [0; 8],
+                inferred: [0; 8],
             },
             Group {
                 id: 55,
@@ -263,6 +265,7 @@ fn the_mount_gives_a_map_its_modes_its_hold_and_its_group() {
                 maps: 2,
                 word: 0,
                 hours: [0; 8],
+                inferred: [0; 8],
             }
         ]
     );
@@ -296,8 +299,13 @@ fn a_kept_index_reads_back_as_it_was_until_an_archive_changes() {
     assert_eq!(read.archetype(100).map(|a| a.hours), Some(0xF0));
     // A group keeps its word and its hours at rest, an archetype its load flags.
     assert_eq!(read.groups()[0].word, 0xABC);
-    assert_eq!(read.default_on_in(2.0, 1), [77]);
-    assert_eq!(read.default_on_in(1.0, 1), Vec::<u32>::new());
+    assert_eq!(read.default_on_in(2.0, 1, true), [77]);
+    assert_eq!(read.default_on_in(1.0, 1, true), Vec::<u32>::new());
+    assert_eq!(
+        read.default_on_in(1.0, 1, false),
+        [77],
+        "what is taken of a fresh game is kept too"
+    );
     assert_eq!(read.archetype(100).map(|a| a.load_flags), Some(0x0001_0081));
     assert_eq!(read.slod, index.slod);
 
@@ -306,6 +314,13 @@ fn a_kept_index_reads_back_as_it_was_until_an_archive_changes() {
     std::fs::write(&file, &whole[..whole.len() - 9]).expect("cut");
     assert!(WorldIndex::kept(&file).is_none());
     std::fs::write(&file, &whole).expect("whole again");
+    assert!(WorldIndex::kept(&file).is_some());
+
+    // What a fresh game is taken to have, written beside it, takes another build.
+    let fresh = fresh_beside(&file);
+    std::fs::write(&fresh, b"{}").expect("the fresh game");
+    assert!(WorldIndex::kept(&file).is_none());
+    std::fs::remove_file(&fresh).expect("gone");
     assert!(WorldIndex::kept(&file).is_some());
 
     // An archive of another size is another archive: its index is built again.

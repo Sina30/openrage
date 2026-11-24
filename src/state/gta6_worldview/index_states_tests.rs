@@ -1,4 +1,4 @@
-use or_io::gta6::world_state::{Condition, Config, Rule};
+use or_io::gta6::world_state::{Assumed, Condition, Config, Rule, RuleSet};
 
 use super::super::{tests_support::index_with, MapRow};
 use super::*;
@@ -25,9 +25,12 @@ fn door() -> Selector {
                 ..Config::default()
             },
         ],
-        rules: vec![Rule {
-            config: 20,
-            condition: Condition::TimeOfDay { start: 22, end: 6 },
+        rule_sets: vec![RuleSet {
+            priority: 10,
+            rules: vec![Rule {
+                config: 20,
+                condition: Condition::TimeOfDay { start: 22, end: 6 },
+            }],
         }],
     }
 }
@@ -43,7 +46,7 @@ fn story() -> Selector {
             off: vec![OPEN],
             ..Config::default()
         }],
-        rules: Vec::new(),
+        rule_sets: Vec::new(),
     }
 }
 
@@ -66,7 +69,11 @@ fn a_group_is_on_in_the_hours_the_selectors_of_the_modes_on_pick_it() {
         (100, OPEN),
         (400, 0xD4),
     ];
-    let rows = switches(&words, &[at_start(1, door()), at_start(2, story())]);
+    let rows = switches(
+        &words,
+        &[at_start(1, door()), at_start(2, story())],
+        &Assumed::default(),
+    );
     let ids: Vec<u32> = rows.iter().map(|r| r.id).collect();
     assert_eq!(ids, [100, 200, 300, 400], "one row a group");
     let day = 0x003F_FFC0u32 & !(1 << 6);
@@ -112,7 +119,13 @@ fn a_layer_a_picked_configuration_loads_switches_too() {
         at_start,
         selector: story(),
     };
-    let on = |placed: &[Placed], hour| words_at(&placed.iter().collect::<Vec<_>>(), hour);
+    let on = |placed: &[Placed], hour| {
+        words_at(
+            &placed.iter().collect::<Vec<_>>(),
+            hour,
+            &Assumed::default(),
+        )
+    };
     let chained = [at_start(1, opener.clone()), later(false)];
     assert_eq!(on(&chained, 12), HashSet::from([STORY_ONLY]));
     // By night the door's other configuration loads nothing, so the layer stays out.
@@ -127,9 +140,12 @@ fn a_layer_a_picked_configuration_loads_switches_too() {
 #[test]
 fn a_new_game_settles_the_player_conditions() {
     let rule = |condition| Selector {
-        rules: vec![Rule {
-            config: 20,
-            condition,
+        rule_sets: vec![RuleSet {
+            priority: 10,
+            rules: vec![Rule {
+                config: 20,
+                condition,
+            }],
         }],
         ..door()
     };
@@ -163,14 +179,62 @@ fn the_index_says_which_groups_are_on_at_an_hour_and_keeps_their_words() {
     let maps = vec![managed(1, 100), managed(2, 200), managed(3, 300)];
     let mut index = index_with(Vec::new(), &[], maps, Vec::new());
     let words = [(100, OPEN), (200, CLOSED), (300, STORY_ONLY)];
-    index.switches = switches(&words, &[at_start(1, door()), at_start(2, story())]);
+    index.switches = switches(
+        &words,
+        &[at_start(1, door()), at_start(2, story())],
+        &Assumed::default(),
+    );
     let index = index.finish();
     assert_eq!(index.groups()[0].word, OPEN);
-    assert_eq!(index.default_on_in(12.0, 1), [100]);
-    assert_eq!(index.default_on_in(23.5, 1), [200]);
-    assert_eq!(index.default_on_in(12.0, 3), [300]);
-    assert_eq!(index.default_on_in(12.0, 0b111), [300]);
+    assert_eq!(index.default_on_in(12.0, 1, true), [100]);
+    assert_eq!(index.default_on_in(23.5, 1, true), [200]);
+    assert_eq!(index.default_on_in(12.0, 3, true), [300]);
+    assert_eq!(index.default_on_in(12.0, 0b111, true), [300]);
     // An hour past the day comes round again.
-    assert_eq!(index.default_on_in(36.0, 1), [100]);
-    assert_eq!(index.default_on_in(-1.0, 1), [200]);
+    assert_eq!(index.default_on_in(36.0, 1, true), [100]);
+    assert_eq!(index.default_on_in(-1.0, 1, true), [200]);
+}
+
+#[test]
+fn a_request_taken_of_a_fresh_game_is_kept_apart_from_what_the_data_proves() {
+    let dir = std::env::temp_dir().join(format!("or-fresh-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a scratch folder");
+    let file = dir.join("fresh_game.json");
+    // The script asks for the night configuration from 12 to 19, above the rule set.
+    let text = r#"{"flags_clear": true, "requests": [{"selector": "1", "config": "0x14", "priority": 1000, "hours": [12, 19], "evidence": "made up"}]}"#;
+    std::fs::write(&file, text).expect("written");
+    let (assumed, word) = assumed(&file);
+    assert_ne!(word, 0);
+    assert_eq!(assumed.flags, Some(HashSet::new()));
+    assert_eq!(assumed.requests[0].hours, 0x000F_F000);
+    let rows = switches(
+        &[(100, OPEN), (200, CLOSED)],
+        &[at_start(1, door())],
+        &assumed,
+    );
+    let base = |r: &GroupRow| (r.hours[1], r.inferred[1]);
+    let day = 0x003F_FFC0u32 & !(1 << 6);
+    assert_eq!(
+        base(&rows[0]),
+        (day, day & !0x000F_F000),
+        "the data alone keeps the door open by day"
+    );
+    assert_eq!(
+        base(&rows[1]),
+        (!day & 0x00FF_FFFF, (!day & 0x00FF_FFFF) | 0x000F_F000)
+    );
+    let maps = vec![managed(1, 100), managed(2, 200)];
+    let mut index = index_with(Vec::new(), &[], maps, Vec::new());
+    index.switches = rows;
+    let index = index.finish();
+    assert_eq!(index.default_on_in(13.0, 1, true), [100]);
+    assert_eq!(index.default_on_in(13.0, 1, false), [200]);
+    assert!(index.groups()[0].by_inference(13.0, 1));
+    assert!(!index.groups()[0].by_inference(9.0, 1));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        super::assumed(&file),
+        (Assumed::default(), 0),
+        "no file, nothing taken"
+    );
 }

@@ -11,14 +11,15 @@ use std::path::{Path, PathBuf};
 
 use or_io::container::rpf::{Rpf9BodyKind, Rpf9Content, Rpf9Scan, Rpf9ZlibRun};
 use or_io::gta6::world_state::{
-    layers_loaded, picks, words_of, Selector, WorldState, WorldStateError, LAYER_MANIFEST,
+    layers_loaded, picks_with, words_of, Assumed, Request, Selector, WorldState, WorldStateError,
+    LAYER_MANIFEST,
 };
 use or_io::hash::string_hash;
 use or_job::Cancel;
 use or_title::gta6_mount;
 
 use super::mount::Mount;
-use super::GroupRow;
+use super::{GroupRow, ALL_HOURS};
 
 /// The inflated bytes kept of a body: more than a world-state body was measured to hold.
 const KEEP: usize = 32 << 20;
@@ -131,8 +132,63 @@ fn placed(
     })
 }
 
-/// The group words on at the whole hour `hour` under the selectors of `placed`: those of the layers the level loads, then of every layer a picked configuration loads, until none is added.
-pub(super) fn words_at(placed: &[&Placed], hour: u32) -> HashSet<u64> {
+/// What a fresh game is taken to have that the data does not state, as a person or a study writes it beside the kept index.
+#[derive(Debug, Default, serde::Deserialize)]
+struct FreshGame {
+    /// No flag of the game's flag set is set.
+    #[serde(default)]
+    flags_clear: bool,
+    #[serde(default)]
+    requests: Vec<Asked>,
+}
+
+/// A request a script makes at a fresh game: keys in hexadecimal, and the hours from and to, both inside, past midnight where the first is not earlier; every hour where none.
+#[derive(Debug, serde::Deserialize)]
+struct Asked {
+    selector: String,
+    config: String,
+    priority: i32,
+    #[serde(default)]
+    hours: Option<[u32; 2]>,
+}
+
+/// The mask of the hours `from` to `to`, both inside, round midnight where `from` is not earlier.
+fn hours_mask([from, to]: [u32; 2]) -> u32 {
+    (0..24)
+        .filter(|h| match from < to {
+            true => from <= *h && *h <= to,
+            false => *h <= to || from <= *h,
+        })
+        .fold(0, |mask, h| mask | 1 << h)
+}
+
+/// What the file at `path` takes of a fresh game, and a word of its bytes that a kept index states; nothing and 0 where there is no file.
+pub(super) fn assumed(path: &Path) -> (Assumed, u64) {
+    let Ok(bytes) = std::fs::read(path) else {
+        return (Assumed::default(), 0);
+    };
+    let word = or_io::gta6::hash::name_hash64(&bytes) | 1;
+    let fresh: FreshGame = serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        tracing::warn!(path = %path.display(), %error, "what a fresh game is taken to have was not read");
+        FreshGame::default()
+    });
+    let key = |text: &str| u32::from_str_radix(text.trim_start_matches("0x"), 16).ok();
+    let requests = (fresh.requests.iter())
+        .filter_map(|asked| {
+            Some(Request {
+                selector: key(&asked.selector)?,
+                config: key(&asked.config)?,
+                priority: asked.priority,
+                hours: asked.hours.map_or(ALL_HOURS, hours_mask),
+            })
+        })
+        .collect();
+    let flags = fresh.flags_clear.then(HashSet::new);
+    (Assumed { requests, flags }, word)
+}
+
+/// The group words on at the whole hour `hour` under the selectors of `placed`, with what `assumed` takes of the game: those of the layers the level loads, then of every layer a picked configuration loads, until none is added.
+pub(super) fn words_at(placed: &[&Placed], hour: u32, assumed: &Assumed) -> HashSet<u64> {
     let mut loaded: HashSet<(u32, u32)> = (placed.iter())
         .filter(|p| p.at_start)
         .map(|p| p.layer)
@@ -142,7 +198,9 @@ pub(super) fn words_at(placed: &[&Placed], hour: u32) -> HashSet<u64> {
             .filter(|p| loaded.contains(&p.layer))
             .map(|p| &p.selector)
             .collect();
-        let configs: Vec<_> = picks(&active, hour).into_iter().flatten().collect();
+        let configs: Vec<_> = (picks_with(&active, hour, assumed).into_iter())
+            .flatten()
+            .collect();
         let before = loaded.len();
         loaded.extend(configs.iter().flat_map(|c| c.layers.iter().copied()));
         if loaded.len() == before {
@@ -151,24 +209,35 @@ pub(super) fn words_at(placed: &[&Placed], hour: u32) -> HashSet<u64> {
     }
 }
 
-/// Each group of `words` (its id and word, as its maps state them) with the hours it is on under each set of modes, by the selectors of `placed`.
-pub(super) fn switches(words: &[(u32, u64)], placed: &[Placed]) -> Vec<GroupRow> {
+/// Each group of `words` (its id and word, as its maps state them) with the hours it is on under each set of modes, by the selectors of `placed` alone and with what `assumed` takes of a fresh game.
+pub(super) fn switches(
+    words: &[(u32, u64)],
+    placed: &[Placed],
+    assumed: &Assumed,
+) -> Vec<GroupRow> {
     let mut rows: Vec<GroupRow> = (words.iter())
         .map(|&(id, word)| GroupRow {
             word,
             id,
             pad: 0,
             hours: [0; 8],
+            inferred: [0; 8],
         })
         .collect();
     rows.sort_unstable_by_key(|r| (r.id, r.word));
     rows.dedup_by_key(|r| r.id);
+    let proven = Assumed::default();
     for modes in 0..8u8 {
         let of_modes: Vec<&Placed> = placed.iter().filter(|p| p.mode & modes != 0).collect();
         for hour in 0..24 {
-            let on = words_at(&of_modes, hour);
-            for row in rows.iter_mut().filter(|r| on.contains(&r.word)) {
-                row.hours[usize::from(modes)] |= 1 << hour;
+            let on = words_at(&of_modes, hour, &proven);
+            let taken = match assumed == &proven {
+                true => on.clone(),
+                false => words_at(&of_modes, hour, assumed),
+            };
+            for row in rows.iter_mut() {
+                row.hours[usize::from(modes)] |= u32::from(on.contains(&row.word)) << hour;
+                row.inferred[usize::from(modes)] |= u32::from(taken.contains(&row.word)) << hour;
             }
         }
     }

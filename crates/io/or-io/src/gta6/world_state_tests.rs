@@ -178,6 +178,11 @@ fn classes() -> HashMap<u32, RbmClass> {
     .collect()
 }
 
+/// One rule set of priority 0 holding `rules`.
+fn one(rules: Vec<Rule>) -> Vec<RuleSet> {
+    vec![RuleSet { priority: 0, rules }]
+}
+
 fn block(data_type: u32, data: Vec<u8>) -> RbmDataBlock {
     RbmDataBlock {
         data_type,
@@ -270,10 +275,10 @@ fn a_body_reads_to_its_selectors_configurations_and_rules() {
                     ..Config::default()
                 },
             ],
-            rules: vec![Rule {
+            rule_sets: one(vec![Rule {
                 config: NIGHT,
                 condition: Condition::TimeOfDay { start: 22, end: 6 },
-            }],
+            }]),
         }]
     );
     let on = |hour| {
@@ -355,14 +360,14 @@ fn a_rule_on_another_selector_follows_that_selector_s_pick() {
         key: 8,
         default: DAY,
         configs: vec![config(DAY, 0x11), config(NIGHT, CLOSED)],
-        rules: vec![Rule {
+        rule_sets: one(vec![Rule {
             config: NIGHT,
             condition: Condition::InConfig {
                 selector: 7,
                 config: DAY,
                 from_start,
             },
-        }],
+        }]),
     };
     let keys = |s: &[&Selector]| -> Vec<Option<u32>> {
         picks(s, 12).iter().map(|c| c.map(|c| c.key)).collect()
@@ -386,7 +391,7 @@ fn a_rule_nothing_evaluates_never_picks_and_the_default_follows() {
         key: 1,
         default: DAY,
         configs: vec![config(DAY, OPEN), config(NIGHT, CLOSED)],
-        rules: vec![
+        rule_sets: one(vec![
             Rule {
                 config: NIGHT,
                 condition: Condition::Other("made_up".into()),
@@ -395,7 +400,7 @@ fn a_rule_nothing_evaluates_never_picks_and_the_default_follows() {
                 config: NIGHT,
                 condition: Condition::TimeOfDay { start: 0, end: 5 },
             },
-        ],
+        ]),
     };
     assert_eq!(selector.pick(3).map(|c| c.key), Some(NIGHT));
     assert_eq!(selector.pick(12).map(|c| c.key), Some(DAY));
@@ -421,6 +426,73 @@ fn a_rule_nothing_evaluates_never_picks_and_the_default_follows() {
     };
     assert_eq!(words_on([&on], 12), HashSet::from([OPEN]));
     assert!(words_on([&on, &off], 12).is_empty());
+}
+
+#[test]
+fn the_highest_request_wins_the_first_of_equal_ones_and_none_leaves_the_default() {
+    let config = |key| Config {
+        key,
+        ..Config::default()
+    };
+    let always = |config| Rule {
+        config,
+        condition: Condition::True,
+    };
+    let set = |priority, rules| RuleSet { priority, rules };
+    let mut selector = Selector {
+        key: 5,
+        default: DAY,
+        configs: vec![config(DAY), config(NIGHT), config(0x33)],
+        rule_sets: vec![set(10, vec![always(NIGHT)]), set(10, vec![always(0x33)])],
+    };
+    let picked =
+        |s: &Selector, assumed: &Assumed| s.pick_with(12, &|_, _| false, assumed).map(|c| c.key);
+    let none = Assumed::default();
+    assert_eq!(
+        picked(&selector, &none),
+        Some(NIGHT),
+        "of equal priorities the first made stands"
+    );
+    selector.rule_sets[1].priority = 15;
+    assert_eq!(picked(&selector, &none), Some(0x33));
+    // A script's request above both wins, at the hours it stands.
+    let request = |priority| Assumed {
+        requests: vec![Request {
+            selector: 5,
+            config: DAY,
+            priority,
+            hours: 1 << 12,
+        }],
+        flags: None,
+    };
+    assert_eq!(picked(&selector, &request(1000)), Some(DAY));
+    assert_eq!(
+        picked(&selector, &request(15)),
+        Some(0x33),
+        "a tie goes to the rule set made first"
+    );
+    assert_eq!(
+        selector
+            .pick_with(13, &|_, _| false, &request(1000))
+            .map(|c| c.key),
+        Some(0x33)
+    );
+    selector.rule_sets.clear();
+    assert_eq!(picked(&selector, &none), Some(DAY));
+}
+
+#[test]
+fn a_flag_holds_only_where_the_flag_set_is_known() {
+    let flag = Condition::Flag(0x77);
+    let not = Condition::Not(Box::new(Condition::Flag(0x77)));
+    let never = |_, _| false;
+    assert_eq!(flag.holds(3), None);
+    assert_eq!(not.holds(3), None);
+    let clear = HashSet::new();
+    assert_eq!(flag.holds_with(3, &never, Some(&clear)), Some(false));
+    assert_eq!(not.holds_with(3, &never, Some(&clear)), Some(true));
+    let set = HashSet::from([0x77]);
+    assert_eq!(flag.holds_with(3, &never, Some(&set)), Some(true));
 }
 
 #[test]

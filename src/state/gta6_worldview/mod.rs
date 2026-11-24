@@ -122,6 +122,8 @@ pub struct Viewer {
     pub enabled: Enabled,
     /// Whether the person chose the script-managed groups, which the hour then no longer sets.
     pub groups_chosen: bool,
+    /// Whether the groups at rest are those the data alone proves, without what a fresh game is taken to have.
+    pub groups_proven: bool,
     /// The lights of the maps around the camera, once an index is held.
     pub lights: Option<lights::Lights>,
     /// How many models wait to be read.
@@ -162,6 +164,7 @@ impl Default for Viewer {
             hour: NOON,
             enabled: Enabled::default(),
             groups_chosen: false,
+            groups_proven: false,
             lights: None,
             models_waiting: 0,
             textures_waiting: 0,
@@ -237,7 +240,8 @@ impl Viewer {
                 Some(index) => Built::Index(Box::new(index), places(&cancel)),
                 None => {
                     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        index::build(&root, &cancel, &progress)
+                        let fresh = kept.as_deref().map(index::fresh_beside);
+                        index::build(&root, fresh.as_deref(), &cancel, &progress)
                     }));
                     match built {
                         Ok(Ok(Some(index))) => {
@@ -389,7 +393,7 @@ impl Viewer {
         world.look(self.camera.position, self.distance_scale());
         // The groups the world-state data has on at this hour and these modes, unless the person chose them.
         if let (false, Some(index)) = (self.groups_chosen, &self.index) {
-            let on = index.default_on_in(self.hour, self.enabled.modes);
+            let on = index.default_on_in(self.hour, self.enabled.modes, self.groups_proven);
             if on != self.enabled.groups {
                 self.enabled.groups = on;
             }

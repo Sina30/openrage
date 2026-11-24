@@ -13,7 +13,7 @@ use super::{Report, WorldIndex};
 
 const MAGIC: &[u8; 8] = b"ORWIDX\0\0";
 /// The version of the kept index: a change to it, or to what a build reads, takes another.
-const VERSION: u64 = 6;
+const VERSION: u64 = 7;
 
 /// The size and modification time of the archive at `path`, in nanoseconds.
 fn stat(path: &Path) -> Option<(u64, u64)> {
@@ -55,9 +55,14 @@ pub fn kept_at(config: &Path, root: &Path) -> PathBuf {
     config.join("gta6_world").join(format!("{name:016x}.index"))
 }
 
+/// Where what a fresh game is taken to have is written for the index kept at `index`: beside it.
+pub fn fresh_beside(index: &Path) -> PathBuf {
+    index.with_file_name("fresh_game.json")
+}
+
 impl WorldIndex {
-    /// What a kept index starts with: its version, then each archive's path, size and time.
-    fn head(archives: &[PathBuf]) -> Vec<u8> {
+    /// What a kept index starts with: its version, then each archive's path, size and time, then the word of what a fresh game is taken to have.
+    fn head(archives: &[PathBuf], assumed: u64) -> Vec<u8> {
         let mut head = MAGIC.to_vec();
         head.extend(VERSION.to_le_bytes());
         head.extend((archives.len() as u64).to_le_bytes());
@@ -69,6 +74,7 @@ impl WorldIndex {
             }
             head.extend(text.as_bytes());
         }
+        head.extend(assumed.to_le_bytes());
         head
     }
 
@@ -79,7 +85,7 @@ impl WorldIndex {
         }
         let beside = file.with_extension("tmp");
         let mut out = BufWriter::new(File::create(&beside)?);
-        let head = Self::head(&self.archives);
+        let head = Self::head(&self.archives, self.assumed);
         out.write_all(&(head.len() as u64).to_le_bytes())?;
         out.write_all(&head)?;
         put_rows(&mut out, &self.maps)?;
@@ -104,7 +110,8 @@ impl WorldIndex {
         let mut head = vec![0; len.min(1 << 20)];
         from.read_exact(&mut head).ok()?;
         let archives = archives_of(&head)?;
-        if head != Self::head(&archives) {
+        let (_, assumed) = super::states::assumed(&fresh_beside(file));
+        if head != Self::head(&archives, assumed) {
             return None;
         }
         let read = |from: &mut BufReader<File>| -> io::Result<Self> {
@@ -119,6 +126,7 @@ impl WorldIndex {
                 lights: rows(from)?,
                 slod: rows(from)?,
                 switches: rows(from)?,
+                assumed,
                 ..WorldIndex::default()
             };
             let report: Vec<Report> = rows(from)?;
