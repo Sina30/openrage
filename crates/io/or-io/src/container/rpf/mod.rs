@@ -16,6 +16,8 @@ pub mod rpf9_grow;
 #[cfg(feature = "gta6")]
 pub mod rpf9_scan;
 #[cfg(feature = "gta6")]
+pub mod rpf9_toc;
+#[cfg(feature = "gta6")]
 pub mod rpf9_write;
 pub mod rsc8;
 pub mod version;
@@ -63,6 +65,8 @@ pub use rpf9_scan::{
 };
 #[cfg(feature = "gta6")]
 pub use rpf9_scan::{rpf9_block_streams, rpf9_names_by_count_at, Rpf9NamesByCount};
+#[cfg(feature = "gta6")]
+pub use rpf9_toc::{GtaViKeys, Rpf9Group, Rpf9Toc, GTA6_SNAPSHOT_ENV, GTA6_SNAPSHOT_FILE_NAME};
 #[cfg(feature = "gta6")]
 pub use rpf9_write::write_rpf9_resource_capped;
 #[cfg(feature = "gta6")]
