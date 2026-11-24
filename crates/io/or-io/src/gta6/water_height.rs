@@ -104,6 +104,8 @@ pub struct WaterGround {
     /// The fallback's texels a tile's side spans.
     block: u32,
     fallback: Heights,
+    /// The sum of the fallback's texels in each block, row by row.
+    sums: Vec<u64>,
     tiles: HashMap<(u32, u32), Laid>,
 }
 
@@ -129,6 +131,11 @@ impl WaterGround {
                 fallback.width, fallback.height, tiles_across[0], tiles_across[1]
             )));
         }
+        let mut sums = vec![0u64; (tiles_across[0] * tiles_across[1]) as usize];
+        for (k, v) in fallback.values.iter().enumerate() {
+            let (i, j) = (k as u32 % fallback.width, k as u32 / fallback.width);
+            sums[((j / block) * tiles_across[0] + i / block) as usize] += u64::from(*v);
+        }
         Ok(Self {
             west: atlas.west(),
             north: atlas.north(),
@@ -136,6 +143,7 @@ impl WaterGround {
             tiles_across,
             block,
             fallback,
+            sums,
             tiles: HashMap::new(),
         })
     }
@@ -146,13 +154,28 @@ impl WaterGround {
             return None;
         }
         let small = tile.shrunk(self.block)?;
+        let own: u64 = small.values.iter().map(|v| u64::from(*v)).sum();
+        // The summed difference is at least the difference of the sums, so blocks are tried by
+        // that, and none is tried once it reaches the best found.
+        let mut order: Vec<(u64, u32, u32)> = (0..self.tiles_across[1])
+            .flat_map(|row| (0..self.tiles_across[0]).map(move |col| (col, row)))
+            .map(|(col, row)| {
+                (
+                    self.sums[(row * self.tiles_across[0] + col) as usize].abs_diff(own),
+                    row,
+                    col,
+                )
+            })
+            .collect();
+        order.sort_unstable();
         let mut best: Option<((u32, u32), u64)> = None;
-        for row in 0..self.tiles_across[1] {
-            for col in 0..self.tiles_across[0] {
-                let bound = best.map_or(u64::MAX, |(_, error)| error);
-                if let Some(error) = self.difference(&small, col, row, bound) {
-                    best = Some(((col, row), error));
-                }
+        for (least, row, col) in order {
+            let bound = best.map_or(u64::MAX, |(_, error)| error);
+            if least >= bound {
+                break;
+            }
+            if let Some(error) = self.difference(&small, col, row, bound) {
+                best = Some(((col, row), error));
             }
         }
         let (at, error) = best?;
