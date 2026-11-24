@@ -117,7 +117,7 @@ pub struct WorldDrawn {
 
 /// What a layout was made for: the selection, the camera, what is on the device, the scale of
 /// the level-of-detail distances and the height of the screen.
-type LaidFor = (u64, [u32; 16], u64, u32, u32);
+type LaidFor = (u64, [u32; 16], u64, u32, u32, bool);
 
 /// What the day was worked out for: the hour, the days, the weather, the camera's place north
 /// in hundreds of metres, and whether the install's tables gave one.
@@ -412,6 +412,8 @@ impl RenderBridge {
             world.drawn = WorldDrawn::default();
             return;
         };
+        // What casts a shadow into the view draws as well, where the sun's shadows are cast.
+        let casts = self.renderer.shadows() && self.renderer.has_deferred();
         // Nothing moved, arrived or left: the device holds this frame's instances already.
         let key = (
             selected.version,
@@ -419,6 +421,7 @@ impl RenderBridge {
             world.changes,
             lod_scale.to_bits(),
             height,
+            casts,
         );
         if world.laid_for == Some(key) {
             return;
@@ -437,8 +440,6 @@ impl RenderBridge {
                 _ => world.layout.model(std::iter::empty()),
             }
         }
-        // What casts a shadow into the view draws as well, where the sun's shadows are cast.
-        let casts = self.renderer.shadows() && self.renderer.has_deferred();
         let view = View {
             frustum: Frustum::of(view_proj),
             eye,
@@ -467,8 +468,19 @@ impl RenderBridge {
                     continue;
                 }
                 let (away, which) = world.layout.nearest[slot as usize];
-                let instance = &instances[which as usize];
                 *drawn = frame;
+                // A run that only casts shadows into the view asks for no map.
+                if away.is_infinite() {
+                    let away = or_renderer::world::SHADOW_FAR;
+                    runs.push(Run {
+                        model,
+                        level,
+                        slot,
+                        away,
+                    });
+                    continue;
+                }
+                let instance = &instances[which as usize];
                 if away < nearest {
                     (nearest, *at) = (away, instance.centre);
                 }
@@ -514,7 +526,9 @@ impl RenderBridge {
                 };
                 match world.textures.map.get_mut(&key) {
                     Some(Texture::Ready(ready)) => {
-                        if ready.used != frame {
+                        if ready.used != frame
+                            || eye.distance(material.at) < eye.distance(ready.at)
+                        {
                             (ready.used, ready.at) = (frame, material.at);
                         }
                         *stamp = ready.stamp;
@@ -597,7 +611,7 @@ impl RenderBridge {
         let (textures, textures_unread) = world.textures.counts();
         world.drawn = WorldDrawn {
             selected: instances.len(),
-            seen: world.layout.seen.len(),
+            seen: world.layout.seen.iter().filter(|seen| seen.shown).count(),
             draws: draws.len(),
             models: world.models.len(),
             textures,

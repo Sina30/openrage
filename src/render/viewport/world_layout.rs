@@ -44,6 +44,8 @@ pub(super) struct Seen {
     pub at: u32,
     pub slot: u32,
     pub away: f32,
+    /// Whether the camera sees the instance itself, and not only the shadow it casts into the view.
+    pub shown: bool,
 }
 
 /// A frame's layout, kept so that the next reuses its memory.
@@ -60,7 +62,8 @@ pub(super) struct Layout {
     /// Where each slot's run starts and ends among `laid`.
     pub starts: Vec<u32>,
     pub ends: Vec<u32>,
-    /// The nearest instance seen in each slot: how far, and its place in the selection.
+    /// The nearest instance the camera itself sees in each slot: how far, and its place in the
+    /// selection; infinitely far for a slot that only casts shadows into the view.
     pub nearest: Vec<(f32, u32)>,
     pub laid: Vec<WorldInstance>,
 }
@@ -117,6 +120,7 @@ impl Layout {
                         at,
                         slot: slots.start + level(untils, away, view.lod_scale) as u32,
                         away,
+                        shown: whole || view.frustum.sees_sphere(instance.centre, radius),
                     })
                 })
             })
@@ -135,7 +139,7 @@ impl Layout {
         for seen in &self.seen {
             self.starts[seen.slot as usize] += 1;
             let nearest = &mut self.nearest[seen.slot as usize];
-            if seen.away < nearest.0 {
+            if seen.shown && seen.away < nearest.0 {
                 *nearest = (seen.away, seen.at);
             }
         }
@@ -292,6 +296,11 @@ mod tests {
         assert!(layout.seen.is_empty());
         layout.cull(&chunks, &instances, &view(Some(100.0)));
         assert_eq!(layout.seen.len(), 1);
+        // It draws for its shadow alone, and is no slot's nearest.
+        assert!(!layout.seen[0].shown);
+        layout.place(&instances);
+        assert_eq!(layout.run(0), 0..1);
+        assert!(layout.nearest[0].0.is_infinite());
     }
 
     #[test]
