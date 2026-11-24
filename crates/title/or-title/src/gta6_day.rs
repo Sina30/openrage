@@ -11,10 +11,12 @@ use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9Content, Rpf9Scan}
 use or_io::gta5::data::timecycle::{Keyframe, TimeTable, Timecycle};
 use or_io::gta5::data::visual_settings::VisualSettings;
 use or_io::gta6::timecycle::{
-    frame_hours, frame_keyframe, high_level_vars, modifiers, sun_angle, sun_lights, sun_roll,
-    sun_round, sun_towards, DayTable, Modifier, LATITUDE,
+    apply_modifier, blend_modifiers, frame_hours, frame_keyframe, high_level_vars, modifiers,
+    sun_angle, sun_roll, sun_round, sun_towards, DayTable, Modifier, FRAME_DIFFUSE, LATITUDE,
 };
 use or_io::gta6::weather::{WeatherData, WeatherSet};
+
+use crate::gta6_exposure::{light, moon_towards, ExposureSettings};
 
 /// What a text of the day may inflate to; a longer one is passed over.
 const BODY_LIMIT: u64 = 16 << 20;
@@ -55,8 +57,21 @@ pub struct Moment {
     pub frame_hours: f32,
     /// The way towards the sun, x east, y north, z up.
     pub sun: [f32; 3],
+    /// The way towards the moon.
+    pub moon: [f32; 3],
+    /// The exposure the moment's light is given at, in stops.
+    pub stops: f32,
+    /// What a light the game states in its own unit is multiplied by to be the frame's: the exposure over pi.
+    pub light_scale: f32,
     pub moon_dim: f32,
     pub wetness: f32,
+}
+
+type Vars = BTreeMap<String, [f32; 2]>;
+
+/// The modifier `of` holds in `slot`.
+fn in_slot<'a>(of: &[(&str, &'a Vars)], slot: &str) -> Option<&'a Vars> {
+    (of.iter()).find(|(s, _)| *s == slot).map(|(_, vars)| *vars)
 }
 
 /// The head of `text` a root element is sought in.
@@ -135,20 +150,82 @@ impl DayTables {
         (of_type.or_else(|| self.timecycle.cycle(weather))).map(|c| c.name.as_str())
     }
 
+    /// The modifier of the weather type `weather` in each of its slots, by the slot's element, in the file's order.
+    fn modifiers_of(&self, weather: &str) -> Vec<(&str, &Vars)> {
+        let named =
+            |name: &str| (self.modifiers.iter()).find(|m| m.name.eq_ignore_ascii_case(name));
+        let slots = self
+            .weather
+            .weather(weather)
+            .map(|w| w.modifiers.as_slice());
+        (slots.unwrap_or_default().iter())
+            .filter_map(|(slot, name)| Some((slot.as_str(), &named(name)?.vars)))
+            .collect()
+    }
+
+    /// Lay the modifiers of the weathers `from` and `to` over `own`, slot by slot, each blended by `along`.
+    fn modify(&self, own: &mut Keyframe, from: &str, to: &str, along: f32) {
+        let (a, b) = (self.modifiers_of(from), self.modifiers_of(to));
+        let mut slots: Vec<&str> = a.iter().map(|(slot, _)| *slot).collect();
+        let more: Vec<&str> = (b.iter().map(|(slot, _)| *slot))
+            .filter(|slot| !slots.contains(slot))
+            .collect();
+        slots.extend(more);
+        let none = BTreeMap::new();
+        for slot in slots {
+            let (x, y) = (in_slot(&a, slot), in_slot(&b, slot));
+            // ⚠ Inferred: a slot one weather leaves empty is the other's modifier whole.
+            let blend = blend_modifiers(x.unwrap_or(&none), y.unwrap_or(&none), along);
+            apply_modifier(own, &blend);
+        }
+    }
+
     /// The moment at `hour` (0 to 24) in `weather` (a weather type's name, else a cycle's) for a camera `y` metres north on the map; `None` where no cycle is read for it or the time table is not GTA VI's.
-    // ponytail: a weather type's modifiers are read and not laid over its cycle; how a modifier's two values meet a keyframe is the game's, per variable, and not read.
     pub fn moment(&self, hour: f32, weather: &str, y: f32) -> Option<Moment> {
+        self.moment_between(hour, weather, weather, 0.0, y)
+    }
+
+    /// The moment at `hour` on the way from weather `from` to weather `to`, `along` (0 to 1) of it: their cycles and their modifiers blended, in the GLOBAL region.
+    pub fn moment_between(
+        &self,
+        hour: f32,
+        from: &str,
+        to: &str,
+        along: f32,
+        y: f32,
+    ) -> Option<Moment> {
         let latitude = self.latitude(y);
         let round = sun_round(hour);
         let sun = sun_towards(round, latitude);
         let between = self.table.locate(sun_angle(sun))?;
-        let cycle = self.cycle_of(weather)?;
-        let own = (self.timecycle).keyframe_between(between, cycle, cycle, 0.0, 0.0)?;
+        let (a, b) = (self.cycle_of(from)?, self.cycle_of(to)?);
+        let along = along.clamp(0.0, 1.0);
+        let mut own = (self.timecycle).keyframe_between(between, a, b, along, 0.0)?;
+        self.modify(&mut own, from, to, along);
         let frame_hours = frame_hours(round);
-        let degrees = |name: &str| self.visual_settings.get_f32(name, 0.0).to_radians();
-        let rain = self.data_of(weather);
+        let visual = &self.visual_settings;
+        let degrees = |name: &str| visual.get_f32(name, 0.0).to_radians();
+        let moon = {
+            // ⚠ Once round a day, the executable's own count at rest: the setting's name is not known.
+            let day = hour / 24.0;
+            let roll = visual.get_f32("misc.Sun.Roll", 122.0)
+                + visual.get_f32("misc.Moon.RollOffset", 240.0);
+            let wobble = visual.get_f32("misc.Moon.Wobble.Offset", 0.8)
+                + visual.get_f32("misc.Moon.Wobble.Amplitude", 0.1)
+                    * (std::f32::consts::TAU
+                        * day
+                        * visual.get_f32("misc.Moon.Wobble.Frequency", 0.0))
+                    .sin();
+            moon_towards(day, roll.to_radians(), wobble)
+        };
+        let exposure = ExposureSettings::of(&|name, default| visual.get_f32(name, default));
+        let (light, stops) = light(&own, sun, moon, &exposure);
+        let rain = |weather: &str| {
+            self.data_of(weather)
+                .map_or(0.0, |d| d.rain.clamp(0.0, 1.0))
+        };
         Some(Moment {
-            keyframe: frame_keyframe(&own, sun_lights(frame_hours)),
+            keyframe: frame_keyframe(&own, &light),
             own,
             table: TimeTable {
                 sun_roll: sun_roll(latitude),
@@ -163,8 +240,11 @@ impl DayTables {
             },
             frame_hours,
             sun,
-            moon_dim: self.visual_settings.get_f32("misc.MoonDimMult", 1.0),
-            wetness: rain.map_or(0.0, |d| d.rain.clamp(0.0, 1.0)),
+            moon,
+            stops,
+            light_scale: light.exposure * FRAME_DIFFUSE,
+            moon_dim: visual.get_f32("misc.MoonDimMult", 1.0),
+            wetness: rain(from) + (rain(to) - rain(from)) * along,
         })
     }
 }
