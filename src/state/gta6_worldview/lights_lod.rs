@@ -12,7 +12,6 @@ use or_io::meta::binary::rbm::schema::RbmModel;
 
 const LOD_LIGHT: u32 = lit(b"CLODLight");
 const DISTANT_LIGHT: u32 = lit(b"CDistantLODLight");
-const PROBE: u32 = lit(b"CReflectionProbeData");
 /// Where a `CMapData` holds each list.
 const PROBES_AT: usize = 0x190;
 const LOD_AT: usize = 0x1F0;
@@ -21,7 +20,6 @@ const MAP_DATA_SIZE: usize = 0x460;
 const PROBE_SIZE: usize = 0x60;
 const STRUCT: u8 = 0x05;
 const ARRAY: u8 = 0x52;
-const VEC3V: u8 = 0x33;
 
 /// Each member this reads, where its class holds it and its type code, which a body's own table must agree with.
 const LAYOUT: &[(u32, &str, &[u8], usize, u8)] = &[
@@ -45,9 +43,6 @@ const LAYOUT: &[(u32, &str, &[u8], usize, u8)] = &[
     (DISTANT_LIGHT, "CDistantLODLight", b"position", 0x00, ARRAY),
     (DISTANT_LIGHT, "CDistantLODLight", b"RGB", 0x10, ARRAY),
     (DISTANT_LIGHT, "CDistantLODLight", b"intensity", 0x20, ARRAY),
-    (DISTANT_LIGHT, "CDistantLODLight", b"lightType", 0x90, ARRAY),
-    (PROBE, "CReflectionProbeData", b"minExtents", 0x00, VEC3V),
-    (PROBE, "CReflectionProbeData", b"maxExtents", 0x10, VEC3V),
 ];
 
 /// Why the lists of a map body do not read.
@@ -74,15 +69,6 @@ pub struct Distant {
     // ⚠ The order of the bytes is GTA V's (blue lowest), not measured on this build.
     pub rgb: [u8; 3],
     pub intensity: f32,
-    /// 1 a point, 2 a spot, 4 a capsule, as a placed light's.
-    pub light_type: u8,
-}
-
-/// A reflection probe's box.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Probe {
-    pub min: [f32; 3],
-    pub max: [f32; 3],
 }
 
 /// The lists of one map body.
@@ -92,7 +78,8 @@ pub struct MapLod {
     pub falloff: Vec<f32>,
     pub falloff_exponent: Vec<f32>,
     pub distant: Vec<Distant>,
-    pub probes: Vec<Probe>,
+    /// How many reflection probes the map holds; nothing draws them.
+    pub probes: usize,
 }
 
 fn broken(what: &'static str, why: impl Into<String>) -> LodError {
@@ -175,28 +162,22 @@ pub fn read(model: &RbmModel) -> Result<MapLod, LodError> {
         elements(model, root, DISTANT_AT + member, stride, what)
     };
     let (position, rgb) = (at(0x00, 12, "position")?, at(0x10, 4, "RGB")?);
-    let (intensity, kind) = (at(0x20, 4, "intensity")?, at(0x90, 1, "lightType")?);
-    if [rgb.len(), intensity.len(), kind.len()] != [position.len(); 3] {
+    let intensity = at(0x20, 4, "intensity")?;
+    if [rgb.len(), intensity.len()] != [position.len(); 2] {
         return Err(broken("distant lights", "its lists are not as long"));
     }
-    let distant: Vec<Distant> = (position.zip(rgb).zip(intensity.zip(kind)))
-        .map(|((position, rgb), (intensity, kind))| Distant {
+    let distant: Vec<Distant> = (position.zip(rgb).zip(intensity))
+        .map(|((position, rgb), intensity)| Distant {
             position: floats(position),
             rgb: [rgb[2], rgb[1], rgb[0]],
             intensity: floats::<1>(intensity)[0],
-            light_type: kind[0],
         })
         .collect();
     let finite = |d: &Distant| d.position.iter().all(|x| x.is_finite());
     if !distant.iter().all(finite) {
         return Err(broken("distant lights", "a position is no number"));
     }
-    let probes = elements(model, root, PROBES_AT, PROBE_SIZE, "reflection probes")?
-        .map(|p| Probe {
-            min: floats(&p[0x00..]),
-            max: floats(&p[0x10..]),
-        })
-        .collect();
+    let probes = elements(model, root, PROBES_AT, PROBE_SIZE, "reflection probes")?.len();
     Ok(MapLod {
         falloff,
         falloff_exponent,
@@ -220,19 +201,16 @@ pub(super) mod tests {
         values.iter().flat_map(|v| v.to_le_bytes()).collect()
     }
 
-    /// A map body of `falloff` level-of-detail lights and of distant lights (position, RGB word, intensity, type).
+    /// A map body of `falloff` level-of-detail lights and of distant lights (position, RGB word, intensity).
     // ⚠ The model declares no class: an entry of a class table cannot be made outside or-io, so
     // the refusal of a body that declares a list elsewhere is not tested here.
-    pub(in super::super) fn model(
-        falloff: &[f32],
-        distant: &[([f32; 3], u32, f32, u8)],
-    ) -> RbmModel {
+    pub(in super::super) fn model(falloff: &[f32], distant: &[([f32; 3], u32, f32)]) -> RbmModel {
         let mut root = vec![0u8; MAP_DATA_SIZE];
         let n = falloff.len() as u16;
         header(&mut root, LOD_AT + 0x10, 2, n);
         header(&mut root, LOD_AT + 0x20, 3, n);
         let m = distant.len() as u16;
-        for (k, member) in [0x00, 0x10, 0x20, 0x90].into_iter().enumerate() {
+        for (k, member) in [0x00, 0x10, 0x20].into_iter().enumerate() {
             header(&mut root, DISTANT_AT + member, 4 + k as u64, m);
         }
         let blocks: Vec<(u32, Vec<u8>)> = vec![
@@ -248,7 +226,6 @@ pub(super) mod tests {
                 0x21,
                 distant.iter().flat_map(|d| d.2.to_le_bytes()).collect(),
             ),
-            (0x11, distant.iter().map(|d| d.3).collect()),
         ];
         RbmModel {
             classes: Default::default(),
@@ -270,7 +247,7 @@ pub(super) mod tests {
     fn the_lights_of_a_map_are_read_list_by_list() {
         let lists = read(&model(
             &[3.0, 10.0],
-            &[([1.0, 2.0, 3.0], 0xFF10_2030, 80.0, 2)],
+            &[([1.0, 2.0, 3.0], 0xFF10_2030, 80.0)],
         ))
         .expect("a map body");
         assert_eq!(lists.falloff, [3.0, 10.0]);
@@ -278,11 +255,8 @@ pub(super) mod tests {
         assert_eq!(lists.distant.len(), 1);
         let light = lists.distant[0];
         assert_eq!(light.position, [1.0, 2.0, 3.0]);
-        assert_eq!(
-            (light.rgb, light.intensity, light.light_type),
-            ([0x10, 0x20, 0x30], 80.0, 2)
-        );
-        assert!(lists.probes.is_empty());
+        assert_eq!((light.rgb, light.intensity), ([0x10, 0x20, 0x30], 80.0));
+        assert_eq!(lists.probes, 0);
         assert_eq!(read(&model(&[], &[])), Ok(MapLod::default()));
     }
 

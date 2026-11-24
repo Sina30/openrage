@@ -277,7 +277,7 @@ impl Lights {
             placed: sum(|m| m.placed.len()),
             lod: sum(|m| m.lod.falloff.len()),
             distant: sum(|m| m.lod.distant.len()),
-            probes: sum(|m| m.lod.probes.len()),
+            probes: sum(|m| m.lod.probes),
             drawn: self.drawn,
         }
     }
@@ -316,7 +316,6 @@ mod tests {
             position: [*x, 0.0, 0.0],
             rgb: [255, 0, 51],
             intensity: 80.0,
-            light_type: 1,
         };
         MapLights {
             lod: MapLod {
