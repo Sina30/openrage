@@ -169,6 +169,13 @@ fn dropped(in: VsOut, alpha: f32, cut: f32) -> bool {
 
 // Below this a texel of a cutout is not drawn.
 const CUTOUT_ALPHA: f32 = 0.5;
+
+// The coverage a cutout is cut by: its colour map's first level, whatever the screen needs.
+// ⚠ A smaller level averages a mask of thin leaves and blades under the cut: a tree a hundred metres off would lose every leaf.
+fn cut_coverage(in: VsOut) -> f32 {
+    let top = textureSampleLevel(layer0_colour, map_smp, in.uv, 0.0).a * in.colour.a;
+    return select(top, 1.0, m.family.x == FOUR_LAYER);
+}
 // Below this a texel of what blends adds nothing.
 const BLEND_ALPHA: f32 = 1.0 / 255.0;
 // The most the G-buffer's word for a surface's own light holds, and the most its exponent word holds.
@@ -449,7 +456,7 @@ fn plain_lit(s: Surface, world_pos: vec3<f32>) -> vec3<f32> {
 // A surface of the plain modes that writes depth: `cut` is the coverage under which it is not drawn, and `glow` how far it shows its own colour unlit.
 fn forward(in: VsOut, front_facing: bool, cut: f32, glow: f32) -> vec4<f32> {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.coverage, cut)) {
+    if (dropped(in, select(s.coverage, cut_coverage(in), cut >= CUTOUT_ALPHA), cut)) {
         discard;
     }
     return vec4<f32>(mix(plain_lit(s, in.world_pos), diffuse_of(s), glow), 1.0);
@@ -508,7 +515,7 @@ fn words(s: Surface) -> GBufferOut {
 
 fn gbuffer(in: VsOut, front_facing: bool, cut: f32) -> GBufferOut {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.coverage, cut)) {
+    if (dropped(in, select(s.coverage, cut_coverage(in), cut >= CUTOUT_ALPHA), cut)) {
         discard;
     }
     return words(s);
@@ -579,8 +586,7 @@ fn fs_cast(in: VsOut) {
 // A cutout casts the shadow of what it draws.
 @fragment
 fn fs_cast_cutout(in: VsOut) {
-    let alpha = textureSample(layer0_colour, map_smp, in.uv).a * in.colour.a;
-    if (dropped(in, alpha, CUTOUT_ALPHA)) {
+    if (dropped(in, cut_coverage(in), CUTOUT_ALPHA)) {
         discard;
     }
 }

@@ -248,7 +248,9 @@ fn frame_texel(in: VsOut, ray: vec3<f32>, frame: u32, weight: f32) -> vec4<f32> 
     let quadrant = vec2<f32>(f32(in.slot & 1u), f32((in.slot >> 1u) & 1u));
     let at = (quadrant + (vec2<f32>(cell) + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0))) / GRID) * 0.5;
     let texel = textureSample(atlas, atlas_smp, at, in.slot >> 2u);
-    return vec4<f32>(texel.rgb, texel.a * weight * select(0.0, 1.0, inside));
+    // ⚠ Coverage from the first level: the smaller ones average a crown's gaps under the cut, and a far card would draw nothing.
+    let covered = textureSampleLevel(atlas, atlas_smp, at, in.slot >> 2u, 0.0).a;
+    return vec4<f32>(texel.rgb, covered * weight * select(0.0, 1.0, inside));
 }
 
 // The three frames blended by their weights: the linear colour, and the coverage.
@@ -359,7 +361,8 @@ fn fs_bake(in: VsOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_bake_cutout(in: VsOut) -> @location(0) vec4<f32> {
     let colour = textureSample(colour_tex, colour_smp, in.uv);
-    if (colour.a * in.colour.a < 0.5) {
+    // ⚠ Cut by the map's first level, as the world cuts: a frame 32 texels wide samples a level that has averaged the leaves away.
+    if (textureSampleLevel(colour_tex, colour_smp, in.uv, 0.0).a * in.colour.a < 0.5) {
         discard;
     }
     return vec4<f32>(colour.rgb, 1.0);
