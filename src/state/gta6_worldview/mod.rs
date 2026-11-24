@@ -27,7 +27,7 @@ pub(crate) mod stream;
 mod texture;
 pub(crate) mod water;
 
-pub use model::{Bucket, CpuLod, CpuMesh, CpuModel, Maps};
+pub use model::{Bucket, CpuModel, Maps};
 pub use texture::CpuTexture;
 
 use index::{Enabled, ModelRef, WorldIndex};
@@ -73,7 +73,7 @@ pub struct Viewer {
     /// A texture is asked for by its key and the screen size it is needed at.
     textures: Option<Pool<(u64, u32), Option<CpuTexture>>>,
     /// The bytes of the models and textures the workers read that were not taken yet.
-    held: Arc<AtomicU64>,
+    pub held: Arc<AtomicU64>,
     /// The hour and what is enabled, as the world's thread was last told them.
     sent: Option<(f32, Enabled)>,
     build: Option<Build>,
@@ -362,18 +362,21 @@ impl Viewer {
         Some(latest)
     }
 
-    /// Ask for the textures of `wanted` in place of those asked for before: each with how soon it
-    /// is needed, the lowest first, its key, and the longest side it is seen at in pixels.
+    /// Ask for `wanted` (how soon, key, longest side seen in pixels) in place of what was asked before.
     pub fn want_textures(&mut self, wanted: Vec<(f32, u64, u32)>) {
-        self.textures_waiting = wanted.len();
+        // ⚠ With no pack indexed nothing reads a texture: none waits, or what waits for none never ends.
+        self.textures_waiting = if self.textures.is_some() {
+            wanted.len()
+        } else {
+            0
+        };
         if let Some(textures) = &self.textures {
             let asked = wanted.into_iter();
             textures.want(asked.map(|(soon, key, pixels)| (soon, (key, pixels))).collect());
         }
     }
 
-    /// The next texture that arrived, with the size it was asked for at: `None` where no pack
-    /// holds it or none of it reads, and smaller than asked where nothing larger of it does.
+    /// The next texture that arrived, with the pixels asked: `None` where none of it reads, smaller than asked where nothing larger does.
     pub fn take_texture(&mut self) -> Option<(u64, u32, Option<CpuTexture>)> {
         let mut first = true;
         let arrived = (self.textures.as_ref()?).take(|| std::mem::take(&mut first));
@@ -393,11 +396,6 @@ impl Viewer {
         Some((model, read))
     }
 
-    /// The bytes of the models and textures the workers read that were not taken yet.
-    pub fn held_bytes(&self) -> u64 {
-        self.held.load(Ordering::Relaxed)
-    }
-
     /// The day the frame is lit by and the lights around the camera, at the viewer's hour.
     pub fn sky(
         &mut self,
@@ -412,7 +410,9 @@ impl Viewer {
             .and_then(sky::tables)
             .and_then(|tables| sky::day_of(&tables, hour, days, weather, eye.y));
         let night = day.as_ref().map_or(0.0, |day| day.night_emissive);
+        let enabled = self.enabled.clone();
         let lights = self.lights.as_mut().map_or_else(Vec::new, |lights| {
+            lights.set_enabled(&enabled);
             lights.look(eye);
             lights.point_lights(eye, hour, night, 256)
         });

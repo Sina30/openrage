@@ -15,7 +15,7 @@ use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
 use or_renderer::PointLight;
 
-use super::index::WorldIndex;
+use super::index::{Enabled, WorldIndex};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
 
@@ -162,6 +162,8 @@ pub struct Lights {
     wanted: HashMap<u32, f32>,
     looked_at: Option<Vec3>,
     drawn: usize,
+    /// What of the world is switched on, as the streamer is told it.
+    enabled: Enabled,
     /// What a stated intensity is multiplied by for the frame.
     // ponytail: GTA VI states a light in a photometric unit and exposes its frame for it; the frame has no such exposure, so one scale stands for all until the game's is read.
     pub intensity_scale: f32,
@@ -203,7 +205,17 @@ impl Lights {
             wanted: HashMap::new(),
             looked_at: None,
             drawn: 0,
+            enabled: Enabled::default(),
             intensity_scale: 0.1,
+        }
+    }
+
+    /// Say what of the world is switched on: the maps it holds back give no light.
+    pub fn set_enabled(&mut self, enabled: &Enabled) {
+        if self.enabled != *enabled {
+            self.enabled = enabled.clone();
+            // The wanted maps are worked out again at the next look.
+            self.looked_at = None;
         }
     }
 
@@ -236,7 +248,7 @@ impl Lights {
     // ponytail: every map's box is tested each time the camera has moved, as the streamer does.
     fn rewant(&mut self, eye: Vec3) {
         self.wanted.clear();
-        for row in self.index.maps.iter().filter(|m| m.held == 0) {
+        for row in (self.index.maps.iter()).filter(|m| self.enabled.allows(m)) {
             let boxes = row.boxes();
             let (min, max) = boxes.entities;
             let away = eye.distance(eye.clamp(min, max));
@@ -268,6 +280,13 @@ impl Lights {
         let lights = collect(&self.loaded, eye, hour, night, self.intensity_scale, most);
         self.drawn = lights.len();
         lights
+    }
+
+    /// The maps whose lights are wanted and not read yet.
+    pub fn waiting(&self) -> usize {
+        (self.wanted.keys())
+            .filter(|name| !self.loaded.contains_key(name))
+            .count()
     }
 
     pub fn report(&self) -> LightsReport {

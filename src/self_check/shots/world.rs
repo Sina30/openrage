@@ -73,8 +73,8 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
 pub(super) struct Found {
     /// An index of the install is held.
     pub indexed: bool,
-    /// The maps, models and textures asked for and not there yet.
-    pub waiting: [usize; 3],
+    /// The maps, models, textures and maps' lights asked for and not there yet.
+    pub waiting: [usize; 4],
     /// What stands streamed in: a change in it is something that came or went.
     pub standing: [usize; 4],
 }
@@ -91,7 +91,7 @@ pub(super) struct Settle {
 impl Settle {
     /// Whether the world has settled at `now`, a time on a clock that only runs forward, given what this frame found.
     pub(super) fn settled(&mut self, now: Duration, found: Found) -> bool {
-        let quiet = found.indexed && found.waiting == [0; 3];
+        let quiet = found.indexed && found.waiting == [0; 4];
         if !quiet || self.last != Some(found) {
             (self.last, self.since) = (Some(found), now);
             return false;
@@ -105,13 +105,13 @@ impl Settle {
             None => "no frame was drawn".into(),
             Some(found) if !found.indexed => "no index of the install is held".into(),
             Some(Found {
-                waiting: [0, 0, 0], ..
+                waiting: [0, 0, 0, 0], ..
             }) => "what is streamed in was still changing".into(),
             Some(Found {
-                waiting: [maps, models, textures],
+                waiting: [maps, models, textures, lights],
                 ..
             }) => format!(
-                "{maps} maps, {models} models and {textures} textures were still waited for"
+                "{maps} maps, {models} models, {textures} textures and {lights} maps' lights were still waited for"
             ),
         }
     }
@@ -130,6 +130,7 @@ fn found() -> Result<Found, String> {
             streaming.maps_waiting,
             viewer.models_waiting,
             viewer.textures_waiting,
+            viewer.lights.as_ref().map_or(0, |lights| lights.waiting()),
         ],
         standing: [
             streaming.maps_wanted,
@@ -199,8 +200,8 @@ impl Shell {
             }
             if now > deadline {
                 return Err(format!(
-                    "the world had not settled after {} s: {}",
-                    deadline.as_secs(),
+                    "the world had not settled after {:.1} s: {}",
+                    deadline.as_secs_f32(),
                     rule.still()
                 ));
             }
@@ -215,7 +216,7 @@ mod tests {
 
     const IDLE: Found = Found {
         indexed: true,
-        waiting: [0; 3],
+        waiting: [0; 4],
         standing: [40, 40, 900, 700],
     };
 
@@ -277,7 +278,7 @@ mod tests {
     #[test]
     fn something_waited_for_or_changed_starts_the_quiet_time_again() {
         let waiting = Found {
-            waiting: [0, 3, 0],
+            waiting: [0, 3, 0, 0],
             ..IDLE
         };
         let grown = Found {
@@ -318,13 +319,13 @@ mod tests {
         );
         assert_eq!(rule.still(), "no index of the install is held");
         let waiting = Found {
-            waiting: [2, 0, 7],
+            waiting: [2, 0, 7, 0],
             ..IDLE
         };
         assert!(!rule.settled(QUIET * 11, waiting));
         assert_eq!(
             rule.still(),
-            "2 maps, 0 models and 7 textures were still waited for"
+            "2 maps, 0 models, 7 textures and 0 maps' lights were still waited for"
         );
         assert!(!rule.settled(QUIET * 12, IDLE));
         assert_eq!(rule.still(), "what is streamed in was still changing");
