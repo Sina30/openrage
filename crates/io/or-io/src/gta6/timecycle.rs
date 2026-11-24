@@ -208,7 +208,10 @@ pub fn high_level_vars(text: &str) -> BTreeMap<String, f32> {
     let (mut inside, mut open) = (false, None);
     for token in tokens(text) {
         match token {
-            Token::Open { name, .. } if name == "High_Level_Vars" => inside = true,
+            Token::Open {
+                name: "High_Level_Vars",
+                ..
+            } => inside = true,
             Token::Close("High_Level_Vars") => break,
             Token::Open { name, empty, .. } if inside && !empty => open = Some(name),
             Token::Text(text) => {
@@ -236,7 +239,11 @@ pub fn modifiers(text: &str) -> Vec<Modifier> {
     let (mut inside, mut open) = (false, None);
     for token in tokens(text) {
         match token {
-            Token::Open { name, attrs, empty } if name == "modifier" => {
+            Token::Open {
+                name: "modifier",
+                attrs,
+                empty,
+            } => {
                 out.push(Modifier {
                     name: attr(attrs, "name").unwrap_or_default().to_string(),
                     user_flags: (attr(attrs, "userFlags").and_then(|v| v.trim().parse().ok()))
