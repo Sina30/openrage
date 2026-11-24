@@ -251,8 +251,11 @@ pub(crate) struct World {
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
     /// The maps and constants of each material made, by [`alike`], so that materials alike bind one group and their draws join; and the size past which the dead are let go.
-    alike: RefCell<(HashMap<[u64; 2], Weak<wgpu::BindGroup>>, usize)>,
+    alike: RefCell<(Alike, usize)>,
 }
+
+/// The bind group made for each material's maps and constants, by [`alike`], held weakly.
+type Alike = HashMap<[u64; 2], Weak<wgpu::BindGroup>>;
 
 /// Two hashes of a material's maps and constants, which materials alike have in common.
 // ponytail: a material is taken for another of the same two 64-bit hashes; store the views themselves if one in 2^128 is too many.
