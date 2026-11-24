@@ -7,8 +7,9 @@
 use super::super::lights::{check_table, Layouts};
 use super::super::links::MapLinks;
 use super::super::{
-    broken, f32_at, field, floats, u16_at, u64_at, Aabb, Blocks, MapData, Result, ARRAY_MEMBER,
-    ENUM8, FLOAT, GRASS_INSTANCE, GRASS_LIST, GRASS_LIST_SIZE, HASH64, LOD_LEVELS, VEC3, VEC3V,
+    broken, f32_at, field, floats, u16_at, u32_at, u64_at, Aabb, Blocks, MapData, Result,
+    ARRAY_MEMBER, ENUM8, FLOAT, GRASS_INSTANCE, GRASS_LIST, GRASS_LIST_SIZE, HASH64, LOD_LEVELS,
+    U32, VEC3, VEC3V,
 };
 use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::rbm::schema::RbmModel;
@@ -29,6 +30,7 @@ pub(in super::super) const LAYOUTS: &Layouts = &[
             (0xC8A7_B90A, 0x20, HASH64),
             (lit(b"position"), 0x38, VEC3),
             (lit(b"lodDist"), 0x60, FLOAT),
+            (lit(b"numChildren"), 0x68, U32),
             (lit(b"lodLevel"), 0x7E, ENUM8),
             (lit(b"ScaleRange"), 0xA0, VEC3V),
             (lit(b"LodFadeStartDist"), 0xB8, FLOAT),
@@ -65,6 +67,8 @@ pub struct StreamGrassList {
     pub lod_dist: f32,
     /// An index into [`LOD_LEVELS`].
     pub lod_level: u8,
+    /// How many children it states.
+    pub num_children: u32,
     pub batch_aabb: Aabb,
     /// The least and the most scale of an instance.
     pub scale_range: [f32; 2],
@@ -227,6 +231,7 @@ pub(super) fn lists(
             position: floats(record, 0x38, &what)?,
             lod_dist: f32_at(record, 0x60, &what)?,
             lod_level,
+            num_children: u32_at(record, 0x68)?,
             batch_aabb: list.batch_aabb,
             scale_range,
             lod_fade_start_dist: f32_at(record, 0xB8, &what)?,

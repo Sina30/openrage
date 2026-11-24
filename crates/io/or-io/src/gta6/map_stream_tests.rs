@@ -81,6 +81,8 @@ pub(super) fn stream_model() -> RbmModel {
     put(&mut props, 0x5C, &4i16.to_le_bytes());
     put(&mut props, 0x5E, &(-1i16).to_le_bytes());
     put_floats(&mut props, 0x60, &[80.0, 20.0]);
+    put(&mut props, 0x48, &0x1800u32.to_le_bytes());
+    put(&mut props, 0x68, &2u32.to_le_bytes());
     props[0x7E] = 1;
     array(&mut props, 0x90, ptr(9, 0), 2);
     put_floats(&mut props, 0xA0, &[-1.0, -2.0, -3.0, 0.0, 4.0, 5.0, 6.0]);
@@ -140,6 +142,7 @@ fn bare_grass() -> StreamGrassList {
         position: [0.0; 3],
         lod_dist: 0.0,
         lod_level: 0,
+        num_children: 0,
         batch_aabb: nought,
         scale_range: [1.0, 1.0],
         lod_fade_start_dist: 0.0,
@@ -212,6 +215,8 @@ fn streamed() -> StreamMap {
             child_lod_dist: 20.0,
             instance_lod_dist: 60.0,
             lod_level: 1,
+            flags: 0x1800,
+            num_children: 2,
             parent: Some(StreamLink {
                 map: Some(0),
                 index: 4,

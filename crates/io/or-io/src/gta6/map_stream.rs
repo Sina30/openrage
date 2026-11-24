@@ -9,8 +9,8 @@
 use super::lights::{check_table, Layouts};
 use super::links::{self, Links, LodLink, MapLinks};
 use super::{
-    broken, f32_at, field, floats, u16_at, u64_at, Aabb, Blocks, MapBody, MapData, Result, ARRAY,
-    FLOAT, LOD_LEVELS, PROP_INSTANCE, PROP_LIST, PROP_LIST_SIZE, U32, VEC3,
+    broken, f32_at, field, floats, u16_at, u32_at, u64_at, Aabb, Blocks, MapBody, MapData, Result,
+    ARRAY, FLOAT, LOD_LEVELS, PROP_INSTANCE, PROP_LIST, PROP_LIST_SIZE, U32, VEC3,
 };
 use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::rbm::schema::RbmModel;
@@ -27,6 +27,8 @@ pub(super) const LAYOUTS: &Layouts = &[
         "rage__fwPropInstanceListDef",
         &[
             (lit(b"position"), 0x38, VEC3),
+            (lit(b"flags"), 0x48, U32),
+            (lit(b"numChildren"), 0x68, U32),
             (0xCFBC_3397, 0x80, ARRAY),
             (lit(b"InstanceLodDist"), 0x168, FLOAT),
         ],
@@ -107,6 +109,10 @@ pub struct StreamPropList {
     pub instance_lod_dist: f32,
     /// An index into [`LOD_LEVELS`].
     pub lod_level: u8,
+    /// Bits 11 and 12 make it a list of the batch LOD and SLOD levels.
+    pub flags: u32,
+    /// How many children it states, the entities that stand in for its instances among them.
+    pub num_children: u32,
     pub parent: Option<StreamLink>,
     pub batch_aabb: Aabb,
     /// Each instance's placing: three rows of four, the model's axes with the translation in the fourth column.
@@ -267,6 +273,8 @@ fn prop_lists(model: &RbmModel, map: &MapData, links: &MapLinks) -> Result<Vec<S
             child_lod_dist: f32_at(record, 0x64, &what)?,
             instance_lod_dist: f32_at(record, 0x168, &what)?,
             lod_level,
+            flags: u32_at(record, 0x48)?,
+            num_children: u32_at(record, 0x68)?,
             // A prop list takes no parent in its own map.
             parent: parent(link, 0),
             batch_aabb: list.batch_aabb,

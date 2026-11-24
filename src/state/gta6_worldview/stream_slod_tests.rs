@@ -41,6 +41,7 @@ fn far() -> StreamGrassList {
         position: [0.0; 3],
         lod_dist: 1000.0,
         lod_level: 5,
+        num_children: 0,
         batch_aabb: Aabb {
             min: [10.0, 20.0, 30.0],
             max: [110.0, 220.0, 80.0],

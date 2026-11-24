@@ -44,6 +44,7 @@ fn list(slod: bool, guids: &[u16], archetypes: &[(u32, u64)]) -> StreamGrassList
         position: [0.0; 3],
         lod_dist: 100.0,
         lod_level: 2,
+        num_children: 0,
         batch_aabb: Aabb {
             min: [0.0; 3],
             max: [1.0; 3],
