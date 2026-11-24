@@ -18,15 +18,23 @@ fn ms(time: Duration) -> f64 {
     time.as_secs_f64() * 1000.0
 }
 
-/// The mean, the 95th hundredth and the largest of `values`.
+/// The least, the middle, the mean, the 95th hundredth and the largest of `values`.
+// ⚠ Other work on the machine only ever adds time: the least is the steadiest of the five.
 fn spread(mut values: Vec<f64>) -> Value {
     if values.is_empty() {
         return Value::Null;
     }
     values.sort_unstable_by(f64::total_cmp);
     let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let high = values[(values.len() - 1) * 95 / 100];
-    json!({ "mean": mean, "p95": high, "max": values[values.len() - 1], "n": values.len() })
+    let at = |hundredth: usize| values[(values.len() - 1) * hundredth / 100];
+    json!({
+        "min": at(0),
+        "p50": at(50),
+        "mean": mean,
+        "p95": at(95),
+        "max": at(100),
+        "n": values.len(),
+    })
 }
 
 /// A pose `t` of the way from `from` to `to`.
@@ -204,6 +212,10 @@ mod tests {
         assert_eq!(found["mean"], 2.5);
         assert_eq!(found["max"], 4.0);
         assert_eq!(found["p95"], 3.0);
+        assert_eq!(
+            (found["min"].clone(), found["p50"].clone()),
+            (json!(1.0), json!(2.0))
+        );
         assert_eq!(spread(Vec::new()), Value::Null);
         let a = Pose::read("0 0 0 10 -10 60").expect("a pose");
         let b = Pose::read("50 0 0 30 -10 60").expect("a pose");
