@@ -16,7 +16,7 @@ pub const PRESTREAM: f32 = 50.0;
 pub const FADE: f32 = 20.0;
 /// The band past the distance a node draws to over which it fades out, by `Level as usize`, in metres.
 pub const FADE_BAND: [f32; Level::COUNT] = [20.0, 20.0, 20.0, 25.0, 25.0, 20.0, 25.0];
-/// The band of an orphan that states no farther than [`SMALL`], in metres.
+/// The band of an orphan that states 20 m or less, in metres.
 pub const FADE_SMALL: f32 = 5.0;
 /// The farthest an orphan states and still fades over [`FADE_SMALL`], in metres.
 const SMALL: f32 = 20.0;

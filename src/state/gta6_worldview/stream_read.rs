@@ -156,7 +156,7 @@ fn link(map: &StreamMap, own: u32, link: Option<StreamLink>) -> (Option<ParentRe
 
 /// `stated` where it is above 0, else the archetype's, in whole metres.
 fn distance(stated: f32, archetype: f32) -> f32 {
-    if stated > 0.0 { stated } else { archetype }.trunc()
+    (if stated > 0.0 { stated } else { archetype }).trunc()
 }
 
 /// The node of a list in the box `min` to `max`, scaled as a prop list: it is measured to the box,
