@@ -34,7 +34,13 @@ pub(super) struct Cards {
 }
 
 /// Whether the camera at `eye` sees some of a list's sphere within its distance; a list faded out draws nothing.
-fn seen(frustum: &Frustum, eye: Vec3, (centre, radius): (Vec3, f32), distance: f32, fade: f32) -> bool {
+fn seen(
+    frustum: &Frustum,
+    eye: Vec3,
+    (centre, radius): (Vec3, f32),
+    distance: f32,
+    fade: f32,
+) -> bool {
     fade > 0.0 && eye.distance(centre) - radius <= distance && frustum.sees_sphere(centre, radius)
 }
 
@@ -148,7 +154,8 @@ impl WorldGpu {
         }
 
         let species = &selected.species;
-        let mut changed = !(self.cards.table.as_ref()).is_some_and(|table| Arc::ptr_eq(table, species));
+        let mut changed =
+            !(self.cards.table.as_ref()).is_some_and(|table| Arc::ptr_eq(table, species));
         if changed {
             self.cards.table = Some(Arc::clone(species));
             self.cards.slots.clear();
@@ -195,7 +202,10 @@ impl WorldGpu {
             renderer.set_card_species(device, queue, &table);
         }
         // Asked for after everything the camera sees, at the size a frame of the atlas needs.
-        absent.into_iter().map(|key| (ASKED_LAST, key, BAKED_PIXELS)).collect()
+        absent
+            .into_iter()
+            .map(|key| (ASKED_LAST, key, BAKED_PIXELS))
+            .collect()
     }
 }
 

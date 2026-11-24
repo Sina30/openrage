@@ -33,7 +33,13 @@ const LAYOUT: &[(u32, &str, &[u8], usize, Option<u8>)] = &[
         PROBES_AT,
         Some(ARRAY),
     ),
-    (C_MAP_DATA, "CMapData", b"LODLightsSOA", LOD_AT, Some(STRUCT)),
+    (
+        C_MAP_DATA,
+        "CMapData",
+        b"LODLightsSOA",
+        LOD_AT,
+        Some(STRUCT),
+    ),
     (
         C_MAP_DATA,
         "CMapData",
@@ -43,7 +49,13 @@ const LAYOUT: &[(u32, &str, &[u8], usize, Option<u8>)] = &[
     ),
     (LOD_LIGHT, "CLODLight", b"direction", 0x00, Some(ARRAY)),
     (LOD_LIGHT, "CLODLight", b"falloff", 0x10, Some(ARRAY)),
-    (LOD_LIGHT, "CLODLight", b"falloffExponent", 0x20, Some(ARRAY)),
+    (
+        LOD_LIGHT,
+        "CLODLight",
+        b"falloffExponent",
+        0x20,
+        Some(ARRAY),
+    ),
     (LOD_LIGHT, "CLODLight", b"coneInnerAngle", 0x40, Some(ARRAY)),
     (
         LOD_LIGHT,
@@ -52,10 +64,28 @@ const LAYOUT: &[(u32, &str, &[u8], usize, Option<u8>)] = &[
         0x50,
         Some(ARRAY),
     ),
-    (DISTANT_LIGHT, "CDistantLODLight", b"position", 0x00, Some(ARRAY)),
+    (
+        DISTANT_LIGHT,
+        "CDistantLODLight",
+        b"position",
+        0x00,
+        Some(ARRAY),
+    ),
     (DISTANT_LIGHT, "CDistantLODLight", b"RGB", 0x10, Some(ARRAY)),
-    (DISTANT_LIGHT, "CDistantLODLight", b"intensity", 0x20, Some(ARRAY)),
-    (DISTANT_LIGHT, "CDistantLODLight", b"lightType", 0x90, Some(ARRAY)),
+    (
+        DISTANT_LIGHT,
+        "CDistantLODLight",
+        b"intensity",
+        0x20,
+        Some(ARRAY),
+    ),
+    (
+        DISTANT_LIGHT,
+        "CDistantLODLight",
+        b"lightType",
+        0x90,
+        Some(ARRAY),
+    ),
     (
         DISTANT_LIGHT,
         "CDistantLODLight",
@@ -182,9 +212,18 @@ pub fn read(model: &RbmModel) -> Result<MapLod, LodError> {
     };
     let direction: Vec<[f32; 3]> = lod(0x00, 12, "direction")?.map(floats).collect();
     let (falloff, falloff_exponent) = (float(0x10, "falloff")?, float(0x20, "falloffExponent")?);
-    let (cone_inner, cone_outer) = (bytes(0x40, "coneInnerAngle")?, bytes(0x50, "coneOuterAngleOrCapExt")?);
+    let (cone_inner, cone_outer) = (
+        bytes(0x40, "coneInnerAngle")?,
+        bytes(0x50, "coneOuterAngleOrCapExt")?,
+    );
     let n = falloff.len();
-    if [direction.len(), falloff_exponent.len(), cone_inner.len(), cone_outer.len()] != [n; 4] {
+    if [
+        direction.len(),
+        falloff_exponent.len(),
+        cone_inner.len(),
+        cone_outer.len(),
+    ] != [n; 4]
+    {
         return Err(broken(
             "level-of-detail lights",
             "its lists are not as long",
@@ -302,7 +341,10 @@ pub(super) mod tests {
         assert_eq!(lists.falloff, [3.0, 10.0]);
         assert_eq!(lists.falloff_exponent, [1.0, 1.0]);
         assert_eq!(lists.direction, [[0.0, 0.0, -1.0]; 2]);
-        assert_eq!((lists.cone_inner, lists.cone_outer), (vec![64; 2], vec![128; 2]));
+        assert_eq!(
+            (lists.cone_inner, lists.cone_outer),
+            (vec![64; 2], vec![128; 2])
+        );
         assert_eq!((lists.distant.len(), lists.category), (1, 1));
         let light = lists.distant[0];
         assert_eq!(light.position, [1.0, 2.0, 3.0]);

@@ -1,7 +1,7 @@
 use super::*;
 use crate::gta6::map::lights::tests::{array, block, model, ptr, put, put_floats};
 use crate::gta6::map::lights::{C_EXTENSION_DEF_LIGHT_EFFECT, C_LIGHT_ATTR_DEF};
-use crate::gta6::map::{C_MAP_TYPES, MapError};
+use crate::gta6::map::{MapError, C_MAP_TYPES};
 
 const C_BASE_ARCHETYPE_DEF: u32 = crate::hash::literal_string_hash(b"CBaseArchetypeDef");
 const ATTR_SIZE: usize = 0x2A0;
@@ -62,7 +62,11 @@ fn lit_types() -> RbmModel {
 #[test]
 fn an_archetype_s_lights_stand_at_the_effect_s_offset_plus_their_root_offset_by_its_word() {
     let lights = archetype_lights(&lit_types()).expect("it reads");
-    assert_eq!(lights.len(), 1, "the archetype with no light, and the corona, give none");
+    assert_eq!(
+        lights.len(),
+        1,
+        "the archetype with no light, and the corona, give none"
+    );
     let (word, held) = &lights[0];
     assert_eq!(*word, 0xA1);
     assert_eq!(
@@ -91,7 +95,10 @@ fn a_body_whose_lights_do_not_read_is_refused() {
     let mut broken = lit_types();
     put_floats(&mut broken.data_blocks[6].data, 0x1A0, &[0.0, 0.0, 2.0]);
     let refused = archetype_lights(&broken);
-    assert!(matches!(refused, Err(MapError::Broken { .. })), "{refused:?}");
+    assert!(
+        matches!(refused, Err(MapError::Broken { .. })),
+        "{refused:?}"
+    );
 }
 
 #[test]
@@ -110,14 +117,23 @@ fn a_light_is_placed_by_scale_then_turn_then_position_and_its_direction_turns() 
         instances: Vec::new(),
         hash_c4e96a00: Vec::new(),
     };
-    let mut attr = lights::read(&lit_types()).expect("it reads").effects[0].1.instances[0].clone();
+    let mut attr = lights::read(&lit_types()).expect("it reads").effects[0]
+        .1
+        .instances[0]
+        .clone();
     attr.hash_30eca388 = [0.5, 0.0, 1.0];
     let light = Light::of(&effect, &attr).expect("a spot");
     let placed = light.placed(&pose);
     let off = |a: [f32; 3], b: [f32; 3]| (0..3).map(|i| (a[i] - b[i]).abs()).fold(0.0, f32::max);
-    assert!(off(placed.position, [10.0, 22.0, 33.0]) < 1e-5, "{placed:?}");
+    assert!(
+        off(placed.position, [10.0, 22.0, 33.0]) < 1e-5,
+        "{placed:?}"
+    );
     assert!(off(placed.direction, [0.0, 1.0, 0.0]) < 1e-6, "{placed:?}");
-    assert_eq!((placed.radius, placed.intensity), (light.radius, light.intensity));
+    assert_eq!(
+        (placed.radius, placed.intensity),
+        (light.radius, light.intensity)
+    );
 }
 
 #[test]

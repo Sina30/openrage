@@ -293,10 +293,16 @@ fn children_that_come_ready_draw_whole_at_once_and_their_parent_gives_way_at_onc
 fn a_far_node_with_no_parent_fades_in_a_step_a_selection_and_one_of_the_high_level_at_once() {
     let waiting = [(1, 0)];
     let mut far = lone(Level::Lod);
-    assert!(far.select(&along(50.0), &loading(&waiting)).drawn.is_empty());
+    assert!(far
+        .select(&along(50.0), &loading(&waiting))
+        .drawn
+        .is_empty());
     for k in 1..=4 {
         let drawn = far.select(&along(50.0), &all_ready);
-        assert!(close(fade(&drawn, (1, 0)), 51.0 / 255.0 * k as f32), "step {k}");
+        assert!(
+            close(fade(&drawn, (1, 0)), 51.0 / 255.0 * k as f32),
+            "step {k}"
+        );
         assert!(drawn.fading, "step {k}");
     }
     let whole = far.select(&along(50.0), &all_ready);
@@ -414,18 +420,39 @@ fn an_archetype_s_category_takes_the_place_of_its_scale_and_keeps_its_radius_who
     };
     let at_rest = View::at(Vec3::ZERO, 1.0);
     let reach = |node: Node, view: &View| node.scaled(110.0, view);
-    assert!(close(reach(node(Category::Other, Level::Hd), &at_rest), 110.0));
+    assert!(close(
+        reach(node(Category::Other, Level::Hd), &at_rest),
+        110.0
+    ));
     // Half of what lies past the radius of 10 m.
-    assert!(close(reach(node(Category::Terrain, Level::Hd), &at_rest), 60.0));
-    assert!(close(reach(node(Category::Terrain, Level::OrphanHd), &at_rest), 100.0));
-    assert!(close(reach(node(Category::Environment, Level::Lod), &at_rest), 70.0));
-    assert!(close(reach(node(Category::Vegetation, Level::Hd), &at_rest), 110.0));
+    assert!(close(
+        reach(node(Category::Terrain, Level::Hd), &at_rest),
+        60.0
+    ));
+    assert!(close(
+        reach(node(Category::Terrain, Level::OrphanHd), &at_rest),
+        100.0
+    ));
+    assert!(close(
+        reach(node(Category::Environment, Level::Lod), &at_rest),
+        70.0
+    ));
+    assert!(close(
+        reach(node(Category::Vegetation, Level::Hd), &at_rest),
+        110.0
+    ));
     // The level's scale multiplies the category's; from 1 on the whole distance stretches.
     let mut twice = at_rest;
     twice.scales[Level::Hd as usize] = 2.0;
-    assert!(close(reach(node(Category::Terrain, Level::Hd), &twice), 110.0));
+    assert!(close(
+        reach(node(Category::Terrain, Level::Hd), &twice),
+        110.0
+    ));
     twice.scales[Level::Hd as usize] = 4.0;
-    assert!(close(reach(node(Category::Terrain, Level::Hd), &twice), 220.0));
+    assert!(close(
+        reach(node(Category::Terrain, Level::Hd), &twice),
+        220.0
+    ));
     // And a selection draws by it: the terrain node is half gone 10 m past its 60 m.
     let mut forest = Forest::new();
     forest.insert(1, vec![node(Category::Terrain, Level::Hd)]);
@@ -448,12 +475,24 @@ fn a_grass_list_draws_short_of_what_it_states_and_a_prop_list_never_does() {
     assert!(close(grass.scale(&at_rest), 0.8));
     assert!(close(grass.scaled(110.0, &at_rest), 90.0));
     // A category of its archetype takes the grass scale's place.
-    assert!(close(of(Kind::Grass, Category::Vegetation).scaled(110.0, &at_rest), 110.0));
+    assert!(close(
+        of(Kind::Grass, Category::Vegetation).scaled(110.0, &at_rest),
+        110.0
+    ));
     // The level's scale shortens an entity and leaves a prop list as it states.
     let half = View::at(Vec3::ZERO, 0.5);
-    assert!(close(of(Kind::Props, Category::Other).scaled(110.0, &half), 110.0));
-    assert!(close(of(Kind::Entity, Category::Other).scaled(110.0, &half), 60.0));
-    assert!(close(of(Kind::Props, Category::Other).scaled(110.0, &View::at(Vec3::ZERO, 2.0)), 220.0));
+    assert!(close(
+        of(Kind::Props, Category::Other).scaled(110.0, &half),
+        110.0
+    ));
+    assert!(close(
+        of(Kind::Entity, Category::Other).scaled(110.0, &half),
+        60.0
+    ));
+    assert!(close(
+        of(Kind::Props, Category::Other).scaled(110.0, &View::at(Vec3::ZERO, 2.0)),
+        220.0
+    ));
 }
 
 #[test]

@@ -46,7 +46,13 @@ pub(super) struct Occlusion {
 /// The corners of the box from `min` to `max`, numbered as a box occluder numbers its own.
 fn box_corners(min: Vec3, max: Vec3) -> [Vec3; 8] {
     std::array::from_fn(|k| {
-        let pick = |bit: usize, axis: usize| if k >> bit & 1 == 0 { min[axis] } else { max[axis] };
+        let pick = |bit: usize, axis: usize| {
+            if k >> bit & 1 == 0 {
+                min[axis]
+            } else {
+                max[axis]
+            }
+        };
         Vec3::new(pick(0, 0), pick(1, 1), pick(2, 2))
     })
 }
@@ -215,7 +221,9 @@ impl Occlusion {
             for u in 0..HIZ_WIDE {
                 let corners = (2 * v..=2 * v + 2)
                     .flat_map(|j| (2 * u..=2 * u + 2).map(move |i| j * CORNERS_WIDE + i));
-                let farthest = corners.map(|at| self.corners[at]).fold(f32::INFINITY, f32::min);
+                let farthest = corners
+                    .map(|at| self.corners[at])
+                    .fold(f32::INFINITY, f32::min);
                 self.hiz.push(farthest);
             }
         }

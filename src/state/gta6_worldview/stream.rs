@@ -15,20 +15,20 @@ use or_world::streaming::{Forest, Level, NodeId, NodeState, View, FADE};
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
 
+#[path = "stream_census.rs"]
+mod census;
 #[path = "stream_grass.rs"]
 mod grass;
 #[path = "stream_read.rs"]
 mod read;
-#[path = "stream_census.rs"]
-mod census;
 #[path = "stream_slod.rs"]
 pub mod slod;
 
 pub use census::Census;
 pub use read::Rows;
-pub use slod::{CardList, Species};
 use read::{place, stretch, Drawn, Instances, Loaded};
 pub(super) use read::{read_map, ReadMap};
+pub use slod::{CardList, Species};
 
 /// The bytes a map body is read to.
 const BODY_LIMIT: u64 = 256 << 20;
@@ -344,7 +344,9 @@ impl Streamer {
         // A list of far stand-ins waits for no model: its cards draw once its species' atlas is there.
         let cards_of = |id: NodeId| {
             let (map, _) = drawn_of(id)?;
-            let list = map.lists.get((id.1 as usize).checked_sub(map.entities.len())?)?;
+            let list = map
+                .lists
+                .get((id.1 as usize).checked_sub(map.entities.len())?)?;
             match &list.instances {
                 Instances::Cards(cards) => Some(cards),
                 _ => None,
@@ -459,7 +461,13 @@ impl Streamer {
         out.models = models.list;
         self.streaming.drawn = out.instances.len();
         out.streaming = self.streaming;
-        out.census = census::count(&self.wanted, loaded, &self.forest, &selection, list_instances);
+        out.census = census::count(
+            &self.wanted,
+            loaded,
+            &self.forest,
+            &selection,
+            list_instances,
+        );
         out
     }
 }

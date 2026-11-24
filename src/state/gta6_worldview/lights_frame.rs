@@ -134,7 +134,9 @@ pub fn without_placed(lod: Vec<Lamp>, placed: &[Lamp]) -> Vec<Lamp> {
             })
         })
     };
-    (lod.into_iter()).filter(|l| !near(l.light.position)).collect()
+    (lod.into_iter())
+        .filter(|l| !near(l.light.position))
+        .collect()
 }
 
 /// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` brightest at the camera first, as the frame's point and spot lights.
@@ -156,7 +158,10 @@ pub fn frame_lights(
                 return None;
             }
             let away = (distance - l.radius).max(1.0);
-            Some((intensity * brightest / (away * away), Light { intensity, ..l }))
+            Some((
+                intensity * brightest / (away * away),
+                Light { intensity, ..l },
+            ))
         })
         .collect();
     if lit.len() > most && most > 0 {

@@ -324,7 +324,9 @@ impl Bake {
         meshes: &[CardMesh<'_>],
     ) -> bool {
         let layer = slot / 4;
-        if !(radius > 0.0 && radius.is_finite()) || layer >= device.limits().max_texture_array_layers {
+        if !(radius > 0.0 && radius.is_finite())
+            || layer >= device.limits().max_texture_array_layers
+        {
             return false;
         }
         self.grow(device, queue, layer + 1);
@@ -333,7 +335,8 @@ impl Bake {
             let d = frame_direction(frame % CARD_FRAMES, frame / CARD_FRAMES);
             let view = frame_view(centre, radius, d, frame_axes(d, Vec3::X, Vec3::Z));
             let at = (u64::from(frame) * self.stride) as usize;
-            views[at..at + VIEW_BYTES as usize].copy_from_slice(bytemuck::bytes_of(&view.to_cols_array()));
+            views[at..at + VIEW_BYTES as usize]
+                .copy_from_slice(bytemuck::bytes_of(&view.to_cols_array()));
         }
         queue.write_buffer(&self.views, 0, &views);
         let colours: Vec<wgpu::BindGroup> = (meshes.iter())
@@ -411,7 +414,11 @@ impl Bake {
                 let offset = (u64::from(frame) * self.stride) as wgpu::DynamicOffset;
                 pass.set_bind_group(0, &self.view_group, &[offset]);
                 for (mesh, colour) in meshes.iter().zip(&colours) {
-                    pass.set_pipeline(if mesh.cutout { &self.cutout } else { &self.opaque });
+                    pass.set_pipeline(if mesh.cutout {
+                        &self.cutout
+                    } else {
+                        &self.opaque
+                    });
                     pass.set_bind_group(1, colour, &[]);
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);

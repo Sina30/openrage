@@ -425,18 +425,21 @@ impl Viewer {
     ) {
         let (eye, hour) = (self.camera.position, self.hour);
         let tables = self.root.as_deref().and_then(sky::tables);
-        let day = (tables.as_ref())
-            .and_then(|tables| sky::day_of(tables, hour, days, weather, eye.y));
+        let day =
+            (tables.as_ref()).and_then(|tables| sky::day_of(tables, hour, days, weather, eye.y));
         let scale = sky::light_scale(tables.as_deref(), hour, weather, eye.y);
         let enabled = self.enabled.clone();
-        let lights = self.lights.as_mut().map_or_else(Default::default, |lights| {
-            if let Some(tables) = &tables {
-                lights.set_reach(lights_frame::LodReach::of(&tables.visual_settings));
-            }
-            lights.set_enabled(&enabled);
-            lights.look(eye);
-            lights.lights(eye, hour, scale, lights::MOST)
-        });
+        let lights = self
+            .lights
+            .as_mut()
+            .map_or_else(Default::default, |lights| {
+                if let Some(tables) = &tables {
+                    lights.set_reach(lights_frame::LodReach::of(&tables.visual_settings));
+                }
+                lights.set_enabled(&enabled);
+                lights.look(eye);
+                lights.lights(eye, hour, scale, lights::MOST)
+            });
         // The lights take the exposure over pi; a material's own light is a radiance and takes it whole.
         let exposure = match day {
             Some(_) => scale * std::f32::consts::PI,

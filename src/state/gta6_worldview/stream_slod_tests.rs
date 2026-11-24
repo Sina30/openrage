@@ -99,12 +99,19 @@ fn a_card_list_keeps_the_box_the_scales_and_each_record_as_stored() {
     // The box's half diagonal, and the corner of a radius-1 model's card at the most scale past it.
     let half = Vec3::new(100.0, 200.0, 50.0).length() / 2.0;
     let corner = 2.0 * std::f32::consts::SQRT_2;
-    assert!((cards.radius - (half + corner)).abs() < 1e-4, "{}", cards.radius);
+    assert!(
+        (cards.radius - (half + corner)).abs() < 1e-4,
+        "{}",
+        cards.radius
+    );
     assert_eq!(cards.scale_range, [0.5, 2.0]);
     assert_eq!((cards.distance, cards.fade), (900.0, 1.0));
     let stored: Vec<[u8; 16]> = list.instances.iter().map(|i| i.record()).collect();
     assert_eq!(cards.records[..], stored[..]);
-    assert_eq!(u16::from_le_bytes([cards.records[1][14], cards.records[1][15]]), 2);
+    assert_eq!(
+        u16::from_le_bytes([cards.records[1][14], cards.records[1][15]]),
+        2
+    );
     // Seen through a view, it scales its distance and takes the list's fade, sharing the records.
     let seen = cards.seen(1.5, 0.25);
     assert_eq!((seen.distance, seen.fade), (1350.0, 0.25));

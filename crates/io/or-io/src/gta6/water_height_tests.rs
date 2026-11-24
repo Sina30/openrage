@@ -17,7 +17,9 @@ fn under(c: u32, r: u32) -> u16 {
 }
 
 fn fallback() -> Heights {
-    let values = (0..8).flat_map(|r| (0..16).map(move |c| under(c, r))).collect();
+    let values = (0..8)
+        .flat_map(|r| (0..16).map(move |c| under(c, r)))
+        .collect();
     Heights::new(16, 8, values).expect("16 by 8")
 }
 
@@ -51,7 +53,10 @@ fn the_grid_is_about_its_origin_and_its_rows_run_south() {
     let ground = WaterGround::new(&self::atlas(), fallback()).expect("fits");
     // The north-west texel is the first; the one a texel east and two south is the fallback's (1, 2).
     assert_eq!(ground.ground(-127.0, 63.0), Some(height(under(0, 0))));
-    assert_eq!(ground.ground(-128.0 + 17.0, 64.0 - 33.0), Some(height(under(1, 2))));
+    assert_eq!(
+        ground.ground(-128.0 + 17.0, 64.0 - 33.0),
+        Some(height(under(1, 2)))
+    );
     assert_eq!(ground.ground(-129.0, 0.0), None);
     assert_eq!(ground.ground(0.0, 64.5), None);
     assert_eq!(ground.ground(128.0, 0.0), None);
@@ -68,7 +73,10 @@ fn a_tile_is_laid_where_its_means_match_the_fallback_and_read_there_at_its_own_t
     let own = tile(2, 1).at(10, 20).expect("in the tile");
     assert_eq!(ground.ground(x, y), Some(height(own)));
     // A place no tile is laid on reads the fallback.
-    assert_eq!(ground.ground(-128.0 + 64.0 + 1.0, 63.0), Some(height(under(4, 0))));
+    assert_eq!(
+        ground.ground(-128.0 + 64.0 + 1.0, 63.0),
+        Some(height(under(4, 0)))
+    );
 }
 
 #[test]
@@ -112,7 +120,10 @@ fn an_r16_texture_reads_as_its_values_and_another_format_does_not() {
         pixels: vec![0x00, 0x80, 0x34, 0x12],
     };
     let heights = Heights::of(&texture).expect("R16");
-    assert_eq!((heights.at(0, 0), heights.at(1, 0)), (Some(0x8000), Some(0x1234)));
+    assert_eq!(
+        (heights.at(0, 0), heights.at(1, 0)),
+        (Some(0x8000), Some(0x1234))
+    );
     let other = Texture {
         format: Format::of_dxgi(61).expect("R8_UNORM"),
         ..texture

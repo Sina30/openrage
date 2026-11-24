@@ -285,7 +285,12 @@ impl Cards {
             shown: Vec::new(),
             bake: Bake::new(device, queue),
         };
-        cards.write(device, queue, SPECIES, bytemuck::bytes_of(&GpuSpecies::of(&NONE)));
+        cards.write(
+            device,
+            queue,
+            SPECIES,
+            bytemuck::bytes_of(&GpuSpecies::of(&NONE)),
+        );
         for at in [RECORDS, LIST_OF, LISTS] {
             cards.write(device, queue, at, &[0; 64]);
         }
@@ -295,7 +300,12 @@ impl Cards {
 
     /// Write `bytes` to buffer `at`, which is bound at their length.
     fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, at: usize, bytes: &[u8]) {
-        let label = ["cards-records", "cards-list-of", "cards-lists", "cards-species"][at];
+        let label = [
+            "cards-records",
+            "cards-list-of",
+            "cards-lists",
+            "cards-species",
+        ][at];
         super::fill(
             device,
             queue,
@@ -343,7 +353,8 @@ impl Cards {
         let most = device.limits().max_storage_buffer_binding_size / 16;
         let held: usize = lists.iter().map(|list| list.records.len()).sum();
         let again = lists.len() == self.uploaded.len()
-            && (lists.iter().zip(&self.uploaded)).all(|(list, was)| Arc::ptr_eq(&list.records, was));
+            && (lists.iter().zip(&self.uploaded))
+                .all(|(list, was)| Arc::ptr_eq(&list.records, was));
         let mut records: Vec<u8> = Vec::with_capacity(if again { 0 } else { held * 16 });
         let mut list_of: Vec<u32> = Vec::with_capacity(if again { 0 } else { held });
         let mut gpu = Vec::with_capacity(lists.len());
@@ -353,7 +364,10 @@ impl Cards {
         for (at, list) in lists.iter().enumerate() {
             let end = u64::from(start) + list.records.len() as u64;
             if end > most || end > u64::from(u32::MAX) {
-                tracing::warn!(lists = lists.len() - at, "far stand-ins past what the device binds are left out");
+                tracing::warn!(
+                    lists = lists.len() - at,
+                    "far stand-ins past what the device binds are left out"
+                );
                 break;
             }
             if !again {
@@ -455,7 +469,12 @@ const NONE: CardSpecies = CardSpecies {
 
 impl ViewportRenderer {
     /// The lists of far stand-ins there are, uploaded once; none are shown until [`Self::show_card_lists`].
-    pub fn set_card_lists(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, lists: &[CardBatch]) {
+    pub fn set_card_lists(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        lists: &[CardBatch],
+    ) {
         self.world.cards.set_lists(device, queue, lists);
     }
 

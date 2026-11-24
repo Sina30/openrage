@@ -76,9 +76,11 @@ impl Occluders {
             .map(|(at, _)| at)
             .collect();
         let shared = Arc::clone(&index);
-        let readers = Pool::new(READERS, HashMap::<u32, File>::new, move |files, name: u32| {
-            read(&shared, files, name)
-        });
+        let readers = Pool::new(
+            READERS,
+            HashMap::<u32, File>::new,
+            move |files, name: u32| read(&shared, files, name),
+        );
         Self {
             index,
             maps,
@@ -174,7 +176,11 @@ mod tests {
         let far = View::at(Vec3::splat(-200.0), 1.0);
         assert!(!wanted(&row(OCCLUDERS, 3), &enabled, &far));
         // Within the 50 m every map streams in by.
-        assert!(wanted(&row(OCCLUDERS, 3), &enabled, &View::at(Vec3::splat(-40.0), 1.0)));
+        assert!(wanted(
+            &row(OCCLUDERS, 3),
+            &enabled,
+            &View::at(Vec3::splat(-40.0), 1.0)
+        ));
     }
 
     #[test]

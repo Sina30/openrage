@@ -322,7 +322,8 @@ impl World {
             },
             count: None,
         };
-        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = (0..WORLD_MAPS as u32).map(map).collect();
+        let mut entries: Vec<wgpu::BindGroupLayoutEntry> =
+            (0..WORLD_MAPS as u32).map(map).collect();
         entries.push(wgpu::BindGroupLayoutEntry {
             binding: WORLD_MAPS as u32,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -443,7 +444,13 @@ impl World {
                 };
                 let views = std::array::from_fn(|at| surface.maps[at].unwrap_or(stand_in(at)));
                 let constants = (surface.family, &surface.constants);
-                Arc::new(bound(device, &self.materials, &self.sampler, views, constants))
+                Arc::new(bound(
+                    device,
+                    &self.materials,
+                    &self.sampler,
+                    views,
+                    constants,
+                ))
             }
         };
         WorldMaterial {
@@ -674,7 +681,11 @@ impl ViewportRenderer {
     }
 
     /// A material that shades by `surface`; a clone shares its maps and constants.
-    pub fn world_surface(&self, device: &wgpu::Device, surface: &WorldSurface<'_>) -> WorldMaterial {
+    pub fn world_surface(
+        &self,
+        device: &wgpu::Device,
+        surface: &WorldSurface<'_>,
+    ) -> WorldMaterial {
         self.world.material(device, surface)
     }
 

@@ -144,9 +144,15 @@ impl Hash for CpuMaterial {
 impl CpuMaterial {
     /// Every texture key it names, each once, the first layer's colour first.
     pub fn keys(&self) -> Vec<u64> {
-        let layers = (self.layers.iter())
-            .flat_map(|l| [l.colour, l.normal, l.material_a, l.material_b]);
-        let beside = [self.lookup, self.palette, self.tint, self.tint_normal, self.dirt];
+        let layers =
+            (self.layers.iter()).flat_map(|l| [l.colour, l.normal, l.material_a, l.material_b]);
+        let beside = [
+            self.lookup,
+            self.palette,
+            self.tint,
+            self.tint_normal,
+            self.dirt,
+        ];
         let emissive = self.emissive.map(|e| e.map);
         let mut keys = Vec::new();
         for key in layers.chain(beside).chain([emissive]).flatten() {
@@ -166,10 +172,16 @@ const ONE: Slots = [
     &[name_hash32(b"DiffuseTex")],
     &[name_hash32(b"BumpTex"), name_hash32(b"bumpTexture")],
     &[name_hash32(b"SpecularTex"), name_hash32(b"SpecularTexture")],
-    &[name_hash32(b"SpecularTex2"), name_hash32(b"MaterialBTexture")],
+    &[
+        name_hash32(b"SpecularTex2"),
+        name_hash32(b"MaterialBTexture"),
+    ],
 ];
 /// The records only a terrain LOD states.
-const TERRAIN: [u32; 2] = [name_hash32(b"SpecularTexture"), name_hash32(b"MaterialBTexture")];
+const TERRAIN: [u32; 2] = [
+    name_hash32(b"SpecularTexture"),
+    name_hash32(b"MaterialBTexture"),
+];
 const TWO: [Slots; 2] = [
     [
         &[name_hash32(b"lyr0DiffuseTex")],
@@ -210,7 +222,10 @@ const FOUR: [Slots; 4] = [
         &[],
     ],
 ];
-const LOOKUP: [u32; 2] = [name_hash32(b"lookupTexture"), name_hash32(b"controlTextureTex")];
+const LOOKUP: [u32; 2] = [
+    name_hash32(b"lookupTexture"),
+    name_hash32(b"controlTextureTex"),
+];
 const PALETTE: u32 = name_hash32(b"TintPaletteTex");
 const TINT: u32 = name_hash32(b"tintTexture");
 const TINT_NORMAL: u32 = name_hash32(b"tintBumpTexture");
@@ -269,9 +284,12 @@ impl Records<'_> {
     /// The key bound to the texture record of `hash`.
     fn key(&self, hash: u32) -> Option<u64> {
         self.0.parameters.iter().find_map(|p| match p.value {
-            ParameterValue::Texture { slot } if p.hash == hash => {
-                self.0.texture_keys.get(usize::from(slot)).copied().flatten()
-            }
+            ParameterValue::Texture { slot } if p.hash == hash => self
+                .0
+                .texture_keys
+                .get(usize::from(slot))
+                .copied()
+                .flatten(),
             _ => None,
         })
     }
@@ -290,7 +308,9 @@ impl Records<'_> {
     }
 
     fn states_layer(&self, records: &Slots) -> bool {
-        records.iter().any(|hashes| hashes.iter().any(|h| self.states(*h)))
+        records
+            .iter()
+            .any(|hashes| hashes.iter().any(|h| self.states(*h)))
     }
 
     /// The words of the constant of `hash`.
@@ -415,8 +435,11 @@ pub(super) fn material_of(
         material.layers[0].colour = (others().find(|k| srgb(*k) == Some(true)))
             .or_else(|| others().find(|k| srgb(*k).is_none()));
     }
-    let any_map = (material.layers.iter())
-        .any(|l| [l.colour, l.normal, l.material_a, l.material_b].iter().any(Option::is_some));
+    let any_map = (material.layers.iter()).any(|l| {
+        [l.colour, l.normal, l.material_a, l.material_b]
+            .iter()
+            .any(Option::is_some)
+    });
     material.family = match byte & 0x7F {
         6 => Family::WaterMask,
         2 => Family::Decal,

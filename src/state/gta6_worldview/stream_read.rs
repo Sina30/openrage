@@ -195,13 +195,17 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
     let of = |word: u64| {
         let archetype = index.archetype(word);
         let model = archetype.and_then(|a| index.model(a));
-        let (centre, radius, lod_dist, hours, category) = archetype.map_or(
-            (Vec3::ZERO, 0.0, 0.0, ALL_HOURS, Category::Other),
-            |a| {
+        let (centre, radius, lod_dist, hours, category) =
+            archetype.map_or((Vec3::ZERO, 0.0, 0.0, ALL_HOURS, Category::Other), |a| {
                 let category = Category::of(a.load_flags);
-                (Vec3::from(a.centre), a.radius, a.lod_dist, a.hours, category)
-            },
-        );
+                (
+                    Vec3::from(a.centre),
+                    a.radius,
+                    a.lod_dist,
+                    a.hours,
+                    category,
+                )
+            });
         (
             Drawn {
                 model,

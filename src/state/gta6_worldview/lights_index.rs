@@ -119,7 +119,13 @@ mod tests {
 
     #[test]
     fn an_archetype_s_rows_are_found_by_its_word_and_a_copy_is_kept_once() {
-        let mut rows = vec![row(9, 1.0), row(3, 2.0), row(9, 3.0), row(3, 2.0), row(5, 4.0)];
+        let mut rows = vec![
+            row(9, 1.0),
+            row(3, 2.0),
+            row(9, 3.0),
+            row(3, 2.0),
+            row(5, 4.0),
+        ];
         settle(&mut rows);
         assert_eq!(rows.len(), 4);
         let nine: Vec<f32> = of_archetype(&rows, 9).iter().map(|r| r.intensity).collect();

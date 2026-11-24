@@ -177,7 +177,11 @@ pub fn colour1(rgba: [u8; 4]) -> f32 {
 }
 
 /// Give each of `vertices` its first colour and, in the bits of its depth bias, its second, each white where the mesh has none.
-pub fn coloured(vertices: &mut [MeshVertex], first: Option<&[[f32; 4]]>, second: Option<&[[f32; 4]]>) {
+pub fn coloured(
+    vertices: &mut [MeshVertex],
+    first: Option<&[[f32; 4]]>,
+    second: Option<&[[f32; 4]]>,
+) {
     let at = |colours: Option<&[[f32; 4]]>, index: usize| {
         (colours.and_then(|colours| colours.get(index)).copied()).unwrap_or([1.0; 4])
     };

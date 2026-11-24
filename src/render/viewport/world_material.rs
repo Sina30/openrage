@@ -45,7 +45,11 @@ pub(super) fn slots_of(material: &CpuMaterial) -> [Option<u64>; WORLD_MAPS] {
 
 /// Whether the map in `at` is a layer's colour, which is a mid grey while it is waited for.
 pub(super) fn is_colour(material: &CpuMaterial, at: usize) -> bool {
-    let layers = if material.family == Family::FourLayer { 4 } else { 2 };
+    let layers = if material.family == Family::FourLayer {
+        4
+    } else {
+        2
+    };
     (0..layers).any(|layer| slot::colour(layer) == at)
 }
 
@@ -190,7 +194,8 @@ mod tests {
     }
 
     #[test]
-    fn a_material_with_no_glow_keeps_the_renderers_default_glow_and_every_family_has_its_namesake() {
+    fn a_material_with_no_glow_keeps_the_renderers_default_glow_and_every_family_has_its_namesake()
+    {
         let constants = constants_of(&CpuMaterial::default());
         let neutral = WorldConstants::default();
         assert_eq!(constants.emissive_night, neutral.emissive_night);

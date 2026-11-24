@@ -125,7 +125,12 @@ fn a_quads_opacity_is_its_corners_from_south_west_round_to_north_west() {
         at.expect("a corner").colour[3]
     };
     assert_eq!(
-        [alpha(0.0, 0.0), alpha(10.0, 0.0), alpha(10.0, 10.0), alpha(0.0, 10.0)],
+        [
+            alpha(0.0, 0.0),
+            alpha(10.0, 0.0),
+            alpha(10.0, 10.0),
+            alpha(0.0, 10.0)
+        ],
         [0.0, 1.0, 1.0, 0.0]
     );
     assert!(vertices.iter().all(|v| v.normal == [0.0, 0.0, 1.0]));
@@ -174,7 +179,10 @@ fn water_over_dry_ground_is_not_drawn_and_deeper_water_hides_more_of_the_ground(
     let m = medium([1.0, 0.5, 0.25], [1.0; 3]);
     assert_eq!(shade(0.1, Some(-1.0), Some(&m))[3], 0.0);
     assert_eq!(shade(0.1, Some(0.0), Some(&m))[3], 0.0);
-    let (shallow, deep) = (shade(0.1, Some(2.0), Some(&m)), shade(0.1, Some(8.0), Some(&m)));
+    let (shallow, deep) = (
+        shade(0.1, Some(2.0), Some(&m)),
+        shade(0.1, Some(8.0), Some(&m)),
+    );
     assert!(0.1 < shallow[3] && shallow[3] < deep[3] && deep[3] < 1.0);
     // The vertex carries only the opacity: the instance's tint is the colour.
     assert_eq!(shallow[..3], [1.0; 3]);
@@ -217,10 +225,19 @@ fn the_ground_under_a_quad_dries_the_part_of_it_that_stands_over_land() {
     let ground = WaterGround::new(&atlas, fallback).expect("fits");
     let m = medium([1.0; 3], [0.1; 3]);
     let eye = Vec3::ZERO;
-    let (vertices, _) = mesh(&[quad([-15, -7], [15, 7], 0)], eye, 100.0, Some(&ground), Some(&m));
+    let (vertices, _) = mesh(
+        &[quad([-15, -7], [15, 7], 0)],
+        eye,
+        100.0,
+        Some(&ground),
+        Some(&m),
+    );
     assert!(!vertices.is_empty());
     for v in &vertices {
         let (x, alpha) = (v.position[0], v.colour[3]);
-        assert!(if x < 0.0 { alpha > 0.5 } else { alpha == 0.0 }, "at {x}: {alpha}");
+        assert!(
+            if x < 0.0 { alpha > 0.5 } else { alpha == 0.0 },
+            "at {x}: {alpha}"
+        );
     }
 }

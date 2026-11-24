@@ -323,7 +323,10 @@ fn a_list_of_far_stand_ins_draws_as_cards_and_waits_for_no_model() {
     assert_eq!((cards.records.len(), cards.fade), (1, 1.0));
     assert_eq!(cards.distance, 50.0 * view.scales[Level::Slod1 as usize]);
     assert_eq!(none.species[7].archetype, FERN as u32);
-    assert!(none.instances.iter().all(|i| none.models[i.model as usize].offset != 0x4000));
+    assert!(none
+        .instances
+        .iter()
+        .all(|i| none.models[i.model as usize].offset != 0x4000));
     // Past its distance the list is gone.
     let away = streamer.select(&View::at(Vec3::splat(5000.0), 1.0), &|_| Some(true));
     assert!(away.cards.is_empty());

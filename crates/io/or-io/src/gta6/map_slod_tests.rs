@@ -62,10 +62,7 @@ fn list(slod: bool, guids: &[u16], archetypes: &[(u32, u64)]) -> StreamGrassList
 fn a_claim_takes_each_id_and_each_word_once_and_only_from_a_far_stand_in_list() {
     // The names come in another order than the words: only the words are taken.
     let far = list(true, &[9, 3, 9, 3, 7], &[(0x22, C), (0x11, A), (0x33, C)]);
-    assert_eq!(
-        SlodClaim::of(&far),
-        Some(claim(&[3, 7, 9], &[A, C]))
-    );
+    assert_eq!(SlodClaim::of(&far), Some(claim(&[3, 7, 9], &[A, C])));
     assert_eq!(SlodClaim::of(&list(false, &[0, 0], &[])), None);
 }
 
@@ -152,7 +149,10 @@ fn a_made_up_world_is_solved_to_its_truth_but_for_ids_no_list_tells_apart() {
         let twin = (lists_of.iter()).any(|(other, theirs)| other != id && theirs == lists);
         let got = table.get(usize::from(*id)).copied().unwrap_or(0);
         assert_ne!(got, 0, "id {id} is settled");
-        assert!(twin || got == truth(*id), "id {id} has no twin and is wrong");
+        assert!(
+            twin || got == truth(*id),
+            "id {id} has no twin and is wrong"
+        );
     }
     for c in &claims {
         assert_eq!(drawn(&table, c), own(c));
@@ -170,5 +170,9 @@ fn a_made_up_world_is_solved_to_its_truth_but_for_ids_no_list_tells_apart() {
     let exact = (moved.iter())
         .filter(|c| drawn(&wrong, c) == own(c))
         .count();
-    assert!(exact < claims.len() / 2, "{exact} of {} lists", claims.len());
+    assert!(
+        exact < claims.len() / 2,
+        "{exact} of {} lists",
+        claims.len()
+    );
 }

@@ -51,9 +51,7 @@ impl Medium {
         }
         Some(Self {
             extinction,
-            albedo: std::array::from_fn(|c| {
-                scattering[c] / extinction[c] * tint[c] * brightness
-            }),
+            albedo: std::array::from_fn(|c| scattering[c] / extinction[c] * tint[c] * brightness),
         })
     }
 }
@@ -173,7 +171,8 @@ impl Quad<'_> {
             return;
         }
         let first = out.0.len() as u32;
-        out.0.extend(kept.iter().map(|&(px, py)| self.vertex(px, py)));
+        out.0
+            .extend(kept.iter().map(|&(px, py)| self.vertex(px, py)));
         for k in 1..kept.len() as u32 - 1 {
             out.1.extend([first, first + k, first + k + 1]);
         }

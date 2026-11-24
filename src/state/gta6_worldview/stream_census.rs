@@ -56,7 +56,8 @@ pub(super) fn count(
             }
         }
     }
-    let drawn = (selection.drawn.iter().map(|d| d.node)).chain(selection.lists.iter().map(|l| l.node));
+    let drawn =
+        (selection.drawn.iter().map(|d| d.node)).chain(selection.lists.iter().map(|l| l.node));
     for (key, at) in drawn {
         let map = loaded.get(&(key as u32));
         if let (Some(map), Some(node)) = (map, forest.node((key, at))) {

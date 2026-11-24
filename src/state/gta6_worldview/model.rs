@@ -13,8 +13,8 @@ use super::texture::Places;
 
 #[path = "material.rs"]
 mod material;
-pub use material::{Constants, CpuMaterial, Emissive, Family, Layer};
 use material::{material_of, GLOW};
+pub use material::{Constants, CpuMaterial, Emissive, Family, Layer};
 
 /// The bytes a model's body is read to.
 const BODY_LIMIT: u64 = 512 << 20;
@@ -117,7 +117,9 @@ pub(super) fn model_of(
                 // The first colour is channel 24 and the second 25: the palette column, the layer weights, the tint and the glow
                 let colour = |channel: u8| {
                     let mut colours = geometry.vertices.colours.iter();
-                    colours.find(|(c, _)| *c == channel).map(|(_, values)| values.as_slice())
+                    colours
+                        .find(|(c, _)| *c == channel)
+                        .map(|(_, values)| values.as_slice())
                 };
                 or_renderer::world::coloured(&mut mesh.vertices, colour(24), colour(25));
                 Some(CpuMesh {

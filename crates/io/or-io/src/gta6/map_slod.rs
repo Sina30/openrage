@@ -88,7 +88,10 @@ pub fn solve(claims: &[SlodClaim]) -> Vec<u64> {
             settle(&mut can, &mut fixed, &mut taken, id, word);
         }
     }
-    let len = fixed.keys().next_back().map_or(0, |id| usize::from(*id) + 1);
+    let len = fixed
+        .keys()
+        .next_back()
+        .map_or(0, |id| usize::from(*id) + 1);
     let mut table = vec![0; len];
     for (id, word) in fixed {
         table[usize::from(id)] = word;

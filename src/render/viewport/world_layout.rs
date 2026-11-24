@@ -330,7 +330,11 @@ mod tests {
         // A wall 20 m ahead, 20 m wide and high: corner k is high in x, y, z by its bits 0, 1, 2.
         let corners = std::array::from_fn(|k| {
             let pick = |bit: usize, low: f32, high: f32| if k >> bit & 1 == 0 { low } else { high };
-            [pick(0, -10.0, 10.0), pick(1, 20.0, 21.0), pick(2, -10.0, 10.0)]
+            [
+                pick(0, -10.0, 10.0),
+                pick(1, 20.0, 21.0),
+                pick(2, -10.0, 10.0),
+            ]
         });
         let occluders: Arc<[Arc<MapOccluders>]> = Arc::from([Arc::new(MapOccluders {
             boxes: vec![BoxOccluder { corners }],
@@ -349,7 +353,9 @@ mod tests {
             Vec3::new(0.0, 10.0, 0.0),
         ];
         let instances = places.map(|at| instance(0, at, 1.0));
-        let chunks: Vec<Chunk> = (places.iter().zip(0..)).map(|(at, k)| chunk(*at, k)).collect();
+        let chunks: Vec<Chunk> = (places.iter().zip(0..))
+            .map(|(at, k)| chunk(*at, k))
+            .collect();
         let mut layout = Layout::default();
         layout.clear();
         layout.model([f32::INFINITY].into_iter());

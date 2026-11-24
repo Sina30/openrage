@@ -49,7 +49,10 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
                 };
                 let ground = match read {
                     Ok(ground) => {
-                        tracing::info!(tiles = ground.tiles(), "GTA VI's ground under the water was read");
+                        tracing::info!(
+                            tiles = ground.tiles(),
+                            "GTA VI's ground under the water was read"
+                        );
                         Some(Arc::new(ground))
                     }
                     Err(why) => {

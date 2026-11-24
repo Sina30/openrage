@@ -57,7 +57,10 @@ fn one_layer() -> Vec<(u32, Option<u64>)> {
 fn two_layer() -> Vec<(u32, Option<u64>)> {
     let mut records = Vec::new();
     for i in 0..2u64 {
-        for (k, map) in ["DiffuseTex", "NormalTex", "MaterialATex", "MaterialBTex"].iter().enumerate() {
+        for (k, map) in ["DiffuseTex", "NormalTex", "MaterialATex", "MaterialBTex"]
+            .iter()
+            .enumerate()
+        {
             records.push((h(&format!("lyr{i}{map}")), Some(0x100 + 16 * i + k as u64)));
         }
     }
@@ -127,7 +130,12 @@ fn a_four_layer_material_gives_each_layer_its_maps_and_the_lookup_and_tint_maps(
         .collect();
     assert_eq!(material.layers, layers);
     assert_eq!(
-        (material.lookup, material.tint, material.tint_normal, material.palette),
+        (
+            material.lookup,
+            material.tint,
+            material.tint_normal,
+            material.palette
+        ),
         (Some(0x4), Some(0x5), Some(0x6), None)
     );
     assert_eq!(material.emissive, None);
@@ -333,7 +341,10 @@ fn a_one_layer_decal_grass_and_emissive_materials_constants_are_read() {
 
 #[test]
 fn a_material_that_states_no_constant_has_the_defaults() {
-    assert_eq!(of(&shader(&one_layer(), &[]), 0).constants, Constants::default());
+    assert_eq!(
+        of(&shader(&one_layer(), &[]), 0).constants,
+        Constants::default()
+    );
     let d = Constants::default();
     assert_eq!((d.bumpiness, d.hbb_range_scale), ([1.0; 4], [1.0; 4]));
     assert_eq!(d.control_filter, [0.0, 0.0, 1.0, 0.0]);
@@ -356,7 +367,10 @@ fn the_colour_of_a_material_with_no_colour_record_is_a_key_no_record_names() {
     );
     // A normal and a material map are never the colour, whatever a pack states of them.
     let bumped = shader(
-        &[(h("BumpTex"), Some(normal)), (h("SpecularTex"), Some(specular))],
+        &[
+            (h("BumpTex"), Some(normal)),
+            (h("SpecularTex"), Some(specular)),
+        ],
         &[],
     );
     let maps = material_of(&bumped, 0, &packed).layers[0];
@@ -387,7 +401,10 @@ fn a_materials_keys_are_each_named_once_and_equal_materials_are_one_key_of_a_map
 
     let fresnel = |value: f32| of(&shader(&records, &[(h("Fresnel"), &[value])]), 0);
     let mut seen = HashMap::new();
-    for (at, material) in [fresnel(0.0), fresnel(0.0), fresnel(0.5)].into_iter().enumerate() {
+    for (at, material) in [fresnel(0.0), fresnel(0.0), fresnel(0.5)]
+        .into_iter()
+        .enumerate()
+    {
         seen.entry(material).or_insert(at);
     }
     assert_eq!(seen.len(), 2);

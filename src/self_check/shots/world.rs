@@ -332,7 +332,10 @@ mod tests {
         assert_eq!(written["entity HD"], 12);
         assert_eq!(written["grass list ORPHANHD"], 3);
         assert_eq!(written["far grass list SLOD1"], 1);
-        assert_eq!(hex(&[0xABC, 0x1, 0xFFFF_FFFF]), ["00000001", "00000ABC", "FFFFFFFF"]);
+        assert_eq!(
+            hex(&[0xABC, 0x1, 0xFFFF_FFFF]),
+            ["00000001", "00000ABC", "FFFFFFFF"]
+        );
     }
 
     #[test]

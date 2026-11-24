@@ -76,7 +76,10 @@ fn lights_of(model: &RbmModel, index: &WorldIndex) -> Option<MapLights> {
             continue;
         }
         let pose = Pose::of(entity);
-        (out.placed).extend(held.iter().filter_map(|row| Some(lamp(row.light()?.placed(&pose)))));
+        (out.placed).extend(
+            held.iter()
+                .filter_map(|row| Some(lamp(row.light()?.placed(&pose)))),
+        );
     }
     match effects::read(model) {
         Ok(read) => {
@@ -108,7 +111,13 @@ fn lamps_of(loaded: &HashMap<u32, MapLights>, reach: &LodReach) -> Vec<Lamp> {
         .flat_map(|m| m.placed.iter().copied())
         .collect();
     let lod: Vec<Lamp> = (loaded.values())
-        .filter_map(|m| Some(lights_frame::lod_lamps(&m.lod, &loaded.get(&m.parent)?.lod, reach)))
+        .filter_map(|m| {
+            Some(lights_frame::lod_lamps(
+                &m.lod,
+                &loaded.get(&m.parent)?.lod,
+                reach,
+            ))
+        })
         .flatten()
         .collect();
     let mut lamps = lights_frame::without_placed(lod, &placed);

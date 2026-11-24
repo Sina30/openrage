@@ -22,6 +22,8 @@ fn node(kind: Kind) -> Node {
 fn a_map_of_an_entity_a_prop_list_a_grass_list_and_a_far_list_counts_four_kinds() {
     // One entity, then one prop list, one plain grass list and one list of far stand-ins.
     let map = [Kind::Entity, Kind::Props, Kind::Grass, Kind::Entity];
-    let kinds: Vec<usize> = (map.iter().enumerate()).map(|(at, &k)| kind(&node(k), at, 1)).collect();
+    let kinds: Vec<usize> = (map.iter().enumerate())
+        .map(|(at, &k)| kind(&node(k), at, 1))
+        .collect();
     assert_eq!(kinds, [0, 1, 2, 3]);
 }
