@@ -188,6 +188,21 @@ impl DayTables {
         self.moment_between(hour, weather, weather, 0.0, y)
     }
 
+    /// The moment at `hour` in `weather` inside a room whose time-cycle modifier the hash `modifier` names, laid `strength` (0 to 1) of the way over the weather's; the weather's alone where no modifier of that name is read.
+    pub fn moment_inside(
+        &self,
+        hour: f32,
+        weather: &str,
+        y: f32,
+        modifier: u32,
+        strength: f32,
+    ) -> Option<Moment> {
+        let room = (self.modifiers.iter())
+            .find(|m| or_io::hash::string_hash_str(&m.name) == modifier)
+            .map(|m| (&m.vars, strength.clamp(0.0, 1.0)));
+        self.moment_of(hour, weather, weather, 0.0, y, room)
+    }
+
     /// The moment at `hour` on the way from weather `from` to weather `to`, `along` (0 to 1) of it: their cycles and their modifiers blended, in the GLOBAL region.
     pub fn moment_between(
         &self,
@@ -197,6 +212,19 @@ impl DayTables {
         along: f32,
         y: f32,
     ) -> Option<Moment> {
+        self.moment_of(hour, from, to, along, y, None)
+    }
+
+    /// [`Self::moment_between`] with a room's modifier and its strength laid over the weathers'.
+    fn moment_of(
+        &self,
+        hour: f32,
+        from: &str,
+        to: &str,
+        along: f32,
+        y: f32,
+        room: Option<(&Vars, f32)>,
+    ) -> Option<Moment> {
         let latitude = self.latitude(y);
         let round = sun_round(hour);
         let sun = sun_towards(round, latitude);
@@ -205,6 +233,17 @@ impl DayTables {
         let along = along.clamp(0.0, 1.0);
         let mut own = (self.timecycle).keyframe_between(between, a, b, along, 0.0)?;
         self.modify(&mut own, from, to, along);
+        if let Some((vars, strength)) = room {
+            let mut full = own.clone();
+            apply_modifier(&mut full, vars);
+            // A variable the cycle leaves unstated is the modifier's whole, as a weather's is.
+            for name in vars.keys() {
+                if let Some(b) = full.get(name) {
+                    let a = own.get(name).unwrap_or(b);
+                    own.set(name, a + (b - a) * strength);
+                }
+            }
+        }
         let frame_hours = frame_hours(round);
         let visual = &self.visual_settings;
         let degrees = |name: &str| visual.get_f32(name, 0.0).to_radians();

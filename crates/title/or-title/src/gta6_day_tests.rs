@@ -206,3 +206,28 @@ fn a_metered_frame_is_exposed_by_the_curve_and_adapted_towards_it_at_the_setting
     let tenth = previous + (want - previous) * 0.1;
     assert!((step.stops - tenth).abs() < 1e-2, "{} {tenth}", step.stops);
 }
+
+#[test]
+fn a_room_lays_its_modifier_over_the_day_by_its_blend_and_one_not_read_changes_nothing() {
+    let tables = tables();
+    let day = tables.moment(12.0, "Sunny", 0.0).expect("a moment");
+    let clip = |m: &Moment| m.own.get("far_clip").expect("a far clip");
+    // The room names the modifier `m` by its hash, whatever the case.
+    let room = or_io::hash::string_hash(b"M");
+    let whole = tables
+        .moment_inside(12.0, "Sunny", 0.0, room, 1.0)
+        .expect("a moment");
+    let half = tables
+        .moment_inside(12.0, "Sunny", 0.0, room, 0.5)
+        .expect("a moment");
+    assert_eq!(clip(&whole), 1.0);
+    assert!(
+        (clip(&half) - (clip(&day) + 1.0) / 2.0).abs() < 1e-4,
+        "{}",
+        clip(&half)
+    );
+    let unread = tables
+        .moment_inside(12.0, "Sunny", 0.0, room ^ 1, 1.0)
+        .expect("a moment");
+    assert_eq!(unread, day);
+}
