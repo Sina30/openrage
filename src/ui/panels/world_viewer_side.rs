@@ -407,12 +407,22 @@ fn streams(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
                     true => tr!("As you chose them; the hour no longer changes them"),
                 },
             );
+            let proven = ui
+                .checkbox(&mut viewer.groups_proven, tr!("Only what the data proves"))
+                .on_hover_text(tr!(
+                    "Leave out what a fresh game is taken to have beyond the data: requests of its scripts and the flags it starts with"
+                ));
+            // The groups follow the hour again, by what is now taken of the game.
+            if proven.changed() {
+                viewer.groups_chosen = false;
+            }
             if viewer.groups_chosen {
                 let own = ui.button(tr!("The game's own groups")).on_hover_text(tr!(
                     "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
                 ));
                 if own.clicked() {
-                    viewer.enabled.groups = index.default_on_in(viewer.hour, viewer.enabled.modes, viewer.groups_proven);
+                    viewer.enabled.groups =
+                        index.default_on_in(viewer.hour, viewer.enabled.modes, viewer.groups_proven);
                     viewer.groups_chosen = false;
                 }
             }
@@ -440,7 +450,10 @@ fn streams(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
                 .show_rows(ui, row_height, rows.len(), |ui, range| {
                     for (group, name) in &rows[range] {
                         let mut on = viewer.enabled.groups.contains(&group.id);
-                        let label = tr_n!("{name}, {count} map", "{name}, {count} maps", group.maps, name = name);
+                        let mut label = tr_n!("{name}, {count} map", "{name}, {count} maps", group.maps, name = name).to_string();
+                        if group.by_inference(viewer.hour, viewer.enabled.modes) {
+                            label = tr!("{label} (inferred)", label = label).to_string();
+                        }
                         if ui.checkbox(&mut on, label).changed() {
                             // ⚠ A list the person changed is theirs: the hour no longer resets it.
                             viewer.groups_chosen = true;

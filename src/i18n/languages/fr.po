@@ -16719,3 +16719,12 @@ msgstr[1] "{name}, {count} cartes"
 
 msgid "Choose a place"
 msgstr "Choisir un lieu"
+
+msgid "Only what the data proves"
+msgstr "Seulement ce que les données prouvent"
+
+msgid "Leave out what a fresh game is taken to have beyond the data: requests of its scripts and the flags it starts with"
+msgstr "Laisser de côté ce qu'on suppose d'une nouvelle partie au-delà des données : les demandes de ses scripts et les drapeaux avec lesquels elle commence"
+
+msgid "{label} (inferred)"
+msgstr "{label} (déduit)"

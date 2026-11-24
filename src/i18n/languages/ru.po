@@ -16859,3 +16859,12 @@ msgstr[2] "{name}, {count} карт"
 
 msgid "Choose a place"
 msgstr "Выберите место"
+
+msgid "Only what the data proves"
+msgstr "Только то, что доказывают данные"
+
+msgid "Leave out what a fresh game is taken to have beyond the data: requests of its scripts and the flags it starts with"
+msgstr "Не учитывать то, что предполагается о новой игре сверх данных: запросы её скриптов и флаги, с которыми она начинается"
+
+msgid "{label} (inferred)"
+msgstr "{label} (выведено)"

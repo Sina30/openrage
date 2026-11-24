@@ -16719,3 +16719,12 @@ msgstr[1] "{name}，{count} 个地图"
 
 msgid "Choose a place"
 msgstr "选择地点"
+
+msgid "Only what the data proves"
+msgstr "仅数据证明的内容"
+
+msgid "Leave out what a fresh game is taken to have beyond the data: requests of its scripts and the flags it starts with"
+msgstr "不计入数据之外对新游戏的假定：其脚本的请求和开局时设置的标志"
+
+msgid "{label} (inferred)"
+msgstr "{label}（推断）"

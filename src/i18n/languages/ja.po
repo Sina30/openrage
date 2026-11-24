@@ -16719,3 +16719,12 @@ msgstr[1] "{name}、マップ {count} 個"
 
 msgid "Choose a place"
 msgstr "場所を選択"
+
+msgid "Only what the data proves"
+msgstr "データが証明するものだけ"
+
+msgid "Leave out what a fresh game is taken to have beyond the data: requests of its scripts and the flags it starts with"
+msgstr "データ以外に新しいゲームについて想定するもの（スクリプトの要求と開始時のフラグ）を除外します"
+
+msgid "{label} (inferred)"
+msgstr "{label}（推定）"
