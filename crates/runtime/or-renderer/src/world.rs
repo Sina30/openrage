@@ -13,10 +13,13 @@ use crate::game_shaders::shadow::TILE;
 use crate::game_shaders::stand_in::constant_view;
 use crate::viewport::{MeshVertex, OrbitCamera, ViewportRenderer};
 
+mod material;
 mod pipelines;
 mod shader;
 pub(crate) mod shadow;
 
+pub use material::{colour1, slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
+use material::{uniform_bytes, STAND_INS};
 use pipelines::{ByBucket, Pipelines};
 pub use shadow::SHADOW_FAR;
 use shadow::{Cascades, CASCADES};
@@ -46,7 +49,7 @@ impl WorldBucket {
     }
 }
 
-/// What a mesh of the world is drawn with: its maps on the device and its bucket; a clone shares the maps.
+/// What a mesh of the world is drawn with: its maps and constants on the device and its bucket; a clone shares them.
 #[derive(Clone)]
 pub struct WorldMaterial {
     maps: Arc<wgpu::BindGroup>,
@@ -190,9 +193,9 @@ pub(crate) struct World {
     pipelines: Pipelines,
     materials: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    /// What a material samples where it names no map: white, a normal that tilts nothing, and no shine.
-    stand_ins: [wgpu::TextureView; 3],
-    /// The material of no map, which every such material shares.
+    /// What each slot of a material samples where it names no map.
+    stand_ins: [wgpu::TextureView; WORLD_MAPS],
+    /// The standard material of no map and the constants most effects state, which every such material shares.
     plain: Arc<wgpu::BindGroup>,
     /// The sun and the ambient light of the game's frame, which what blends over it is lit by.
     light: wgpu::Buffer,
@@ -212,29 +215,37 @@ pub(crate) struct World {
     multi: bool,
 }
 
-/// The maps of a material as the pipelines bind them: colour, normal, specular, and the one sampler.
+/// A material as the pipelines bind it: its maps by slot, the one sampler after them, and its constants after that, the family in front.
 fn bound(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
-    maps: [&wgpu::TextureView; 3],
+    maps: [&wgpu::TextureView; WORLD_MAPS],
+    (family, constants): (WorldFamily, &WorldConstants),
 ) -> wgpu::BindGroup {
-    let map = |binding: u32| wgpu::BindGroupEntry {
-        binding,
-        resource: wgpu::BindingResource::TextureView(maps[binding as usize]),
-    };
+    let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("viewport-world-material-constants"),
+        contents: &uniform_bytes(family, constants),
+        usage: wgpu::BufferUsages::UNIFORM,
+    });
+    let mut entries: Vec<wgpu::BindGroupEntry> = (maps.iter().zip(0u32..))
+        .map(|(view, binding)| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        })
+        .collect();
+    entries.push(wgpu::BindGroupEntry {
+        binding: WORLD_MAPS as u32,
+        resource: wgpu::BindingResource::Sampler(sampler),
+    });
+    entries.push(wgpu::BindGroupEntry {
+        binding: WORLD_MAPS as u32 + 1,
+        resource: uniform.as_entire_binding(),
+    });
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("viewport-world-material-bg"),
         layout,
-        entries: &[
-            map(0),
-            map(1),
-            map(2),
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
+        entries: &entries,
     })
 }
 
@@ -304,19 +315,26 @@ impl World {
             },
             count: None,
         };
+        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = (0..WORLD_MAPS as u32).map(map).collect();
+        entries.push(wgpu::BindGroupLayoutEntry {
+            binding: WORLD_MAPS as u32,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+        entries.push(wgpu::BindGroupLayoutEntry {
+            binding: WORLD_MAPS as u32 + 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
         let materials = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("viewport-world-material-bgl"),
-            entries: &[
-                map(0),
-                map(1),
-                map(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
+            entries: &entries,
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("viewport-world-sampler"),
@@ -330,9 +348,14 @@ impl World {
             ..Default::default()
         });
         // Half floats, so that the normal's half is a half exactly and tilts nothing
-        let stand_ins = [[1.0; 4], [0.5, 0.5, 1.0, 1.0], [0.0; 4]]
-            .map(|texel| constant_view(device, queue, texel));
-        let plain = Arc::new(bound(device, &materials, &sampler, stand_ins.each_ref()));
+        let stand_ins = STAND_INS.map(|texel| constant_view(device, queue, texel));
+        let plain = Arc::new(bound(
+            device,
+            &materials,
+            &sampler,
+            stand_ins.each_ref(),
+            (WorldFamily::Standard, &WorldConstants::default()),
+        ));
 
         let uniform = |label, floats: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {
@@ -365,7 +388,7 @@ impl World {
                 count: None,
             }],
         });
-        let light = uniform("viewport-world-light", 16);
+        let light = uniform("viewport-world-light", 20);
         let light_group = group("viewport-world-light-bg", &light_layout, &light);
         let cascades = std::array::from_fn(|_| {
             let view = uniform("viewport-world-cascade", CAMERA_FLOATS);
@@ -394,20 +417,23 @@ impl World {
         }
     }
 
-    fn material(
-        &self,
-        device: &wgpu::Device,
-        maps: [Option<&wgpu::TextureView>; 3],
-        bucket: WorldBucket,
-    ) -> WorldMaterial {
-        let maps = match maps {
-            [None, None, None] => Arc::clone(&self.plain),
-            maps => {
-                let views = std::array::from_fn(|at| maps[at].unwrap_or(&self.stand_ins[at]));
-                Arc::new(bound(device, &self.materials, &self.sampler, views))
+    fn material(&self, device: &wgpu::Device, surface: &WorldSurface<'_>) -> WorldMaterial {
+        let plain = surface.maps.iter().all(Option::is_none)
+            && surface.family == WorldFamily::Standard
+            && surface.constants == WorldConstants::default();
+        let maps = match plain {
+            true => Arc::clone(&self.plain),
+            false => {
+                let views =
+                    std::array::from_fn(|at| surface.maps[at].unwrap_or(&self.stand_ins[at]));
+                let constants = (surface.family, &surface.constants);
+                Arc::new(bound(device, &self.materials, &self.sampler, views, constants))
             }
         };
-        WorldMaterial { maps, bucket }
+        WorldMaterial {
+            maps,
+            bucket: surface.bucket,
+        }
     }
 
     fn set(
@@ -542,20 +568,28 @@ impl World {
         self.draw(pass, camera, &self.pipelines.gbuffer);
     }
 
-    /// Draw what blends into a pass over the frame the game's passes lit, which reads the depth of the frame and writes none.
+    /// Draw what blends into a pass over the frame the game's passes lit, which reads the depth of the frame and writes none: the faces that turn away, then those that face the camera.
     pub(crate) fn draw_lit(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
-        self.draw(pass, camera, &self.pipelines.lit);
+        for faces in &self.pipelines.lit {
+            self.draw(pass, camera, faces);
+        }
     }
 
-    /// Write the light of the game's frame, which [`Self::draw_lit`] lights what blends by.
+    /// Write the light of the game's frame, which [`Self::draw_lit`] lights what blends by, and how far the night emissives are on, which every material's own light is blended by.
     pub(crate) fn write_light(&self, queue: &wgpu::Queue, engine: &EngineConstants) {
         let sun = Sun::of(engine);
-        let [down, up] = match &engine.lighting {
-            Some(lighting) => lighting.natural_ambient.map(|ambient| ambient.truncate()),
-            None => [engine.ambient; 2],
+        let ([down, up], night) = match &engine.lighting {
+            Some(lighting) => (
+                lighting.natural_ambient.map(|ambient| ambient.truncate()),
+                lighting.night_emissive,
+            ),
+            // With no day the emissives are on, as the game's own scalars have them
+            None => ([engine.ambient; 2], 1.0),
         };
-        let light = [sun.travel.normalize_or_zero(), sun.colour, down, up]
-            .map(|vector| vector.extend(0.0).to_array());
+        let mut light = [sun.travel.normalize_or_zero(), sun.colour, down, up]
+            .map(|vector| vector.extend(0.0).to_array())
+            .to_vec();
+        light.push([night, 0.0, 0.0, 0.0]);
         queue.write_buffer(&self.light, 0, bytemuck::cast_slice(&light));
     }
 
@@ -597,7 +631,7 @@ impl World {
 }
 
 impl ViewportRenderer {
-    /// A material of `bucket` that samples these maps; a map left out is white, the vertex normal, and matte.
+    /// A standard material of `bucket` that samples these maps, `specular` as its material A; a map left out is white, the vertex normal, and fully rough.
     pub fn world_material(
         &self,
         device: &wgpu::Device,
@@ -606,8 +640,22 @@ impl ViewportRenderer {
         specular: Option<&wgpu::TextureView>,
         bucket: WorldBucket,
     ) -> WorldMaterial {
-        self.world
-            .material(device, [colour, normal, specular], bucket)
+        let mut maps = [None; WORLD_MAPS];
+        maps[slot::colour(0)] = colour;
+        maps[slot::normal(0)] = normal;
+        maps[slot::material_a(0)] = specular;
+        let surface = WorldSurface {
+            family: WorldFamily::Standard,
+            bucket,
+            maps,
+            constants: WorldConstants::default(),
+        };
+        self.world.material(device, &surface)
+    }
+
+    /// A material that shades by `surface`; a clone shares its maps and constants.
+    pub fn world_surface(&self, device: &wgpu::Device, surface: &WorldSurface<'_>) -> WorldMaterial {
+        self.world.material(device, surface)
     }
 
     /// The world this frame draws: every instance, and the runs of them each mesh draws, in any order; an empty list draws none.

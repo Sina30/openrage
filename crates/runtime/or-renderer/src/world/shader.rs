@@ -1,4 +1,4 @@
-//! The program the world is drawn with: one vertex stage for a view and one for a cascade of the sun's shadow, and a fragment stage for each bucket in each kind of pass.
+//! The program the world is drawn with: one vertex stage for a view and one for a cascade of the sun's shadow, the arithmetic of each family of material, and a fragment stage for each bucket in each kind of pass.
 
 pub(super) const WORLD_SHADER: &str = r#"
 // Every field of the viewport's `CameraUniform`, in order: a uniform struct is addressed by byte offset.
@@ -9,30 +9,90 @@ struct Camera {
     camera_misc: vec4<f32>,
     key_light: vec4<f32>,
 };
-// The light of the game's frame, in the units its lighting passes sum: what blends over that frame is lit by it.
+// The light of the game's frame, in the units its lighting passes sum, and in `frame.x` how far the night emissives are on.
 struct Light {
     sun_travel: vec4<f32>,
     sun_colour: vec4<f32>,
     ambient_down: vec4<f32>,
     ambient_up: vec4<f32>,
+    frame: vec4<f32>,
+};
+// A material's constants, laid out as `WorldConstants` after a word of the family.
+struct Constants {
+    family: vec4<u32>,
+    fresnel: vec4<f32>,
+    bumpiness: vec4<f32>,
+    height_scale: vec4<f32>,
+    height_bias: vec4<f32>,
+    blend_softness: vec4<f32>,
+    tint_intensity: vec4<f32>,
+    tint_blend: vec4<f32>,
+    vertex_tint_scale: vec4<f32>,
+    vertex_tint_amount: vec4<f32>,
+    control_filter: vec4<f32>,
+    opacity: vec4<f32>,
+    emissive_scale: vec4<f32>,
+    emissive_power: vec4<f32>,
+    flags: u32,
+    palette_row: f32,
+    translucency_as_tint_mask: f32,
+    specular_fresnel: f32,
+    layer0_tint: f32,
+    layer1_tint: f32,
+    control_softness: f32,
+    control_offset: f32,
+    control_entity: f32,
+    dirt_intensity: f32,
+    grass_tint: f32,
+    emissive_multiplier: f32,
+    emissive_night: f32,
+    emissive_view_power: f32,
+    emissive_diffuse_tint: f32,
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
-@group(1) @binding(0) var colour_tex: texture_2d<f32>;
-@group(1) @binding(1) var normal_tex: texture_2d<f32>;
-@group(1) @binding(2) var specular_tex: texture_2d<f32>;
-@group(1) @binding(3) var map_smp: sampler;
+// Slots 9 to 11 are the fourth layer's in the four-layer family, and material B of the first and second layer and the emissive map in every other.
+@group(1) @binding(0) var layer0_colour: texture_2d<f32>;
+@group(1) @binding(1) var layer0_normal: texture_2d<f32>;
+@group(1) @binding(2) var layer0_a: texture_2d<f32>;
+@group(1) @binding(3) var layer1_colour: texture_2d<f32>;
+@group(1) @binding(4) var layer1_normal: texture_2d<f32>;
+@group(1) @binding(5) var layer1_a: texture_2d<f32>;
+@group(1) @binding(6) var layer2_colour: texture_2d<f32>;
+@group(1) @binding(7) var layer2_normal: texture_2d<f32>;
+@group(1) @binding(8) var layer2_a: texture_2d<f32>;
+@group(1) @binding(9) var layer3_colour: texture_2d<f32>;
+@group(1) @binding(10) var layer3_normal: texture_2d<f32>;
+@group(1) @binding(11) var layer3_a: texture_2d<f32>;
+@group(1) @binding(12) var weights_map: texture_2d<f32>;
+@group(1) @binding(13) var tint_map: texture_2d<f32>;
+@group(1) @binding(14) var second_map: texture_2d<f32>;
+@group(1) @binding(15) var map_smp: sampler;
+@group(1) @binding(16) var<uniform> m: Constants;
 @group(2) @binding(0) var<uniform> light: Light;
 
+const STANDARD: u32 = 0u;
+const TWO_LAYER: u32 = 1u;
+const FOUR_LAYER: u32 = 2u;
+const EMISSIVE_FAMILY: u32 = 5u;
+const GRASS: u32 = 6u;
+const TERRAIN_LOD: u32 = 8u;
+
+const VERTEX_TINT: u32 = 1u;
+const MASK_FROM_ALPHA: u32 = 2u;
+const INVERT_CONTROL: u32 = 4u;
+const HARD_LIGHT: u32 = 8u;
+
 struct VsIn {
-    @location(0) position:   vec3<f32>,
-    @location(1) normal:     vec3<f32>,
-    @location(2) uv:         vec2<f32>,
-    @location(3) colour:     vec4<f32>,
-    @location(4) depth_bias: f32,
-    @location(5) row0:       vec4<f32>,
-    @location(6) row1:       vec4<f32>,
-    @location(7) row2:       vec4<f32>,
-    @location(8) tint:       vec4<f32>,
+    @location(0) position: vec3<f32>,
+    @location(1) normal:   vec3<f32>,
+    @location(2) uv:       vec2<f32>,
+    @location(3) colour:   vec4<f32>,
+    // The vertex's second colour, four bytes where the viewport's vertex keeps its depth bias.
+    @location(4) colour1:  u32,
+    @location(5) row0:     vec4<f32>,
+    @location(6) row1:     vec4<f32>,
+    @location(7) row2:     vec4<f32>,
+    @location(8) tint:     vec4<f32>,
 };
 
 struct VsOut {
@@ -43,11 +103,9 @@ struct VsOut {
     @location(3) world_pos: vec3<f32>,
     // How much of the instance its fade leaves, which is the alpha of its tint and no alpha of the surface.
     @location(4) @interpolate(flat) fade: f32,
+    @location(5) colour1: vec4<f32>,
+    @location(6) @interpolate(flat) tint: vec3<f32>,
 };
-
-// The pull towards the camera a vertex's depth bias asks for, as the viewport's mesh shader makes it.
-const BIAS_MAX_PULL: f32 = 0.05;
-const BIAS_DIST_SCALE: f32 = 0.002;
 
 fn placed(in: VsIn) -> vec3<f32> {
     let local = vec4<f32>(in.position, 1.0);
@@ -64,9 +122,11 @@ fn handed_on(in: VsIn, world: vec3<f32>) -> VsOut {
         dot(in.row2.xyz, in.normal),
     ));
     out.uv = in.uv;
-    out.colour = in.colour * vec4<f32>(in.tint.rgb, 1.0);
+    out.colour = in.colour;
+    out.colour1 = unpack4x8unorm(in.colour1);
     out.world_pos = world;
     out.fade = in.tint.a;
+    out.tint = in.tint.rgb;
     return out;
 }
 
@@ -74,11 +134,7 @@ fn handed_on(in: VsIn, world: vec3<f32>) -> VsOut {
 fn vs_main(in: VsIn) -> VsOut {
     let world = placed(in);
     var out = handed_on(in, world);
-    let to_camera = camera.camera_pos_ws.xyz - world;
-    let dist_to_cam = length(to_camera);
-    let pull_metres = in.depth_bias * min(BIAS_MAX_PULL, dist_to_cam * BIAS_DIST_SCALE);
-    let biased = world + to_camera / max(dist_to_cam, 1e-6) * pull_metres;
-    out.clip_pos = camera.view_proj * vec4<f32>(biased, 1.0);
+    out.clip_pos = camera.view_proj * vec4<f32>(world, 1.0);
     return out;
 }
 
@@ -114,27 +170,196 @@ fn dropped(in: VsOut, alpha: f32, cut: f32) -> bool {
 const CUTOUT_ALPHA: f32 = 0.5;
 // Below this a texel of what blends adds nothing.
 const BLEND_ALPHA: f32 = 1.0 / 255.0;
-// The exponent a specular map's alpha of one stands for, the most a G-buffer holds, and the fresnel word of every surface.
-const SPECULAR_FALLOFF: f32 = 100.0;
-const SPECULAR_EXPONENT_MAX: f32 = 512.0;
-const FRESNEL: f32 = 0.98;
-// The light an emissive surface gives of its own colour, and the most the G-buffer's word for it holds.
-const EMISSIVE: f32 = 1.0;
+// The most the G-buffer's word for a surface's own light holds, and the most its exponent word holds.
 const EMISSIVE_MAX: f32 = 16.0;
+const SPECULAR_EXPONENT_MAX: f32 = 512.0;
+// The albedo below which a dielectric's reflectance fades to none, and the span over which it reaches the whole: the frame's two linear words.
+const REFLECTANCE_LOW: f32 = 0.0015;
+const REFLECTANCE_SPAN: f32 = 0.0055;
 
-// What the maps and the vertex give a pixel: its linear colour with its coverage, its unit normal in the world, and how strongly and how tightly it shines.
+// What a material gives a pixel: its linear albedo before its metalness, its coverage, its unit normal in the world, its metalness and smoothness, its reflectance at normal incidence, and the light it gives.
 struct Surface {
-    colour: vec4<f32>,
+    albedo: vec3<f32>,
+    coverage: f32,
     normal: vec3<f32>,
-    intensity: f32,
-    exponent: f32,
+    metal: f32,
+    smoothness: f32,
+    f0: vec3<f32>,
+    emissive: vec3<f32>,
 };
 
-// ⚠ Every map is sampled and every derivative taken before anything is discarded.
+// Every map of the material, each sampled once.
+struct Maps {
+    c0: vec4<f32>, n0: vec4<f32>, a0: vec4<f32>,
+    c1: vec4<f32>, n1: vec4<f32>, a1: vec4<f32>,
+    c2: vec4<f32>, n2: vec4<f32>, a2: vec4<f32>,
+    c3: vec4<f32>, n3: vec4<f32>, a3: vec4<f32>,
+    weights: vec4<f32>,
+    tint: vec4<f32>,
+    second: vec4<f32>,
+};
+
+fn lum(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2125, 0.7154, 0.0721));
+}
+
+fn max3(c: vec3<f32>) -> f32 {
+    return max(c.r, max(c.g, c.b));
+}
+
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    return select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92, c <= vec3<f32>(0.04045));
+}
+
+// How much of a dielectric's reflectance a surface of this albedo keeps.
+fn reach(albedo: vec3<f32>) -> f32 {
+    return clamp((max3(albedo) - REFLECTANCE_LOW) / REFLECTANCE_SPAN, 0.0, 1.0);
+}
+
+// A map of two channels as a normal in the frame of the texture, its lean scaled by `bump`: z is worked out from x and y.
+fn leaning(texel: vec4<f32>, bump: f32) -> vec3<f32> {
+    let xy = texel.xy * 2.0 - 1.0;
+    let z = max(sqrt(max(1.0 - dot(xy, xy), 0.0)), 0.01);
+    return vec3<f32>(xy * bump, z);
+}
+
+// The light laid over `base` as hard light.
+fn hard_light(base: vec3<f32>, over: vec3<f32>) -> vec3<f32> {
+    let screen = 1.0 - 2.0 * (1.0 - base) * (1.0 - over);
+    return select(screen, 2.0 * base * over, over < vec3<f32>(0.5));
+}
+
+// The texel of the palette the vertex's first colour picks in the material's row: a column past the row's end runs on into the next, as in the game's one-dimensional image.
+fn palette(colour0: vec4<f32>) -> vec3<f32> {
+    let size = textureDimensions(tint_map);
+    let width = max(size.x, 1u);
+    let rows = max(size.y, 1u);
+    let row = min(u32(max(m.palette_row, 0.0)), rows - 1u);
+    let at = row * width + u32(255.0 * colour0.r + 0.5);
+    let texel = vec2<u32>(at % width, min(at / width, rows - 1u));
+    return textureLoad(tint_map, texel, 0).rgb;
+}
+
+// A four-layer layer's colour: its vertex tint, then its palette tint, the second unless the vertex's second colour turns it off.
+fn layer_colour(d: vec3<f32>, mask: f32, scale: f32, amount: f32, intensity: f32, blend: f32, colour1: vec4<f32>, tint: vec3<f32>) -> vec3<f32> {
+    var v = d;
+    if ((m.flags & VERTEX_TINT) != 0u) {
+        v = mix(d, scale * srgb_to_linear(colour1.rgb) * lum(d), amount * mask);
+    }
+    let t = intensity * tint * lum(v);
+    return mix(mix(v, t, blend * mask), v, colour1.a);
+}
+
+// The four-layer family: the layers' weights from the lookup map and the vertex, sharpened by each layer's height.
+fn four_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut) -> vec3<f32> {
+    let c0 = in.colour;
+    let lookup = maps.weights.rgb;
+    let rest = mix(1.0 - lookup.r - lookup.g - lookup.b, 1.0 - c0.r - c0.g - c0.b, c0.a);
+    let w = max(vec4<f32>(mix(lookup, c0.rgb, c0.a), rest), vec4<f32>(0.0));
+    let height = vec4<f32>(maps.a0.b, maps.a1.b, maps.a2.b, maps.a3.b);
+    let h = max(vec4<f32>(0.01), m.height_scale * (height - m.height_bias)) * w;
+    let highest = max(max(h.x, h.y), max(h.z, h.w));
+    let sharp = 20.0 - 33.33 * (m.blend_softness - 0.2);
+    let raised = max(pow(h / max(highest, 1e-6), sharp) - 0.001, vec4<f32>(0.0));
+    let a = select(raised, vec4<f32>(0.0), w <= vec4<f32>(0.0));
+    let total = a.x + a.y + a.z + a.w;
+    let b = select(vec4<f32>(1.0, 0.0, 0.0, 0.0), a / max(total, 1e-6), total > 0.0);
+    let alphas = vec4<f32>(maps.a0.a, maps.a1.a, maps.a2.a, maps.a3.a);
+    let mask = select(1.0 - alphas, alphas, (m.flags & MASK_FROM_ALPHA) != 0u);
+    let c1 = in.colour1;
+    let tint = maps.tint.rgb;
+    let colour = b.x * layer_colour(maps.c0.rgb, mask.x, m.vertex_tint_scale.x, m.vertex_tint_amount.x, m.tint_intensity.x, m.tint_blend.x, c1, tint)
+        + b.y * layer_colour(maps.c1.rgb, mask.y, m.vertex_tint_scale.y, m.vertex_tint_amount.y, m.tint_intensity.y, m.tint_blend.y, c1, tint)
+        + b.z * layer_colour(maps.c2.rgb, mask.z, m.vertex_tint_scale.z, m.vertex_tint_amount.z, m.tint_intensity.z, m.tint_blend.z, c1, tint)
+        + b.w * layer_colour(maps.c3.rgb, mask.w, m.vertex_tint_scale.w, m.vertex_tint_amount.w, m.tint_intensity.w, m.tint_blend.w, c1, tint);
+    (*s).albedo = colour;
+    (*s).coverage = 1.0;
+    (*s).metal = 0.0;
+    let rough = clamp(dot(b, vec4<f32>(maps.a0.g, maps.a1.g, maps.a2.g, maps.a3.g)), 0.0, 1.0);
+    (*s).smoothness = 1.0 - rough;
+    (*s).f0 = vec3<f32>(reach(colour) * dot(b, 0.04 * (1.0 + m.fresnel)));
+    let blended = b.x * leaning(maps.n0, m.bumpiness.x) + b.y * leaning(maps.n1, m.bumpiness.y)
+        + b.z * leaning(maps.n2, m.bumpiness.z) + b.w * leaning(maps.n3, m.bumpiness.w);
+    // The tint normal map leans the blended normal further.
+    let over = maps.second.xy * 2.0 - 1.0;
+    return vec3<f32>(blended.xy + over, blended.z);
+}
+
+// The two-layer family: the second layer over the first by the control map and the vertex's second colour, then the dirt.
+fn two_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) -> vec3<f32> {
+    var c = dot(maps.weights, m.control_filter);
+    if ((m.flags & INVERT_CONTROL) != 0u) {
+        c = 1.0 - c;
+    }
+    let x = clamp(in.colour1.x * (1.0 + c), 0.0, 1.0);
+    let soft = max(m.control_softness, 1e-3);
+    let shown = clamp(x / max(0.01, mix(1.0 / (soft * soft), 1.0, x)), 0.0, 1.0);
+    let w1 = clamp(shown * m.control_entity + m.control_offset, 0.0, 1.0);
+    let m0 = 1.0 - m.translucency_as_tint_mask * (1.0 - maps.c3.a);
+    let m1 = 1.0 - m.translucency_as_tint_mask * (1.0 - maps.n3.a);
+    let l0 = maps.c0.rgb * (1.0 + m.layer0_tint * m0 * (tint - 1.0));
+    let l1 = maps.c1.rgb * (1.0 + m.layer1_tint * m1 * (tint - 1.0));
+    var colour = mix(l0, l1, w1);
+    let dirt = clamp(maps.second.a * in.colour.a * m.dirt_intensity, 0.0, 1.0);
+    let laid = select(maps.second.rgb, hard_light(colour, maps.second.rgb), (m.flags & HARD_LIGHT) != 0u);
+    colour = mix(colour, laid, dirt);
+    (*s).albedo = colour;
+    (*s).coverage = maps.c0.a * in.colour.a;
+    (*s).metal = mix(maps.a0.r, maps.a1.r, w1);
+    (*s).smoothness = 1.0 - clamp(mix(maps.a0.g, maps.a1.g, w1), 0.0, 1.0);
+    return mix(leaning(maps.n0, m.bumpiness.x), leaning(maps.n1, m.bumpiness.y), w1);
+}
+
+// The one-layer families: material A is metalness in red and roughness in green, material B's alpha masks the palette tint.
+fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) -> vec3<f32> {
+    let family = m.family.x;
+    var colour = maps.c0.rgb;
+    if (family == GRASS) {
+        // The instance's colour, squared already, as far as the vertex's second colour lets it
+        let own = 1.0 + in.colour1.r * (in.tint - 1.0);
+        colour = colour * (1.0 + m.grass_tint * (own - 1.0));
+    } else if (family != TERRAIN_LOD) {
+        let mask = 1.0 - m.translucency_as_tint_mask * (1.0 - maps.c3.a);
+        colour = colour * (1.0 + mask * (tint - 1.0));
+        // The second colour map over the first by its own alpha
+        colour = mix(colour, maps.second.rgb, maps.second.a);
+    }
+    (*s).albedo = colour;
+    (*s).coverage = maps.c0.a * in.colour.a;
+    if (family == TERRAIN_LOD) {
+        // Its material map's green is a smoothness, and its normal map holds all three channels
+        (*s).metal = 0.0;
+        (*s).smoothness = clamp(maps.a0.g, 0.0, 1.0);
+        return maps.n0.xyz * 2.0 - 1.0;
+    }
+    (*s).metal = clamp(maps.a0.r, 0.0, 1.0);
+    (*s).smoothness = 1.0 - clamp(maps.a0.g, 0.0, 1.0);
+    return leaning(maps.n0, m.bumpiness.x);
+}
+
+// The strength of a material's own light at this hour: its night value where it states one, by how far the night emissives are on.
+fn emissive_strength() -> f32 {
+    return select(mix(m.emissive_multiplier, m.emissive_night, light.frame.x), m.emissive_multiplier, m.emissive_night < 0.0);
+}
+
+// ⚠ Every map is sampled and every derivative taken before anything is discarded, and in control flow every pixel shares.
 fn surface_of(in: VsOut, front_facing: bool) -> Surface {
-    let colour = textureSample(colour_tex, map_smp, in.uv) * in.colour;
-    let bump = textureSample(normal_tex, map_smp, in.uv).xy * 2.0 - 1.0;
-    let gloss = textureSample(specular_tex, map_smp, in.uv);
+    var maps: Maps;
+    maps.c0 = textureSample(layer0_colour, map_smp, in.uv);
+    maps.n0 = textureSample(layer0_normal, map_smp, in.uv);
+    maps.a0 = textureSample(layer0_a, map_smp, in.uv);
+    maps.c1 = textureSample(layer1_colour, map_smp, in.uv);
+    maps.n1 = textureSample(layer1_normal, map_smp, in.uv);
+    maps.a1 = textureSample(layer1_a, map_smp, in.uv);
+    maps.c2 = textureSample(layer2_colour, map_smp, in.uv);
+    maps.n2 = textureSample(layer2_normal, map_smp, in.uv);
+    maps.a2 = textureSample(layer2_a, map_smp, in.uv);
+    maps.c3 = textureSample(layer3_colour, map_smp, in.uv);
+    maps.n3 = textureSample(layer3_normal, map_smp, in.uv);
+    maps.a3 = textureSample(layer3_a, map_smp, in.uv);
+    maps.weights = textureSample(weights_map, map_smp, in.uv);
+    maps.tint = textureSample(tint_map, map_smp, in.uv);
+    maps.second = textureSample(second_map, map_smp, in.uv);
     // Culling is off, so a face seen from behind is shaded by the normal turned towards the viewer.
     let n = normalize(in.world_normal) * select(-1.0, 1.0, front_facing);
     // No vertex carries a tangent: the frame is how the position and the texture coordinate change across the pixel, the map's x along u and its y along v.
@@ -150,24 +375,61 @@ fn surface_of(in: VsOut, front_facing: bool) -> Surface {
     let bitangent = (dp2perp * duv1.y + dp1perp * duv2.y) * handed;
     let longest = max(dot(tangent, tangent), dot(bitangent, bitangent));
     let scale = inverseSqrt(max(longest, 1e-30));
-    // The map's z is worked out from its x and y, so a map of two channels reads as one of three.
-    let z = max(sqrt(max(1.0 - dot(bump, bump), 0.0)), 0.01);
+
+    let family = m.family.x;
     var s: Surface;
-    s.colour = colour;
-    s.normal = normalize(tangent * (bump.x * scale) + bitangent * (bump.y * scale) + n * z);
-    // The specular map as the game's default effects read it: intensity in red, falloff in alpha.
-    s.intensity = clamp(gloss.r, 0.0, 1.0);
-    s.exponent = clamp(gloss.a * SPECULAR_FALLOFF, 0.0, SPECULAR_EXPONENT_MAX);
+    s.emissive = vec3<f32>(0.0);
+    var lean: vec3<f32>;
+    if (family == FOUR_LAYER) {
+        lean = four_layer(&s, maps, in);
+    } else {
+        let tint = palette(in.colour);
+        if (family == TWO_LAYER) {
+            lean = two_layer(&s, maps, in, tint);
+        } else {
+            lean = one_layer(&s, maps, in, tint);
+        }
+        if (family != GRASS) {
+            s.albedo = s.albedo * in.tint;
+        }
+        let dielectric = 0.04 * (1.0 + m.specular_fresnel) * reach(s.albedo * (1.0 - s.metal));
+        s.f0 = mix(vec3<f32>(dielectric), s.albedo, s.metal);
+        if (family == TERRAIN_LOD) {
+            s.f0 = vec3<f32>(0.04 * reach(s.albedo));
+        }
+    }
+    s.normal = normalize(tangent * (lean.x * scale) + bitangent * (lean.y * scale) + n * lean.z);
+    if (family != FOUR_LAYER) {
+        // The emissive map, by the vertex's second colour, its own scale and power, the view and how much of the surface's colour it takes
+        var e = emissive_strength() * pow(max(m.emissive_scale.rgb * maps.a3.rgb * in.colour1.rgb, vec3<f32>(0.0)), m.emissive_power.rgb);
+        if (m.emissive_view_power > 0.0) {
+            let view_dir = normalize(camera.camera_pos_ws.xyz - in.world_pos);
+            e = e * pow(max(dot(s.normal, view_dir), 0.0), m.emissive_view_power);
+        }
+        s.emissive = e * (1.0 + m.emissive_diffuse_tint * (s.albedo - 1.0));
+    }
     return s;
 }
 
+// The colour the diffuse light multiplies: the albedo less what its metal turns to reflection.
+fn diffuse_of(s: Surface) -> vec3<f32> {
+    return s.albedo * (1.0 - s.metal);
+}
+
+// The Blinn-Phong exponent whose lobe is as wide as the rough lobe of this smoothness.
+fn exponent_of(smoothness: f32) -> f32 {
+    let alpha = max(0.001, (1.0 - smoothness) * (1.0 - smoothness));
+    return clamp(2.0 / (alpha * alpha) - 2.0, 1.0, 8196.0);
+}
+
 // The highlight a light towards `towards` leaves on the surface seen from `view_dir`.
-fn shine(s: Surface, towards: vec3<f32>, view_dir: vec3<f32>) -> f32 {
+fn shine(s: Surface, towards: vec3<f32>, view_dir: vec3<f32>) -> vec3<f32> {
     // A light straight behind the viewer's line has no half way: the sum is then of no length, and is left so
     let sum = towards + view_dir;
     let half_way = sum * inverseSqrt(max(dot(sum, sum), 1e-12));
-    let lit = step(0.0, dot(s.normal, towards));
-    return s.intensity * lit * pow(max(dot(s.normal, half_way), 0.0), max(s.exponent, 1.0));
+    let lit = max(dot(s.normal, towards), 0.0);
+    let n = exponent_of(s.smoothness);
+    return s.f0 * lit * (2.0 + n) / 8.0 * pow(max(dot(s.normal, half_way), 0.0), n);
 }
 
 // The key light, the head light and the ambient light of the viewport's material mode.
@@ -176,16 +438,16 @@ fn plain_lit(s: Surface, world_pos: vec3<f32>) -> vec3<f32> {
     let key = max(dot(s.normal, camera.key_light.xyz), 0.0) * camera.key_light.w;
     let head = max(dot(s.normal, view_dir), 0.0) * 0.30;
     let highlight = shine(s, camera.key_light.xyz, view_dir) * camera.key_light.w;
-    return s.colour.rgb * (key + head + 0.15) + vec3<f32>(highlight);
+    return diffuse_of(s) * (key + head + 0.15) + highlight + s.emissive;
 }
 
 // A surface of the plain modes that writes depth: `cut` is the coverage under which it is not drawn, and `glow` how far it shows its own colour unlit.
 fn forward(in: VsOut, front_facing: bool, cut: f32, glow: f32) -> vec4<f32> {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.colour.a, cut)) {
+    if (dropped(in, s.coverage, cut)) {
         discard;
     }
-    return vec4<f32>(mix(plain_lit(s, in.world_pos), s.colour.rgb, glow), 1.0);
+    return vec4<f32>(mix(plain_lit(s, in.world_pos), diffuse_of(s), glow), 1.0);
 }
 
 @fragment
@@ -207,10 +469,11 @@ fn fs_forward_emissive(in: VsOut, @builtin(front_facing) front_facing: bool) -> 
 @fragment
 fn fs_forward_blend(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.colour.a, BLEND_ALPHA)) {
+    let alpha = s.coverage * select(1.0, m.opacity.x, m.family.x != FOUR_LAYER);
+    if (dropped(in, alpha, BLEND_ALPHA)) {
         discard;
     }
-    return vec4<f32>(plain_lit(s, in.world_pos), s.colour.a);
+    return vec4<f32>(plain_lit(s, in.world_pos), alpha);
 }
 
 // The four targets of the game's G-buffer, in the words its lighting passes read.
@@ -221,66 +484,73 @@ struct GBufferOut {
     @location(3) ambient: vec4<f32>,
 };
 
-fn words(s: Surface, emissive: f32) -> GBufferOut {
+fn words(s: Surface) -> GBufferOut {
     var out: GBufferOut;
+    let diffuse = diffuse_of(s);
     // The lighting pass squares the colour it reads here, so the target holds the square root of the linear colour.
-    out.albedo = vec4<f32>(sqrt(max(s.colour.rgb, vec3<f32>(0.0))), 1.0);
+    out.albedo = vec4<f32>(sqrt(max(diffuse, vec3<f32>(0.0))), 1.0);
     // The normal in the world, from -1..1 into 0..1; the default effect leaves the alpha at nought for every normal but one straight up.
     out.normal = vec4<f32>(s.normal * 0.5 + 0.5, 0.0);
-    // The square root of the specular intensity in red and of the exponent over the most there is in green, the fresnel word in blue, and in alpha a surface the sun reaches whole.
-    out.specular = vec4<f32>(
-        sqrt(s.intensity),
-        sqrt(s.exponent / SPECULAR_EXPONENT_MAX),
-        FRESNEL,
-        1.0,
-    );
-    // The whole of the natural ambient light in red, none of the artificial in green, and in blue the light the surface gives of its own colour, which the lighting pass adds.
-    out.ambient = vec4<f32>(1.0, 0.0, emissive / EMISSIVE_MAX, 1.0);
+    // The lighting reads its reflectance as the intensity, one here, times one less the fresnel word, so a coloured metal's reflectance turns grey; the exponent is stored as the lighting expands it, a third below 1500 and a 558th above.
+    let n = exponent_of(s.smoothness);
+    let stored = select(500.0 + (n - 1500.0) / 558.0, n / 3.0, n <= 1500.0);
+    out.specular = vec4<f32>(1.0, sqrt(stored / SPECULAR_EXPONENT_MAX), 1.0 - max3(s.f0), 1.0);
+    // The whole of the natural ambient light in red, none of the artificial in green, and in blue the surface's own light as a multiple of its colour, which the lighting pass adds.
+    let glow = min(lum(s.emissive) / max(lum(diffuse), 1.0 / 255.0), EMISSIVE_MAX);
+    out.ambient = vec4<f32>(1.0, 0.0, glow / EMISSIVE_MAX, 1.0);
     return out;
 }
 
-fn gbuffer(in: VsOut, front_facing: bool, cut: f32, emissive: f32) -> GBufferOut {
+fn gbuffer(in: VsOut, front_facing: bool, cut: f32) -> GBufferOut {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.colour.a, cut)) {
+    if (dropped(in, s.coverage, cut)) {
         discard;
     }
-    return words(s, emissive);
+    return words(s);
 }
 
 @fragment
 fn fs_gbuffer(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBufferOut {
-    return gbuffer(in, front_facing, 0.0, 0.0);
+    return gbuffer(in, front_facing, 0.0);
 }
 
 @fragment
 fn fs_gbuffer_cutout(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBufferOut {
-    return gbuffer(in, front_facing, CUTOUT_ALPHA, 0.0);
+    return gbuffer(in, front_facing, CUTOUT_ALPHA);
 }
 
 @fragment
 fn fs_gbuffer_emissive(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBufferOut {
-    return gbuffer(in, front_facing, 0.0, EMISSIVE);
+    return gbuffer(in, front_facing, 0.0);
 }
 
-// A decal is blended onto what the G-buffer holds: each target it writes takes its coverage as the alpha it is blended by, and the pipeline keeps the alpha that was there.
+// A decal is blended onto what the G-buffer holds: each target it writes takes its coverage times its own opacity as the alpha it is blended by, and the pipeline keeps the alpha that was there.
 @fragment
 fn fs_gbuffer_decal(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBufferOut {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.colour.a, BLEND_ALPHA)) {
+    if (dropped(in, s.coverage * max3(m.opacity.xyz), BLEND_ALPHA)) {
         discard;
     }
-    var out = words(s, 0.0);
-    out.albedo.a = s.colour.a;
-    out.normal.a = s.colour.a;
-    out.specular.a = s.colour.a;
+    var out = words(s);
+    out.albedo.a = m.opacity.x * s.coverage;
+    out.normal.a = m.opacity.y * s.coverage;
+    out.specular.a = m.opacity.z * s.coverage;
     return out;
 }
 
-// What blends over the frame the game's passes lit, lit by the same sun and ambient light.
+// What blends over the frame the game's passes lit, lit by the same sun and ambient light, premultiplied by its coverage; a forward emissive adds its own light instead.
 @fragment
 fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     let s = surface_of(in, front_facing);
-    if (dropped(in, s.colour.a, BLEND_ALPHA)) {
+    if (m.family.x == EMISSIVE_FAMILY) {
+        let colour = textureSample(layer0_colour, map_smp, in.uv) * in.colour;
+        let alpha = colour.a * m.opacity.x;
+        if (dropped(in, max(alpha, max3(colour.rgb)), BLEND_ALPHA)) {
+            discard;
+        }
+        return vec4<f32>(colour.rgb * emissive_strength() * m.opacity.x, alpha);
+    }
+    if (dropped(in, s.coverage, BLEND_ALPHA)) {
         discard;
     }
     let towards = -light.sun_travel.xyz;
@@ -288,7 +558,8 @@ fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) 
     let ambient = mix(light.ambient_down.rgb, light.ambient_up.rgb, s.normal.z * 0.5 + 0.5);
     let view_dir = normalize(camera.camera_pos_ws.xyz - in.world_pos);
     let highlight = light.sun_colour.rgb * shine(s, towards, view_dir);
-    return vec4<f32>(s.colour.rgb * (sun + ambient) + highlight, s.colour.a);
+    let lit = diffuse_of(s) * (sun + ambient) + highlight + s.emissive;
+    return vec4<f32>(lit * s.coverage, s.coverage);
 }
 
 // What casts the sun's shadow whole: only the fade of its instance leaves a texel out.
@@ -302,7 +573,7 @@ fn fs_cast(in: VsOut) {
 // A cutout casts the shadow of what it draws.
 @fragment
 fn fs_cast_cutout(in: VsOut) {
-    let alpha = textureSample(colour_tex, map_smp, in.uv).a * in.colour.a;
+    let alpha = textureSample(layer0_colour, map_smp, in.uv).a * in.colour.a;
     if (dropped(in, alpha, CUTOUT_ALPHA)) {
         discard;
     }

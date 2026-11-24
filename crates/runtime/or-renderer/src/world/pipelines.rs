@@ -5,10 +5,19 @@ use crate::game_shaders::deferred::{
 };
 use crate::game_shaders::mesh::scene::writes_material;
 use crate::game_shaders::shadow::MAP_FORMAT;
-use crate::viewport::{MeshVertex, MESH_VERTEX_ATTRIBUTES};
+use crate::viewport::MeshVertex;
 
 use super::shader::WORLD_SHADER;
 use super::{WorldBucket, WorldInstance};
+
+/// A [`MeshVertex`] as the world reads it: the viewport's own attributes, but for the depth bias, whose four bytes are the vertex's second colour.
+const WORLD_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+    0 => Float32x3,
+    1 => Float32x3,
+    2 => Float32x2,
+    3 => Float32x4,
+    4 => Uint32,
+];
 
 /// The pipeline of each bucket a pass draws, by the bucket's place in the order they draw; none where the pass does not draw it.
 pub(super) type ByBucket = [Option<wgpu::RenderPipeline>; WorldBucket::COUNT];
@@ -18,8 +27,8 @@ pub(super) struct Pipelines {
     pub(super) forward: ByBucket,
     /// Into the G-buffer of the game's frame.
     pub(super) gbuffer: ByBucket,
-    /// Over the frame the game's passes lit, whose depth is only read.
-    pub(super) lit: ByBucket,
+    /// Over the frame the game's passes lit, whose depth is only read: the back faces, then the front faces.
+    pub(super) lit: [ByBucket; 2],
     /// Into a tile of the map the sun's shadow is cast into.
     pub(super) cast: ByBucket,
 }
@@ -52,6 +61,16 @@ const OVER_KEEPING_ALPHA: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
+/// Laid over what is there as a colour already multiplied by its alpha, keeping the alpha that was there: what blends over the lit frame states its coverage so, and a forward emissive adds its light with little coverage.
+const PREMULTIPLIED_KEEPING_ALPHA: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: OVER_KEEPING_ALPHA.alpha,
+};
+
 impl Pipelines {
     /// The pipelines for a viewport whose colour target is of `colour_format`, with the layouts of its camera, of a material's maps and of the frame's light.
     pub(super) fn new(
@@ -80,7 +99,7 @@ impl Pipelines {
             wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &MESH_VERTEX_ATTRIBUTES,
+                attributes: &WORLD_VERTEX_ATTRIBUTES,
             },
             wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<WorldInstance>() as wgpu::BufferAddress,
@@ -93,11 +112,12 @@ impl Pipelines {
                 ],
             },
         ];
-        let build = |label: &str,
-                     layout: &wgpu::PipelineLayout,
-                     (vertex, fragment): (&str, &str),
-                     targets: &[Option<wgpu::ColorTargetState>],
-                     depth_stencil: wgpu::DepthStencilState| {
+        let culled = |label: &str,
+                      cull_mode: Option<wgpu::Face>,
+                      layout: &wgpu::PipelineLayout,
+                      (vertex, fragment): (&str, &str),
+                      targets: &[Option<wgpu::ColorTargetState>],
+                      depth_stencil: wgpu::DepthStencilState| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
@@ -108,7 +128,7 @@ impl Pipelines {
                     buffers: &buffers,
                 },
                 primitive: wgpu::PrimitiveState {
-                    cull_mode: None,
+                    cull_mode,
                     ..Default::default()
                 },
                 depth_stencil: Some(depth_stencil),
@@ -122,6 +142,13 @@ impl Pipelines {
                 multiview_mask: None,
                 cache: None,
             })
+        };
+        let build = |label: &str,
+                     layout: &wgpu::PipelineLayout,
+                     stages: (&str, &str),
+                     targets: &[Option<wgpu::ColorTargetState>],
+                     depth_stencil: wgpu::DepthStencilState| {
+            culled(label, None, layout, stages, targets, depth_stencil)
         };
         // The depth of the viewport and of the game's frame, where the nearer a surface the greater its depth
         let frame = |write: bool, stencil: wgpu::StencilState, bias: wgpu::DepthBiasState| {
@@ -210,18 +237,26 @@ impl Pipelines {
             None,
         ];
 
+        // A glass draws the faces that turn away first and then those that face the viewer, so its far side shows through its near one
+        let lit_faces = |label: &str, dropped: wgpu::Face| {
+            [
+                None,
+                None,
+                None,
+                None,
+                Some(culled(
+                    label,
+                    Some(dropped),
+                    &viewed,
+                    ("vs_main", "fs_lit"),
+                    &[target(HDR_FORMAT, Some(PREMULTIPLIED_KEEPING_ALPHA), all)],
+                    frame(false, untouched(), level()),
+                )),
+            ]
+        };
         let lit = [
-            None,
-            None,
-            None,
-            None,
-            Some(build(
-                "viewport-world-lit-pipeline",
-                &viewed,
-                ("vs_main", "fs_lit"),
-                &[target(HDR_FORMAT, Some(OVER_KEEPING_ALPHA), all)],
-                frame(false, untouched(), level()),
-            )),
+            lit_faces("viewport-world-lit-back-pipeline", wgpu::Face::Front),
+            lit_faces("viewport-world-lit-front-pipeline", wgpu::Face::Back),
         ];
 
         // A tile of the map: the nearer the sun a surface the less its depth, and no colour is written
