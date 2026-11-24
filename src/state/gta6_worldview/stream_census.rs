@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 
-use or_world::streaming::{Forest, Level, Selection};
+use or_world::streaming::{Forest, Kind, Level, Node, Selection};
 
-use super::read::{Instances, Loaded};
+use super::read::Loaded;
 
 /// A selection's census; a kind is an entity, a prop list, a grass list or a far grass list, in that order.
 #[derive(Debug, Clone, Default)]
@@ -22,15 +22,14 @@ pub struct Census {
     pub list_instances: usize,
 }
 
-/// The kind of the node at `at` of `map`.
-fn kind(map: &Loaded, at: usize) -> usize {
-    let Some(list) = at.checked_sub(map.entities.len()) else {
-        return 0;
-    };
-    match (list < map.props, map.lists.get(list).map(|l| &l.instances)) {
-        (true, _) => 1,
-        (false, Some(Instances::Cards(_))) => 3,
-        _ => 2,
+/// The kind of `node`, the node at `at` of a map with `entities` entities.
+// A list of far stand-ins is an `Entity` node that comes after the entities.
+fn kind(node: &Node, at: usize, entities: usize) -> usize {
+    match node.kind {
+        Kind::Props => 1,
+        Kind::Grass => 2,
+        Kind::Entity if at >= entities => 3,
+        Kind::Entity => 0,
     }
 }
 
@@ -49,21 +48,24 @@ pub(super) fn count(
         list_instances,
         ..Census::default()
     };
-    let level = |key: u64, at: u32| forest.node((key, at)).map(|node| node.level as usize);
     for (name, map) in loaded {
         let key = u64::from(*name);
         for at in 0..map.drawn.len() {
-            if let Some(level) = level(key, at as u32) {
-                census.nodes[kind(map, at)][level] += 1;
+            if let Some(node) = forest.node((key, at as u32)) {
+                census.nodes[kind(node, at, map.entities.len())][node.level as usize] += 1;
             }
         }
     }
     let drawn = (selection.drawn.iter().map(|d| d.node)).chain(selection.lists.iter().map(|l| l.node));
     for (key, at) in drawn {
         let map = loaded.get(&(key as u32));
-        if let (Some(map), Some(level)) = (map, level(key, at)) {
-            census.drawn[kind(map, at as usize)][level] += 1;
+        if let (Some(map), Some(node)) = (map, forest.node((key, at))) {
+            census.drawn[kind(node, at as usize, map.entities.len())][node.level as usize] += 1;
         }
     }
     census
 }
+
+#[cfg(test)]
+#[path = "stream_census_tests.rs"]
+mod tests;
