@@ -208,9 +208,15 @@ fn each_family_is_classed_by_its_bucket_byte_then_its_records_and_constants() {
         (h("bumpTexture"), Some(0xB)),
         (h("MaterialBTexture"), Some(0xA2)),
     ];
+    let building = [terrain.as_slice(), &[(h("TintPaletteTex"), Some(0xD))]].concat();
     let terrain = of(&shader(&terrain, &[]), 0);
     assert_eq!(terrain.family, Family::TerrainLod);
     assert_eq!(terrain.layers, [layer(0xC, 0xB, 0xA, Some(0xA2))]);
+    // A building's far model states the same records and a palette: a one-layer material
+    let building = of(&shader(&building, &[]), 0);
+    assert_eq!(building.family, Family::Standard);
+    assert_eq!(building.layers, terrain.layers);
+    assert_eq!(building.palette, Some(0xD));
 }
 
 #[test]

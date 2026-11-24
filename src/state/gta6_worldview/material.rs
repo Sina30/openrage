@@ -451,7 +451,8 @@ pub(super) fn material_of(
         (Family::FourLayer, FOUR.iter().map(|l| r.layer(l)).collect())
     } else if TWO.iter().any(|l| r.states_layer(l)) {
         (Family::TwoLayer, TWO.iter().map(|l| r.layer(l)).collect())
-    } else if TERRAIN.iter().any(|h| r.states(*h)) {
+    } else if TERRAIN.iter().any(|h| r.states(*h)) && !r.states(PALETTE) {
+        // A building's far model states the terrain's records with a palette, and packs its material map as a one-layer material does
         (Family::TerrainLod, vec![r.layer(&ONE)])
     } else {
         (Family::Standard, vec![r.layer(&ONE)])
