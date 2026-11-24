@@ -40,7 +40,7 @@ pub(super) struct Opening {
     pub(super) flags: u32,
 }
 
-// ⚠ GTA V's bits, which the build's portals match in kind: every portal with 4 (778 of them also
+// ⚠ GTA V's bits, which the build's portals match in kind: every portal with 4 (many of them also
 // 128, 256 and 1024, GTA V's mirror bits) and every portal with 2 joins its room to room 0.
 /// A portal's flag: it is a mirror, no opening.
 const MIRROR: u32 = 4;
