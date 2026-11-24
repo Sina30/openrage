@@ -274,6 +274,18 @@ impl ShadowPass {
 
     /// Write the constants of this frame.
     pub fn write(&self, queue: &wgpu::Queue, engine: &EngineConstants, screen: &Screen, fit: &Fit) {
+        let eye = engine.view.inverse().w_axis.truncate();
+        self.write_with(queue, engine, screen, fit.values(eye));
+    }
+
+    /// Write the constants of this frame, the shadow's own being `shadow`: what [`Fit::values`] gives for the viewer of `engine`, or the same variables for several cascades.
+    pub fn write_with(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        screen: &Screen,
+        shadow: BTreeMap<&'static str, Vec<f32>>,
+    ) {
         let camera = engine.view.inverse();
         let eye = camera.w_axis.truncate();
         let mut values = engine.values();
@@ -291,7 +303,7 @@ impl ShadowPass {
             view_to_world.extend([row.x, row.y, row.z, *w]);
         }
         values.extend(lighting);
-        values.extend(fit.values(eye));
+        values.extend(shadow);
         values.insert("viewToWorldProjectionParam", view_to_world);
         self.render.write(queue, &values);
     }
