@@ -212,10 +212,16 @@ fn sunlit(p: vec3<f32>) -> f32 {
     return 1.0;
 }
 
-// Henyey and Greenstein's phase for each channel's asymmetry `g`, against the even phase: how much more light turns through the angle whose cosine is `c`.
-fn phase_of(c: f32, g: vec3<f32>) -> vec3<f32> {
+// Henyey and Greenstein's phase for each channel's asymmetry `g`, against the even phase.
+fn lobe(c: f32, g: vec3<f32>) -> vec3<f32> {
     let gg = g * g;
     return (1.0 - gg) / pow(max(1.0 + gg - 2.0 * g * c, vec3<f32>(1e-4)), vec3<f32>(1.5));
+}
+
+// The water's phase, against the even phase, through the angle whose cosine is `c`: three lobes of the asymmetry, its half and its quarter, weighted 1, 1/2 and 1/4, so that light scattered more than once comes back more evenly.
+// ⚠ Their sum is 1.75 times the even phase's light, as the game's water programs take it.
+fn phase_of(c: f32, g: vec3<f32>) -> vec3<f32> {
+    return lobe(c, g) + 0.5 * lobe(c, 0.5 * g) + 0.25 * lobe(c, 0.25 * g);
 }
 
 // The water's colour at `world`, seen at the frame's pixel `pixel`, `ground_depth` above the ground and `view_depth` along the view; in `a` how far a shore lets it show.
