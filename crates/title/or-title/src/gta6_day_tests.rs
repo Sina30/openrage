@@ -47,7 +47,7 @@ const WEATHER: &str = r#"<CContentsOfWeatherXmlFile>
   <WeatherTypeIndirectionList><Item><From>SUNNY</From><To>AM_Sunny</To></Item></WeatherTypeIndirectionList>
 </CContentsOfWeatherXmlFile>"#;
 
-const SETTINGS: &str = "# Visual Configuration Table\nmisc.MoonDimMult\t0.3\nTonemapping.dark.filmic.W 11.2\nsky.latitude.YPosMin\t-100.0\nsky.latitude.YPosMax\t100.0\nsky.latitude.rangeMin\t20.0\nsky.latitude.rangeMax\t30.0\nmisc.Moon.RollOffset 90\nmisc.Sun.Roll 270\nExposure.curve.scale -1.0\nExposure.curve.verticalOffset 6.0\n";
+const SETTINGS: &str = "# Visual Configuration Table\nmisc.MoonDimMult\t0.3\nTonemapping.dark.filmic.W 11.2\nsky.latitude.YPosMin\t-100.0\nsky.latitude.YPosMax\t100.0\nsky.latitude.rangeMin\t20.0\nsky.latitude.rangeMax\t30.0\nmisc.Moon.RollOffset 90\nmisc.Sun.Roll 270\nExposure.curve.scale -1.0\nExposure.curve.verticalOffset 6.0\nAdaptation.step.size.mult 1.0\n";
 
 fn tables() -> DayTables {
     let (time, dry, wet) = (time(), cycle("Sunny", 1.0), cycle("Rainy", 0.5));
