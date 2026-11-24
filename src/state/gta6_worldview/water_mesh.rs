@@ -1,5 +1,5 @@
 //! The mesh of the water about the camera: each quad, or the triangle of it a cut leaves, cut along
-//! one grid of the world so that quads meet, and coloured at each vertex by the water's depth.
+//! one grid of the world so that quads meet, its opacity at each vertex by the water's depth.
 
 use glam::Vec3;
 use or_io::gta6::water::height::WaterGround;
@@ -63,27 +63,29 @@ fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The colour and opacity of the water at a point: `cover` the quad's own opacity there, `depth` the water over the ground where that is known.
+/// The colour the water's one instance is tinted by: the day's medium, else a stand-in.
+pub fn tint(medium: Option<&Medium>) -> [f32; 3] {
+    medium.map_or(TINT, |m| m.albedo)
+}
+
+/// The vertex colour of the water at a point, white with its opacity: `cover` the quad's own opacity there, `depth` the water over the ground where that is known.
+// ⚠ A world vertex's rgb is the palette column and the four-layer override, never the albedo, so the colour is the instance's tint.
 fn shade(cover: f32, depth: Option<f32>, medium: Option<&Medium>) -> [f32; 4] {
     // Dry ground draws no water, and a shore fades in over its first metre.
     let shore = depth.map_or(1.0, |d| smoothstep(d / SHORE));
     let Some(medium) = medium else {
-        return [TINT[0], TINT[1], TINT[2], cover * shore];
+        return [1.0, 1.0, 1.0, cover * shore];
     };
-    // What the water lets through of the ground under it, and what of the light it holds instead.
+    // What the water lets through of the ground under it, by channel.
     let opaque: [f32; 3] = std::array::from_fn(|c| {
         let through = depth.map_or(1.0, |d| {
             (-PATH_SCALE * medium.extinction[c] * d.max(0.0)).exp()
         });
         1.0 - (1.0 - cover) * through
     });
-    // ⚠ A blend has one opacity: the channels share their mean, and the colour carries the rest.
+    // ⚠ A blend has one opacity: the channels share their mean, and the hue by depth is not drawn.
     let alpha = opaque.iter().sum::<f32>() / 3.0;
-    if alpha <= 0.0 {
-        return [0.0; 4];
-    }
-    let colour: [f32; 3] = std::array::from_fn(|c| opaque[c] * medium.albedo[c] / alpha);
-    [colour[0], colour[1], colour[2], alpha * shore]
+    [1.0, 1.0, 1.0, alpha * shore]
 }
 
 /// Where a point at `u`, `v` across a quad of `kind` is on its water: at or above nought.
@@ -178,7 +180,7 @@ impl Quad<'_> {
     }
 }
 
-/// The mesh of the quads of `quads` that are drawn and lie within `reach` metres of `eye`, each cut into cells of one grid of the world: in the world, the surface up, the texture coordinate the place in metres, and in the colour the water's own colour and opacity, by its depth over `ground` and the day's `medium` where they are known.
+/// The mesh of the quads of `quads` that are drawn and lie within `reach` metres of `eye`, each cut into cells of one grid of the world: in the world, the surface up, the texture coordinate the place in metres, and in the colour's alpha the water's opacity, by its depth over `ground` and the day's `medium` where they are known.
 pub fn mesh(
     quads: &[WaterQuad],
     eye: Vec3,

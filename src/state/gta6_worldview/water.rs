@@ -21,7 +21,7 @@ mod ground;
 mod mesh;
 
 pub use ground::ground;
-pub use mesh::{mesh, Medium};
+pub use mesh::{mesh, tint, Medium};
 
 /// The archive of an install the water document is in, and the document's path in it.
 const ARCHIVE: &str = "levels.rpf";

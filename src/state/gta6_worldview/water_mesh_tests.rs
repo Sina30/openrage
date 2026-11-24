@@ -130,7 +130,8 @@ fn a_quads_opacity_is_its_corners_from_south_west_round_to_north_west() {
     );
     assert!(vertices.iter().all(|v| v.normal == [0.0, 0.0, 1.0]));
     assert_eq!(vertices[2].uv, [10.0, 10.0]);
-    assert_eq!(vertices[0].colour[..3], TINT);
+    assert_eq!(vertices[0].colour[..3], [1.0; 3]);
+    assert_eq!(tint(None), TINT);
 }
 
 #[test]
@@ -175,13 +176,13 @@ fn water_over_dry_ground_is_not_drawn_and_deeper_water_hides_more_of_the_ground(
     assert_eq!(shade(0.1, Some(0.0), Some(&m))[3], 0.0);
     let (shallow, deep) = (shade(0.1, Some(2.0), Some(&m)), shade(0.1, Some(8.0), Some(&m)));
     assert!(0.1 < shallow[3] && shallow[3] < deep[3] && deep[3] < 1.0);
-    // Red is taken out first, so more of the water's own red shows than of its blue.
-    assert!(shallow[0] > shallow[2]);
+    // The vertex carries only the opacity: the instance's tint is the colour.
+    assert_eq!(shallow[..3], [1.0; 3]);
     // Where the depth is not known only the quad's own opacity is drawn.
     assert!((shade(0.1, None, Some(&m))[3] - 0.1).abs() < 1e-6);
     let fading = shade(0.1, Some(0.5), Some(&m))[3];
     assert!(0.0 < fading && fading < shade(0.1, Some(1.0), Some(&m))[3]);
-    assert_eq!(shade(0.3, None, None), [TINT[0], TINT[1], TINT[2], 0.3]);
+    assert_eq!(shade(0.3, None, None), [1.0, 1.0, 1.0, 0.3]);
 }
 
 #[test]
@@ -199,6 +200,7 @@ fn the_medium_is_the_days_extinction_and_its_scattering_over_it() {
     let m = Medium::of(get).expect("a medium");
     assert_eq!(m.extinction, [4.0, 2.0, 2.0]);
     assert_eq!(m.albedo, [0.25, 0.5, 0.25]);
+    assert_eq!(tint(Some(&m)), m.albedo);
     assert_eq!(Medium::of(|_| None), None);
     assert_eq!(Medium::of(|_| Some(0.0)), None);
 }
