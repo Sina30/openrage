@@ -504,7 +504,7 @@ fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
         ))
         .clicked()
     {
-        viewer.enabled.groups = index.default_on(viewer.hour);
+        viewer.enabled.groups = index.default_on_in(viewer.hour, viewer.enabled.modes);
         viewer.groups_chosen = false;
     }
     let row_height = ui.spacing().interact_size.y;
