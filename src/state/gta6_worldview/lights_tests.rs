@@ -34,6 +34,7 @@ fn lod_map(parent: u32, falloff: &[f32]) -> MapLights {
     MapLights {
         parent,
         placed: Vec::new(),
+        inside: Vec::new(),
         lod: MapLod {
             direction: vec![[0.0, 0.0, -1.0]; n],
             falloff: falloff.to_vec(),
@@ -148,6 +149,35 @@ fn a_map_of_light_lists_is_wanted_though_it_places_nothing_and_a_held_map_is_not
         wanted,
         [1, 2, 5],
         "a script-managed list follows its group; an empty map of entities stays out"
+    );
+}
+
+#[test]
+fn an_interior_s_lamp_lights_while_its_room_is_seen_alone() {
+    let mut lights = Lights::new(Arc::new(WorldIndex::default()));
+    let map = MapLights {
+        inside: vec![(placed_at(1.0), [4, 2])],
+        ..MapLights::default()
+    };
+    lights.loaded.insert(7, map);
+    lights.relamp();
+    let mut drawn = |rooms: &RoomsSeen| lights.lights((Vec3::ZERO, 12.0, 1.0, MOST), rooms).lights;
+    assert_eq!(
+        drawn(&RoomsSeen::new()),
+        1,
+        "an interior looked into by none"
+    );
+    assert_eq!(
+        drawn(&RoomsSeen::from([((7, 4), vec![true, true, false])])),
+        0
+    );
+    assert_eq!(
+        drawn(&RoomsSeen::from([((7, 4), vec![false, false, true])])),
+        1
+    );
+    assert_eq!(
+        drawn(&RoomsSeen::from([((8, 4), vec![true, true, false])])),
+        1
     );
 }
 

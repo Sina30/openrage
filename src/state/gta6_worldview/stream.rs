@@ -104,6 +104,8 @@ pub struct Selected {
     pub occluders: Arc<[Arc<or_io::gta6::map::occluders::MapOccluders>]>,
     /// The interior and room the camera stands in, where it stands in one.
     pub inside: Option<super::interior::Inside>,
+    /// The rooms the camera sees of each interior it looks into.
+    pub(super) rooms_seen: super::interior::RoomsSeen,
 }
 
 /// The models of a selection, each once, in the order they were first drawn with.
@@ -491,7 +493,7 @@ impl Streamer {
                     continue;
                 };
                 let from = out.instances.len();
-                interior.each(view, hour, fade, |child, away, fade| {
+                let seen = interior.each(view, hour, fade, |child, away, fade| {
                     match ready(child.model) {
                         Some(true) => {
                             let model = models.ix(child.model);
@@ -512,6 +514,9 @@ impl Streamer {
                         None => {}
                     }
                 });
+                if let Some(seen) = seen {
+                    (out.rooms_seen).insert((*name, interior.entity as u32), seen);
+                }
                 close(&mut out, from);
             }
         }

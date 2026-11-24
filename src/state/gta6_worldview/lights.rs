@@ -17,6 +17,7 @@ use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
 
 use super::index::{Enabled, WorldIndex};
+use super::interior::{self, RoomsSeen};
 use super::lights_distant::{self, DistantReach};
 use super::lights_frame::{self, FrameLights, Lamp, LodList, LodReach, Placed};
 use super::lights_lod::{self, MapLod};
@@ -59,6 +60,9 @@ pub(super) struct MapLights {
     parent: u32,
     /// The lights its entities own and their archetypes hold, in the world.
     placed: Vec<Lamp>,
+    /// The lights of the contents of the interiors it places, each with its interior's place among
+    /// its entities and its room.
+    inside: Vec<(Lamp, [u32; 2])>,
     lod: MapLod,
 }
 
@@ -131,6 +135,25 @@ fn placed_of(loaded: &HashMap<u32, MapLights>) -> Vec<Lamp> {
         .collect()
 }
 
+/// The lights of the interiors' contents of `loaded`, each with its map, its interior's place and its room.
+fn inside_of(loaded: &HashMap<u32, MapLights>) -> Vec<(Lamp, [u32; 3])> {
+    (loaded.iter())
+        .flat_map(|(name, m)| {
+            (m.inside.iter()).map(|(lamp, [at, room])| (*lamp, [*name, *at, *room]))
+        })
+        .collect()
+}
+
+/// A word that changes with what `rooms` says is seen, whatever order it holds it in.
+fn digest(rooms: &RoomsSeen) -> u32 {
+    use std::hash::{Hash, Hasher};
+    (rooms.iter()).fold(0u64, |sum, entry| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        entry.hash(&mut hasher);
+        sum.wrapping_add(hasher.finish())
+    }) as u32
+}
+
 /// The lamps the frame may draw seen from `eye`: the level-of-detail lights of each map in `lists` within reach, but for those a placed light stands in, then the placed lights.
 fn lamps_seen<'a>(
     loaded: &'a HashMap<u32, MapLights>,
@@ -179,11 +202,13 @@ pub struct Lights {
     distant_reach: DistantReach,
     /// Each loaded map's level-of-detail lamps, None while its parent is not loaded.
     lists: HashMap<u32, Option<LodList>>,
-    /// The placed lights of the maps loaded, and where they stand.
+    /// The placed lights of the maps loaded, and where they stand, the interiors' among them.
     placed: Vec<Lamp>,
     near: Placed,
-    /// The frame's lights as last handed out, with the camera, hour, scale and most they were for; none once the lamps change.
-    framed: Option<([u32; 6], FrameLights)>,
+    /// The lights of the interiors' contents of the maps loaded, each with its map, interior and room.
+    inside: Vec<(Lamp, [u32; 3])>,
+    /// The frame's lights as last handed out, with the camera, hour, scale, most and rooms seen they were for; none once the lamps change.
+    framed: Option<([u32; 7], FrameLights)>,
 }
 
 impl Lights {
@@ -215,7 +240,9 @@ impl Lights {
                 let mut read = lights_of(&model, &shared)?;
                 // The lights of an interior's contents stand in the map that places it.
                 let inside = super::interior::lights_placed(&shared, files, &model);
-                (read.placed).extend(inside.into_iter().map(|light| Lamp { light, reach: None }));
+                read.inside = (inside.into_iter())
+                    .map(|(light, at)| (Lamp { light, reach: None }, at))
+                    .collect();
                 Some(read)
             },
         );
@@ -232,6 +259,7 @@ impl Lights {
             lists: HashMap::new(),
             placed: Vec::new(),
             near: Placed::default(),
+            inside: Vec::new(),
             framed: None,
         }
     }
@@ -287,12 +315,22 @@ impl Lights {
             self.readers.want(asked);
         }
         if changed {
-            relist(&self.loaded, &self.reach, &mut self.lists);
-            self.placed = placed_of(&self.loaded);
-            self.near = Placed::of(&self.placed);
-            self.framed = None;
+            self.relamp();
         }
         changed
+    }
+
+    /// Make the lamps of the maps loaded again.
+    fn relamp(&mut self) {
+        relist(&self.loaded, &self.reach, &mut self.lists);
+        self.placed = placed_of(&self.loaded);
+        self.inside = inside_of(&self.loaded);
+        // A level-of-detail copy of an interior's lamp stays out whether its room is seen or not.
+        let all: Vec<Lamp> = (self.placed.iter().copied())
+            .chain(self.inside.iter().map(|(lamp, _)| *lamp))
+            .collect();
+        self.near = Placed::of(&all);
+        self.framed = None;
     }
 
     // ponytail: every map's box is tested each time the camera has moved, as the streamer does.
@@ -326,16 +364,31 @@ impl Lights {
         }
     }
 
-    /// The lights lit at `hour` (0 to 24) nearest `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with, and the distant lights as sprites.
-    pub fn lights(&mut self, eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
+    /// The lights lit at `hour` (0 to 24) nearest `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with, and the distant lights as sprites; an interior's lamps those of the rooms of `rooms` the camera sees.
+    pub(super) fn lights(
+        &mut self,
+        (eye, hour, scale, most): (Vec3, f32, f32, usize),
+        rooms: &RoomsSeen,
+    ) -> FrameLights {
         let key = [eye.x, eye.y, eye.z, hour, scale].map(f32::to_bits);
-        let key = [key[0], key[1], key[2], key[3], key[4], most as u32];
+        let key = [
+            key[0],
+            key[1],
+            key[2],
+            key[3],
+            key[4],
+            most as u32,
+            digest(rooms),
+        ];
         // ⚠ Worked out over every lamp of the maps loaded, which are many: only when what they are for changed.
         if let Some((_, out)) = self.framed.as_ref().filter(|(was, _)| *was == key) {
             return out.clone();
         }
         let near = (self.placed.as_slice(), &self.near);
-        let lamps = lamps_seen(&self.loaded, &self.lists, near, eye);
+        let inside = (self.inside.iter())
+            .filter(|(_, [map, at, room])| interior::lit(rooms, (*map, *at), *room))
+            .map(|(lamp, _)| lamp);
+        let lamps = lamps_seen(&self.loaded, &self.lists, near, eye).chain(inside);
         let mut out = lights_frame::frame_lights(lamps, eye, hour, scale, most);
         self.drawn = out.lights;
         let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
@@ -357,7 +410,7 @@ impl Lights {
         let sum = |of: fn(&MapLights) -> usize| -> usize { self.loaded.values().map(of).sum() };
         LightsReport {
             maps_read: self.loaded.len(),
-            placed: sum(|m| m.placed.len()),
+            placed: sum(|m| m.placed.len() + m.inside.len()),
             lod: sum(|m| m.lod.falloff.len()),
             distant: sum(|m| m.lod.distant.len()),
             probes: sum(|m| m.lod.probes),

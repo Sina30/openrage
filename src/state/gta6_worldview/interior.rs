@@ -122,6 +122,31 @@ fn placing(scale_xy: f32, scale_z: f32, rotation: [f32; 4], position: [f32; 3]) 
     )
 }
 
+/// The room of `interior` what stands at `location` is in: what a portal holds is in the room past
+/// it from the outside.
+fn room_at(interior: &Interior, location: EntitySetLocation) -> u32 {
+    match location {
+        EntitySetLocation::Room(k) => k,
+        EntitySetLocation::Portal(k) => {
+            (interior.portals.get(k as usize)).map_or(0, |p| p.room_from.max(p.room_to))
+        }
+    }
+}
+
+/// The rooms a camera sees of each interior in range it looks into, by the map and place of the
+/// interior's instance.
+pub(super) type RoomsSeen = HashMap<(u32, u32), Vec<bool>>;
+
+/// Whether a lamp of room `room` of the interior placed at `at` lights what a camera that sees
+/// `rooms` sees: one of a room the camera does not see lights none of it.
+// ⚠ GTA V's rule: an interior's lights are those of the rooms its portals show.
+pub(super) fn lit(rooms: &RoomsSeen, at: (u32, u32), room: u32) -> bool {
+    (rooms.get(&at))
+        .and_then(|seen| seen.get(room as usize))
+        .copied()
+        .unwrap_or(true)
+}
+
 /// `interior` as `instance` places it: each entity it draws that the index has a model for.
 pub(super) fn place(
     index: &WorldIndex,
@@ -167,13 +192,7 @@ pub(super) fn place(
             let own = placing(e.scale_xy, e.scale_z, e.rotation, e.position);
             let m = outer * own;
             let rows = rows_of(m);
-            // What a portal holds is in the room past it from the outside.
-            let room = match location {
-                EntitySetLocation::Room(k) => k,
-                EntitySetLocation::Portal(k) => portals
-                    .get(k as usize)
-                    .map_or(0, |o| o.rooms[0].max(o.rooms[1])),
-            };
+            let room = room_at(interior, location);
             Some(Child {
                 model,
                 rows,
@@ -264,17 +283,18 @@ impl Placed {
     }
 
     /// Call `draw` with each child a camera of `view` sees at the hour `hour`, 0 to 23, how far from
-    /// the camera it stands and how opaque it draws, the interior itself drawing `fade` opaque.
+    /// the camera it stands and how opaque it draws, the interior itself drawing `fade` opaque; the
+    /// rooms it sees, where the interior is in range and tells rooms apart.
     pub(super) fn each(
         &self,
         view: &View,
         hour: u32,
         fade: f32,
         mut draw: impl FnMut(&Child, f32, f32),
-    ) {
+    ) -> Option<Vec<bool>> {
         let eye = view.eye;
         if !self.in_range(eye, view) {
-            return;
+            return None;
         }
         // An interior of no room but the outside has nothing to see through.
         let seen = (self.rooms.len() > 1).then(|| {
@@ -296,6 +316,7 @@ impl Placed {
                 draw(child, away, fade * own);
             }
         }
+        seen.map(|seen| seen.rooms)
     }
 }
 
@@ -387,12 +408,13 @@ pub(super) fn read_placed(
     placed
 }
 
-/// The lights the archetypes of `interior`'s contents hold, in the world under `instance`.
+/// The lights the archetypes of `interior`'s contents hold, in the world under `instance`, each
+/// with the room it is in.
 pub(super) fn lights_of(
     index: &WorldIndex,
     instance: &InteriorInstance,
     interior: &Interior,
-) -> Vec<Light> {
+) -> Vec<(Light, u32)> {
     let outer = Pose {
         position: instance.position,
         rotation: instance.rotation,
@@ -400,25 +422,27 @@ pub(super) fn lights_of(
         scale_z: instance.scale_z,
     };
     (interior.drawn(&instance.default_entity_sets))
-        .flat_map(|(e, _)| {
+        .flat_map(|(e, location)| {
             let inner = Pose {
                 position: e.position,
                 rotation: e.rotation,
                 scale_xy: e.scale_xy,
                 scale_z: e.scale_z,
             };
+            let room = room_at(interior, location);
             (index.archetype_lights(e.archetype_word).iter())
-                .filter_map(move |row| Some(row.light()?.placed(&inner).placed(&outer)))
+                .filter_map(move |row| Some((row.light()?.placed(&inner).placed(&outer), room)))
         })
         .collect()
 }
 
-/// The lights of the contents of the interiors the map body `model` places, read through `files`.
+/// The lights of the contents of the interiors the map body `model` places, read through `files`,
+/// each with the place of its interior's instance among the map's entities and its room.
 pub(super) fn lights_placed(
     index: &WorldIndex,
     files: &mut HashMap<u32, File>,
     model: &RbmModel,
-) -> Vec<Light> {
+) -> Vec<(Light, [u32; 2])> {
     if !interior::places_interiors(model) {
         return Vec::new();
     }
@@ -427,7 +451,10 @@ pub(super) fn lights_placed(
         .unwrap_or_default();
     let mut lights = Vec::new();
     with_interiors(index, files, &instances, |instance, interior| {
-        lights.extend(lights_of(index, instance, interior));
+        let at = instance.entity as u32;
+        lights.extend(
+            (lights_of(index, instance, interior).into_iter()).map(|(l, room)| (l, [at, room])),
+        );
     });
     lights
 }

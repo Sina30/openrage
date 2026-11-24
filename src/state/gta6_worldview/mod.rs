@@ -491,6 +491,8 @@ impl Viewer {
             world.set_fade(stream::fade_of(&tables.visual_settings));
         }
         let enabled = self.enabled.clone();
+        let selected = self.world.as_ref().map(|world| world.latest());
+        let rooms = selected.as_ref().map(|s| &s.rooms_seen);
         let lights = self
             .lights
             .as_mut()
@@ -503,7 +505,8 @@ impl Viewer {
                 }
                 lights.set_enabled(&enabled);
                 lights.look(eye);
-                lights.lights(eye, hour, scale, lights::MOST)
+                let none = interior::RoomsSeen::new();
+                lights.lights((eye, hour, scale, lights::MOST), rooms.unwrap_or(&none))
             });
         // The lights take the exposure over pi; a material's own light is a radiance and takes it whole.
         let exposure = match day {
