@@ -334,8 +334,9 @@ fn a_far_stand_in_a_drawn_prop_stands_in_for_is_hidden() {
     let mut streamer = Streamer::new(Arc::clone(&index));
     streamer.wanted.insert(55, 0.0);
     assert!(streamer.insert(55, read_map(&index, &map)));
-    // 300 m from the far list's box: at the lamps' distance, where the far list fades out as they come in.
-    let at = Vec3::new(-300.0, 5.0, 5.0);
+    // 300 m from the far list's box's centre: at the lamps' distance, where the far list fades out
+    // as they come in.
+    let at = Vec3::splat(655.35 / 2.0) - Vec3::new(300.0, 0.0, 0.0);
     let selected = streamer.select(&View::at(at, 1.0), &|_| Some(true));
     assert!(count(&selected, 0x2000) > 0, "the lamps draw");
     let [cards] = &selected.cards[..] else {
