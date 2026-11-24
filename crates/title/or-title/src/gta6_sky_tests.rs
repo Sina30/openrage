@@ -95,7 +95,7 @@ fn light_scattered_more_than_once_adds_a_third_to_a_clear_skys_light() {
     let once = Atmosphere::of(&once);
     let sun = [0.0, -0.5, 0.866];
     let luminance = |c: [f32; 3]| 0.2125 * c[0] + 0.7154 * c[1] + 0.0721 * c[2];
-    let direct = luminance(earth.transmittance(sun[2])) * sun[2] as f32;
+    let direct = luminance(earth.transmittance(sun[2])) * sun[2];
     let share = |air: &Atmosphere| luminance(air.irradiance(sun, 1.0)) / direct;
     // The further orders add about a third at a high sun, and the sky stays a small part of the sun's light.
     let (once, all) = (share(&once), share(&earth));
