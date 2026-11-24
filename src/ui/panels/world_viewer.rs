@@ -1,12 +1,16 @@
 //! The World screen: GTA VI's world as the game streams it at rest, flown through with a camera
-//! that has no pivot, and the panel that says what the mount found and what is streaming.
+//! that has no pivot; the panel beside it is `world_viewer_side`.
 //!
 //! ⚠ No orbit: a drag turns the camera where it stands, the keys move it, and the wheel sets how
 //! fast. The keys are read only while the pointer is over the view or the view holds the focus.
 
+use std::path::{Path, PathBuf};
+
 use glam::Vec3;
 use or_renderer::FlyCamera;
 
+use super::world_viewer_prefs::WorldViewerPrefs;
+pub use super::world_viewer_side::draw_side;
 use crate::render::RenderBridge;
 use crate::state::gta6_world::worldview::{self as gta6_worldview, Viewer};
 use crate::state::AppState;
@@ -21,8 +25,6 @@ const MOST_PITCH: f32 = 89.0;
 const FIELDS_OF_VIEW: std::ops::RangeInclusive<f32> = 5.0..=150.0;
 /// The area and the layer a clean frame is sensed and painted through.
 const CLEAN: &str = "world_viewer_clean";
-/// How many script-managed groups the list shows before it scrolls.
-const GROUP_ROWS: f32 = 12.0;
 
 /// Where a camera line puts the camera: metres, then degrees.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,9 +117,11 @@ pub struct Capture {
     /// The view is drawn alone over the whole window.
     pub clean: bool,
     /// The camera line typed or pasted into the field.
-    line: String,
+    pub(super) line: String,
     /// The line last entered was not a camera line.
-    refused: bool,
+    pub(super) refused: bool,
+    /// The install the kept controls were last given to.
+    kept_for: Option<PathBuf>,
 }
 
 impl crate::ui::panel_state::PanelState for Capture {
@@ -162,6 +166,12 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
                 ui,
                 tr!("Set the GTA VI folder in Settings ▸ Games to fly through its world"),
             );
+            if ui.button(tr!("Settings ▸ Games…")).clicked() {
+                super::settings_window::open_settings_at(
+                    state,
+                    super::settings::SettingsCategory::Games,
+                );
+            }
         });
         return;
     };
@@ -174,6 +184,7 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
     let mut viewer = gta6_worldview::viewer();
     viewer.open(&root);
     viewer.poll();
+    remember(ui, state, &mut viewer, &root);
 
     let (rect, response) = match clean {
         true => whole_window(ui.ctx()),
@@ -209,8 +220,18 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
         }
     }
     let building = viewer.building();
-    let waiting = viewer.streaming().maps_waiting + viewer.models_waiting + viewer.textures_waiting;
-    let failed = viewer.failed.clone();
+    let coming = [
+        viewer.streaming().maps_waiting,
+        viewer.models_waiting,
+        viewer.textures_waiting,
+    ];
+    let waiting: usize = coming.iter().sum();
+    let failed = (viewer.failed.clone())
+        .map(|why| tr!("The GTA VI world was not indexed: {why}", why = why))
+        .or_else(|| {
+        let empty = (viewer.index.as_ref()).is_some_and(|index| index.report.maps == 0);
+        empty.then(|| tr!("No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in").to_string())
+    });
     let speed = viewer.camera.speed;
     drop(viewer);
     // The frame is drawn again while the camera moves and while anything is still arriving.
@@ -253,20 +274,31 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
     if clean {
         return;
     }
-    let line = match (building, failed) {
+    let mut line = match (building, failed) {
         (Some(done), _) => tr!(
             "Indexing the GTA VI world: {percent} %",
             percent = (done * 100.0).round() as u32
         ),
-        (None, Some(why)) => tr!("The GTA VI world was not indexed: {why}", why = why),
+        (None, Some(why)) => why,
         (None, None) => tr!(
             "Drag to look, W A S D or Z Q S D to move, E and C up and down, Shift faster; the wheel sets the speed: {speed} m/s",
             speed = speed.round() as u32
         ),
     };
+    if building.is_none() && waiting > 0 {
+        let [maps, models, textures] = coming;
+        line.push('\n');
+        line.push_str(&tr!(
+            "Streaming in: {maps} maps, {models} models and {textures} textures still to come",
+            maps = maps,
+            models = models,
+            textures = textures
+        ));
+    }
     let at = rect.left_top() + egui::vec2(8.0, 6.0);
     let font = egui::FontId::proportional(12.0);
-    let galley = painter.layout_no_wrap(line, font, theme::TEXT_PRIMARY.get());
+    let wrap = (rect.width() - 22.0).max(VIEW_MIN);
+    let galley = painter.layout(line, font, theme::TEXT_PRIMARY.get(), wrap);
     let back = egui::Rect::from_min_size(at, galley.size()).expand(3.0);
     painter.rect_filled(
         back,
@@ -288,349 +320,29 @@ fn whole_window(ctx: &egui::Context) -> (egui::Rect, egui::Response) {
         .inner
 }
 
-fn count(n: u64) -> String {
-    n.to_string()
-}
-
-/// The name the vocabulary gives `hash`, else the hash itself.
-fn name_of(hash: u32) -> String {
-    crate::state::gta6_names::name32(hash).unwrap_or_else(|| format!("{hash:08X}"))
-}
-
-/// Which interior and room the camera stands in, as the Camera section says it.
-fn where_inside(inside: Option<gta6_worldview::Inside>) -> String {
-    match inside {
-        Some(inside) => tr!(
-            "In the interior {interior}, room {room}",
-            interior = name_of(inside.interior),
-            room = name_of(inside.room),
-        )
-        .to_string(),
-        None => tr!("Outside every interior").to_string(),
-    }
-}
-
-/// The panel beside the view: what the mount found, what is streaming, and the camera.
-pub fn draw_side(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut RenderBridge>) {
-    if !offered(state) {
-        said(
-            ui,
-            tr!("Set the GTA VI folder in Settings ▸ Games to fly through its world"),
-        );
-        return;
-    }
-    let drawn = bridge.map(|b| b.world_drawn()).unwrap_or_default();
-    let mut viewer = gta6_worldview::viewer();
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        mount(ui, &viewer);
-        ui.separator();
-        ui.strong(tr!("Streaming"));
-        let s = viewer.streaming();
-        said(
-            ui,
-            &tr!(
-                "{loaded} of {wanted} maps streamed in, {waiting} waited for; {nodes} entities and lists",
-                loaded = s.maps_loaded,
-                wanted = s.maps_wanted,
-                waiting = s.maps_waiting,
-                nodes = count(s.nodes as u64),
-            ),
-        );
-        said(
-            ui,
-            &tr!(
-                "{seen} of {selected} instances in view, in {draws} draws",
-                seen = count(drawn.seen as u64),
-                selected = count(drawn.selected as u64),
-                draws = count(drawn.draws as u64),
-            ),
-        );
-        said(
-            ui,
-            &tr!(
-                "{models} models on the device ({megabytes} MB), {waiting} waited for",
-                models = count(drawn.models as u64),
-                megabytes = count(drawn.bytes >> 20),
-                waiting = viewer.models_waiting,
-            ),
-        );
-        said(
-            ui,
-            &tr!(
-                "{textures} textures on the device, {unread} not read, {waiting} waited for",
-                textures = count(drawn.textures as u64),
-                unread = count(drawn.textures_unread as u64),
-                waiting = viewer.textures_waiting,
-            ),
-        );
-        if let Some(lights) = viewer.lights.as_ref().map(|l| l.report()) {
-            said(
-                ui,
-                &tr!(
-                    "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn",
-                    maps = lights.maps_read,
-                    placed = count(lights.placed as u64),
-                    lod = count(lights.lod as u64),
-                    distant = count(lights.distant as u64),
-                    probes = lights.probes,
-                    drawn = lights.drawn,
-                ),
-            );
-        }
-        said(
-            ui,
-            match drawn.lit_by_the_game {
-                true => tr!("Lit by the game's own passes"),
-                false => tr!("Lit by the plain pass: no game shader pack is read"),
-            },
-        );
-        ui.separator();
-        ui.strong(tr!("Camera"));
-        said(ui, &where_inside(viewer.inside()));
-        ui.horizontal(|ui| {
-            let position = &mut viewer.camera.position;
-            for (axis, value) in [("X", &mut position.x), ("Y", &mut position.y), ("Z", &mut position.z)] {
-                let field = ui.add(egui::DragValue::new(value).speed(1.0).prefix(format!("{axis} ")));
-                named(field, &tr!("Camera position {axis}, in metres", axis = axis));
-            }
-        });
-        let speed = ui.add(
-            egui::Slider::new(&mut viewer.camera.speed, 1.0..=2000.0)
-                .logarithmic(true)
-                .text(tr!("Speed (m/s)")),
-        );
-        named(speed, tr!("How fast the camera flies, in metres a second"));
-        let scale = ui.add(
-            egui::Slider::new(&mut viewer.lod_scale, 0.5..=4.0).text(tr!("Level-of-detail scale")),
-        );
-        named(
-            scale,
-            tr!("The scale every level-of-detail distance is multiplied by"),
-        );
-        ui.separator();
-        capture(ui, state, &mut viewer);
-        ui.separator();
-        enabled(ui, state, &mut viewer);
-        ui.separator();
-        let again = ui.add_enabled(
-            viewer.building().is_none(),
-            egui::Button::new(tr!("Build the index again")),
-        );
-        if again
-            .on_hover_text(tr!(
-                "Read the registration documents and every map of the level again, and keep the index in place of the one kept"
-            ))
-            .clicked()
-        {
-            viewer.rebuild();
-        }
-    });
-}
-
-/// The Capture section: a clean frame, the camera as a line a shots script reads, and a line to jump to.
-fn capture(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
-    ui.strong(tr!("Capture"));
+/// Give a newly opened install the controls kept from the last run, and keep them again once changed.
+fn remember(ui: &egui::Ui, state: &mut AppState, viewer: &mut Viewer, root: &Path) {
     let held = state.panels.get::<Capture>();
-    ui.checkbox(&mut held.clean, tr!("Clean frame")).on_hover_text(tr!(
-        "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
-    ));
-    let copy = ui.button(tr!("Copy the camera")).on_hover_text(tr!(
-        "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
-    ));
-    if copy.clicked() {
-        ui.ctx().copy_text(Pose::of(&viewer.camera).line());
-    }
-    let field = egui::TextEdit::singleline(&mut held.line)
-        .hint_text(tr!("Paste a camera line, then press Enter"))
-        .desired_width(f32::INFINITY);
-    let field = named(ui.add(field), tr!("A camera line to jump to"));
-    if field.changed() {
-        held.refused = false;
-    }
-    if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-        match Pose::read(&held.line) {
-            Ok(pose) => {
-                pose.put(&mut viewer.camera);
-                held.line.clear();
-                ui.ctx().request_repaint();
-            }
-            Err(_) => held.refused = true,
-        }
-    }
-    if held.refused {
-        ui.colored_label(
-            theme::WARNING,
-            tr!("That is not a camera line: copy one with Copy the camera"),
-        );
-    }
-}
-
-/// The hour, the game's modes and the script-managed groups that stream.
-fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
-    use or_title::gta6_mount::Mode;
-    ui.strong(tr!("Time and modes"));
-    let hour = ui.add(egui::Slider::new(&mut viewer.hour, 0.0..=23.99).text(tr!("Hour")));
-    let hour = named(
-        hour,
-        tr!("The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"),
-    );
-    if hour.changed() {
-        // ⚠ The Time bar and the world say one hour: a day left running would move the bar alone.
+    if held.kept_for.as_deref() != Some(root) {
+        held.kept_for = Some(root.to_path_buf());
+        let kept = state.prefs.world_viewer.clone();
+        kept.put(viewer);
+        // ⚠ The Time bar and the world say one hour, as the Hour slider has them.
         let day = &mut state.drivers.time_of_day;
-        day.set_hour(viewer.hour);
+        day.set_hour(kept.hour);
         day.playing = false;
-    }
-    for (mode, label, hint) in [
-        (
-            Mode::Story,
-            tr!("Story pack"),
-            tr!("Stream the maps the story pack adds"),
-        ),
-        (
-            Mode::Minigames,
-            tr!("Shared minigames"),
-            tr!("Stream the maps the shared minigames add"),
-        ),
-    ] {
-        let mut on = viewer.enabled.modes & mode.bit() != 0;
-        if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
-            viewer.enabled.modes ^= mode.bit();
-        }
-    }
-    let Some(index) = viewer.index.clone() else {
-        return;
-    };
-    let groups = index.groups();
-    if groups.is_empty() {
-        said(ui, tr!("The index holds no script-managed group"));
+        state.set_weather_state(kept.weather());
         return;
     }
-    let on = viewer.enabled.groups.len();
-    said(
-        ui,
-        &match viewer.groups_chosen {
-            false => tr!("{on} groups on: the game's own at this hour", on = on),
-            true => tr!("{on} groups on, as you chose them", on = on),
-        },
-    );
-    let own = ui.add_enabled(
-        viewer.groups_chosen,
-        egui::Button::new(tr!("The game's own groups")),
-    );
-    if own
-        .on_hover_text(tr!(
-            "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
-        ))
-        .clicked()
-    {
-        viewer.enabled.groups = index.default_on_in(viewer.hour, viewer.enabled.modes);
-        viewer.groups_chosen = false;
-    }
-    let row_height = ui.spacing().interact_size.y;
-    let title = tr!(
-        "Script-managed groups: {on} of {groups} on",
-        on = viewer.enabled.groups.len(),
-        groups = groups.len(),
-    );
-    egui::CollapsingHeader::new(title)
-        .id_salt("world_viewer_groups")
-        .show(ui, |ui| {
-            said(ui, tr!("A group ticked streams its maps in"));
-            egui::ScrollArea::vertical()
-                .id_salt("world_viewer_group_rows")
-                .max_height(row_height * GROUP_ROWS)
-                .auto_shrink([false, true])
-                .show_rows(ui, row_height, groups.len(), |ui, range| {
-                    for group in &groups[range] {
-                        let mut on = viewer.enabled.groups.contains(&group.id);
-                        let label = tr!(
-                            "{name}, {maps} maps",
-                            name = or_maps::Name::of(group.name).shown(),
-                            maps = group.maps,
-                        );
-                        if ui.checkbox(&mut on, label).changed() {
-                            // ⚠ A list the person changed is theirs: the hour no longer resets it.
-                            viewer.groups_chosen = true;
-                            match on {
-                                true => viewer.enabled.groups.push(group.id),
-                                false => viewer.enabled.groups.retain(|id| *id != group.id),
-                            }
-                        }
-                    }
-                });
-        });
-}
-
-/// What the mount found: the documents read, the archives bound and the maps that stream at rest.
-fn mount(ui: &mut egui::Ui, viewer: &Viewer) {
-    ui.strong(tr!("Mount"));
-    let Some(index) = &viewer.index else {
-        said(
-            ui,
-            match viewer.building() {
-                Some(_) => tr!("The registration documents and the level's maps are being read"),
-                None => tr!("No index of this install"),
-            },
-        );
+    // A slider being dragged is kept once it is let go, not a file written a frame.
+    if ui.input(|i| i.pointer.any_down()) {
         return;
-    };
-    let r = &index.report;
-    said(
-        ui,
-        &tr!(
-            "{packs} packs; the level's change sets: {read} read, {unread} not readable",
-            packs = r.packs,
-            read = r.sets_read,
-            unread = r.sets_unread,
-        ),
-    );
-    said(
-        ui,
-        &tr!(
-            "{bound} archives bound to the {named} the level names",
-            bound = count(r.bound_archives),
-            named = count(r.named_archives),
-        ),
-    );
-    said(
-        ui,
-        &tr!(
-            "{registered} of {maps} maps are the level's: {rest} stream at rest, {scripted} are script managed, {empty} hold nothing",
-            registered = count(r.registered),
-            maps = count(r.maps),
-            rest = count(r.at_rest),
-            scripted = count(r.script_managed),
-            empty = count(r.empty),
-        ),
-    );
-    said(
-        ui,
-        &tr!(
-            "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups",
-            story = count(r.story),
-            minigames = count(r.minigames),
-            groups = count(r.groups),
-        ),
-    );
-    said(
-        ui,
-        &match r.by_table {
-            0 => tr!("Bound by block maps: no key snapshot was found").to_string(),
-            _ => tr!(
-                "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered",
-                ciphered = r.sets_ciphered,
-            ),
-        },
-    );
-    said(
-        ui,
-        &tr!(
-            "{archetypes} archetypes, {models} models; {unread} bodies did not read",
-            archetypes = count(r.archetypes),
-            models = count(r.models),
-            unread = count(r.unread),
-        ),
-    );
+    }
+    let now = WorldViewerPrefs::of(viewer, state.drivers.weather.state);
+    if now != state.prefs.world_viewer {
+        state.prefs.world_viewer = now;
+        crate::state::save_prefs(&state.prefs);
+    }
 }
 
 #[cfg(test)]

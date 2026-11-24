@@ -16628,9 +16628,6 @@ msgstr "Una línea de cámara a la que saltar"
 msgid "That is not a camera line: copy one with Copy the camera"
 msgstr "Esa no es una línea de cámara: copiar una con «Copiar la cámara»"
 
-msgid "Time and modes"
-msgstr "Hora y modos"
-
 msgid "Hour"
 msgstr "Hora"
 
@@ -16652,12 +16649,6 @@ msgstr "Cargar por streaming los mapas que agregan los minijuegos compartidos"
 msgid "The index holds no script-managed group"
 msgstr "El índice no contiene ningún grupo gestionado por script"
 
-msgid "{on} groups on: the game's own at this hour"
-msgstr "{on} grupos activados: los del juego a esta hora"
-
-msgid "{on} groups on, as you chose them"
-msgstr "{on} grupos activados, los elegidos"
-
 msgid "The game's own groups"
 msgstr "Los grupos del juego"
 
@@ -16666,12 +16657,6 @@ msgstr "Activar los grupos que el estado del mundo del juego activa a esta hora,
 
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Grupos gestionados por script: {on} de {groups} activados"
-
-msgid "A group ticked streams its maps in"
-msgstr "Un grupo marcado carga sus mapas por streaming"
-
-msgid "{name}, {maps} maps"
-msgstr "{name}, {maps} mapas"
 
 msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
 msgstr "{story} mapas son del pack de la historia y {minigames} de los minijuegos compartidos; {groups} grupos gestionados por script"
@@ -16687,3 +16672,50 @@ msgstr "En el interior {interior}, sala {room}"
 
 msgid "Outside every interior"
 msgstr "Fuera de todo interior"
+
+msgid "Time and weather"
+msgstr "Hora y clima"
+
+msgid "What streams"
+msgstr "Qué se carga en streaming"
+
+msgid "Go to"
+msgstr "Ir a"
+
+msgid "The game's own at this hour; a group ticked streams its maps in"
+msgstr "Los del juego a esta hora; un grupo marcado carga sus mapas en streaming"
+
+msgid "As you chose them; the hour no longer changes them"
+msgstr "Como se eligieron; la hora ya no los cambia"
+
+msgid "Filter groups by name"
+msgstr "Filtrar grupos por nombre"
+
+msgid "No group's name holds that text"
+msgstr "Ningún nombre de grupo contiene ese texto"
+
+msgid "Look north over the square of 512 m where most maps whose names start with these letters lie"
+msgstr "Mirar al norte sobre el cuadrado de 512 m donde hay más mapas cuyo nombre empieza por estas letras"
+
+msgid "Look north over one of the squares of 512 m where most maps lie; once Harvest names has run, a place takes the letters its maps' names start with"
+msgstr "Mirar al norte sobre uno de los cuadrados de 512 m donde hay más mapas; tras Recopilar nombres, un lugar toma las letras con las que empiezan los nombres de sus mapas"
+
+msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
+msgstr "No se encontró ninguna instantánea de claves de GTA VI, así que los mapas se asociaron mediante sus mapas de bloques y ninguna hora activa un grupo gestionado por script. Poner gtavi_magic.dat en la carpeta de configuración, o indicarlo con OPENRAGE_GTA6_KEYS, y luego volver a generar el índice."
+
+msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
+msgstr "No se encontró ningún mapa de GTA VI en esta carpeta: Configuración ▸ Juegos debe indicar la carpeta donde está instalado GTA VI"
+
+msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
+msgstr "Cargando en streaming: faltan {maps} mapas, {models} modelos y {textures} texturas"
+
+msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
+msgstr "La primera visita lee todos los archivos comprimidos del nivel, lo que tarda unos minutos; el índice se guarda, así que la siguiente visita se abre al instante. Tareas en segundo plano puede detenerlo."
+
+msgid "{name}, {count} map"
+msgid_plural "{name}, {count} maps"
+msgstr[0] "{name}, {count} mapa"
+msgstr[1] "{name}, {count} mapas"
+
+msgid "Choose a place"
+msgstr "Elegir un lugar"

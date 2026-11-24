@@ -702,6 +702,9 @@ pub struct Prefs {
     /// The code of the interface language the person chose in Settings; none follows the system's own language.
     #[serde(default, deserialize_with = "readable_language")]
     pub language: Option<String>,
+    /// The World screen's hour, weather, modes, level-of-detail scale and speed, as the person last left them.
+    #[serde(default)]
+    pub world_viewer: crate::ui::panels::world_viewer_prefs::WorldViewerPrefs,
 }
 
 /// ⚠ A value that is not a text is no choice, and costs only itself.
@@ -776,6 +779,7 @@ impl Default for Prefs {
             reopen_last_project: true,
             project_opened: BTreeMap::new(),
             language: None,
+            world_viewer: Default::default(),
         }
     }
 }

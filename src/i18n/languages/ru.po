@@ -16767,9 +16767,6 @@ msgstr "Строка камеры для перехода"
 msgid "That is not a camera line: copy one with Copy the camera"
 msgstr "Это не строка камеры: скопируйте строку командой «Копировать камеру»"
 
-msgid "Time and modes"
-msgstr "Время и режимы"
-
 msgid "Hour"
 msgstr "Час"
 
@@ -16791,12 +16788,6 @@ msgstr "Загружать карты, которые добавляют общ�
 msgid "The index holds no script-managed group"
 msgstr "В индексе нет групп, управляемых скриптом"
 
-msgid "{on} groups on: the game's own at this hour"
-msgstr "Включено групп: {on}; это группы самой игры в этот час"
-
-msgid "{on} groups on, as you chose them"
-msgstr "Включено групп: {on}; выбранные вами"
-
 msgid "The game's own groups"
 msgstr "Группы самой игры"
 
@@ -16805,12 +16796,6 @@ msgstr "Включить группы, которые состояние мир�
 
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Группы, управляемые скриптом: включено {on} из {groups}"
-
-msgid "A group ticked streams its maps in"
-msgstr "Отмеченная группа загружает свои карты"
-
-msgid "{name}, {maps} maps"
-msgstr "{name}, карт: {maps}"
 
 msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
 msgstr "Карт пака сюжета: {story}, общих мини-игр: {minigames}; групп, управляемых скриптом: {groups}"
@@ -16826,3 +16811,51 @@ msgstr "В интерьере {interior}, комната {room}"
 
 msgid "Outside every interior"
 msgstr "Вне всех интерьеров"
+
+msgid "Time and weather"
+msgstr "Время и погода"
+
+msgid "What streams"
+msgstr "Что подгружается"
+
+msgid "Go to"
+msgstr "Перейти"
+
+msgid "The game's own at this hour; a group ticked streams its maps in"
+msgstr "Группы самой игры в этот час; отмеченная группа подгружает свои карты"
+
+msgid "As you chose them; the hour no longer changes them"
+msgstr "Как вы их выбрали; час их больше не меняет"
+
+msgid "Filter groups by name"
+msgstr "Фильтр групп по имени"
+
+msgid "No group's name holds that text"
+msgstr "Ни одно имя группы не содержит этот текст"
+
+msgid "Look north over the square of 512 m where most maps whose names start with these letters lie"
+msgstr "Посмотреть на север над квадратом 512 м, где больше всего карт, чьи имена начинаются с этих букв"
+
+msgid "Look north over one of the squares of 512 m where most maps lie; once Harvest names has run, a place takes the letters its maps' names start with"
+msgstr "Посмотреть на север над одним из квадратов 512 м, где больше всего карт; после команды «Собрать имена» место получает буквы, с которых начинаются имена его карт"
+
+msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
+msgstr "Снимок ключей GTA VI не найден, поэтому карты сопоставлены по картам блоков, и ни один час не включает группы, управляемые скриптом. Поместите gtavi_magic.dat в папку конфигурации или укажите его в OPENRAGE_GTA6_KEYS, затем постройте индекс заново."
+
+msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
+msgstr "В этой папке не найдено ни одной карты GTA VI: в разделе Параметры ▸ Игры должна быть указана папка, в которую установлена GTA VI"
+
+msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
+msgstr "Подгрузка: ещё ожидается карт: {maps}, моделей: {models}, текстур: {textures}"
+
+msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
+msgstr "Первое посещение читает все архивы уровня и занимает несколько минут; индекс сохраняется, поэтому следующее посещение открывается сразу. Остановить его можно в разделе «Фоновые задачи»."
+
+msgid "{name}, {count} map"
+msgid_plural "{name}, {count} maps"
+msgstr[0] "{name}, {count} карта"
+msgstr[1] "{name}, {count} карты"
+msgstr[2] "{name}, {count} карт"
+
+msgid "Choose a place"
+msgstr "Выберите место"

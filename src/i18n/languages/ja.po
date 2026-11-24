@@ -16628,9 +16628,6 @@ msgstr "ジャンプ先のカメラの行"
 msgid "That is not a camera line: copy one with Copy the camera"
 msgstr "カメラの行ではありません：「カメラをコピー」でコピーしてください"
 
-msgid "Time and modes"
-msgstr "時刻とモード"
-
 msgid "Hour"
 msgstr "時刻"
 
@@ -16652,12 +16649,6 @@ msgstr "共有ミニゲームが追加するマップをストリーミング"
 msgid "The index holds no script-managed group"
 msgstr "インデックスにスクリプト管理のグループはありません"
 
-msgid "{on} groups on: the game's own at this hour"
-msgstr "{on} 個のグループがオン：この時刻のゲーム自身のグループ"
-
-msgid "{on} groups on, as you chose them"
-msgstr "選択したとおり {on} 個のグループがオン"
-
 msgid "The game's own groups"
 msgstr "ゲーム自身のグループ"
 
@@ -16666,12 +16657,6 @@ msgstr "選択したグループの代わりに、この時刻にゲームのワ
 
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "スクリプト管理のグループ：{groups} 個中 {on} 個がオン"
-
-msgid "A group ticked streams its maps in"
-msgstr "チェックしたグループのマップがストリーミングされます"
-
-msgid "{name}, {maps} maps"
-msgstr "{name}、マップ {maps} 個"
 
 msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
 msgstr "ストーリーパックのマップ {story} 個、共有ミニゲームのマップ {minigames} 個、スクリプト管理のグループ {groups} 個"
@@ -16687,3 +16672,50 @@ msgstr "インテリア {interior}、部屋 {room} の中"
 
 msgid "Outside every interior"
 msgstr "どのインテリアの中にもいない"
+
+msgid "Time and weather"
+msgstr "時刻と天候"
+
+msgid "What streams"
+msgstr "ストリーミングされるもの"
+
+msgid "Go to"
+msgstr "移動"
+
+msgid "The game's own at this hour; a group ticked streams its maps in"
+msgstr "この時刻のゲーム自身のグループ。チェックしたグループはそのマップをストリーミングします"
+
+msgid "As you chose them; the hour no longer changes them"
+msgstr "選択したとおり。時刻ではもう変わりません"
+
+msgid "Filter groups by name"
+msgstr "名前でグループをフィルター"
+
+msgid "No group's name holds that text"
+msgstr "このテキストを含むグループ名はありません"
+
+msgid "Look north over the square of 512 m where most maps whose names start with these letters lie"
+msgstr "名前がこの文字で始まるマップが最も多い512 m四方を北向きに見下ろします"
+
+msgid "Look north over one of the squares of 512 m where most maps lie; once Harvest names has run, a place takes the letters its maps' names start with"
+msgstr "マップが最も多い512 m四方のひとつを北向きに見下ろします。「名前を収集」を実行すると、場所はそのマップ名の先頭の文字で呼ばれます"
+
+msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
+msgstr "GTA VIのキースナップショットが見つからなかったため、マップはブロックマップで対応付けられ、どの時刻でもスクリプト管理のグループはオンになりません。gtavi_magic.datを設定フォルダーに置くか、OPENRAGE_GTA6_KEYSで指定してから、インデックスを再作成してください。"
+
+msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
+msgstr "このフォルダーにはGTA VIのマップが見つかりませんでした：「設定 ▸ ゲーム」でGTA VIがインストールされているフォルダーを指定してください"
+
+msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
+msgstr "ストリーミング中：マップ {maps} 個、モデル {models} 個、テクスチャ {textures} 個がまだ届いていません"
+
+msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
+msgstr "初回はレベルのすべてのアーカイブを読むため数分かかります。インデックスは保持されるので、次回はすぐに開きます。「バックグラウンドジョブ」で停止できます。"
+
+msgid "{name}, {count} map"
+msgid_plural "{name}, {count} maps"
+msgstr[0] "{name}、マップ {count} 個"
+msgstr[1] "{name}、マップ {count} 個"
+
+msgid "Choose a place"
+msgstr "場所を選択"
