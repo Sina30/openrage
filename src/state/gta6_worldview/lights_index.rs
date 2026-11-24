@@ -142,5 +142,12 @@ mod tests {
             .light(),
             None
         );
+        assert_eq!(std::mem::size_of::<LightRow>(), 80);
+    }
+
+    #[test]
+    fn a_body_that_is_no_map_types_gives_no_row() {
+        let model = super::super::lights_lod::tests::model(&[1.0], &[]);
+        assert!(rows_of(&model).is_empty());
     }
 }

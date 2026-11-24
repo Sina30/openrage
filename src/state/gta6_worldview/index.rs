@@ -205,7 +205,7 @@ pub struct WorldIndex {
     models: Vec<BodyRow>,
     dictionaries: Vec<BodyRow>,
     interiors: Vec<BodyRow>,
-    lights: Vec<super::lights_rows::ArchetypeLight>,
+    lights: Vec<super::lights_index::LightRow>,
     /// The archetype word each far stand-in id names, by the id; 0 for an id no list settles.
     pub slod: Vec<u64>,
     /// Each group's word and hours at rest, by id.
@@ -276,10 +276,8 @@ impl WorldIndex {
     }
 
     /// The lights archetype `word` holds, in its model's space.
-    pub fn archetype_lights(&self, word: u64) -> &[super::lights_rows::ArchetypeLight] {
-        let from = self.lights.partition_point(|l| l.archetype < word);
-        let to = self.lights.partition_point(|l| l.archetype <= word);
-        &self.lights[from..to]
+    pub fn archetype_lights(&self, word: u64) -> &[super::lights_index::LightRow] {
+        super::lights_index::of_archetype(&self.lights, word)
     }
 
     /// The middle of the boxes of the maps that stream at rest, where a camera starts.
@@ -304,7 +302,7 @@ impl WorldIndex {
         self.archetypes.reverse();
         self.archetypes.dedup_by_key(|a| a.word);
         self.archetypes.reverse();
-        self.lights.sort_by_key(|l| l.archetype);
+        super::lights_index::settle(&mut self.lights);
         for rows in [
             &mut self.models,
             &mut self.dictionaries,
