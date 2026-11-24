@@ -172,7 +172,12 @@ fn the_sphere_about_a_slice_of_the_view_holds_its_eight_corners_and_keeps_its_si
             pitch: 0.9,
             ..camera.clone()
         };
-        let (_, same) = slice_sphere(turned.position, turned.forward(), fov_y, aspect, near, far);
+        let (centre_turned, same) =
+            slice_sphere(turned.position, turned.forward(), fov_y, aspect, near, far);
         assert_eq!(same, radius);
+        assert!(
+            (centre_turned - (turned.position + turned.forward() * ahead)).length() < 1e-3,
+            "{centre_turned}"
+        );
     }
 }
