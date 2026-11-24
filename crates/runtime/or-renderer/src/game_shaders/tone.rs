@@ -312,5 +312,54 @@ impl Tone {
     }
 }
 
+/// The sizes of GTA VI's bloom: blurs of a half of the frame down to a 256th.
+pub const BLOOM_SIZES: usize = 8;
+/// The samples of the exposure's compensation curve the per-pixel exposure reads.
+pub const COMPENSATION_SAMPLES: usize = 32;
+
+/// What GTA VI states of the passes after its frame is lit: its bloom, its per-pixel exposure, its temporal anti-aliasing and its sharpening.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Gta6Post {
+    /// How much each size of blur, from a half of the frame to a 256th, weighs in the bloom.
+    pub bloom_weights: [f32; BLOOM_SIZES],
+    /// How much of the frame the bloom takes the place of.
+    pub bloom_mix: f32,
+    pub local: LocalExposure,
+    pub temporal: Temporal,
+    /// How much of the difference from its four neighbours a pixel of the mapped frame is pushed by.
+    pub sharpen: f32,
+}
+
+/// GTA VI's per-pixel exposure: the stops its curve gives the luminance about a pixel, of which `amount` takes the place of the frame's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LocalExposure {
+    pub amount: f32,
+    /// The per-pixel curve: `scale * ln(horizontal_offset + L) + bending * L + vertical_offset - 10`.
+    pub scale: f32,
+    pub horizontal_offset: f32,
+    pub vertical_offset: f32,
+    pub bending: f32,
+    /// The least and the most stops, and what the moment adds to them.
+    pub least: f32,
+    pub most: f32,
+    pub offset: f32,
+    /// How much of the compensation curve is added, and the curve sampled evenly over `input` and held to `output`.
+    pub contrast: f32,
+    pub compensation: [f32; COMPENSATION_SAMPLES],
+    pub input: [f32; 2],
+    pub output: [f32; 2],
+}
+
+/// GTA VI's temporal anti-aliasing: how long a pixel takes to converge near and far, and how far its history may stray from what is about it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Temporal {
+    /// Seconds to converge at the camera and from `far_depth` metres on.
+    pub near: f32,
+    pub far: f32,
+    pub far_depth: f32,
+    /// How many deviations of the pixels about it the history is held within.
+    pub gamma: f32,
+}
+
 #[cfg(test)]
 mod tests;

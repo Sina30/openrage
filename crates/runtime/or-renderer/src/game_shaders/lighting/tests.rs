@@ -210,6 +210,7 @@ fn a_day_works_its_lights_out_from_what_it_holds_and_the_view() {
         tone: Default::default(),
         stated: None,
         sky_view: None,
+        post: None,
     };
     assert_eq!(day.lighting(&view()), at(12.0, &keyframe(), &table()));
     // The fog depends on how high the camera is
@@ -261,6 +262,7 @@ fn a_wet_day_writes_how_wet_the_world_is_where_the_pass_reads_it_and_a_dry_one_n
         tone: Default::default(),
         stated: None,
         sky_view: None,
+        post: None,
     };
     let values = |wetness: f32| {
         let lighting = day(wetness).lighting(&view());

@@ -44,8 +44,8 @@ pub fn hdr_target(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Textu
         "hdr",
         (width, height),
         HDR_FORMAT,
-        // Water reads a copy of it
-        wgpu::TextureUsages::COPY_SRC,
+        // Water reads a copy of it, and GTA VI's passes after the light write theirs back into it
+        wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
     )
 }
 

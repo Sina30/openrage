@@ -8,7 +8,7 @@ use std::time::Instant;
 use glam::Vec3;
 use or_renderer::game_shaders::lighting::{night_emissive, Day, Stated};
 use or_renderer::game_shaders::sky_view::{Clouds, SkyView};
-use or_renderer::game_shaders::tone::ToneSettings;
+use or_renderer::game_shaders::tone::{Gta6Post, ToneSettings};
 use or_renderer::viewport::Metered;
 use or_title::gta6_cloud::{CloudLayer, EXTINCTION};
 use or_title::gta6_day::{read_day, DayTables, Moment};
@@ -206,6 +206,7 @@ pub fn day_of_moment(
         radiance,
         exposure: moment.light.exposure,
     };
+    let post = post_of(&|name, default| visual.get_f32(name, default), &moment.own);
     Day {
         keyframe: moment.keyframe,
         table: moment.table,
@@ -235,6 +236,61 @@ pub fn day_of_moment(
         ),
         stated: Some(stated),
         sky_view: Some(sky_view),
+        post: Some(post),
+    }
+}
+
+/// The passes after the frame is lit, from the install's visual settings `visual` and the moment's own keyframe `own`.
+fn post_of(
+    visual: &dyn Fn(&str, f32) -> f32,
+    own: &or_io::gta5::data::timecycle::Keyframe,
+) -> Gta6Post {
+    use or_renderer::game_shaders::tone::{
+        LocalExposure, Temporal, BLOOM_SIZES, COMPENSATION_SAMPLES,
+    };
+    let get = |name: &str, default: f32| own.get_or(name, default);
+    let mut bloom_weights = [0.0; BLOOM_SIZES];
+    for (i, weight) in bloom_weights.iter_mut().enumerate() {
+        *weight = visual(&format!("bloom.airy.weight{}", 2u32 << i), 0.5);
+    }
+    let input = [
+        get("postfx_exposure_compensation_input_ev_min", -14.0),
+        get("postfx_exposure_compensation_input_ev_max", 10.0),
+    ];
+    let mut compensation = [0.0; COMPENSATION_SAMPLES];
+    for (i, sample) in compensation.iter_mut().enumerate() {
+        let along = i as f32 / (COMPENSATION_SAMPLES - 1) as f32;
+        let ev = input[0] + (input[1] - input[0]) * along;
+        *sample = or_title::gta6_exposure::compensation(own, ev);
+    }
+    let curve = |name: &str| visual(&format!("Exposure.curve.perPixel.{name}"), 0.0);
+    Gta6Post {
+        bloom_weights,
+        bloom_mix: get("postfx_intensity_bloom", 0.0),
+        local: LocalExposure {
+            amount: get("postfx_exposure_perpixel_amount", 0.0),
+            scale: curve("scale"),
+            horizontal_offset: curve("horizontalOffset"),
+            vertical_offset: curve("verticalOffset"),
+            bending: curve("bending"),
+            least: get("postfx_exposure_min", -12.0),
+            most: get("postfx_exposure_max", 32.0),
+            offset: get("postfx_exposure", 0.0) + get("postfx_exposure_tweak", 0.0),
+            contrast: get("postfx_exposure_contrast_comp_amount", 0.0),
+            compensation,
+            input,
+            output: [
+                get("postfx_exposure_compensation_ev_min", 4.0),
+                get("postfx_exposure_compensation_ev_max", -4.0),
+            ],
+        },
+        temporal: Temporal {
+            near: visual("temporalaa.convergenceTime", 0.15),
+            far: visual("temporalaa.convergenceTimeFar", 1.0),
+            far_depth: visual("temporalaa.convergenceTimeDepthMax", 250.0),
+            gamma: visual("temporalaa.varianceGammaMin", 1.25),
+        },
+        sharpen: visual("sharpen.intensity", 0.15),
     }
 }
 

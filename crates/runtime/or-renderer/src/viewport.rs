@@ -316,6 +316,8 @@ struct DeferredFrame {
     fog_sink: Option<wgpu::TextureView>,
     /// What samples the lit frame for its exposure.
     meter: meter::Meter,
+    /// GTA VI's passes after the frame is lit, which a day that states them is drawn through.
+    post: post::Post,
 }
 
 /// A pass over `colour` that reads the depth and the stencil of the frame and writes neither, as the lighting, the sky and what blends are drawn: `stencil` says what it does with the stencil where it marks it.
@@ -639,7 +641,8 @@ impl ViewportRenderer {
         mode: ShadingMode,
     ) {
         let aspect = self.width as f32 / self.height as f32;
-        let view_proj = camera.view_proj(aspect);
+        // Where the frame is anti-aliased over time, everything drawn takes the camera's offset of this frame
+        let view_proj = self.jitter(mode) * camera.view_proj(aspect);
         let inv_view_proj = view_proj.inverse();
         let eye = camera.eye();
         queue.write_buffer(
@@ -1312,6 +1315,8 @@ fn fs_bump(
 mod build;
 mod game_frame;
 mod meter;
+mod post;
+mod post_shaders;
 pub use meter::Metered;
 
 #[cfg(test)]

@@ -86,6 +86,8 @@ pub struct Day {
     pub stated: Option<Stated>,
     /// The sky of a day that states it as a table of radiance, drawn in place of the dome's colours.
     pub sky_view: Option<super::sky_view::SkyView>,
+    /// The passes after the frame is lit of a day that states its own, in place of GTA V's bloom and anti-aliasing.
+    pub post: Option<super::tone::Gta6Post>,
 }
 
 impl Day {

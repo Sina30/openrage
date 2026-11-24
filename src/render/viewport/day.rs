@@ -40,6 +40,7 @@ pub(super) fn day_of(
         }),
         stated: None,
         sky_view: None,
+        post: None,
     })
 }
 

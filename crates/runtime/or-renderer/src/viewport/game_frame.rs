@@ -60,6 +60,7 @@ impl ViewportRenderer {
                 refraction: None,
                 fog_sink: None,
                 meter: super::meter::Meter::new(device),
+                post: super::post::Post::new(device, self.colour_format.remove_srgb_suffix()),
             });
         }
         self.rebind_deferred(device, queue);
@@ -262,6 +263,10 @@ impl ViewportRenderer {
         };
         frame.meter.collect(device);
         frame.meter.bind(device, &frame.hdr);
+        match self.day.as_ref().is_some_and(|day| day.post.is_some()) {
+            true => (frame.post).prepare(device, &frame.hdr, &frame.depth.depth, &frame.ldr),
+            false => frame.post.forget(),
+        }
         if frame.reflection_of != Some(revision) {
             use crate::game_shaders::sky::ReflectionMap;
             let (width, levels) = (REFLECTION_WIDTH, REFLECTION_LEVELS as usize);
@@ -429,14 +434,30 @@ impl ViewportRenderer {
         self.skin = skin;
     }
 
+    /// GTA VI's passes after the light, where the day states them and Shaded draws the game's frame.
+    fn gta6_post(&self) -> Option<&crate::game_shaders::tone::Gta6Post> {
+        self.deferred.as_ref()?;
+        self.day.as_ref()?.post.as_ref()
+    }
+
+    /// The camera's offset of this frame, as a change of the clip space: none unless `mode` draws GTA VI's frame, which is anti-aliased over time.
+    pub(super) fn jitter(&self, mode: ShadingMode) -> Mat4 {
+        match (mode, self.gta6_post(), &self.deferred) {
+            (ShadingMode::Shaded, Some(_), Some(frame)) => {
+                frame.post.jitter((self.width, self.height))
+            }
+            _ => Mat4::IDENTITY,
+        }
+    }
+
     /// The constants the game's shaders read, from the camera of this frame.
     pub(super) fn game_constants(
         &self,
         camera: &OrbitCamera,
         aspect: f32,
     ) -> crate::game_shaders::engine::EngineConstants {
-        let projection =
-            perspective_reverse_z_rh(camera.fov_y, aspect.max(0.0001), camera.near, camera.far);
+        let projection = self.jitter(ShadingMode::Shaded)
+            * perspective_reverse_z_rh(camera.fov_y, aspect.max(0.0001), camera.near, camera.far);
         let lighting = self.day.as_ref().map(|day| {
             day.lighting(&crate::game_shaders::lighting::View {
                 camera_height: camera.eye().z,
@@ -786,12 +807,28 @@ impl ViewportRenderer {
             deferred.passes.record_fog(&mut pass);
         }
         self.gpu_mark(encoder, "fog volumes");
+        // GTA VI's frame is laid over its history before it is metered and bloomed
+        let post = self.gta6_post();
+        if let Some(post) = post {
+            let unjittered = camera.view_proj(aspect);
+            let jittered = engine.projection * engine.view;
+            let views = (unjittered, jittered, camera.eye());
+            (deferred.post).record_temporal(encoder, queue, &deferred.hdr, post, views);
+            self.gpu_mark(encoder, "temporal");
+        }
         deferred.meter.record(encoder, self.day_revision);
-        // The bright part of the lit frame is blurred and put back over it, before the frame is mapped
-        deferred.passes.record_bloom(encoder, &deferred.hdr, &tone);
+        match post {
+            Some(post) => {
+                let exposure = (self.day.as_ref().and_then(|d| d.stated))
+                    .map_or(1.0, |stated| stated.exposure);
+                (deferred.post).record_bloom(encoder, queue, &deferred.hdr, post, exposure);
+            }
+            // The bright part of the lit frame is blurred and put back over it, before the frame is mapped
+            None => deferred.passes.record_bloom(encoder, &deferred.hdr, &tone),
+        }
         self.gpu_mark(encoder, "bloom");
-        // Where the frame is anti-aliased it is mapped to a target of its own first, with the background around it
-        let antialiased = deferred.passes.antialiases();
+        // Where the frame is anti-aliased or sharpened it is mapped to a target of its own first, with the background around it
+        let antialiased = post.is_some() || deferred.passes.antialiases();
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-resolve-pass"),
@@ -824,12 +861,17 @@ impl ViewportRenderer {
             deferred.passes.record_resolve(&mut pass);
             if sky_shown {
                 deferred.passes.record_background(&mut pass);
-            } else if deferred.passes.blooms(&tone) {
+            } else if post.is_none() && deferred.passes.blooms(&tone) {
                 deferred.passes.record_halo(&mut pass);
             }
         }
         self.gpu_mark(encoder, "resolve");
-        if antialiased {
+        // GTA VI's frame has no edge blending of its own after the history: it is sharpened onto the screen
+        if let Some(post) = post {
+            let background = self.display_background();
+            let screen = &self.colour_display_view;
+            (deferred.post).record_sharpen(encoder, queue, screen, background, post.sharpen);
+        } else if antialiased {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-antialias-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
