@@ -1,0 +1,326 @@
+//! The `world` steps of a shots script, which make a frame of the GTA VI world one that draws the
+//! same again: a camera, an hour, a clean frame and a wait for what streams in.
+//!
+//! ⚠ The viewer is locked for a statement at a time and never across a frame, which locks it too.
+
+use std::time::{Duration, Instant};
+
+use super::script::{numbers, split_word};
+use super::Shell;
+use crate::state::gta6_world::worldview::viewer;
+use crate::state::AppState;
+use crate::ui::dock::Workspace;
+use crate::ui::panels::world_viewer::{self, Capture, Pose};
+
+/// How long nothing may arrive or change before the world counts as settled.
+const QUIET: Duration = Duration::from_millis(1500);
+/// How long `world settle` waits where its line gives no number of seconds.
+const SETTLE_DEADLINE: Duration = Duration::from_secs(180);
+/// The longest deadline a line may give, in seconds.
+const MOST_SECONDS: f32 = 86_400.0;
+/// How long `world camera` waits for the install's index: a first build reads every archive of the level.
+const INDEX_DEADLINE: Duration = Duration::from_secs(1800);
+
+/// A step that acts on the World screen.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum WorldStep {
+    /// The camera put where a camera line says.
+    Camera(Pose),
+    /// The hour of the day the world is drawn at, from 0 up to 24.
+    Hour(f32),
+    /// The view drawn alone over the whole window, or back in the dock.
+    Clean(bool),
+    /// Frames drawn until nothing arrives any more, for this long at most.
+    Settle(Duration),
+}
+
+/// The step the words after `world` name.
+pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
+    let (word, rest) = split_word(rest);
+    let args: Vec<&str> = rest.split_whitespace().collect();
+    match word {
+        "camera" => Pose::read(rest).map(WorldStep::Camera),
+        "hour" => {
+            let [hour] = numbers::<1>(&args)?;
+            if !(0.0..24.0).contains(&hour) {
+                return Err("an hour is from 0 up to 24, and never 24".into());
+            }
+            Ok(WorldStep::Hour(hour))
+        }
+        "clean" => match rest {
+            "on" => Ok(WorldStep::Clean(true)),
+            "off" => Ok(WorldStep::Clean(false)),
+            other => Err(format!("no clean `{other}`; use on or off")),
+        },
+        "settle" if args.is_empty() => Ok(WorldStep::Settle(SETTLE_DEADLINE)),
+        "settle" => {
+            let [seconds] = numbers::<1>(&args)?;
+            if !(seconds > 0.0 && seconds <= MOST_SECONDS) {
+                return Err(format!(
+                    "a deadline is a number of seconds above 0, {MOST_SECONDS} at most"
+                ));
+            }
+            Ok(WorldStep::Settle(Duration::from_secs_f32(seconds)))
+        }
+        other => Err(format!(
+            "no world step `{other}`; use camera, hour, clean or settle"
+        )),
+    }
+}
+
+/// What one frame finds of the world viewer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct Found {
+    /// An index of the install is held.
+    pub indexed: bool,
+    /// The maps, models and textures asked for and not there yet.
+    pub waiting: [usize; 3],
+    /// What stands streamed in: a change in it is something that came or went.
+    pub standing: [usize; 4],
+}
+
+/// The rule `world settle` waits by: an index held, nothing waited for, and nothing changed for [`QUIET`].
+///
+/// ⚠ Nothing waited for is not enough: for a frame or two after the camera jumps, the world's
+/// thread has not yet asked for the maps of the new place.
+#[derive(Debug, Default)]
+pub(super) struct Settle {
+    last: Option<Found>,
+    since: Duration,
+}
+
+impl Settle {
+    /// Whether the world has settled at `now`, a time on a clock that only runs forward, given what this frame found.
+    pub(super) fn settled(&mut self, now: Duration, found: Found) -> bool {
+        let quiet = found.indexed && found.waiting == [0; 3];
+        if !quiet || self.last != Some(found) {
+            (self.last, self.since) = (Some(found), now);
+            return false;
+        }
+        now.saturating_sub(self.since) >= QUIET
+    }
+
+    /// What was still arriving when the wait gave up, for the line that fails the run.
+    pub(super) fn still(&self) -> String {
+        match self.last {
+            None => "no frame was drawn".into(),
+            Some(found) if !found.indexed => "no index of the install is held".into(),
+            Some(Found {
+                waiting: [0, 0, 0], ..
+            }) => "what is streamed in was still changing".into(),
+            Some(Found {
+                waiting: [maps, models, textures],
+                ..
+            }) => format!(
+                "{maps} maps, {models} models and {textures} textures were still waited for"
+            ),
+        }
+    }
+}
+
+/// What the viewer holds and waits for now, or why it has no index.
+fn found() -> Result<Found, String> {
+    let viewer = viewer();
+    if let Some(why) = &viewer.failed {
+        return Err(format!("the GTA VI world was not indexed: {why}"));
+    }
+    let streaming = viewer.streaming();
+    Ok(Found {
+        indexed: viewer.index.is_some(),
+        waiting: [
+            streaming.maps_waiting,
+            viewer.models_waiting,
+            viewer.textures_waiting,
+        ],
+        standing: [
+            streaming.maps_wanted,
+            streaming.maps_loaded,
+            streaming.nodes,
+            streaming.drawn,
+        ],
+    })
+}
+
+impl Shell {
+    /// Run a `world` step on the World screen, which the script has put up before it.
+    pub(super) fn world(&mut self, state: &mut AppState, step: &WorldStep) -> Result<(), String> {
+        // Every step ends on drawn frames, so with the World screen up its viewer has opened the install.
+        if state.active_workspace != Workspace::World || !world_viewer::offered(state) {
+            return Err(
+                "the World screen is not drawn: put `game gta6 FOLDER` and `workspace World` first"
+                    .into(),
+            );
+        }
+        match step {
+            WorldStep::Camera(pose) => {
+                // ⚠ The viewer puts its camera over the middle of the maps as it takes the index, so a camera is set after that.
+                self.indexed(state)?;
+                pose.put(&mut viewer().camera);
+            }
+            WorldStep::Hour(hour) => viewer().hour = *hour,
+            WorldStep::Clean(on) => state.panels.get::<Capture>().clean = *on,
+            WorldStep::Settle(deadline) => self.settle(state, *deadline)?,
+        }
+        Ok(())
+    }
+
+    /// Draw frames until the install's index is held.
+    fn indexed(&mut self, state: &mut AppState) -> Result<(), String> {
+        let until = Instant::now() + INDEX_DEADLINE;
+        while !found()?.indexed {
+            if Instant::now() > until {
+                return Err(format!(
+                    "the GTA VI world was still being indexed after {} minutes",
+                    INDEX_DEADLINE.as_secs() / 60
+                ));
+            }
+            self.idle(state, 1)?;
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        Ok(())
+    }
+
+    /// Draw frames until the world has settled, or fail at `deadline` by what was still arriving.
+    fn settle(&mut self, state: &mut AppState, deadline: Duration) -> Result<(), String> {
+        let started = Instant::now();
+        let mut rule = Settle::default();
+        loop {
+            self.idle(state, 1)?;
+            let now = started.elapsed();
+            if rule.settled(now, found()?) {
+                println!("  settled after {:.1} s", now.as_secs_f32());
+                return Ok(());
+            }
+            if now > deadline {
+                return Err(format!(
+                    "the world had not settled after {} s: {}",
+                    deadline.as_secs(),
+                    rule.still()
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const IDLE: Found = Found {
+        indexed: true,
+        waiting: [0; 3],
+        standing: [40, 40, 900, 700],
+    };
+
+    fn at(millis: u64) -> Duration {
+        Duration::from_millis(millis)
+    }
+
+    #[test]
+    fn the_steps_of_the_world_are_read() {
+        assert_eq!(
+            parse("camera -120.5 340 62.25 135 -20 60"),
+            Ok(WorldStep::Camera(Pose {
+                position: glam::Vec3::new(-120.5, 340.0, 62.25),
+                yaw: 135.0,
+                pitch: -20.0,
+                fov: Some(60.0),
+            }))
+        );
+        assert_eq!(parse("hour 17.5"), Ok(WorldStep::Hour(17.5)));
+        assert_eq!(parse("hour 0"), Ok(WorldStep::Hour(0.0)));
+        assert_eq!(parse("clean on"), Ok(WorldStep::Clean(true)));
+        assert_eq!(parse("clean off"), Ok(WorldStep::Clean(false)));
+        assert_eq!(parse("settle"), Ok(WorldStep::Settle(SETTLE_DEADLINE)));
+        assert_eq!(parse("settle 2.5"), Ok(WorldStep::Settle(at(2500))));
+    }
+
+    #[test]
+    fn a_wrong_world_step_is_refused() {
+        for bad in [
+            "",
+            "fly",
+            "camera",
+            "camera 1 2 3",
+            "camera 1 2 3 0 95",
+            "hour",
+            "hour 24",
+            "hour -1",
+            "hour noon",
+            "clean",
+            "clean yes",
+            "settle 0",
+            "settle -3",
+            "settle soon",
+            "settle 1 2",
+            "settle 1e30",
+        ] {
+            assert!(parse(bad).is_err(), "`world {bad}` should be refused");
+        }
+    }
+
+    #[test]
+    fn the_world_settles_once_nothing_is_waited_for_and_nothing_has_changed_for_the_quiet_time() {
+        let mut rule = Settle::default();
+        assert!(!rule.settled(at(0), IDLE), "one frame is no quiet time");
+        assert!(!rule.settled(QUIET - at(1), IDLE));
+        assert!(rule.settled(QUIET, IDLE));
+    }
+
+    #[test]
+    fn something_waited_for_or_changed_starts_the_quiet_time_again() {
+        let waiting = Found {
+            waiting: [0, 3, 0],
+            ..IDLE
+        };
+        let grown = Found {
+            standing: [40, 40, 900, 701],
+            ..IDLE
+        };
+        let mut rule = Settle::default();
+        assert!(!rule.settled(at(0), IDLE));
+        // A model asked for after a quiet stretch: the camera jumped and the selection caught up.
+        assert!(!rule.settled(QUIET - at(1), waiting));
+        assert!(
+            !rule.settled(QUIET * 3, waiting),
+            "never while something is waited for"
+        );
+        assert!(!rule.settled(QUIET * 3 + at(1), IDLE));
+        assert!(
+            !rule.settled(QUIET * 4, IDLE),
+            "the quiet time runs from the last change, not from the first frame"
+        );
+        // Nothing is waited for, yet what stands streamed in moved: a parent gave way to its children.
+        assert!(!rule.settled(QUIET * 4 + at(1), grown));
+        assert!(!rule.settled(QUIET * 5, grown));
+        assert!(rule.settled(QUIET * 5 + at(1), grown));
+    }
+
+    #[test]
+    fn a_world_with_no_index_never_settles_and_the_wait_says_what_was_still_arriving() {
+        let unindexed = Found {
+            indexed: false,
+            ..Found::default()
+        };
+        let mut rule = Settle::default();
+        assert_eq!(rule.still(), "no frame was drawn");
+        assert!(!rule.settled(at(0), unindexed));
+        assert!(
+            !rule.settled(QUIET * 10, unindexed),
+            "no index is nothing to shoot"
+        );
+        assert_eq!(rule.still(), "no index of the install is held");
+        let waiting = Found {
+            waiting: [2, 0, 7],
+            ..IDLE
+        };
+        assert!(!rule.settled(QUIET * 11, waiting));
+        assert_eq!(
+            rule.still(),
+            "2 maps, 0 models and 7 textures were still waited for"
+        );
+        assert!(!rule.settled(QUIET * 12, IDLE));
+        assert_eq!(rule.still(), "what is streamed in was still changing");
+    }
+}
