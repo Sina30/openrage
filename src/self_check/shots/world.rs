@@ -418,7 +418,10 @@ impl Shell {
         loop {
             self.idle(state, 1)?;
             let now = started.elapsed();
-            if rule.settled(now, found()?) {
+            let mut found = found()?;
+            // ⚠ The plain pass meters no frame, so its exposure never arrives: only a frame the game lights adapts.
+            found.adapting &= self.bridge.world_drawn().lit_by_the_game;
+            if rule.settled(now, found) {
                 println!("  settled after {:.1} s", now.as_secs_f32());
                 return Ok(());
             }
