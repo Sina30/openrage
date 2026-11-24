@@ -12,6 +12,8 @@ const SIZE: u32 = 64;
 const BACKGROUND: [f32; 4] = [0.1, 0.2, 0.3, 1.0];
 const WHITE: [f32; 4] = [1.0; 4];
 const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+/// The most a fully rough dielectric's highlight adds to a channel in the plain modes: a reflectance of 0.04 in a lobe of exponent one.
+const HIGHLIGHT: u8 = 8;
 
 /// The corners of a square about `centre` that reaches `half` to each side, facing up, its texture laid once across it with u along x and v along y.
 fn corners(centre: [f32; 2], half: f32) -> [MeshVertex; 4] {
@@ -130,6 +132,84 @@ fn an_instance_is_the_first_three_rows_of_its_matrix_and_its_tint() {
     assert!((placed - matrix.transform_point3(point)).length() < 1e-4);
     assert_eq!(instance.tint, [0.1, 0.2, 0.3, 0.4]);
     assert_eq!(std::mem::size_of::<WorldInstance>(), 64);
+}
+
+/// The members of the struct `name` the world's program declares, by name, with their offsets, and its size.
+fn declared(name: &str) -> (Vec<(String, u32)>, u32) {
+    let module = naga::front::wgsl::parse_str(shader::WORLD_SHADER).expect("the WGSL parses");
+    let found = (module.types.iter()).find_map(|(_, ty)| match &ty.inner {
+        naga::TypeInner::Struct { members, span } if ty.name.as_deref() == Some(name) => {
+            let members = (members.iter())
+                .map(|member| (member.name.clone().unwrap_or_default(), member.offset))
+                .collect();
+            Some((members, *span))
+        }
+        _ => None,
+    });
+    found.expect("the struct is declared")
+}
+
+#[test]
+fn the_world_program_is_valid_and_reads_a_materials_constants_where_the_renderer_writes_them() {
+    let module = naga::front::wgsl::parse_str(shader::WORLD_SHADER).expect("the WGSL parses");
+    let flags = naga::valid::ValidationFlags::all();
+    let mut validator = naga::valid::Validator::new(flags, naga::valid::Capabilities::all());
+    validator
+        .validate(&module)
+        .expect("the program is valid, its samples in uniform control flow");
+
+    let (members, span) = declared("Constants");
+    let bytes = uniform_bytes(WorldFamily::FourLayer, &WorldConstants::default());
+    assert_eq!(bytes.len() as u32, span);
+    let at = |name: &str| {
+        (members.iter())
+            .find(|(member, _)| member == name)
+            .map(|(_, offset)| *offset)
+            .expect("the member is declared")
+    };
+    // The family in front, then each field where `WorldConstants` puts it
+    assert_eq!(at("family"), 0);
+    assert_eq!(bytes[..4], (WorldFamily::FourLayer as u32).to_le_bytes());
+    let fields = [
+        ("fresnel", std::mem::offset_of!(WorldConstants, fresnel)),
+        ("control_filter", std::mem::offset_of!(WorldConstants, control_filter)),
+        ("emissive_power", std::mem::offset_of!(WorldConstants, emissive_power)),
+        ("flags", std::mem::offset_of!(WorldConstants, flags)),
+        ("palette_row", std::mem::offset_of!(WorldConstants, palette_row)),
+        ("control_entity", std::mem::offset_of!(WorldConstants, control_entity)),
+        (
+            "emissive_diffuse_tint",
+            std::mem::offset_of!(WorldConstants, emissive_diffuse_tint),
+        ),
+    ];
+    for (name, offset) in fields {
+        assert_eq!(at(name), 16 + offset as u32, "{name}");
+    }
+    // The family, thirteen vectors and fifteen scalars
+    assert_eq!(members.len(), 29);
+    // The frame's light: four vectors and the night's
+    assert_eq!(declared("Light").1, 80);
+}
+
+#[test]
+fn a_vertex_keeps_its_second_colour_in_the_bits_of_its_depth_bias_and_one_it_lacks_is_white() {
+    assert_eq!(colour1([1, 2, 3, 4]).to_bits(), 0x0403_0201);
+    let mut vertices = corners([0.0, 0.0], 1.0);
+    let first = [[0.25, 0.5, 0.75, 1.0]; 4];
+    coloured(&mut vertices, Some(&first), None);
+    assert!(vertices.iter().all(|v| v.colour == first[0]));
+    assert!(vertices.iter().all(|v| v.depth_bias.to_bits() == u32::MAX));
+    let second = [[0.0, 0.5, 1.0, 0.2]; 3];
+    coloured(&mut vertices, None, Some(&second));
+    assert_eq!(vertices[0].colour, [1.0; 4]);
+    assert_eq!(vertices[0].depth_bias.to_bits(), u32::from_le_bytes([0, 128, 255, 51]));
+    // A list shorter than the mesh leaves the rest white
+    assert_eq!(vertices[3].depth_bias.to_bits(), u32::MAX);
+    // The stand-ins: no layer but the first where no weights are given, no dirt, no glow
+    assert_eq!(STAND_INS[slot::WEIGHTS], [1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(STAND_INS[slot::SECOND][3], 0.0);
+    assert_eq!(STAND_INS[slot::EMISSIVE], [0.0; 4]);
+    assert_eq!(slot::material_a(3), slot::EMISSIVE);
 }
 
 #[test]
@@ -286,12 +366,13 @@ fn each_instance_of_a_mesh_is_drawn_where_its_matrix_puts_it_in_its_tint_and_now
                 image[pixel_of(&camera, red_at)],
                 image[pixel_of(&camera, green_at)],
             );
+            // A dielectric's grey highlight is all the other channels hold
             assert!(
-                red[0] > 100 && red[1] == 0 && red[2] == 0,
+                red[0] > 100 && red[1] <= HIGHLIGHT && red[2] <= HIGHLIGHT,
                 "{mode:?} {red:?}"
             );
             assert!(
-                green[1] > 100 && green[0] == 0 && green[2] == 0,
+                green[1] > 100 && green[0] <= HIGHLIGHT && green[2] <= HIGHLIGHT,
                 "{mode:?} {green:?}"
             );
             assert_eq!(image[pixel_of(&camera, empty_at)], background, "{mode:?}");
@@ -405,12 +486,13 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
         let image = frame(&device, &queue, &renderer, &camera, ShadingMode::Material);
         let at = |place: [f32; 2]| image[pixel_of(&camera, Vec3::new(place[0], place[1], 0.0))];
         let (red, green, blue) = (at(places[0]), at(places[1]), at(places[2]));
-        assert!(red[0] > 100 && red[1] == 0 && red[2] == 0, "{red:?}");
+        let dim = |c: u8| c <= HIGHLIGHT;
+        assert!(red[0] > 100 && dim(red[1]) && dim(red[2]), "{red:?}");
         assert!(
-            green[1] > 100 && green[0] == 0 && green[2] == 0,
+            green[1] > 100 && dim(green[0]) && dim(green[2]),
             "{green:?}"
         );
-        assert!(blue[2] > 100 && blue[0] == 0 && blue[1] == 0, "{blue:?}");
+        assert!(blue[2] > 100 && dim(blue[0]) && dim(blue[1]), "{blue:?}");
         let covered = image.iter().filter(|pixel| **pixel != image[0]).count();
         assert!((60..600).contains(&covered), "{covered}");
 
@@ -512,6 +594,88 @@ fn a_fade_leaves_its_share_of_the_pixels_of_an_instance_and_a_cutout_only_the_te
 /// Whether every channel of two pixels is within `tolerance` of the other's.
 fn near(a: [u8; 4], b: [u8; 4], tolerance: u8) -> bool {
     a.iter().zip(b).all(|(a, b)| a.abs_diff(b) <= tolerance)
+}
+
+/// `x` from nought to one as a byte of a target.
+fn unorm(x: f32) -> u8 {
+    (x.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+/// The specular word of a surface of `smoothness` whose reflectance at normal incidence is `f0`, as the lighting decodes it: an intensity of one, the exponent whose lobe is as wide as the rough lobe's undone of the lighting's expansion, and one less the reflectance.
+fn specular_word(smoothness: f32, f0: f32) -> [u8; 4] {
+    let alpha = ((1.0 - smoothness) * (1.0 - smoothness)).max(0.001);
+    let n = (2.0 / (alpha * alpha) - 2.0).clamp(1.0, 8196.0);
+    let stored = if n <= 1500.0 {
+        n / 3.0
+    } else {
+        500.0 + (n - 1500.0) / 558.0
+    };
+    [255, unorm((stored / 512.0).sqrt()), unorm(1.0 - f0), 255]
+}
+
+/// A square about the origin that reaches half a metre to each side, its vertices of the first colour `first` and the second `second`, drawn with `material`.
+fn coloured_square(
+    device: &wgpu::Device,
+    first: [f32; 4],
+    second: [f32; 4],
+    material: WorldMaterial,
+) -> Arc<WorldMesh> {
+    let mut vertices = corners([0.0, 0.0], 0.5);
+    coloured(&mut vertices, Some(&[first; 4]), Some(&[second; 4]));
+    Arc::new(WorldMesh::new(device, &vertices, &SQUARE, material))
+}
+
+/// A material of `family` in `bucket` that samples each of `maps` in its slot, of the constants `constants`.
+fn surface(
+    device: &wgpu::Device,
+    renderer: &ViewportRenderer,
+    (family, bucket): (WorldFamily, WorldBucket),
+    maps: &[(usize, wgpu::TextureView)],
+    constants: WorldConstants,
+) -> WorldMaterial {
+    let mut slots = [None; WORLD_MAPS];
+    for (at, view) in maps {
+        slots[*at] = Some(view);
+    }
+    let surface = WorldSurface {
+        family,
+        bucket,
+        maps: slots,
+        constants,
+    };
+    renderer.world_surface(device, &surface)
+}
+
+/// The G-buffer at the middle of a deferred frame of `meshes` laid one over another about the origin, each one instance tinted `tint`, and the screen there.
+fn shade(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    renderer: &mut ViewportRenderer,
+    meshes: &[(Arc<WorldMesh>, [f32; 4])],
+) -> (Vec<[u8; 4]>, [u8; 4]) {
+    let camera = overhead();
+    let middle = (SIZE / 2 * SIZE + SIZE / 2) as usize;
+    let instances: Vec<WorldInstance> = (meshes.iter())
+        .map(|(_, tint)| WorldInstance::of(Mat4::IDENTITY, *tint))
+        .collect();
+    let draws = (meshes.iter().zip(0..))
+        .map(|((mesh, _), at)| WorldDraw {
+            mesh: Arc::clone(mesh),
+            instances: at..at + 1,
+        })
+        .collect();
+    renderer.set_world(device, queue, &instances, draws);
+    let image = frame(device, queue, renderer, &camera, ShadingMode::Shaded);
+    (words(device, queue, renderer, middle), image[middle])
+}
+
+/// A deferred viewport for one family's test, with no shadow to write the targets it reads, or none where the machine has no adapter or no pack.
+fn family_frame(test: &str) -> Option<(wgpu::Device, wgpu::Queue, ViewportRenderer)> {
+    let (device, queue) = gpu(test)?;
+    let pack = real_pack(test)?;
+    let mut renderer = deferred(&device, &queue, &pack, Vec3::new(0.3, 0.2, 0.9).normalize());
+    renderer.set_shadows(false);
+    Some((device, queue, renderer))
 }
 
 /// A viewport whose Shaded frame is the game's deferred one with no surface of its own, lit by a sun that stands towards `sun`.
@@ -626,21 +790,22 @@ fn the_games_passes_light_an_instance_of_the_world_as_they_light_a_surface_of_th
 
     let (world, lit, corner) = shaded(&[], Some(1.0), None);
     let (game, game_lit, _) = shaded(&surface(255), None, None);
-    // The albedo, the normal as half of it and a half, a matte specular the sun reaches, and the whole of the natural ambient light
+    // The albedo, the normal as half of it and a half, the specular word of a fully rough dielectric, and the whole of the natural ambient light
     let written = [
         [255, 255, 255, 255],
         [127, 127, 255, 0],
-        [0, 0, 250, 255],
+        specular_word(0.0, 0.04),
         [255, 0, 0, 255],
     ];
     for (target, want) in world.iter().zip(written) {
         assert!(near(*target, want, 1), "{world:?}");
     }
-    // Which is what the game's own effect writes, but for the alpha it gives a normal straight up and the artificial light it takes
+    // Which is what the game's own effect writes, but for the alpha it gives a normal straight up, the artificial light it takes and its matte specular word
     let (mut same, mut game_same) = (world.clone(), game.clone());
     for targets in [&mut same, &mut game_same] {
         targets[1][3] = 0;
         targets[3][1] = 0;
+        targets[2] = [0; 4];
     }
     for (target, want) in same.iter().zip(game_same) {
         assert!(near(*target, want, 1), "{world:?} {game:?}");
@@ -651,7 +816,12 @@ fn the_games_passes_light_an_instance_of_the_world_as_they_light_a_surface_of_th
     );
     assert!(!near(lit, background, 8), "{lit:?} {background:?}");
     assert!(near(corner, background, 2), "{corner:?} {background:?}");
-    assert!(near(lit, game_lit, 3), "{lit:?} {game_lit:?}");
+    // Lit as the game's surface, and a highlight on it
+    let as_lit = |lit: [u8; 4], game: [u8; 4]| {
+        let (lit, game) = (lit.map(u16::from), game.map(u16::from));
+        (0..3).all(|c| lit[c] + 3 >= game[c] && lit[c] <= game[c] + 40)
+    };
+    assert!(as_lit(lit, game_lit), "{lit:?} {game_lit:?}");
 
     // The lighting squares the albedo: a tint of a quarter is stored as a half, as a texture of a half is, and lit as it
     let grey = 128.0 / 255.0;
@@ -659,7 +829,7 @@ fn the_games_passes_light_an_instance_of_the_world_as_they_light_a_surface_of_th
     let (game, game_lit, _) = shaded(&surface(128), None, None);
     assert!(near(world[0], [128, 128, 128, 255], 1), "{world:?}");
     assert!(near(world[0], game[0], 1), "{world:?} {game:?}");
-    assert!(near(lit, game_lit, 3), "{lit:?} {game_lit:?}");
+    assert!(as_lit(lit, game_lit), "{lit:?} {game_lit:?}");
 
     // Under a day, with its occlusion over the world and its sky round it, the frame of no surface is lit as well
     let mut keyframe = or_io::gta5::data::timecycle::Keyframe::default();
@@ -716,7 +886,6 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
         ],
         WorldBucket::Opaque,
     );
-    let glowing = material([None; 3], WorldBucket::Emissive);
     let covering = material([Some([255; 4]), None, None], WorldBucket::Cutout);
     let clear = material([Some([255, 255, 255, 40]), None, None], WorldBucket::Cutout);
     let stain = material([Some([0, 255, 0, 128]), None, None], WorldBucket::Decal);
@@ -741,28 +910,21 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
         )
     };
 
-    // A colour of a quarter is stored as a half; a normal map that leans three fifths along the texture's u, which runs along x here, leans the normal so; a specular map of a quarter in red and one in alpha is stored as the roots of a quarter and of a hundred in five hundred and twelve
+    // A colour of a quarter less its metal of a quarter is stored as its root; a normal map that leans three fifths along the texture's u, which runs along x here, leans the normal so; a material map of a quarter in red is that metal, and of nought in green a mirror's smoothness, its reflectance the metal's share of the colour over a dielectric's
     let (targets, lit, background) = drawn(&[(&mapped, WHITE)]);
+    let (colour, metal) = (64.0 / 255.0, 64.0 / 255.0);
+    let f0 = 0.04 * (1.0 - metal) + colour * metal;
+    let stored = unorm((colour * (1.0 - metal)).sqrt());
     let want = [
-        [128, 128, 128, 255],
+        [stored, stored, stored, 255],
         [204, 128, 230, 0],
-        [128, 113, 250, 255],
+        specular_word(1.0, f0),
         [255, 0, 0, 255],
     ];
     for (target, want) in targets.iter().zip(want) {
         assert!(near(*target, want, 2), "{targets:?}");
     }
     assert!(!near(lit, background, 8), "{lit:?} {background:?}");
-
-    // An emissive surface is an opaque one that states the light it gives, a sixteenth of the most the word holds
-    let (plain_words, plain_lit, _) = drawn(&[(&opaque, [0.5, 0.5, 0.5, 1.0])]);
-    let (targets, lit, _) = drawn(&[(&glowing, [0.5, 0.5, 0.5, 1.0])]);
-    assert!(near(targets[3], [255, 0, 16, 255], 1), "{targets:?}");
-    assert_eq!(targets[..3], plain_words[..3]);
-    assert!(
-        (0..3).all(|c| lit[c] >= plain_lit[c]) && lit != plain_lit,
-        "{lit:?} {plain_lit:?}"
-    );
 
     // A cutout writes where its texels cover and nowhere else
     let (targets, ..) = drawn(&[(&covering, WHITE)]);
@@ -775,7 +937,7 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
     let (targets, ..) = drawn(&[(&stain, WHITE), (&opaque, RED)]);
     assert!(near(targets[0], [127, 128, 0, 255], 2), "{targets:?}");
     assert!(near(targets[1], [127, 127, 255, 0], 1), "{targets:?}");
-    assert!(near(targets[2], [0, 0, 250, 255], 1), "{targets:?}");
+    assert!(near(targets[2], specular_word(0.0, 0.04), 1), "{targets:?}");
     assert!(near(targets[3], [255, 0, 0, 255], 1), "{targets:?}");
     // On nothing it marks no pixel, and the frame shows none of it
     let (_, lit, background) = drawn(&[(&stain, WHITE)]);
@@ -863,4 +1025,366 @@ fn an_instance_of_the_world_shades_the_one_below_it_within_the_reach_of_the_shad
         pollster::block_on(validation.pop()).is_none(),
         "the device accepted every pass"
     );
+}
+
+/// Whether the device accepted everything since `scope` was pushed.
+fn accepted(scope: wgpu::ErrorScopeGuard) -> bool {
+    pollster::block_on(scope.pop()).is_none()
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_palette_column_its_vertex_picks(
+) {
+    let Some((device, queue, mut renderer)) = family_frame("a_standard_material_is_metal_and_rough")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    // A palette of one row of two texels: red, then green
+    let palette = || uploaded_view(&device, &queue, 2, 1, &[255, 0, 0, 255, 0, 255, 0, 255], false);
+    let material = |mask: u8, translucency_as_tint_mask: f32| {
+        let maps = [
+            (slot::colour(0), one([255; 4])),
+            (slot::material_a(0), one([128, 64, 0, 0])),
+            (slot::MATERIAL_B[0], one([0, 0, 128, mask])),
+            (slot::TINT, palette()),
+        ];
+        let constants = WorldConstants {
+            translucency_as_tint_mask,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Standard, WorldBucket::Opaque);
+        surface(&device, &renderer, family, &maps, constants)
+    };
+    let (tinted, masked) = (material(255, 0.0), material(0, 1.0));
+    let (metal, rough) = (128.0 / 255.0, 64.0 / 255.0);
+    let kept = unorm((1.0 - metal).sqrt());
+    // The vertex's first colour of one in 255 picks the second column: the albedo is green, less its metal
+    let second = coloured_square(&device, [1.0 / 255.0, 1.0, 1.0, 1.0], [1.0; 4], tinted.clone());
+    let (targets, lit) = shade(&device, &queue, &mut renderer, &[(second, WHITE)]);
+    assert!(near(targets[0], [0, kept, 0, 255], 2), "{targets:?}");
+    // The metal's reflectance is its colour's, the rest a dielectric's
+    let f0 = 0.04 * (1.0 - metal) + metal;
+    assert!(near(targets[2], specular_word(1.0 - rough, f0), 2), "{targets:?}");
+    assert!(lit[1] > lit[0] && lit[1] > lit[2], "{lit:?}");
+    // Of nought it picks the first, and the vertex's colour is no multiple of the albedo
+    let first = coloured_square(&device, [0.0, 0.0, 0.0, 1.0], [1.0; 4], tinted);
+    let (targets, _) = shade(&device, &queue, &mut renderer, &[(first, WHITE)]);
+    assert!(near(targets[0], [kept, 0, 0, 255], 2), "{targets:?}");
+    // Where material B's alpha masks the tint off, the albedo is the colour map's
+    let off = coloured_square(&device, [1.0 / 255.0, 1.0, 1.0, 1.0], [1.0; 4], masked);
+    let (targets, _) = shade(&device, &queue, &mut renderer, &[(off, WHITE)]);
+    assert!(near(targets[0], [kept, kept, kept, 255], 2), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_two_layer_material_shows_its_second_layer_by_the_control_map_and_the_vertexs_second_colour() {
+    let Some((device, queue, mut renderer)) = family_frame("a_two_layer_material_shows_its_second")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let material = |control: [u8; 4], flags: u32| {
+        let maps = [
+            (slot::colour(0), one([255, 0, 0, 255])),
+            (slot::colour(1), one([0, 0, 255, 255])),
+            // The first layer fully rough, the second a mirror
+            (slot::material_a(0), one([0, 255, 0, 0])),
+            (slot::material_a(1), one([0, 0, 0, 0])),
+            (slot::WEIGHTS, one(control)),
+        ];
+        let constants = WorldConstants {
+            flags,
+            ..WorldConstants::default()
+        };
+        surface(&device, &renderer, (WorldFamily::TwoLayer, WorldBucket::Opaque), &maps, constants)
+    };
+    let blue = [0, 0, 255, 0];
+    let (none, whole, inverted) = (
+        material([0; 4], 0),
+        material(blue, 0),
+        material(blue, WorldConstants::INVERT_CONTROL),
+    );
+    // With no control the second colour's red of a half shows half of the second layer
+    let share = 128.0 / 255.0;
+    let mut drawn = |material: WorldMaterial| {
+        let mesh = coloured_square(&device, [1.0; 4], [share, 1.0, 1.0, 1.0], material);
+        shade(&device, &queue, &mut renderer, &[(mesh, WHITE)]).0
+    };
+    let half = [unorm((1.0 - share).sqrt()), 0, unorm(share.sqrt()), 255];
+    let targets = drawn(none);
+    assert!(near(targets[0], half, 2), "{targets:?}");
+    assert!(near(targets[2], specular_word(share, 0.04), 2), "{targets:?}");
+    // The control map's blue, which the filter takes, shows the whole of it
+    let targets = drawn(whole);
+    assert!(near(targets[0], [0, 0, 255, 255], 2), "{targets:?}");
+    assert!(near(targets[2], specular_word(1.0, 0.04), 2), "{targets:?}");
+    // And taken from one, none of what the control map gives
+    let targets = drawn(inverted);
+    assert!(near(targets[0], half, 2), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_four_layer_material_blends_its_layers_by_the_lookup_or_the_vertex_and_lets_the_highest_show() {
+    let Some((device, queue, mut renderer)) = family_frame("a_four_layer_material_blends_its_layers")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    // Red, green, blue and white layers, each a mirror at the height its material A's blue states
+    let material = |heights: [u8; 4]| {
+        let colours = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255; 4]];
+        let mut maps = vec![(slot::WEIGHTS, one([128, 128, 0, 0]))];
+        for (layer, (colour, height)) in colours.into_iter().zip(heights).enumerate() {
+            maps.push((slot::colour(layer), one(colour)));
+            maps.push((slot::material_a(layer), one([0, 0, height, 255])));
+        }
+        let family = (WorldFamily::FourLayer, WorldBucket::Opaque);
+        surface(&device, &renderer, family, &maps, WorldConstants::default())
+    };
+    let (level, lower) = (material([255; 4]), material([255, 64, 255, 255]));
+    let mut drawn = |material: &WorldMaterial, first: [f32; 4]| {
+        let mesh = coloured_square(&device, first, [1.0; 4], material.clone());
+        shade(&device, &queue, &mut renderer, &[(mesh, WHITE)]).0
+    };
+    // The lookup map weighs the first two layers alike, and where they stand as high they share the pixel
+    let lookup = [1.0, 1.0, 1.0, 0.0];
+    let targets = drawn(&level, lookup);
+    let half = unorm(0.5f32.sqrt());
+    assert!(near(targets[0], [half, half, 0, 255], 2), "{targets:?}");
+    assert!(near(targets[2], specular_word(1.0, 0.04), 2), "{targets:?}");
+    // Where the second stands lower the first covers it
+    let targets = drawn(&lower, lookup);
+    assert!(near(targets[0], [255, 0, 0, 255], 2), "{targets:?}");
+    // A vertex whose first colour has an alpha of one weighs the layers itself: blue is the third
+    let targets = drawn(&level, [0.0, 0.0, 1.0, 1.0]);
+    assert!(near(targets[0], [0, 0, 255, 255], 2), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_decal_blends_each_word_of_the_g_buffer_by_its_own_opacity_and_leaves_the_ambient_words() {
+    let Some((device, queue, mut renderer)) = family_frame("a_decal_blends_each_word") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let under = plain(&device, &renderer, WorldBucket::Opaque);
+    let decal = |opacity: [f32; 4]| {
+        let maps = [
+            (slot::colour(0), one([0, 255, 0, 255])),
+            (slot::normal(0), one([204, 128, 255, 255])),
+        ];
+        let constants = WorldConstants {
+            opacity,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Decal, WorldBucket::Decal);
+        surface(&device, &renderer, family, &maps, constants)
+    };
+    let (colour_only, normal_only) = (decal([1.0, 0.0, 0.5, 0.0]), decal([0.0, 1.0, 1.0, 1.0]));
+    let mut drawn = |decal: WorldMaterial| {
+        let meshes = [
+            (square(&device, 0.5, decal), WHITE),
+            (square(&device, 0.5, under.clone()), RED),
+        ];
+        shade(&device, &queue, &mut renderer, &meshes).0
+    };
+    // Its colour whole and its normal not at all
+    let targets = drawn(colour_only);
+    assert!(near(targets[0], [0, 255, 0, 255], 2), "{targets:?}");
+    assert!(near(targets[1], [127, 127, 255, 0], 1), "{targets:?}");
+    assert!(near(targets[2], specular_word(0.0, 0.04), 1), "{targets:?}");
+    assert!(near(targets[3], [255, 0, 0, 255], 1), "{targets:?}");
+    // Its normal whole and its colour not at all: the surface's colour, the decal's lean
+    let targets = drawn(normal_only);
+    assert!(near(targets[0], [255, 0, 0, 255], 2), "{targets:?}");
+    assert!(near(targets[1], [204, 128, 230, 0], 2), "{targets:?}");
+    assert!(near(targets[3], [255, 0, 0, 255], 1), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_glass_lies_over_the_lit_frame_by_its_coverage_and_a_forward_glow_adds_its_light_without_covering(
+) {
+    let Some((device, queue, mut renderer)) = family_frame("a_glass_lies_over_the_lit_frame") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let under = plain(&device, &renderer, WorldBucket::Opaque);
+    let blended = |family: WorldFamily, colour: [u8; 4]| {
+        let maps = [(slot::colour(0), one(colour))];
+        let family = (family, WorldBucket::Blend);
+        surface(&device, &renderer, family, &maps, WorldConstants::default())
+    };
+    let glass = blended(WorldFamily::Glass, [0, 0, 255, 128]);
+    let glow = blended(WorldFamily::Emissive, [0, 255, 0, 0]);
+    let mut drawn = |over: Option<&WorldMaterial>| {
+        let mut meshes = vec![(square(&device, 0.5, under.clone()), RED)];
+        meshes.extend(over.map(|over| (square(&device, 0.5, over.clone()), WHITE)));
+        shade(&device, &queue, &mut renderer, &meshes)
+    };
+    let (words_under, lit_under) = drawn(None);
+    // Half a blue over the red: no word of the G-buffer changes, and the screen turns from red to blue
+    let (targets, lit) = drawn(Some(&glass));
+    assert_eq!(targets, words_under);
+    assert!(
+        lit[2] > lit_under[2] + 20 && lit[0] + 20 < lit_under[0] && lit[0] > 20,
+        "{lit:?} {lit_under:?}"
+    );
+    // A glow of no coverage adds its green and takes nothing of the red
+    let (targets, lit) = drawn(Some(&glow));
+    assert_eq!(targets, words_under);
+    assert!(lit[1] > lit_under[1] + 20, "{lit:?} {lit_under:?}");
+    assert!(lit[0].abs_diff(lit_under[0]) <= 3, "{lit:?} {lit_under:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn an_emissive_map_lights_the_surface_by_its_strength_its_night_value_and_the_vertexs_second_colour() {
+    let Some((device, queue, mut renderer)) = family_frame("an_emissive_map_lights_the_surface") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let glowing = |emissive_night: f32| {
+        let maps = [(slot::EMISSIVE, one([255; 4]))];
+        let constants = WorldConstants {
+            emissive_night,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Emissive, WorldBucket::Emissive);
+        surface(&device, &renderer, family, &maps, constants)
+    };
+    let matte = plain(&device, &renderer, WorldBucket::Opaque);
+    let (by_day, by_night) = (glowing(-1.0), glowing(3.0));
+    let grey = [0.5, 0.5, 0.5, 1.0];
+    let mut drawn = |material: &WorldMaterial, second: [f32; 4]| {
+        let mesh = coloured_square(&device, [1.0; 4], second, material.clone());
+        shade(&device, &queue, &mut renderer, &[(mesh, grey)])
+    };
+    let (plain_words, plain_lit) = drawn(&matte, [1.0; 4]);
+    // A map of one at a strength of one, taking the whole of the surface's colour: as bright as the surface's colour, a sixteenth of the most the word holds
+    let (targets, lit) = drawn(&by_day, [1.0; 4]);
+    assert!(near(targets[3], [255, 0, 16, 255], 1), "{targets:?}");
+    assert_eq!(targets[..3], plain_words[..3]);
+    assert!(
+        (0..3).all(|c| lit[c] >= plain_lit[c]) && lit != plain_lit,
+        "{lit:?} {plain_lit:?}"
+    );
+    // With no day the night emissives are on, and a night value of three is the strength
+    let (targets, _) = drawn(&by_night, [1.0; 4]);
+    assert!(near(targets[3], [255, 0, 48, 255], 1), "{targets:?}");
+    // A vertex whose second colour is black gives no light
+    let (targets, _) = drawn(&by_day, [0.0, 0.0, 0.0, 1.0]);
+    assert!(near(targets[3], [255, 0, 0, 255], 1), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_grass_blade_takes_its_instances_colour_as_far_as_its_tint_and_the_vertexs_second_red_allow() {
+    let Some((device, queue, mut renderer)) = family_frame("a_grass_blade_takes_its_instances_colour")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let grass = |grass_tint: f32| {
+        let constants = WorldConstants {
+            grass_tint,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Grass, WorldBucket::Opaque);
+        surface(&device, &renderer, family, &[], constants)
+    };
+    let (tinted, untinted) = (grass(1.0), grass(0.0));
+    // The instance's colour, squared already: a quarter of red
+    let colour = [0.25, 1.0, 1.0, 1.0];
+    let mut drawn = |material: &WorldMaterial, red: f32| {
+        let mesh = coloured_square(&device, [1.0; 4], [red, 1.0, 1.0, 1.0], material.clone());
+        shade(&device, &queue, &mut renderer, &[(mesh, colour)]).0
+    };
+    let targets = drawn(&tinted, 1.0);
+    assert!(near(targets[0], [128, 255, 255, 255], 2), "{targets:?}");
+    // The vertex's second red of nought keeps the blade its own colour, and so does a tint of nought
+    let targets = drawn(&tinted, 0.0);
+    assert!(near(targets[0], [255; 4], 2), "{targets:?}");
+    let targets = drawn(&untinted, 1.0);
+    assert!(near(targets[0], [255; 4], 2), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_terrain_lod_reads_its_material_green_as_a_smoothness_and_its_normal_map_whole_and_takes_no_tint() {
+    let Some((device, queue, mut renderer)) = family_frame("a_terrain_lod_reads_its_material_green")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let material = |family: WorldFamily| {
+        let maps = [
+            (slot::normal(0), one([204, 128, 128, 255])),
+            (slot::material_a(0), one([0, 191, 0, 0])),
+            (slot::TINT, one([255, 0, 0, 255])),
+        ];
+        surface(&device, &renderer, (family, WorldBucket::Opaque), &maps, WorldConstants::default())
+    };
+    let (terrain_lod, standard) = (
+        material(WorldFamily::TerrainLod),
+        material(WorldFamily::Standard),
+    );
+    let mut drawn = |material: WorldMaterial| {
+        let mesh = coloured_square(&device, [1.0; 4], [1.0; 4], material);
+        shade(&device, &queue, &mut renderer, &[(mesh, WHITE)]).0
+    };
+    let green = 191.0 / 255.0;
+    let terrain = drawn(terrain_lod);
+    assert!(near(terrain[0], [255; 4], 2), "{terrain:?}");
+    assert!(near(terrain[2], specular_word(green, 0.04), 2), "{terrain:?}");
+    // Its blue is the normal's own z, so the lean along u is nearly the whole of it
+    assert!(terrain[1][0] > 245, "{terrain:?}");
+    // The standard family reads the same maps as roughness, a lean rebuilt from two channels, and the palette
+    let standard = drawn(standard);
+    assert!(near(standard[0], [255, 0, 0, 255], 2), "{standard:?}");
+    assert!(near(standard[2], specular_word(1.0 - green, 0.04), 2), "{standard:?}");
+    assert!(near(standard[1], [204, 128, 230, 0], 2), "{standard:?}");
+    assert!(accepted(scope), "the device accepted every pass");
 }
