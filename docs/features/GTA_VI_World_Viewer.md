@@ -90,8 +90,12 @@ hours it states.
   level, an orphan and any node with a parent are there at once, and so is everything after the camera
   jumps more than 5 m, moves faster than 80 m/s or the scale changes.
 - A distance is scaled by what the archetype is: terrain and environment draw shorter at the near
-  levels, a grass list at 0.8, keeping the part of the distance inside the model's own radius whole.
+  levels, a grass list at 0.8, keeping the part of the distance inside the model's own radius whole;
+  under a parent that is an entity the parent's radius is kept instead, so the children of one
+  parent that state one distance draw to one distance and leave no hole where it gives way.
   A prop list is never drawn shorter than it states.
+- A script-managed map that reads with nothing to draw is let go and not asked for again; a map
+  wanted as the parent of another is kept whatever it holds.
 - A list of instances draws by the distance to its box's centre, less each instance whose own entity
   draws; that entity fades out over its band by its own place.
   A grass list draws each of its instances within the distance the list states for one instance,
