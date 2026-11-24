@@ -234,6 +234,9 @@ pub fn day_of_moment(
     }
 }
 
+/// The radiance of each texel of a sky table, in cd/m².
+type Radiance = Arc<Vec<[f32; 3]>>;
+
 /// What the sky's radiance table is worked out from.
 #[derive(PartialEq)]
 struct SkyOf {
@@ -245,9 +248,9 @@ struct SkyOf {
 }
 
 /// The sky's radiance in every way of the table at `moment`: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour; worked out again only when one of those changes.
-fn sky_radiance(moment: &Moment) -> Arc<Vec<[f32; 3]>> {
+fn sky_radiance(moment: &Moment) -> Radiance {
     // ponytail: one table held, a few tenths of a second to work out; per moment it changes with the hour and the weather.
-    static HELD: Mutex<Option<(SkyOf, Arc<Vec<[f32; 3]>>)>> = Mutex::new(None);
+    static HELD: Mutex<Option<(SkyOf, Radiance)>> = Mutex::new(None);
     let own = &moment.own;
     let of = SkyOf {
         air: Atmosphere::of(own),
