@@ -92,13 +92,21 @@ fn unit(v: [f32; 3]) -> [f64; 3] {
 impl Atmosphere {
     /// The atmosphere keyframe `k` states by its `sky_new_*` variables; what it does not state is the published Earth default.
     pub fn of(k: &Keyframe) -> Self {
-        let get = |name: &str, default: f32| f64::from(k.get_or(name, default));
+        // A value that is no number is taken as unstated.
+        let get = |name: &str, default: f32| {
+            f64::from(
+                Some(k.get_or(name, default))
+                    .filter(|v| v.is_finite())
+                    .unwrap_or(default),
+            )
+        };
         // An unstated colour is Earth's over `per_km`, so that colour times `per_km` is the published value.
         let coefficient = |stem: &str, intensity: &str, per_km: f64, earth: [f64; 3]| {
             let scale = get(intensity, 1.0) * per_km;
             [0, 1, 2].map(|c| {
                 let name = format!("{stem}_{}", ["r", "g", "b"][c]);
-                k.get(&name).map_or(earth[c] / per_km, f64::from) * scale
+                (k.get(&name).filter(|v| v.is_finite())).map_or(earth[c] / per_km, f64::from)
+                    * scale
             })
         };
         let ground = get("sky_new_planet_radius", 6360.0);
@@ -324,7 +332,11 @@ impl Atmosphere {
         illuminance: f32,
     ) -> [f32; 3] {
         let multiple = self.multiple_table();
-        let r0 = self.ground + (height / 1000.0).clamp(CAMERA, self.top - self.ground - CAMERA);
+        // ⚠ Not `clamp`: the top is a keyframe's own number, which can stand under the camera.
+        let r0 = self.ground
+            + (height / 1000.0)
+                .min(self.top - self.ground - CAMERA)
+                .max(CAMERA);
         let seen = self.radiance_in(r0, unit(view), unit(light), VIEW_STEPS, &multiple);
         seen.map(|c| (c * f64::from(illuminance)) as f32)
     }

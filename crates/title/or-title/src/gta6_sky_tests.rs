@@ -91,6 +91,17 @@ fn a_camera_high_up_sees_a_darker_zenith_and_a_horizon_that_was_under_it_on_the_
 }
 
 #[test]
+fn air_a_keyframe_gives_no_height_still_gives_a_camera_a_sky_and_never_a_panic() {
+    // The Kármán line is a keyframe's own number, which nothing holds above the camera.
+    for karman in [0.0, -5.0, f32::NAN] {
+        let mut k = Keyframe::default();
+        k.set("sky_new_karman_line", karman);
+        let seen = Atmosphere::of(&k).radiance_from(300.0, [0.0, 0.0, 1.0], [0.0, -0.6, 0.8], 1e5);
+        assert!(seen.iter().all(|c| c.is_finite()), "{karman}: {seen:?}");
+    }
+}
+
+#[test]
 fn the_ground_takes_less_of_the_skys_light_as_the_sun_goes_down() {
     let air = air();
     let high = air.irradiance([0.0, 0.0, 1.0], 100_000.0);
