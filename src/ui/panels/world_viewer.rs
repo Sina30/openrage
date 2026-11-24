@@ -231,7 +231,7 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
                 (rect.width() * ppp).round() as u32,
                 (rect.height() * ppp).round() as u32,
             );
-            bridge.refresh_world();
+            bridge.refresh_world(state.drivers.time_of_day.days, state.drivers.weather.state);
             bridge.push_inputs(Default::default());
             match bridge.texture_id() {
                 Some(texture) => {

@@ -18,6 +18,7 @@ use glam::Vec3;
 use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
+use crate::state::drivers::WeatherState;
 use crate::state::gta6_world::worldview::index::ModelRef;
 use crate::state::gta6_world::worldview::{Bucket, CpuModel, Maps};
 
@@ -29,6 +30,8 @@ mod layout;
 mod pages;
 #[path = "world_textures.rs"]
 mod textures;
+#[path = "world_water.rs"]
+mod water;
 
 use budget::{ahead, evicted, Budgets, Idle};
 use layout::{order, Layout, View};
@@ -116,6 +119,10 @@ pub struct WorldDrawn {
 /// the level-of-detail distances and the height of the screen.
 type LaidFor = (u64, [u32; 16], u64, u32, u32);
 
+/// What the day was worked out for: the hour, the days, the weather, the camera's place north
+/// in hundreds of metres, and whether the install's tables gave one.
+type DayFor = (u32, u32, WeatherState, i32, bool);
+
 #[derive(Default)]
 pub(super) struct WorldGpu {
     models: HashMap<ModelRef, Slot>,
@@ -139,6 +146,9 @@ pub(super) struct WorldGpu {
     /// When the last frame was and where the camera stood in it.
     was: Option<(Instant, Vec3)>,
     drawn: WorldDrawn,
+    /// The day the renderer was last handed while the world was shown.
+    day: Option<DayFor>,
+    water: water::Water,
 }
 
 fn bucket_of(bucket: Bucket) -> WorldBucket {
@@ -301,9 +311,10 @@ impl RenderBridge {
         self.world.drawn
     }
 
-    /// Draw the GTA VI world this frame: put the models and textures that arrived on the device,
-    /// and lay out the instances of the last selection the camera sees.
-    pub fn refresh_world(&mut self) {
+    /// Draw the GTA VI world this frame, lit by its own day on the `days`th day in `weather`: put
+    /// the models and textures that arrived on the device, and lay out the instances of the last
+    /// selection the camera sees.
+    pub fn refresh_world(&mut self, days: f32, weather: WeatherState) {
         self.world.shown = true;
         self.world.frame += 1;
         let frame = self.world.frame;
@@ -363,6 +374,27 @@ impl RenderBridge {
                 (bc, budgets.most_side),
                 (frame, eye),
             );
+            world.changes += 1;
+        }
+
+        // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
+        let (day, lights) = viewer.sky(days, weather);
+        let day_for = (
+            viewer.hour.to_bits(),
+            days.to_bits(),
+            weather,
+            (eye.y / 100.0).round() as i32,
+            day.is_some(),
+        );
+        if world.day != Some(day_for) {
+            world.day = Some(day_for);
+            self.renderer.set_day(day);
+        }
+        self.renderer.set_point_lights(lights);
+        // The GTA V day is worked out again once the world is left.
+        self.day_key = None;
+        let water = viewer.water();
+        if (world.water).refresh(&self.renderer, &self.device, water.as_ref(), eye) {
             world.changes += 1;
         }
 
@@ -559,7 +591,7 @@ impl RenderBridge {
             }
         }
         keyed.sort_unstable_by_key(|(key, _)| *key);
-        let draws: Vec<WorldDraw> = keyed.into_iter().map(|(_, draw)| draw).collect();
+        let mut draws: Vec<WorldDraw> = keyed.into_iter().map(|(_, draw)| draw).collect();
 
         let (pages, page_bytes) = world.pages.held();
         let (textures, textures_unread) = world.textures.counts();
@@ -574,15 +606,19 @@ impl RenderBridge {
             pages,
             lit_by_the_game: self.renderer.has_deferred(),
         };
+        let laid = world.layout.laid.len();
+        world.water.draw(&mut world.layout.laid, &mut draws);
         (self.renderer).set_world(&self.device, &self.queue, &world.layout.laid, draws);
+        world.layout.laid.truncate(laid);
         world.evict(&budgets, frame, eye);
     }
 
-    /// Take the world away where no panel asked for it this frame.
+    /// Take the world, its lights and its day away where no panel asked for it this frame.
     pub(super) fn end_world(&mut self) {
         if !self.world.shown && self.renderer.has_world() {
             (self.renderer).set_world(&self.device, &self.queue, &[], Vec::new());
-            self.world.laid_for = None;
+            self.renderer.set_point_lights(Vec::new());
+            (self.world.laid_for, self.world.day) = (None, None);
         }
     }
 }

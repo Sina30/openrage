@@ -60,8 +60,11 @@ pub(super) fn sun_towards(
 }
 
 impl RenderBridge {
-    /// Hand the renderer the day the drivers say, worked out again only when the hour, the weather or the install's timecycle changed.
+    /// Hand the renderer the day the drivers say, worked out again only when the hour, the weather or the install's timecycle changed; the GTA VI world lights its own.
     pub(super) fn refresh_day(&mut self, state: &AppState) {
+        if self.world.shown {
+            return;
+        }
         let data = state.clip_regions.timecycle();
         let hour = state.drivers.time_of_day.hour;
         let weather = state.drivers.weather.state;
