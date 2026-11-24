@@ -912,7 +912,7 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
 
     // A colour of a quarter less its metal of a quarter is stored as its root; a normal map that leans three fifths along the texture's u, which runs along x here, leans the normal so; a material map of a quarter in red is that metal, and of nought in green a mirror's smoothness, its reflectance the metal's share of the colour over a dielectric's
     let (targets, lit, background) = drawn(&[(&mapped, WHITE)]);
-    let (colour, metal) = (64.0 / 255.0, 64.0 / 255.0);
+    let (colour, metal) = (64.0_f32 / 255.0, 64.0_f32 / 255.0);
     let f0 = 0.04 * (1.0 - metal) + colour * metal;
     let stored = unorm((colour * (1.0 - metal)).sqrt());
     let want = [
@@ -1062,7 +1062,7 @@ fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_pa
         surface(&device, &renderer, family, &maps, constants)
     };
     let (tinted, masked) = (material(255, 0.0), material(0, 1.0));
-    let (metal, rough) = (128.0 / 255.0, 64.0 / 255.0);
+    let (metal, rough) = (128.0_f32 / 255.0, 64.0_f32 / 255.0);
     let kept = unorm((1.0 - metal).sqrt());
     // The vertex's first colour of one in 255 picks the second column: the albedo is green, less its metal
     let second = coloured_square(&device, [1.0 / 255.0, 1.0, 1.0, 1.0], [1.0; 4], tinted.clone());
