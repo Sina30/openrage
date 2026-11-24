@@ -16652,11 +16652,26 @@ msgstr "流式加载共享小游戏添加的地图"
 msgid "The index holds no script-managed group"
 msgstr "索引中没有由脚本管理的组"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "已启用 {on} 个组：此时刻游戏自身的组"
+
+msgid "{on} groups on, as you chose them"
+msgstr "已启用 {on} 个组，按你的选择"
+
+msgid "The game's own groups"
+msgstr "游戏自身的组"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "启用游戏的世界状态在此时刻启用的组，取代所选的组"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "由脚本管理的组：{groups} 个中已启用 {on} 个"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "没有说明默认启用哪些组：勾选的组会流式加载其地图"
+
+msgid "A group ticked streams its maps in"
+msgstr "勾选的组会流式加载其地图"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}，{maps} 个地图"
