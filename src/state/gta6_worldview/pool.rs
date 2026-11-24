@@ -58,6 +58,7 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
             let (shared, send) = (Arc::clone(&shared), send.clone());
             let (state, answer) = (Arc::clone(&state), Arc::clone(&answer));
             std::thread::spawn(move || {
+                below_normal();
                 let mut own = state();
                 loop {
                     let request = {
@@ -136,6 +137,24 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
             }
         }
         taken
+    }
+}
+
+/// Run the calling thread below normal priority: a worker reading while the camera moves then waits for the frame's own thread and the layout's, not they for it.
+fn below_normal() {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetCurrentThread() -> isize;
+            fn SetThreadPriority(thread: isize, priority: i32) -> i32;
+        }
+        const THREAD_PRIORITY_BELOW_NORMAL: i32 = -1;
+        // SAFETY: the handle of the calling thread is a pseudo handle, valid while the thread runs and never closed, and the call reads nothing else.
+        let set = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL) };
+        if set == 0 {
+            tracing::debug!("a world reader's priority was not lowered");
+        }
     }
 }
 
