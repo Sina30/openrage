@@ -59,8 +59,14 @@ fn a_weather_set_states_its_files_what_a_weather_is_made_of_and_the_named_weathe
     assert_eq!(set.datas.len(), 2);
     let one = set.data("one").expect("named in the set");
     assert_eq!((one.name.as_str(), one.time_cycle.as_str()), ("ONE", "One"));
-    assert_eq!((one.sun, one.rain, one.fog, one.cloud_type), (1.0, 0.25, 0.1, 0.01));
-    assert_eq!((one.wind_min, one.wind_max, one.wind_angle), (0.5, 2.0, 135.0));
+    assert_eq!(
+        (one.sun, one.rain, one.fog, one.cloud_type),
+        (1.0, 0.25, 0.1, 0.01)
+    );
+    assert_eq!(
+        (one.wind_min, one.wind_max, one.wind_angle),
+        (0.5, 2.0, 135.0)
+    );
     assert_eq!(one.values["OceanWaveAmplitude"], 3.56);
     assert_eq!((one.values["Sandstorm"], one.values["IsNice"]), (0.0, 1.0));
     assert_eq!(one.cloud_maps, ["map_a".to_string(), "map_b".to_string()]);
@@ -68,12 +74,18 @@ fn a_weather_set_states_its_files_what_a_weather_is_made_of_and_the_named_weathe
 
     assert_eq!(set.types.len(), 1);
     let weather = &set.types[0];
-    assert_eq!((weather.short_name.as_str(), weather.data.as_str()), ("One", "ONE"));
+    assert_eq!(
+        (weather.short_name.as_str(), weather.data.as_str()),
+        ("One", "ONE")
+    );
     assert_eq!(weather.modifiers, ["W_MOD_atmos", "W_MOD_wind"]);
     assert_eq!(weather.app, "Clear");
     // A name an indirection names is the type it stands for.
     assert_eq!(set.weather("one").map(|w| w.name.as_str()), Some("AM_One"));
-    assert_eq!(set.weather("am_one").map(|w| w.name.as_str()), Some("AM_One"));
+    assert_eq!(
+        set.weather("am_one").map(|w| w.name.as_str()),
+        Some("AM_One")
+    );
     assert!(set.weather("three").is_none());
 }
 
@@ -83,7 +95,10 @@ fn another_document_and_a_value_that_is_no_number_are_refused() {
         WeatherSet::parse("<time_data/>"),
         Err(WeatherError::NotAWeatherSet("time_data".into()))
     );
-    assert_eq!(WeatherSet::parse(""), Err(WeatherError::NotAWeatherSet(String::new())));
+    assert_eq!(
+        WeatherSet::parse(""),
+        Err(WeatherError::NotAWeatherSet(String::new()))
+    );
     let bad = "<CContentsOfWeatherXmlFile><WeatherTypeDatas><Item><Sun value=\"much\" /></Item></WeatherTypeDatas></CContentsOfWeatherXmlFile>";
     assert_eq!(
         WeatherSet::parse(bad),
