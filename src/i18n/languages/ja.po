@@ -16652,11 +16652,26 @@ msgstr "共有ミニゲームが追加するマップをストリーミング"
 msgid "The index holds no script-managed group"
 msgstr "インデックスにスクリプト管理のグループはありません"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "{on} 個のグループがオン：この時刻のゲーム自身のグループ"
+
+msgid "{on} groups on, as you chose them"
+msgstr "選択したとおり {on} 個のグループがオン"
+
+msgid "The game's own groups"
+msgstr "ゲーム自身のグループ"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "選択したグループの代わりに、この時刻にゲームのワールド状態がオンにするグループをオンにする"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "スクリプト管理のグループ：{groups} 個中 {on} 個がオン"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "既定でどれがオンかは示されていません。チェックしたグループのマップがストリーミングされます"
+
+msgid "A group ticked streams its maps in"
+msgstr "チェックしたグループのマップがストリーミングされます"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}、マップ {maps} 個"
