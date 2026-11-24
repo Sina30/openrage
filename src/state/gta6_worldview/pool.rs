@@ -41,8 +41,22 @@ pub(super) struct Pool<Q, A> {
     arrived: Mutex<Vec<(Q, A, u64)>>,
 }
 
-impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
-    /// `workers` threads, each with a state of its own made by `state`, answering with `answer`.
+/// What `work` gives, or `failed` where it panics: a worker whose read panics answers that one
+/// item as one that did not read, and goes on.
+// ⚠ Only a build that unwinds gets here: the dev and test profiles abort on a panic on Windows.
+pub(super) fn or_on_panic<T>(what: &str, work: impl FnOnce() -> T, failed: T) -> T {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or_else(|_| {
+        tracing::error!(
+            what,
+            "a worker of the GTA VI world stopped on an internal error"
+        );
+        failed
+    })
+}
+
+impl<Q: Copy + Eq + Hash + Send + 'static, A: Default + Send + 'static> Pool<Q, A> {
+    /// `workers` threads, each with a state of its own made by `state`, answering with `answer`:
+    /// an answer that panics is answered `A::default()`.
     pub(super) fn new<S>(
         workers: usize,
         state: impl Fn() -> S + Send + Sync + 'static,
@@ -96,18 +110,14 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
                             queue = (shared.woken.wait(queue)).unwrap_or_else(|p| p.into_inner());
                         }
                     };
-                    // A panic answers nothing: the request stays held and is not asked again.
-                    let answered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        answer(&mut own, request)
-                    }));
-                    if let Ok(answered) = answered {
-                        let weight = weigh(&answered);
-                        let mut queue = shared.queue.lock().unwrap_or_else(|p| p.into_inner());
-                        queue.waiting = queue.waiting.saturating_add(weight);
-                        drop(queue);
-                        if send.send((request, answered, weight)).is_err() {
-                            return;
-                        }
+                    let answered =
+                        or_on_panic("a read", || answer(&mut own, request), A::default());
+                    let weight = weigh(&answered);
+                    let mut queue = shared.queue.lock().unwrap_or_else(|p| p.into_inner());
+                    queue.waiting = queue.waiting.saturating_add(weight);
+                    drop(queue);
+                    if send.send((request, answered, weight)).is_err() {
+                        return;
                     }
                 }
             });
@@ -255,5 +265,30 @@ mod tests {
         let mut got = Vec::new();
         wait_for(&pool, 3, &mut got);
         assert_eq!(got, [1, 2, 3]);
+    }
+
+    #[test]
+    #[cfg_attr(
+        all(windows, debug_assertions),
+        ignore = "Cranelift cannot unwind a panic on Windows: run it on a build that unwinds"
+    )]
+    fn a_reader_that_panics_on_one_body_answers_it_unread_and_its_worker_reads_on() {
+        // One worker, so that what comes after the panic is read by the worker that panicked.
+        let pool: Pool<u32, Option<u32>> = Pool::new(
+            1,
+            || (),
+            |_, body| {
+                assert_ne!(body, 2, "a reader made to panic on body 2");
+                Some(body * 10)
+            },
+        );
+        pool.want(vec![(1.0, 1), (2.0, 2), (3.0, 3)]);
+        let (mut answered, until) = (Vec::new(), Instant::now() + Duration::from_secs(20));
+        while answered.len() < 3 && Instant::now() < until {
+            answered.extend(pool.take(|| true));
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        answered.sort_unstable();
+        assert_eq!(answered, vec![(1, Some(10)), (2, None), (3, Some(30))]);
     }
 }

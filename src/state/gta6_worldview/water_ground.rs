@@ -59,7 +59,11 @@ pub(super) fn held<T: Send + Sync + 'static>(
             std::thread::spawn(move || {
                 let started = std::time::Instant::now();
                 let read = match keys {
-                    Some(keys) => read(&root, &keys),
+                    Some(keys) => super::super::pool::or_on_panic(
+                        what,
+                        || read(&root, &keys),
+                        Err("it stopped on an internal error".to_string()),
+                    ),
                     None => Err("no key snapshot deciphers the install's tables".to_string()),
                 };
                 let value = match read {

@@ -60,10 +60,13 @@ pub fn tables(root: &Path) -> Option<Arc<DayTables>> {
             held.push((archive.clone(), Arc::clone(&slot)));
             let filled = Arc::clone(&slot);
             std::thread::spawn(move || {
-                let tables = read_day(&archive, &|| false).unwrap_or_else(|error| {
-                    tracing::warn!(archive = %archive.display(), %error, "GTA VI's tables of the day are not read");
-                    DayTables::default()
-                });
+                let read = || {
+                    read_day(&archive, &|| false).unwrap_or_else(|error| {
+                        tracing::warn!(archive = %archive.display(), %error, "GTA VI's tables of the day are not read");
+                        DayTables::default()
+                    })
+                };
+                let tables = super::pool::or_on_panic("the day", read, DayTables::default());
                 tracing::info!(
                     cycles = tables.timecycle.cycles.len(),
                     samples = tables.table.samples.len(),

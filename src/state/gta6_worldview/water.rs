@@ -59,21 +59,23 @@ pub fn water(root: &Path) -> Option<Arc<WaterData>> {
             // ⚠ Where the key snapshot lies is found here, on the caller's thread, as the index finds it.
             let keys = super::index::keys();
             std::thread::spawn(move || {
-                let found = keys.as_ref().and_then(|keys| {
-                    or_title::gta6_mount::table::entry_offset(&archive, ENTRY, keys)
-                });
-                let water = match found.map(|offset| read(&archive, offset)) {
-                    Some(Ok(water)) => Some(Arc::new(water)),
-                    Some(Err(why)) => {
-                        tracing::warn!(archive = %archive.display(), %why, "GTA VI's water is not read");
-                        None
-                    }
-                    None => {
-                        tracing::info!(archive = %archive.display(), "no key snapshot deciphers the archive's table, or it names no water document");
-                        None
+                let water = || {
+                    let found = keys.as_ref().and_then(|keys| {
+                        or_title::gta6_mount::table::entry_offset(&archive, ENTRY, keys)
+                    });
+                    match found.map(|offset| read(&archive, offset)) {
+                        Some(Ok(water)) => Some(Arc::new(water)),
+                        Some(Err(why)) => {
+                            tracing::warn!(archive = %archive.display(), %why, "GTA VI's water is not read");
+                            None
+                        }
+                        None => {
+                            tracing::info!(archive = %archive.display(), "no key snapshot deciphers the archive's table, or it names no water document");
+                            None
+                        }
                     }
                 };
-                let _ = filled.set(water);
+                let _ = filled.set(super::pool::or_on_panic("the water", water, None));
             });
             slot
         }

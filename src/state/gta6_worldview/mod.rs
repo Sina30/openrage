@@ -224,38 +224,39 @@ impl Viewer {
             Arc::clone(&build.ended),
         );
         std::thread::spawn(move || {
-            let kept =
-                crate::state::prefs::config_root().map(|config| index::kept_at(&config, &root));
-            let held = (kept.as_ref().filter(|_| !afresh)).and_then(|file| WorldIndex::kept(file));
-            let places = |cancel: &Cancel| {
-                let (packs, keys, formats, dictionaries) = places(cancel, &Progress::new())?;
-                Some(Places {
-                    packs,
-                    keys,
-                    formats,
-                    dictionaries,
-                })
-            };
-            let built = match held {
-                Some(index) => Built::Index(Box::new(index), places(&cancel)),
-                None => {
-                    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let build = || {
+                let kept = (crate::state::prefs::config_root())
+                    .map(|config| index::kept_at(&config, &root));
+                let held =
+                    (kept.as_ref().filter(|_| !afresh)).and_then(|file| WorldIndex::kept(file));
+                let places = |cancel: &Cancel| {
+                    let (packs, keys, formats, dictionaries) = places(cancel, &Progress::new())?;
+                    Some(Places {
+                        packs,
+                        keys,
+                        formats,
+                        dictionaries,
+                    })
+                };
+                match held {
+                    Some(index) => Built::Index(Box::new(index), places(&cancel)),
+                    None => {
                         let fresh = kept.as_deref().map(index::fresh_beside);
-                        index::build(&root, fresh.as_deref(), &cancel, &progress)
-                    }));
-                    match built {
-                        Ok(Ok(Some(index))) => {
-                            if let Some(Err(error)) = kept.map(|file| index.keep(&file)) {
-                                tracing::warn!(%error, "the world index was not kept");
+                        match index::build(&root, fresh.as_deref(), &cancel, &progress) {
+                            Ok(Some(index)) => {
+                                if let Some(Err(error)) = kept.map(|file| index.keep(&file)) {
+                                    tracing::warn!(%error, "the world index was not kept");
+                                }
+                                Built::Index(Box::new(index), places(&cancel))
                             }
-                            Built::Index(Box::new(index), places(&cancel))
+                            Ok(None) => Built::Stopped,
+                            Err(why) => Built::Failed(why),
                         }
-                        Ok(Ok(None)) => Built::Stopped,
-                        Ok(Err(why)) => Built::Failed(why),
-                        Err(_) => Built::Failed(tr!("It stopped on an internal error").to_string()),
                     }
                 }
             };
+            let failed = Built::Failed(tr!("It stopped on an internal error").to_string());
+            let built = pool::or_on_panic("the index", build, failed);
             *ended.lock().unwrap_or_else(|p| p.into_inner()) = Some(built);
         });
         self.build = Some(build);
