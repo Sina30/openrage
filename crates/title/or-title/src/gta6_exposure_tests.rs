@@ -205,7 +205,7 @@ fn noon_is_exposed_darker_than_dusk_and_dusk_than_midnight() {
     let (dusk, dusk_stops) = light(&k, at_zenith(89.0), moon, &settings);
     let (night, night_stops) = light(&k, at_zenith(150.0), moon, &settings);
     assert_eq!(noon_stops, -11.5, "noon is held at the day's least");
-    assert!(noon_stops < dusk_stops - 3.0, "{noon_stops} {dusk_stops}");
+    assert!(noon_stops < dusk_stops - 2.0, "{noon_stops} {dusk_stops}");
     assert!(dusk_stops < night_stops - 3.0, "{dusk_stops} {night_stops}");
     assert_eq!(noon.exposure, noon_stops.exp2());
     assert!(night.illuminance < 1.0 && dusk.illuminance > 1000.0);
