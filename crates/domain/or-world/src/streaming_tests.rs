@@ -169,6 +169,30 @@ fn a_parent_is_held_whole_while_a_child_that_draws_is_not_ready_and_the_child_is
 }
 
 #[test]
+fn a_child_that_holds_its_parent_is_waited_for_though_its_own_children_draw_in_its_place() {
+    let mut forest = Forest::new();
+    forest.insert(
+        1,
+        vec![leveled(
+            with_children(entity([0.0; 3], 2000.0, 0.0, None), 1),
+            Level::Slod2,
+        )],
+    );
+    let child = with_children(entity([100.0, 0.0, 0.0], 1000.0, 0.0, Some((1, 0))), 1);
+    forest.insert(2, vec![leveled(child, Level::Slod1)]);
+    let grandchild = entity([100.0, 0.0, 0.0], 450.0, 0.0, Some((2, 0)));
+    forest.insert(3, vec![leveled(grandchild, Level::Lod)]);
+    // The child draws nothing beside its whole child, yet holds its parent until it is on the device.
+    let held = forest.select(&along(100.0), &loading(&[(2, 0)]));
+    assert_eq!(
+        (ids(&held), held.wanted),
+        (vec![(1, 0), (3, 0)], vec![(2, 0)])
+    );
+    let ready = forest.select(&along(100.0), &all_ready);
+    assert_eq!(ids(&ready), vec![(3, 0)]);
+}
+
+#[test]
 fn a_parent_draws_beside_its_children_until_as_many_as_it_states_are_loaded() {
     let mut forest = parent_and_two_children();
     // It states a third child, whose map is not loaded.

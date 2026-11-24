@@ -653,7 +653,12 @@ impl Pass<'_> {
         let mut child = self.first_child(at);
         while child != NONE {
             let alpha = self.by_distance(child);
-            let loading = (self.state)(self.forest.id_of(child)) == NodeState::Loading;
+            let id = self.forest.id_of(child);
+            let loading = (self.state)(id) == NodeState::Loading;
+            // ⚠ A child that holds its parent is waited for though its own children leave it nothing to draw.
+            if alpha > 0.0 && loading {
+                self.out.wanted.push(id);
+            }
             (most, found, held) = (most.max(alpha), found + 1, held || (alpha > 0.0 && loading));
             child = self.next_sibling(child);
         }
@@ -682,8 +687,11 @@ impl Pass<'_> {
         let id = self.forest.id_of(at);
         match (self.state)(id) {
             NodeState::Ready => {}
+            // A child was waited for by its parent's pass.
             NodeState::Loading => {
-                self.out.wanted.push(id);
+                if self.forest.links.parent[at as usize] == NONE {
+                    self.out.wanted.push(id);
+                }
                 return;
             }
             NodeState::Absent => return,
