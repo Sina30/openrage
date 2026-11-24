@@ -205,7 +205,7 @@ impl ViewportRenderer {
         let (fallback_material_bg, fallback_material_bytes) =
             create_fallback_material_bind_group(device, queue, &material_bgl);
 
-        let world = crate::world::World::new(device, &camera_bgl, &material_bgl, colour_format);
+        let world = crate::world::World::new(device, queue, &camera_bgl, colour_format);
 
         let (colour, colour_view, colour_display_view, depth_view) =
             create_targets(device, colour_format, width, height);
