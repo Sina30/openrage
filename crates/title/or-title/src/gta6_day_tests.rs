@@ -75,20 +75,34 @@ fn the_latitude_is_the_settings_range_at_the_cameras_place_and_the_maps_middle_w
 fn a_moment_blends_the_two_samples_the_sun_stands_between_and_gives_the_frame_its_hour() {
     let tables = tables();
     // Solar noon by the clock: the top of the round, the seventh sample whole.
-    let noon = tables.moment(13.45, "Sunny", 0.0).expect("a cycle of that name");
-    assert!((noon.frame_hours - 13.0).abs() < 1e-3, "{}", noon.frame_hours);
+    let noon = tables
+        .moment(13.45, "Sunny", 0.0)
+        .expect("a cycle of that name");
+    assert!(
+        (noon.frame_hours - 13.0).abs() < 1e-3,
+        "{}",
+        noon.frame_hours
+    );
     assert!((noon.own.get("far_clip").expect("stated") - 300.0).abs() < 0.5);
     assert_eq!(noon.keyframe.get("far_clip"), noon.own.get("far_clip"));
     assert!((noon.keyframe.get("light_dir_mult").expect("worked out") - 14.75).abs() < 1e-3);
     assert!(noon.sun[2] > 0.9 && noon.sun[1] < 0.0, "{:?}", noon.sun);
-    assert!((noon.table.sun_roll - (std::f32::consts::FRAC_PI_2 + 25f32.to_radians())).abs() < 1e-6);
+    assert!(
+        (noon.table.sun_roll - (std::f32::consts::FRAC_PI_2 + 25f32.to_radians())).abs() < 1e-6
+    );
     assert!((noon.table.moon_roll - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
     assert_eq!((noon.moon_dim, noon.wetness), (0.3, 0.0));
 
     // The middle of the night: the sun's share is nought, and the moon lights.
-    let night = tables.moment(1.45, "Sunny", 0.0).expect("a cycle of that name");
+    let night = tables
+        .moment(1.45, "Sunny", 0.0)
+        .expect("a cycle of that name");
     assert!(night.sun[2] < -0.5, "{:?}", night.sun);
-    assert!(!(1.0..23.0).contains(&night.frame_hours), "{}", night.frame_hours);
+    assert!(
+        !(1.0..23.0).contains(&night.frame_hours),
+        "{}",
+        night.frame_hours
+    );
     let moon = night.keyframe.get("light_dir_mult").expect("worked out");
     assert!(moon > 0.0 && moon < 14.75 * 0.2, "{moon}");
 }
@@ -101,8 +115,14 @@ fn a_weather_is_a_type_of_the_set_or_a_cycle_by_name_and_rain_wets_the_world() {
         let strength = moment.keyframe.get("light_dir_mult").expect("worked out");
         assert!((strength - 14.75 * 0.5).abs() < 1e-3, "{name}: {strength}");
     }
-    assert_eq!(tables.moment(13.45, "AM_Wet", 0.0).map(|m| m.wetness), Some(1.0));
-    assert_eq!(tables.moment(13.45, "rainy", 0.0).map(|m| m.wetness), Some(0.0));
+    assert_eq!(
+        tables.moment(13.45, "AM_Wet", 0.0).map(|m| m.wetness),
+        Some(1.0)
+    );
+    assert_eq!(
+        tables.moment(13.45, "rainy", 0.0).map(|m| m.wetness),
+        Some(0.0)
+    );
     assert!(tables.moment(13.45, "Snow", 0.0).is_none());
     assert!(DayTables::default().moment(13.45, "Sunny", 0.0).is_none());
 }

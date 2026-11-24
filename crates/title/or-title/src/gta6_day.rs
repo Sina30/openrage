@@ -192,7 +192,9 @@ pub fn read_day(archive: &Path, stop: &dyn Fn() -> bool) -> io::Result<DayTables
         }
         match read_rpf9_body(&file, find.offset, BODY_LIMIT) {
             Ok((_, body)) => texts.push(String::from_utf8_lossy(&body).into_owned()),
-            Err(error) => tracing::warn!(offset = find.offset, %error, "a text of the day is not read"),
+            Err(error) => {
+                tracing::warn!(offset = find.offset, %error, "a text of the day is not read")
+            }
         }
     }
     Ok(DayTables::of_texts(texts.iter().map(String::as_str)))
