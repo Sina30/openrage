@@ -92,7 +92,10 @@ fn a_box_s_triangles_cover_each_face_twice_and_face_out() {
     let mut faces = [[0u8; 2]; 3];
     for t in BOX_TRIANGLES {
         let [a, b, c] = t.map(corner);
-        let (u, v) = ([0, 1, 2].map(|i| b[i] - a[i]), [0, 1, 2].map(|i| c[i] - a[i]));
+        let (u, v) = (
+            [0, 1, 2].map(|i| b[i] - a[i]),
+            [0, 1, 2].map(|i| c[i] - a[i]),
+        );
         let normal = [
             u[1] * v[2] - u[2] * v[1],
             u[2] * v[0] - u[0] * v[2],
