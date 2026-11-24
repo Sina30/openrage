@@ -516,3 +516,28 @@ fn only_the_region_tint_effects_take_their_colour_from_the_instance_and_one_lays
     );
     assert_eq!(with("prop_batch"), None);
 }
+
+#[test]
+fn materials_equal_in_all_but_a_constant_are_two_keys_and_equal_ones_one() {
+    let colour = |key| CpuMaterial {
+        layers: vec![Layer {
+            colour: Some(key),
+            ..Layer::default()
+        }],
+        ..CpuMaterial::default()
+    };
+    let mut bumpier = colour(7);
+    bumpier.constants.bumpiness[0] = 2.0;
+    let mut kept = HashMap::new();
+    for (material, id) in [
+        (colour(7), 0),
+        (bumpier.clone(), 1),
+        (colour(8), 2),
+        (colour(7), 9),
+    ] {
+        kept.entry(material).or_insert(id);
+    }
+    assert_eq!(kept.len(), 3);
+    assert_eq!(kept[&colour(7)], 0);
+    assert_eq!(kept[&bumpier], 1);
+}

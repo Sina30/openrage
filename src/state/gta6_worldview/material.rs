@@ -174,12 +174,17 @@ pub struct CpuMaterial {
     pub constants: Constants,
 }
 
-// ponytail: equal by value, hashed by its Debug text: a 0.0 and a -0.0, or a NaN, only make two materials of one.
+// ponytail: equal by value, so a NaN constant makes a material of each mesh; each is let go with its meshes.
 impl Eq for CpuMaterial {}
 
+/// Hashed by its family and its maps alone, which equal materials share: no text is made, and materials that differ in their constants alone are told apart by equality.
 impl Hash for CpuMaterial {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        format!("{self:?}").hash(state);
+        self.family.hash(state);
+        self.layers.hash(state);
+        (self.lookup, self.palette, self.tint).hash(state);
+        (self.tint_normal, self.dirt).hash(state);
+        self.emissive.map(|e| e.map).hash(state);
     }
 }
 
