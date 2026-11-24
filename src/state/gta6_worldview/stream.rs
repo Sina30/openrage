@@ -520,6 +520,42 @@ const RESELECT: f32 = 0.5;
 const TICK: std::time::Duration = std::time::Duration::from_millis(20);
 /// The shortest time between two passes a speed is measured over, in seconds.
 const SPEED_STEP: f32 = 0.001;
+/// How long a camera told no new place keeps its speed: the thread passes more often than frames come.
+// ponytail: a second, longer than a frame of the shots run under load; tell the thread each frame's own velocity if a
+// camera that stops must count as still sooner.
+const STILL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The camera's velocity at `now` where it is at `eye`, given where and when it last moved (`moved`)
+/// and the velocity it had then.
+// ⚠ A pass between two frames finds the camera where it was: measured there, a camera in flight
+// would read as still, and a map that arrives then would fade in as if it were.
+fn velocity_at(
+    moved: &mut Option<(Vec3, Instant)>,
+    velocity: Vec3,
+    eye: Vec3,
+    now: Instant,
+) -> Vec3 {
+    match *moved {
+        None => {
+            *moved = Some((eye, now));
+            Vec3::ZERO
+        }
+        Some((at, then)) if at != eye => {
+            let step = now.duration_since(then).as_secs_f32();
+            if step < SPEED_STEP {
+                return velocity;
+            }
+            *moved = Some((eye, now));
+            (eye - at) / step
+        }
+        // A camera at rest that moves again is measured from this pass, not from when it stopped.
+        Some((at, then)) if now.duration_since(then) >= STILL => {
+            *moved = Some((at, now));
+            Vec3::ZERO
+        }
+        Some(_) => velocity,
+    }
+}
 
 /// What the screen tells the world's thread.
 #[derive(Default)]
@@ -647,7 +683,7 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
     let mut streamer = Streamer::new(index);
     let mut ready: HashMap<ModelRef, Option<bool>> = HashMap::new();
     let mut selected_at: Option<(Vec3, f32, [f32; Level::COUNT])> = None;
-    let mut passed_at: Option<(Vec3, Instant)> = None;
+    let mut moved_at: Option<(Vec3, Instant)> = None;
     let (mut velocity, mut fading, mut version) = (Vec3::ZERO, false, 0);
     loop {
         let (eye, scale, hour, fade, enabled, models) = {
@@ -664,19 +700,7 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
             let (enabled, models) = (told.enabled.take(), std::mem::take(&mut told.models));
             (told.eye, told.scale, told.hour, told.fade, enabled, models)
         };
-        let now = Instant::now();
-        // The camera's speed is what it moved by since the pass before; two passes too close
-        // together to measure keep the speed they had.
-        match passed_at {
-            Some((at, then)) => {
-                let step = now.duration_since(then).as_secs_f32();
-                if step >= SPEED_STEP {
-                    velocity = (eye - at) / step;
-                    passed_at = Some((eye, now));
-                }
-            }
-            None => passed_at = Some((eye, now)),
-        }
+        velocity = velocity_at(&mut moved_at, velocity, eye, Instant::now());
         let mut stale = !models.is_empty() || fading;
         for (model, state) in models {
             match state {

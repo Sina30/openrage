@@ -665,3 +665,27 @@ fn each_level_s_fade_band_is_read_from_the_visual_settings() {
     assert_eq!(fade_of(&settings), want);
     assert_eq!(fade_of(&VisualSettings::parse("")), [FADE; Level::COUNT]);
 }
+
+#[test]
+fn a_camera_keeps_its_speed_between_frames_and_is_still_once_it_stops() {
+    use std::time::Duration;
+    let t0 = Instant::now();
+    let at = |ms: u64| t0 + Duration::from_millis(ms);
+    let mut moved = None;
+    assert_eq!(
+        velocity_at(&mut moved, Vec3::ZERO, Vec3::ZERO, at(0)),
+        Vec3::ZERO
+    );
+    // A frame 100 ms on, 12 m along: 120 m/s.
+    let v = velocity_at(&mut moved, Vec3::ZERO, Vec3::new(12.0, 0.0, 0.0), at(100));
+    assert!((v.x - 120.0).abs() < 1e-3, "{v}");
+    // Passes before the next frame find it where it was, and keep its speed.
+    let kept = velocity_at(&mut moved, v, Vec3::new(12.0, 0.0, 0.0), at(600));
+    assert_eq!(kept, v);
+    // A second with no new place: it has stopped.
+    let still = velocity_at(&mut moved, kept, Vec3::new(12.0, 0.0, 0.0), at(1100));
+    assert_eq!(still, Vec3::ZERO);
+    // Moving off again 20 ms after a pass found it at rest is measured over those 20 ms: 6 m is 300 m/s.
+    let off = velocity_at(&mut moved, still, Vec3::new(18.0, 0.0, 0.0), at(1120));
+    assert!((off.x - 300.0).abs() < 1e-2, "{off}");
+}
