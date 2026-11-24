@@ -1,0 +1,323 @@
+//! What a frame of the world lays out: the level of detail each seen instance draws at, the seen
+//! instances side by side a model and level, and the order the draws go out in.
+
+use glam::Vec3;
+use or_renderer::{Frustum, WorldBucket, WorldInstance};
+use rayon::prelude::*;
+
+use crate::state::gta6_world::worldview::stream::{Chunk, Instance};
+
+/// How many of its own radii past its sphere a thing is still drawn for the shadow it casts into the view.
+// ponytail: one reach for every height of the sun, right down to a sun 34 degrees up; the sun's own height once the renderer says it.
+const SHADOW_REACH: f32 = 3.0;
+
+/// The level of detail drawn `away` metres from the camera, of levels that each draw while the
+/// distance is under its `until` times `scale`; past the last, the last.
+pub(super) fn level(untils: &[f32], away: f32, scale: f32) -> usize {
+    (untils.iter())
+        .position(|until| away < until * scale)
+        .unwrap_or(untils.len().saturating_sub(1))
+}
+
+/// How much wider than its sphere a thing `away` metres off is tested against the view, where
+/// shadows are cast out to `shadow_far` metres.
+fn reach(shadow_far: Option<f32>, away: f32, radius: f32) -> f32 {
+    match shadow_far {
+        Some(far) if away - radius < far => radius * SHADOW_REACH,
+        _ => 0.0,
+    }
+}
+
+/// What a frame is seen through.
+pub(super) struct View {
+    pub frustum: Frustum,
+    pub eye: Vec3,
+    /// The scale every level-of-detail distance is multiplied by.
+    pub lod_scale: f32,
+    /// How far the sun's shadows are cast, where they are.
+    pub shadow_far: Option<f32>,
+}
+
+/// An instance the camera sees: its place in the selection, the slot it draws in and how far it is.
+#[derive(Clone, Copy)]
+pub(super) struct Seen {
+    pub at: u32,
+    pub slot: u32,
+    pub away: f32,
+}
+
+/// A frame's layout, kept so that the next reuses its memory.
+///
+/// A slot is one level of detail of one model of the selection: the instances of a slot lie side
+/// by side and draw with one run.
+#[derive(Default)]
+pub(super) struct Layout {
+    /// Where each model's slots start, and one past the last model's.
+    pub first: Vec<u32>,
+    /// The distance each slot draws under.
+    pub untils: Vec<f32>,
+    pub seen: Vec<Seen>,
+    /// Where each slot's run starts and ends among `laid`.
+    pub starts: Vec<u32>,
+    pub ends: Vec<u32>,
+    /// The nearest instance seen in each slot: how far, and its place in the selection.
+    pub nearest: Vec<(f32, u32)>,
+    pub laid: Vec<WorldInstance>,
+}
+
+impl Layout {
+    /// Start a layout of no model.
+    pub(super) fn clear(&mut self) {
+        self.first.clear();
+        self.untils.clear();
+    }
+
+    /// The next model of the selection, with the distances its levels draw under; none for a
+    /// model that is not on the device, whose instances are then not laid out.
+    pub(super) fn model(&mut self, untils: impl Iterator<Item = f32>) {
+        self.first.push(self.untils.len() as u32);
+        self.untils.extend(untils);
+    }
+
+    /// The slots of the model at `model` of the selection.
+    pub(super) fn slots(&self, model: usize) -> std::ops::Range<u32> {
+        let at = |i: usize| self.first.get(i).copied();
+        let end = self.untils.len() as u32;
+        at(model).unwrap_or(end)..at(model + 1).unwrap_or(end)
+    }
+
+    /// The instances of `chunks` the view sees, each with the slot of the level its distance picks.
+    ///
+    /// ⚠ On every core: a selection holds tens of thousands of instances, and a frame that tested
+    /// each on the UI thread spent most of its time here.
+    pub(super) fn cull(&mut self, chunks: &[Chunk], instances: &[Instance], view: &View) {
+        let this = &*self;
+        let seen = (chunks.par_iter())
+            .flat_map_iter(|chunk| {
+                let away = view.eye.distance(chunk.centre);
+                let wider = chunk.radius + reach(view.shadow_far, away, chunk.radius);
+                // A chunk wholly in view is taken whole, and one out of view not at all.
+                let whole = view.frustum.holds_sphere(chunk.centre, chunk.radius);
+                let part = whole || view.frustum.sees_sphere(chunk.centre, wider);
+                let run = if part { chunk.from..chunk.to } else { 0..0 };
+                run.filter_map(move |at| {
+                    let instance = instances.get(at as usize)?;
+                    let slots = this.slots(instance.model as usize);
+                    if slots.is_empty() {
+                        return None;
+                    }
+                    let away = view.eye.distance(instance.centre);
+                    let radius = instance.radius.max(0.01);
+                    let wider = radius + reach(view.shadow_far, away, radius);
+                    if !whole && !view.frustum.sees_sphere(instance.centre, wider) {
+                        return None;
+                    }
+                    let untils = &this.untils[slots.start as usize..slots.end as usize];
+                    Some(Seen {
+                        at,
+                        slot: slots.start + level(untils, away, view.lod_scale) as u32,
+                        away,
+                    })
+                })
+            })
+            .collect();
+        self.seen = seen;
+    }
+
+    /// Lay the seen instances out a slot: where each slot's run starts, then each put at its
+    /// run's end, its fade in the fourth part of its tint.
+    pub(super) fn place(&mut self, instances: &[Instance]) {
+        let slots = self.untils.len();
+        self.starts.clear();
+        self.starts.resize(slots, 0);
+        self.nearest.clear();
+        self.nearest.resize(slots, (f32::INFINITY, 0));
+        for seen in &self.seen {
+            self.starts[seen.slot as usize] += 1;
+            let nearest = &mut self.nearest[seen.slot as usize];
+            if seen.away < nearest.0 {
+                *nearest = (seen.away, seen.at);
+            }
+        }
+        let mut total = 0;
+        for start in &mut self.starts {
+            total += std::mem::replace(start, total);
+        }
+        self.ends.clone_from(&self.starts);
+        self.laid.clear();
+        self.laid.resize(
+            total as usize,
+            WorldInstance {
+                rows: [[0.0; 4]; 3],
+                tint: [1.0; 4],
+            },
+        );
+        for seen in &self.seen {
+            let instance = &instances[seen.at as usize];
+            let end = &mut self.ends[seen.slot as usize];
+            self.laid[*end as usize] = WorldInstance {
+                rows: instance.rows,
+                tint: [1.0, 1.0, 1.0, instance.fade],
+            };
+            *end += 1;
+        }
+    }
+
+    /// The run of `laid` the slot `slot` draws.
+    pub(super) fn run(&self, slot: u32) -> std::ops::Range<u32> {
+        self.starts[slot as usize]..self.ends[slot as usize]
+    }
+}
+
+/// What draws are sorted by: the bucket, then the far before the near where surfaces blend, then
+/// the page and the material, so that draws the device takes in one call stand together.
+pub(super) fn order(
+    bucket: WorldBucket,
+    away: f32,
+    page: u32,
+    material: usize,
+) -> (WorldBucket, u32, u32, usize) {
+    // The bits of a distance, which is never negative, rise with it.
+    let depth = match bucket {
+        WorldBucket::Blend => u32::MAX - away.max(0.0).to_bits(),
+        _ => 0,
+    };
+    (bucket, depth, page, material)
+}
+
+#[cfg(test)]
+mod tests {
+    use or_renderer::FlyCamera;
+
+    use super::*;
+
+    fn instance(model: u32, at: Vec3, fade: f32) -> Instance {
+        Instance {
+            model,
+            rows: [
+                [1.0, 0.0, 0.0, at.x],
+                [0.0, 1.0, 0.0, at.y],
+                [0.0, 0.0, 1.0, at.z],
+            ],
+            centre: at,
+            radius: 1.0,
+            fade,
+        }
+    }
+
+    fn view(shadow_far: Option<f32>) -> View {
+        // The default camera stands at the origin and looks along +Y.
+        View {
+            frustum: Frustum::of(FlyCamera::default().view_proj(1.0)),
+            eye: Vec3::ZERO,
+            lod_scale: 1.0,
+            shadow_far,
+        }
+    }
+
+    #[test]
+    fn a_level_draws_while_the_distance_is_under_its_own() {
+        let untils = [20.0, 80.0, f32::INFINITY];
+        assert_eq!(level(&untils, 10.0, 1.0), 0);
+        assert_eq!(level(&untils, 20.0, 1.0), 1);
+        assert_eq!(level(&untils, 500.0, 1.0), 2);
+        // The scale stretches every distance.
+        assert_eq!(level(&untils, 30.0, 2.0), 0);
+        assert_eq!(level(&untils, 30.0, 0.5), 1);
+        // A last level that ends still draws past its end, and no level is the first.
+        assert_eq!(level(&[20.0, 80.0], 500.0, 1.0), 1);
+        assert_eq!(level(&[], 5.0, 1.0), 0);
+    }
+
+    #[test]
+    fn seen_instances_lie_side_by_side_a_model_and_level() {
+        let instances = [
+            instance(0, Vec3::new(0.0, 50.0, 0.0), 1.0),
+            instance(1, Vec3::new(0.0, 6.0, 0.0), 1.0),
+            instance(0, Vec3::new(0.0, 5.0, 0.0), 0.25),
+            instance(0, Vec3::new(0.0, -50.0, 0.0), 1.0),
+            instance(0, Vec3::new(0.0, 60.0, 0.0), 1.0),
+        ];
+        let chunks = [Chunk {
+            centre: Vec3::ZERO,
+            radius: 100.0,
+            from: 0,
+            to: instances.len() as u32,
+        }];
+        let mut layout = Layout::default();
+        layout.clear();
+        layout.model([10.0, f32::INFINITY].into_iter());
+        // The second model is not on the device: it has no slot.
+        layout.model(std::iter::empty());
+        assert_eq!(layout.slots(0), 0..2);
+        assert!(layout.slots(1).is_empty());
+        assert!(layout.slots(7).is_empty());
+
+        layout.cull(&chunks, &instances, &view(None));
+        layout.place(&instances);
+        // The one behind the camera and the one of the absent model are left out.
+        assert_eq!(layout.seen.len(), 3);
+        assert_eq!(layout.run(0), 0..1);
+        assert_eq!(layout.run(1), 1..3);
+        assert_eq!(layout.laid.len(), 3);
+        // The near one draws at the first level, with its fade.
+        assert_eq!(layout.laid[0].rows[1][3], 5.0);
+        assert_eq!(layout.laid[0].tint, [1.0, 1.0, 1.0, 0.25]);
+        assert_eq!(layout.nearest[0], (5.0, 2));
+        // The far two draw at the second, and the nearer of them is the nearest.
+        assert_eq!(layout.nearest[1], (50.0, 0));
+        let far: Vec<f32> = layout.laid[1..].iter().map(|i| i.rows[1][3]).collect();
+        assert!(far.contains(&50.0) && far.contains(&60.0));
+    }
+
+    #[test]
+    fn what_casts_a_shadow_into_the_view_is_tested_wider() {
+        assert_eq!(reach(None, 10.0, 2.0), 0.0);
+        assert_eq!(reach(Some(100.0), 10.0, 2.0), 2.0 * SHADOW_REACH);
+        // Past where shadows are cast nothing is wider.
+        assert_eq!(reach(Some(100.0), 500.0, 2.0), 0.0);
+
+        // Just behind the camera: out of view, and within reach of its shadow.
+        let instances = [instance(0, Vec3::new(0.0, -2.0, 0.0), 1.0)];
+        let chunks = [Chunk {
+            centre: Vec3::new(0.0, -2.0, 0.0),
+            radius: 1.0,
+            from: 0,
+            to: 1,
+        }];
+        let mut layout = Layout::default();
+        layout.clear();
+        layout.model([f32::INFINITY].into_iter());
+        layout.cull(&chunks, &instances, &view(None));
+        assert!(layout.seen.is_empty());
+        layout.cull(&chunks, &instances, &view(Some(100.0)));
+        assert_eq!(layout.seen.len(), 1);
+    }
+
+    #[test]
+    fn draws_go_out_a_bucket_then_a_page_then_a_material() {
+        use WorldBucket::*;
+        let mut keys = vec![
+            order(Emissive, 1.0, 0, 0),
+            order(Blend, 5.0, 0, 0),
+            order(Blend, 90.0, 3, 9),
+            order(Decal, 1.0, 0, 0),
+            order(Opaque, 1.0, 2, 1),
+            order(Cutout, 1.0, 0, 0),
+            order(Opaque, 70.0, 1, 8),
+            order(Opaque, 3.0, 1, 4),
+            order(Opaque, 9.0, 2, 1),
+        ];
+        keys.sort_unstable();
+        let buckets: Vec<WorldBucket> = keys.iter().map(|k| k.0).collect();
+        assert_eq!(
+            buckets,
+            [Opaque, Opaque, Opaque, Opaque, Cutout, Decal, Blend, Blend, Emissive]
+        );
+        // Opaque draws of one page stand together, and in it those of one material.
+        let opaque: Vec<(u32, usize)> = keys[..4].iter().map(|k| (k.2, k.3)).collect();
+        assert_eq!(opaque, [(1, 4), (1, 8), (2, 1), (2, 1)]);
+        // What blends goes out the far first, whatever its page.
+        assert_eq!((keys[6].2, keys[7].2), (3, 0));
+    }
+}
