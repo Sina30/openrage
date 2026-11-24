@@ -19,27 +19,52 @@ pub(crate) const CASCADES: usize = 4;
 /// The cycle's variable every cascade's end is multiplied by.
 pub const DISTANCE_MULTIPLIER: &str = "dir_shadow_distance_multiplier";
 
-/// The ends of the game's split ahead of the camera before the cycle's multiplier, in metres, and how far each end between them is drawn from the even split towards the geometric one.
+/// The ends of the game's split ahead of the camera before the cycle's multiplier, in metres.
 const SPLIT_NEAR: f32 = 0.5;
 const SPLIT_FAR: f32 = 176.551_71;
-const SPLIT_WEIGHT: f32 = 0.9;
 
-/// How far ahead of the camera the sun's shadow of a world is cast at a multiplier of one, in metres.
+/// How far ahead of the camera the sun's shadow of a world is cast at a multiplier of one by a camera that rides nothing, in metres.
 pub const SHADOW_FAR: f32 = SPLIT_FAR;
 
-/// How far ahead of the camera each cascade ends at the cycle's `multiplier`, in metres: the game's split of four, each end between an even and a geometric split from half a metre to [`SHADOW_FAR`].
-pub fn ends(multiplier: f32) -> [f32; CASCADES] {
+/// What the game's split is stretched by for what the camera rides: every end times `scale`, and each end between the first and the last drawn `weight` of the way from the even split towards the geometric one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowFocus {
+    pub scale: f32,
+    pub weight: f32,
+}
+
+impl ShadowFocus {
+    /// A camera that rides nothing, as the game's free camera.
+    pub const FREE: Self = Self {
+        scale: 1.0,
+        weight: 0.9,
+    };
+    /// A camera that rides an aircraft: the least the game stretches an aircraft's split by, that of a craft of a sphere of 5 m or less, and its weight.
+    pub const AIRCRAFT: Self = Self {
+        scale: 5.0,
+        weight: 0.99,
+    };
+}
+
+impl Default for ShadowFocus {
+    fn default() -> Self {
+        Self::FREE
+    }
+}
+
+/// How far ahead of the camera each cascade ends at the cycle's `multiplier` for a camera of `focus`, in metres: the game's split of four, each end between an even and a geometric split from half a metre to [`SHADOW_FAR`], stretched as `focus` says.
+pub fn ends(multiplier: f32, focus: ShadowFocus) -> [f32; CASCADES] {
     std::array::from_fn(|at| {
         let along = (at + 1) as f32 / CASCADES as f32;
         let even = SPLIT_NEAR + (SPLIT_FAR - SPLIT_NEAR) * along;
         let geometric = SPLIT_NEAR * (SPLIT_FAR / SPLIT_NEAR).powf(along);
-        multiplier * (even + (geometric - even) * SPLIT_WEIGHT)
+        multiplier * focus.scale * (even + (geometric - even) * focus.weight)
     })
 }
 
-/// How far ahead of the camera the sun's shadow of a world is cast at the cycle's `multiplier`, in metres.
-pub fn shadow_reach(multiplier: f32) -> f32 {
-    ends(multiplier)[CASCADES - 1]
+/// How far ahead of the camera the sun's shadow of a world is cast at the cycle's `multiplier` for a camera of `focus`, in metres.
+pub fn shadow_reach(multiplier: f32, focus: ShadowFocus) -> f32 {
+    ends(multiplier, focus)[CASCADES - 1]
 }
 
 /// The part of the reach, at its far end, over which the shadow fades to none.
@@ -66,12 +91,12 @@ pub(crate) struct Cascades {
 }
 
 impl Cascades {
-    /// The cascades about what `camera` sees in a frame of `aspect`, cast by the sun of `engine` as far as the cycle's `multiplier` takes them; none where it does not shine.
+    /// The cascades about what `camera` sees in a frame of `aspect`, cast by the sun of `engine` as far as the cycle's `multiplier` takes them for a camera of `focus`; none where it does not shine.
     pub(crate) fn about(
         engine: &EngineConstants,
         camera: &OrbitCamera,
         aspect: f32,
-        multiplier: f32,
+        (multiplier, focus): (f32, ShadowFocus),
     ) -> Option<Self> {
         let sun = Sun::of(engine);
         if !sun.shines() {
@@ -79,7 +104,7 @@ impl Cascades {
         }
         let eye = camera.eye();
         let forward = (camera.target - eye).normalize_or(Vec3::Y);
-        let ends = ends(multiplier);
+        let ends = ends(multiplier, focus);
         let far = ends[CASCADES - 1].min(camera.far);
         if far.is_nan() || far <= 0.0 {
             return None;
@@ -353,18 +378,36 @@ mod tests {
 
     #[test]
     fn the_cascades_end_where_the_games_split_puts_them_scaled_by_the_cycles_multiplier() {
-        let one = ends(1.0);
+        let free = ShadowFocus::FREE;
+        let one = ends(1.0, free);
         assert!(one.windows(2).all(|pair| pair[0] < pair[1]), "{one:?}");
         assert_eq!(one[CASCADES - 1], SHADOW_FAR);
-        assert_eq!(shadow_reach(2.0), 2.0 * SHADOW_FAR);
+        assert_eq!(shadow_reach(2.0, free), 2.0 * SHADOW_FAR);
         for (at, end) in one.iter().enumerate().take(CASCADES - 1) {
             let along = (at + 1) as f32 / CASCADES as f32;
             let even = SPLIT_NEAR + (SPLIT_FAR - SPLIT_NEAR) * along;
             let geometric = SPLIT_NEAR * (SPLIT_FAR / SPLIT_NEAR).powf(along);
             // Nine tenths of the way from the even split to the geometric one
             let drawn = (even - end) / (even - geometric);
-            assert!((drawn - SPLIT_WEIGHT).abs() < 1e-4, "{at}: {drawn}");
-            assert!((ends(2.0)[at] - 2.0 * end).abs() < 1e-3);
+            assert!((drawn - free.weight).abs() < 1e-4, "{at}: {drawn}");
+            assert!((ends(2.0, free)[at] - 2.0 * end).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn an_aircrafts_cascades_reach_five_times_as_far_and_lie_nearer_the_geometric_split() {
+        let (free, air) = (
+            ends(1.0, ShadowFocus::FREE),
+            ends(1.0, ShadowFocus::AIRCRAFT),
+        );
+        assert!(
+            (air[CASCADES - 1] - 5.0 * SHADOW_FAR).abs() < 1e-2,
+            "{air:?}"
+        );
+        assert!(air.windows(2).all(|pair| pair[0] < pair[1]), "{air:?}");
+        // Each inner end of the aircraft's split is nearer the camera than five times the free one's.
+        for at in 0..CASCADES - 1 {
+            assert!(air[at] < 5.0 * free[at], "{at}: {air:?} {free:?}");
         }
     }
 

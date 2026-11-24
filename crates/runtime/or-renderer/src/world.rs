@@ -28,7 +28,7 @@ pub use material::{
 };
 use material::{uniform_bytes, STAND_INS};
 use pipelines::{ByBucket, Pipelines};
-pub use shadow::{shadow_reach, DISTANCE_MULTIPLIER, SHADOW_FAR};
+pub use shadow::{shadow_reach, ShadowFocus, DISTANCE_MULTIPLIER, SHADOW_FAR};
 use shadow::{Cascades, CASCADES};
 
 /// How and when a mesh of the world is drawn; declared in the order the buckets draw.
@@ -250,6 +250,8 @@ pub(crate) struct World {
     set: u64,
     /// What each cascade of the shadow casts of the frame.
     casting: RefCell<shadow::Casting>,
+    /// How the cascades' split is stretched for what the camera rides.
+    pub(crate) focus: ShadowFocus,
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
     /// The maps and constants of each material made, by [`alike`], so that materials alike bind one group and their draws join; and the size past which the dead are let go.
@@ -463,6 +465,7 @@ impl World {
             spheres: Vec::new(),
             set: 0,
             casting: RefCell::default(),
+            focus: ShadowFocus::FREE,
             exposure: 1.0,
             alike: RefCell::default(),
             materials,
@@ -755,7 +758,7 @@ impl World {
         if self.cast_batches.is_empty() && !self.cards.draws_anything() {
             return None;
         }
-        let cascades = Cascades::about(engine, camera, aspect, multiplier)?;
+        let cascades = Cascades::about(engine, camera, aspect, (multiplier, self.focus))?;
         let views = cascades.views();
         for (view, (buffer, _)) in views.iter().zip(&self.cascades) {
             let mut uniform = [0.0f32; CAMERA_FLOATS];
@@ -843,6 +846,11 @@ impl ViewportRenderer {
         draws: Vec<WorldDraw>,
     ) {
         self.world.set(device, queue, instances, draws);
+    }
+
+    /// Stretch the sun's cascades of the world for a camera that rides what `focus` is of.
+    pub fn set_shadow_focus(&mut self, focus: ShadowFocus) {
+        self.world.focus = focus;
     }
 
     /// Multiply every material's own light by `exposure`, the exposure the day's light is given at; 1 leaves it as the material states it.

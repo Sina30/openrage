@@ -389,9 +389,9 @@ impl ViewportRenderer {
         self.day_revision += 1;
     }
 
-    /// How far ahead of the camera the sun's shadow of a world is cast by the day's cycle, in metres.
+    /// How far ahead of the camera the sun's shadow of a world is cast by the day's cycle for what the camera rides, in metres.
     pub fn shadow_reach(&self) -> f32 {
-        crate::world::shadow_reach(self.shadow_multiplier())
+        crate::world::shadow_reach(self.shadow_multiplier(), self.world.focus)
     }
 
     /// What the day's cycle multiplies the ends of the sun's cascades by; one with no day.
