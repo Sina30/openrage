@@ -60,9 +60,13 @@ fn bodies(
         if cancel.is_set() {
             return Ok(None);
         }
-        // A scan that fails says so once and ends: the rest of the span is not read.
-        let Ok(find) = find else {
-            break;
+        // A scan that fails ends: the rest of the span is not read.
+        let find = match find {
+            Ok(find) => find,
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "the scan of a game-shape archive stopped");
+                break;
+            }
         };
         let Rpf9BodyKind::Zlib(Rpf9ZlibRun {
             content: Rpf9Content::Pso,
