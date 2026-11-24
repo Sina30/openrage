@@ -22,10 +22,13 @@ pub struct WorldLamp {
 /// The rows the program reads of the first [`WORLD_LAMPS`] of `lamps`, each slot past them nought.
 pub(crate) fn rows(lamps: &[WorldLamp]) -> Vec<[f32; 4]> {
     let mut out = vec![[0.0; 4]; WORLD_LAMPS * 3];
-    for (slot, l) in out.chunks_exact_mut(3).zip(lamps) {
-        slot[0] = l.position.extend(l.radius).to_array();
-        slot[1] = l.colour.extend(l.cone[0]).to_array();
-        slot[2] = l.direction.extend(l.cone[1]).to_array();
+    let (slots, _) = out.as_chunks_mut::<3>();
+    for (slot, l) in slots.iter_mut().zip(lamps) {
+        *slot = [
+            l.position.extend(l.radius).to_array(),
+            l.colour.extend(l.cone[0]).to_array(),
+            l.direction.extend(l.cone[1]).to_array(),
+        ];
     }
     out
 }
