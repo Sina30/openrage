@@ -13,7 +13,7 @@ use super::{Report, WorldIndex};
 
 const MAGIC: &[u8; 8] = b"ORWIDX\0\0";
 /// The version of the kept index: a change to it, or to what a build reads, takes another.
-const VERSION: u64 = 5;
+const VERSION: u64 = 6;
 
 /// The size and modification time of the archive at `path`, in nanoseconds.
 fn stat(path: &Path) -> Option<(u64, u64)> {
