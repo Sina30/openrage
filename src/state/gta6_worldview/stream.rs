@@ -18,9 +18,15 @@ use super::pool::Pool;
 mod grass;
 #[path = "stream_read.rs"]
 mod read;
+#[path = "stream_census.rs"]
+mod census;
+#[path = "stream_slod.rs"]
+pub mod slod;
 
+pub use census::Census;
 pub use read::Rows;
-use read::{place, stretch, Drawn, Loaded};
+pub use slod::{CardList, Species};
+use read::{place, stretch, Drawn, Instances, Loaded};
 pub(super) use read::{read_map, ReadMap};
 
 /// The bytes a map body is read to.
@@ -71,11 +77,19 @@ pub struct Selected {
     pub models: Vec<ModelRef>,
     pub chunks: Vec<Chunk>,
     pub instances: Vec<Instance>,
+    /// The lists of far stand-ins that draw, as cards.
+    pub cards: Vec<CardList>,
+    /// Each far stand-in id's species, by the id a card's record bears.
+    pub species: Arc<[Species]>,
     /// Each model waited for, with how far the nearest thing that waits for it is.
     pub wanted: Vec<(f32, ModelRef)>,
     pub streaming: Streaming,
+    /// What it holds, counted for the check against what the game loads (`world dump`).
+    pub census: Census,
     /// Whether a fade in time is under way: the next selection differs though nothing moves.
     pub fading: bool,
+    /// The occluders of the occluder maps around the camera; the same list until one comes or goes.
+    pub occluders: Arc<[Arc<or_io::gta6::map::occluders::MapOccluders>]>,
 }
 
 /// The models of a selection, each once, in the order they were first drawn with.
@@ -97,6 +111,8 @@ impl Models {
 /// The maps around the camera.
 pub(super) struct Streamer {
     index: Arc<WorldIndex>,
+    /// Each far stand-in id's species, worked out once from the index.
+    species: Arc<[Species]>,
     forest: Forest,
     loaded: HashMap<u32, Loaded>,
     /// The maps the camera wants, by name, with their distance; their parents among them.
@@ -110,6 +126,8 @@ pub(super) struct Streamer {
     /// The hour of the day, 0 to 23: a time archetype draws inside its hours alone.
     hour: u32,
     readers: Pool<u32, Option<ReadMap>>,
+    /// The occluder maps, streamed by a tier of their own: they hold nothing the forest draws.
+    occluders: super::occluders::Occluders,
     pub(super) streaming: Streaming,
 }
 
@@ -172,8 +190,11 @@ impl Streamer {
                 Some(read)
             },
         );
+        let species = slod::species(&index);
+        let occluders = super::occluders::Occluders::new(Arc::clone(&index));
         Self {
             index,
+            species,
             forest: Forest::new(),
             loaded: HashMap::new(),
             wanted: HashMap::new(),
@@ -182,6 +203,7 @@ impl Streamer {
             enabled: Enabled::default(),
             hour: hour_of(NOON),
             readers,
+            occluders,
             streaming: Streaming::default(),
         }
     }
@@ -222,6 +244,7 @@ impl Streamer {
             self.streamed_at = Some(view.eye);
             self.rewant(view);
         }
+        changed |= self.occluders.stream(view, &self.enabled, moved);
         // What is loaded and no longer wanted goes.
         let gone: Vec<u32> = (self.loaded.keys().copied())
             .filter(|name| !self.wanted.contains_key(name))
@@ -310,7 +333,17 @@ impl Streamer {
         // A time archetype outside its hours has no model for the while: it draws nothing, is
         // not waited for and holds nothing back.
         let model_of = |id: NodeId| drawn_of(id).and_then(|(_, drawn)| drawn.model_at(hour));
+        // A list of far stand-ins waits for no model: its cards draw once its species' atlas is there.
+        let cards_of = |id: NodeId| {
+            let (map, _) = drawn_of(id)?;
+            let list = map.lists.get((id.1 as usize).checked_sub(map.entities.len())?)?;
+            match &list.instances {
+                Instances::Cards(cards) => Some(cards),
+                _ => None,
+            }
+        };
         let state = |id: NodeId| match model_of(id).map(ready) {
+            _ if cards_of(id).is_some() => NodeState::Ready,
             None | Some(None) => NodeState::Absent,
             Some(Some(true)) => NodeState::Ready,
             Some(Some(false)) => NodeState::Loading,
@@ -348,7 +381,13 @@ impl Streamer {
         }
         close(&mut out, from);
         // And the instances of one list: a chunk a list.
+        let listed = out.instances.len();
         for draw in &selection.lists {
+            if let Some(cards) = cards_of(draw.node) {
+                let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
+                (out.cards).push(cards.seen(scale, draw.fade));
+                continue;
+            }
             let Some((map, drawn)) = drawn_of(draw.node) else {
                 continue;
             };
@@ -369,6 +408,7 @@ impl Streamer {
             });
             close(&mut out, from);
         }
+        let list_instances = out.instances.len() - listed;
         // Each model waited for once, by the nearest node that waits for it.
         let mut waited: HashMap<ModelRef, f32> = HashMap::new();
         for id in &selection.wanted {
@@ -405,10 +445,13 @@ impl Streamer {
                 close(&mut out, from);
             }
         }
+        out.occluders = self.occluders.held();
         out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
+        out.species = Arc::clone(&self.species);
         out.models = models.list;
         self.streaming.drawn = out.instances.len();
         out.streaming = self.streaming;
+        out.census = census::count(&self.wanted, loaded, &self.forest, &selection, list_instances);
         out
     }
 }

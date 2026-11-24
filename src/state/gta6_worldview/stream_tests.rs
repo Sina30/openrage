@@ -165,7 +165,7 @@ fn made_up_index() -> WorldIndex {
 fn placed(list: &List) -> &[Rows] {
     match &list.instances {
         Instances::Placed(rows) => rows,
-        Instances::Grass(_) => panic!("a list of placed instances"),
+        Instances::Grass(_) | Instances::Cards(_) => panic!("a list of placed instances"),
     }
 }
 
@@ -299,9 +299,34 @@ fn a_grass_list_is_a_node_after_the_prop_lists_and_a_list_of_far_stand_ins_draws
     // Its instances fade from where the list says to where it says they are gone.
     assert_eq!(read.loaded.lists[1].reach, Some((40.0, 50.0)));
     assert!(read.loaded.drawn[4].model.is_some());
-    // A far stand-in's model is named by an id no map states: its list draws nothing.
+    // A far stand-in's model is named by an id no map states: its list holds its instances as cards.
     assert!(read.loaded.drawn[5].model.is_none());
-    assert!(placed(&read.loaded.lists[2]).is_empty());
+    let cards = &read.loaded.lists[2].instances;
+    assert!(matches!(cards, Instances::Cards(c) if c.records.len() == 1));
+}
+
+#[test]
+fn a_list_of_far_stand_ins_draws_as_cards_and_waits_for_no_model() {
+    let mut index = made_up_index();
+    index.slod = vec![0; 8];
+    index.slod[7] = FERN;
+    let index = Arc::new(index);
+    let mut streamer = Streamer::new(Arc::clone(&index));
+    streamer.wanted.insert(55, 0.0);
+    assert!(streamer.insert(55, read_map(&index, &grown())));
+    // No model is on the device, and the far stand-ins still draw, as one list of cards.
+    let view = View::at(Vec3::ZERO, 1.0);
+    let none = streamer.select(&view, &|_| Some(false));
+    let [cards] = &none.cards[..] else {
+        panic!("one list of cards, not {}", none.cards.len());
+    };
+    assert_eq!((cards.records.len(), cards.fade), (1, 1.0));
+    assert_eq!(cards.distance, 50.0 * view.scales[Level::Slod1 as usize]);
+    assert_eq!(none.species[7].archetype, FERN as u32);
+    assert!(none.instances.iter().all(|i| none.models[i.model as usize].offset != 0x4000));
+    // Past its distance the list is gone.
+    let away = streamer.select(&View::at(Vec3::splat(5000.0), 1.0), &|_| Some(true));
+    assert!(away.cards.is_empty());
 }
 
 #[test]

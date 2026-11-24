@@ -2,7 +2,7 @@
 //! at each, and where each entity and each instance of its prop and grass lists stands.
 //!
 //! ⚠ A list of far stand-ins (`IsSLODList`) is a node, so that the lists under it find their
-//! parent, and draws nothing: the model each of its instances takes is named by an id no map states.
+//! parent, and draws no model: its instances are cards, each of the species its id names.
 
 use glam::{Mat4, Quat, Vec3};
 use or_io::gta6::map::stream::{StreamGrassList, StreamLink, StreamMap};
@@ -54,6 +54,8 @@ pub(super) enum Instances {
     Placed(Vec<Rows>),
     /// As the body states them: an instance is placed when it draws.
     Grass(StreamGrassList),
+    /// A list of far stand-ins: its instances draw as cards.
+    Cards(super::slod::CardList),
 }
 
 /// A prop or grass list streamed in.
@@ -117,6 +119,8 @@ impl List {
                     }
                 }
             }
+            // Cards are drawn by the card pass, never as instances.
+            Instances::Cards(_) => {}
         }
     }
 }
@@ -129,6 +133,8 @@ pub(super) struct Loaded {
     pub(super) entities: Vec<Rows>,
     /// The prop lists, then the grass lists.
     pub(super) lists: Vec<List>,
+    /// How many of `lists` are prop lists: the grass lists follow them.
+    pub(super) props: usize,
     /// The interiors the map places, each with its contents in the world.
     pub(super) interiors: Vec<super::super::interior::Placed>,
 }
@@ -300,7 +306,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         });
         lists.push(List {
             instances: match list.slod {
-                true => Instances::Placed(Vec::new()),
+                true => Instances::Cards(super::slod::CardList::of(list, index)),
                 false => Instances::Grass(list.clone()),
             },
             reach: Some((list.lod_fade_start_dist, list.instance_lod_dist)),
@@ -312,6 +318,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             drawn,
             entities,
             lists,
+            props: map.prop_lists.len(),
             interiors: Vec::new(),
         },
     }
