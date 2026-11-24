@@ -14,9 +14,9 @@ use super::texture::Places;
 #[path = "material.rs"]
 mod material;
 use material::{material_of, GLOW};
-pub use material::{CpuMaterial, Family};
 #[cfg(test)]
 pub use material::{Constants, Emissive, Layer};
+pub use material::{CpuMaterial, Family};
 
 /// The bytes a model's body is read to.
 const BODY_LIMIT: u64 = 512 << 20;

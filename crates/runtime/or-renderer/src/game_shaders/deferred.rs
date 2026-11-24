@@ -8,6 +8,7 @@ use super::ambient::AmbientPass;
 use super::antialias::AntiAliasPass;
 use super::bindings::Requirement;
 use super::bloom::BloomPass;
+use super::capsule_lights::{CapsuleLight, CapsuleLights};
 use super::dome::SkyPass;
 use super::engine::EngineConstants;
 use super::fog_volumes::{FogSky, FogVolume, FogVolumes};
@@ -501,6 +502,8 @@ pub struct FramePasses {
     lights: Option<PointLights>,
     /// None where the pack has no pass for it: the particles' lights that shine in a cone are then not drawn.
     spots: Option<SpotLights>,
+    /// None where the pack has no pass for it: the lights that shine from a segment are then not drawn.
+    capsules: Option<CapsuleLights>,
     /// None where the pack has no pass for it: the particles then fill the air with nothing.
     fog: Option<FogVolumes>,
     lighting: LightingPass,
@@ -533,6 +536,9 @@ impl FramePasses {
         let spots = SpotLights::new(device, queue, pack, hdr, inputs)
             .map_err(|error| tracing::warn!(%error, "the cone light of the particles is not drawn"))
             .ok();
+        let capsules = CapsuleLights::new(device, queue, pack, hdr, inputs)
+            .map_err(|error| tracing::warn!(%error, "the lights that shine from a segment are not drawn"))
+            .ok();
         let fog = FogVolumes::new(device, queue, pack, hdr, inputs)
             .map_err(|error| tracing::warn!(%error, "the fog of the particles is not drawn"))
             .ok();
@@ -548,6 +554,7 @@ impl FramePasses {
             sky,
             lights,
             spots,
+            capsules,
             fog,
             lighting: LightingPass::new(device, queue, pack, hdr, inputs)?,
             resolve,
@@ -574,6 +581,9 @@ impl FramePasses {
         }
         if let Some(spots) = &mut self.spots {
             spots.bind(device, queue, inputs);
+        }
+        if let Some(capsules) = &mut self.capsules {
+            capsules.bind(device, queue, inputs);
         }
         if let Some(fog) = &mut self.fog {
             fog.bind(device, queue, inputs);
@@ -634,6 +644,19 @@ impl FramePasses {
         lights: &[SpotLight],
     ) {
         if let Some(pass) = &self.spots {
+            pass.write(queue, engine, screen, lights);
+        }
+    }
+
+    /// Write the lights that shine from a segment this frame, which [`Self::record_lighting`] draws.
+    pub fn write_capsule_lights(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        screen: &Screen,
+        lights: &[CapsuleLight],
+    ) {
+        if let Some(pass) = &self.capsules {
             pass.write(queue, engine, screen, lights);
         }
     }
@@ -821,6 +844,9 @@ impl FramePasses {
         }
         if let Some(spots) = &self.spots {
             spots.record(pass);
+        }
+        if let Some(capsules) = &self.capsules {
+            capsules.record(pass);
         }
     }
 

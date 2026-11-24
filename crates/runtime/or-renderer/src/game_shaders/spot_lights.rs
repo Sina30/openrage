@@ -28,14 +28,16 @@ pub struct SpotLight {
     pub falloff: f32,
     /// The angle from the axis to the edge of the cone, in degrees.
     pub outer_degrees: f32,
+    /// The angle from the axis inside which it shines whole, in degrees; held to at least a degree.
+    pub inner_degrees: f32,
 }
 
 impl SpotLight {
     /// The cosine and the sine of the outer angle, and how steeply the light fades between the inner angle and the outer: what the pass reads of a cone.
     fn cone(&self) -> [f32; 3] {
         let outer = self.outer_degrees.clamp(LEAST_ANGLE, MOST_ANGLE);
-        // The inner angle of a particle's light is nought, which the game holds to a degree
-        let inner = LEAST_ANGLE.min(outer - 1.0);
+        // An inner angle of nought, as a particle's light states, the game holds to a degree
+        let inner = self.inner_degrees.max(LEAST_ANGLE).min(outer - 1.0);
         let (cos_outer, cos_inner) = (outer.to_radians().cos(), inner.to_radians().cos());
         [
             cos_outer,

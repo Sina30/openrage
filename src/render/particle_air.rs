@@ -38,6 +38,7 @@ pub fn lights_of(infos: Vec<LightInfo>) -> (Vec<PointLight>, Vec<SpotLight>) {
                 radius: light.range,
                 falloff: light.falloff,
                 outer_degrees: light.cone_half_angle,
+                inner_degrees: 0.0,
             });
         } else {
             points.push(PointLight {

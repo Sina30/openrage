@@ -269,6 +269,7 @@ impl ViewportRenderer {
             model_batches: Vec::new(),
             point_lights: Vec::new(),
             spot_lights: Vec::new(),
+            capsule_lights: Vec::new(),
             fog_volumes: Vec::new(),
             sky_textures: Default::default(),
             water_textures: Default::default(),

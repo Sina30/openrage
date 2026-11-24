@@ -9,7 +9,19 @@ fn spot(outer_degrees: f32) -> SpotLight {
         radius: 4.0,
         falloff: 2.0,
         outer_degrees,
+        inner_degrees: 0.0,
     }
+}
+
+#[test]
+fn a_stated_inner_angle_sets_where_the_fade_starts() {
+    let light = SpotLight {
+        inner_degrees: 30.0,
+        ..spot(60.0)
+    };
+    let [cos, _, scale] = light.cone();
+    let inner = 30f32.to_radians().cos();
+    assert!((scale - 1.0 / (inner - cos)).abs() < 1e-4, "{scale}");
 }
 
 #[test]

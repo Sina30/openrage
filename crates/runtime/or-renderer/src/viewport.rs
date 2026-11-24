@@ -271,6 +271,7 @@ pub struct ViewportRenderer {
     /// The lights the particles give, which light what the frame draws.
     point_lights: Vec<crate::game_shaders::point_lights::PointLight>,
     spot_lights: Vec<crate::game_shaders::spot_lights::SpotLight>,
+    capsule_lights: Vec<crate::game_shaders::capsule_lights::CapsuleLight>,
     fog_volumes: Vec<crate::game_shaders::fog_volumes::FogVolume>,
     /// The stars and the face of the moon the install gives, which a sky background draws at night.
     sky_textures: crate::game_shaders::dome::SkyTextures,
@@ -375,6 +376,14 @@ impl ViewportRenderer {
     /// Light Shaded with `lights` that shine in a cone, which the game's spot pass draws.
     pub fn set_spot_lights(&mut self, lights: Vec<crate::game_shaders::spot_lights::SpotLight>) {
         self.spot_lights = lights;
+    }
+
+    /// Light Shaded with `lights` that shine from a segment, which the game's capsule pass draws.
+    pub fn set_capsule_lights(
+        &mut self,
+        lights: Vec<crate::game_shaders::capsule_lights::CapsuleLight>,
+    ) {
+        self.capsule_lights = lights;
     }
 
     /// Fill the air of Shaded with `volumes`, which the game's fog volume pass draws over the lit frame.

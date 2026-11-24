@@ -715,6 +715,7 @@ fn cone(at: Vec3, towards: Vec3, degrees: f32) -> SpotLight {
         radius: 10.0,
         falloff: 1.0,
         outer_degrees: degrees,
+        inner_degrees: 0.0,
     }
 }
 

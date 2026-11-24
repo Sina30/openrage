@@ -18,8 +18,8 @@ use super::screen::{vertex_inputs, ScreenError, ScreenPass, Space};
 /// The pass that reads a light from a stream of its own, after the twenty-four that read one from the constants and the three that only mark the stencil.
 const INSTANCED: usize = 27;
 
-/// How many lights of a kind are drawn at once.
-pub const MOST: usize = 2048;
+/// How many lights of a kind are drawn at once: the 2,048 a dense street hands the frame, each drawn as up to twelve nested volumes.
+pub const MOST: usize = 24_576;
 
 /// How many times each side of the octahedron the sphere is cut into: the volume of a light is that much of a sphere.
 const CUTS: u32 = 3;

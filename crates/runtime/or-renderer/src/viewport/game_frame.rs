@@ -547,6 +547,9 @@ impl ViewportRenderer {
         deferred
             .passes
             .write_spot_lights(queue, &engine, &screen, &self.spot_lights);
+        deferred
+            .passes
+            .write_capsule_lights(queue, &engine, &screen, &self.capsule_lights);
         deferred.passes.write_fog(
             queue,
             &engine,

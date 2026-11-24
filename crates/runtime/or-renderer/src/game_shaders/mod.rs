@@ -4,6 +4,7 @@ pub mod ambient;
 pub mod antialias;
 pub mod bindings;
 pub mod bloom;
+pub mod capsule_lights;
 pub mod constants;
 pub mod deferred;
 pub mod dome;
