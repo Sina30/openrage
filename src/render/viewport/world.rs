@@ -561,8 +561,10 @@ impl RenderBridge {
                 let scale = Vec3::new(rows[0][0], rows[1][0], rows[2][0]).length();
                 // What is nearest where the camera will shortly be is asked for first.
                 let priority = lead.distance(instance.centre);
+                let mut blends = false;
                 for mesh in &lod.meshes {
                     let material = &mut world.materials[mesh.material as usize];
+                    blends |= material.bucket == WorldBucket::Blend;
                     let needed =
                         textures::pixels(mesh.density, away, scale, per_metre, budgets.most_side);
                     if material.touched != frame {
@@ -576,6 +578,10 @@ impl RenderBridge {
                             (material.priority, material.at) = (priority, instance.centre);
                         }
                     }
+                }
+                // ⚠ What blends is drawn far to near, the instances of one run too: a pane seen through another is drawn first.
+                if blends {
+                    world.layout.far_first(slot, eye);
                 }
                 runs.push(Run {
                     model,

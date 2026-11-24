@@ -217,6 +217,19 @@ impl Layout {
     pub(super) fn run(&self, slot: u32) -> std::ops::Range<u32> {
         self.starts[slot as usize]..self.ends[slot as usize]
     }
+
+    /// Put the instances of the slot `slot` furthest from `eye` first, as what blends is drawn, their spheres with them.
+    pub(super) fn far_first(&mut self, slot: u32, eye: Vec3) {
+        let run = self.run(slot);
+        let run = run.start as usize..run.end as usize;
+        let away = |sphere: &[f32; 4]| eye.distance(Vec3::new(sphere[0], sphere[1], sphere[2]));
+        let mut order: Vec<usize> = run.clone().collect();
+        order.sort_unstable_by(|a, b| away(&self.spheres[*b]).total_cmp(&away(&self.spheres[*a])));
+        let laid: Vec<WorldInstance> = order.iter().map(|at| self.laid[*at]).collect();
+        let spheres: Vec<[f32; 4]> = order.iter().map(|at| self.spheres[*at]).collect();
+        self.laid[run.clone()].copy_from_slice(&laid);
+        self.spheres[run].copy_from_slice(&spheres);
+    }
 }
 
 /// What draws are sorted by: the bucket, then the far before the near where surfaces blend, then
@@ -322,6 +335,18 @@ mod tests {
         assert_eq!(layout.nearest[1], (50.0, 0));
         let far: Vec<f32> = layout.laid[1..].iter().map(|i| i.rows[1][3]).collect();
         assert!(far.contains(&50.0) && far.contains(&60.0));
+
+        // Put far first, the run holds the furthest first and each sphere stays with its instance
+        for eye in [Vec3::ZERO, Vec3::new(0.0, 100.0, 0.0)] {
+            layout.far_first(1, eye);
+            let at = |i: usize| layout.laid[i].rows[1][3];
+            let away = |y: f32| (y - eye.y).abs();
+            assert!(away(at(1)) >= away(at(2)), "{} before {}", at(1), at(2));
+            for i in 1..3 {
+                assert_eq!(layout.spheres[i][1], at(i));
+            }
+        }
+        assert_eq!(layout.laid[0].rows[1][3], 5.0);
     }
 
     #[test]
