@@ -16681,3 +16681,9 @@ msgstr "Asociados mediante mapas de bloques: no se encontró ninguna instantáne
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "Asociados mediante las tablas de los archivos comprimidos; {ciphered} de los conjuntos de cambios del nivel están cifrados"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "En el interior {interior}, sala {room}"
+
+msgid "Outside every interior"
+msgstr "Fuera de todo interior"

@@ -16681,3 +16681,9 @@ msgstr "Association par les cartes de blocs : aucun instantané de clés n'a é
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "Association par les tables des archives ; {ciphered} des jeux de modifications du niveau sont chiffrés"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "Dans l'intérieur {interior}, pièce {room}"
+
+msgid "Outside every interior"
+msgstr "Hors de tout intérieur"

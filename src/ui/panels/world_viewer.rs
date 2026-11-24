@@ -292,6 +292,24 @@ fn count(n: u64) -> String {
     n.to_string()
 }
 
+/// The name the vocabulary gives `hash`, else the hash itself.
+fn name_of(hash: u32) -> String {
+    crate::state::gta6_names::name32(hash).unwrap_or_else(|| format!("{hash:08X}"))
+}
+
+/// Which interior and room the camera stands in, as the Camera section says it.
+fn where_inside(inside: Option<gta6_worldview::Inside>) -> String {
+    match inside {
+        Some(inside) => tr!(
+            "In the interior {interior}, room {room}",
+            interior = name_of(inside.interior),
+            room = name_of(inside.room),
+        )
+        .to_string(),
+        None => tr!("Outside every interior").to_string(),
+    }
+}
+
 /// The panel beside the view: what the mount found, what is streaming, and the camera.
 pub fn draw_side(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut RenderBridge>) {
     if !offered(state) {
@@ -368,6 +386,7 @@ pub fn draw_side(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
         );
         ui.separator();
         ui.strong(tr!("Camera"));
+        said(ui, &where_inside(viewer.inside()));
         ui.horizontal(|ui| {
             let position = &mut viewer.camera.position;
             for (axis, value) in [("X", &mut position.x), ("Y", &mut position.y), ("Z", &mut position.z)] {

@@ -16681,3 +16681,9 @@ msgstr "Associati tramite le mappe a blocchi: non è stato trovato alcuno snapsh
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "Associati tramite le tabelle degli archivi; {ciphered} dei set di modifiche del livello sono cifrati"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "Nell'interno {interior}, stanza {room}"
+
+msgid "Outside every interior"
+msgstr "Fuori da ogni interno"

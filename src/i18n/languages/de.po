@@ -16681,3 +16681,9 @@ msgstr "Zuordnung über Block-Maps: Kein Schlüssel-Snapshot gefunden"
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "Zuordnung über die Tabellen der Archive; {ciphered} der Änderungssätze des Levels sind verschlüsselt"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "Im Interieur {interior}, Raum {room}"
+
+msgid "Outside every interior"
+msgstr "Außerhalb jedes Interieurs"

@@ -16681,3 +16681,9 @@ msgstr "通过区块地图匹配：未找到密钥快照"
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "通过归档的表匹配；关卡的变更集中有 {ciphered} 个已加密"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "在室内 {interior}，房间 {room}"
+
+msgid "Outside every interior"
+msgstr "在所有室内之外"

@@ -16681,3 +16681,9 @@ msgstr "블록 맵으로 연결: 키 스냅샷을 찾지 못했습니다"
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "아카이브 테이블로 연결, 레벨의 변경 집합 중 {ciphered}개가 암호화됨"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "인테리어 {interior}, 방 {room} 안"
+
+msgid "Outside every interior"
+msgstr "모든 인테리어 밖"

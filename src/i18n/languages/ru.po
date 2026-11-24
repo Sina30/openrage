@@ -16820,3 +16820,9 @@ msgstr "Сопоставлено по картам блоков: снимок к
 
 msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
 msgstr "Сопоставлено по таблицам архивов; зашифровано наборов изменений уровня: {ciphered}"
+
+msgid "In the interior {interior}, room {room}"
+msgstr "В интерьере {interior}, комната {room}"
+
+msgid "Outside every interior"
+msgstr "Вне всех интерьеров"
