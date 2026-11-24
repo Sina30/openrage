@@ -1,11 +1,19 @@
 //! What a frame of the world lays out: the level of detail each seen instance draws at, the seen
 //! instances side by side a model and level, and the order the draws go out in.
 
-use glam::Vec3;
+use std::sync::Arc;
+
+use glam::{Mat4, Vec3};
+use or_io::gta6::map::occluders::MapOccluders;
 use or_renderer::{Frustum, WorldBucket, WorldInstance};
 use rayon::prelude::*;
 
 use crate::state::gta6_world::worldview::stream::{Chunk, Instance};
+
+#[path = "world_occlusion.rs"]
+mod occlusion;
+
+use occlusion::Occlusion;
 
 /// How many of its own radii past its sphere a thing is still drawn for the shadow it casts into the view.
 // ponytail: one reach for every height of the sun, right down to a sun 34 degrees up; the sun's own height once the renderer says it.
@@ -31,6 +39,8 @@ fn reach(shadow_far: Option<f32>, away: f32, radius: f32) -> f32 {
 /// What a frame is seen through.
 pub(super) struct View {
     pub frustum: Frustum,
+    /// The view and projection the frustum is of.
+    pub view_proj: Mat4,
     pub eye: Vec3,
     /// The scale every level-of-detail distance is multiplied by.
     pub lod_scale: f32,
@@ -66,6 +76,8 @@ pub(super) struct Layout {
     /// selection; infinitely far for a slot that only casts shadows into the view.
     pub nearest: Vec<(f32, u32)>,
     pub laid: Vec<WorldInstance>,
+    /// The occluders as last drawn: a chunk they hide is not laid out.
+    occlusion: Occlusion,
 }
 
 impl Layout {
@@ -89,6 +101,11 @@ impl Layout {
         at(model).unwrap_or(end)..at(model + 1).unwrap_or(end)
     }
 
+    /// Draw `occluders` for `view`, so that the next cull leaves out the chunks they hide.
+    pub(super) fn occlude(&mut self, occluders: &Arc<[Arc<MapOccluders>]>, view: &View) {
+        self.occlusion.draw(occluders, view.view_proj, view.eye);
+    }
+
     /// The instances of `chunks` the view sees, each with the slot of the level its distance picks.
     ///
     /// ⚠ On every core: a selection holds tens of thousands of instances, and a frame that tested
@@ -102,6 +119,8 @@ impl Layout {
                 // A chunk wholly in view is taken whole, and one out of view not at all.
                 let whole = view.frustum.holds_sphere(chunk.centre, chunk.radius);
                 let part = whole || view.frustum.sees_sphere(chunk.centre, wider);
+                // ⚠ As wide as its shadow reaches: what is hidden may cast one into the view.
+                let part = part && !this.occlusion.hides(chunk.centre, wider);
                 let run = if part { chunk.from..chunk.to } else { 0..0 };
                 run.filter_map(move |at| {
                     let instance = instances.get(at as usize)?;
@@ -211,8 +230,10 @@ mod tests {
 
     fn view(shadow_far: Option<f32>) -> View {
         // The default camera stands at the origin and looks along +Y.
+        let view_proj = FlyCamera::default().view_proj(1.0);
         View {
-            frustum: Frustum::of(FlyCamera::default().view_proj(1.0)),
+            frustum: Frustum::of(view_proj),
+            view_proj,
             eye: Vec3::ZERO,
             lod_scale: 1.0,
             shadow_far,
@@ -301,6 +322,52 @@ mod tests {
         layout.place(&instances);
         assert_eq!(layout.run(0), 0..1);
         assert!(layout.nearest[0].0.is_infinite());
+    }
+
+    #[test]
+    fn a_chunk_the_occluders_hide_is_not_laid_out() {
+        use or_io::gta6::map::occluders::BoxOccluder;
+        // A wall 20 m ahead, 20 m wide and high: corner k is high in x, y, z by its bits 0, 1, 2.
+        let corners = std::array::from_fn(|k| {
+            let pick = |bit: usize, low: f32, high: f32| if k >> bit & 1 == 0 { low } else { high };
+            [pick(0, -10.0, 10.0), pick(1, 20.0, 21.0), pick(2, -10.0, 10.0)]
+        });
+        let occluders: Arc<[Arc<MapOccluders>]> = Arc::from([Arc::new(MapOccluders {
+            boxes: vec![BoxOccluder { corners }],
+            models: Vec::new(),
+        })]);
+        let chunk = |at: Vec3, from: u32| Chunk {
+            centre: at,
+            radius: 1.0,
+            from,
+            to: from + 1,
+        };
+        // Behind the wall, half out from behind its side, and before it.
+        let places = [
+            Vec3::new(0.0, 50.0, 0.0),
+            Vec3::new(25.0, 50.0, 0.0),
+            Vec3::new(0.0, 10.0, 0.0),
+        ];
+        let instances = places.map(|at| instance(0, at, 1.0));
+        let chunks: Vec<Chunk> = (places.iter().zip(0..)).map(|(at, k)| chunk(*at, k)).collect();
+        let mut layout = Layout::default();
+        layout.clear();
+        layout.model([f32::INFINITY].into_iter());
+        layout.cull(&chunks, &instances, &view(None));
+        assert_eq!(layout.seen.len(), 3);
+        layout.occlude(&occluders, &view(None));
+        layout.cull(&chunks, &instances, &view(None));
+        let seen: Vec<u32> = layout.seen.iter().map(|s| s.at).collect();
+        assert_eq!(seen, [1, 2]);
+        // Tested as wide as its shadow reaches, it is still wholly behind the wall.
+        layout.cull(&chunks, &instances, &view(Some(100.0)));
+        let seen: Vec<u32> = layout.seen.iter().map(|s| s.at).collect();
+        assert_eq!(seen, [1, 2]);
+        // Larger, its shadow's reach passes the wall's side: it draws for that.
+        let mut wide = chunks.clone();
+        wide[0].radius = 8.0;
+        layout.cull(&wide, &instances, &view(Some(100.0)));
+        assert_eq!(layout.seen.len(), 3);
     }
 
     #[test]
