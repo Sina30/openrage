@@ -319,9 +319,10 @@ fn fill(
 ) {
     let needed = bytes.len() as wgpu::BufferAddress;
     if slot.as_ref().is_none_or(|buffer| buffer.size() < needed) {
+        let most = device.limits().max_buffer_size;
         *slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
-            size: needed.next_power_of_two().max(4096),
+            size: needed.next_power_of_two().max(4096).min(most),
             usage: usage | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         }));
@@ -547,6 +548,9 @@ impl World {
         instances: &[WorldInstance],
         mut draws: Vec<WorldDraw>,
     ) {
+        // ⚠ The device makes no buffer larger than its limit: what one holds of the frame's instances is what draws.
+        let most = device.limits().max_buffer_size / std::mem::size_of::<WorldInstance>() as u64;
+        let instances = &instances[..instances.len().min(most as usize)];
         self.count = instances.len() as u32;
         // A run past the instances of this frame would read what an earlier frame left in the buffer
         for draw in &mut draws {

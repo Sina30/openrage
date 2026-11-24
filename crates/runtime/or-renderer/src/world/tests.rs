@@ -573,6 +573,59 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn a_frame_of_more_instances_than_the_device_s_largest_buffer_holds_draws_what_fits_and_is_accepted(
+) {
+    let test = "a_frame_of_more_instances_than_the_device_s_largest_buffer_holds";
+    if gpu(test).is_none() {
+        return;
+    }
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
+        .expect("the adapter the first device came from");
+    let most = 1u64 << 20;
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("world-test-small-buffers"),
+        required_limits: wgpu::Limits {
+            max_buffer_size: most,
+            ..wgpu::Limits::default()
+        },
+        ..Default::default()
+    }))
+    .expect("a device of smaller buffers");
+    let mut renderer =
+        ViewportRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, SIZE, SIZE);
+    let fit = most as usize / std::mem::size_of::<WorldInstance>();
+    let instances = vec![WorldInstance::of(Mat4::IDENTITY, WHITE); 2 * fit];
+    let square = square(&device, 1.0, plain(&device, &renderer, WorldBucket::Opaque));
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    renderer.set_world(
+        &device,
+        &queue,
+        &instances,
+        vec![WorldDraw {
+            mesh: square,
+            instances: 0..instances.len() as u32,
+        }],
+    );
+    frame(
+        &device,
+        &queue,
+        &renderer,
+        &overhead(),
+        ShadingMode::Material,
+    );
+    assert!(
+        pollster::block_on(validation.pop()).is_none(),
+        "the device accepted every buffer and draw"
+    );
+    assert_eq!(renderer.world_instances() as usize, fit);
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn a_fade_leaves_its_share_of_the_pixels_of_an_instance_and_a_cutout_only_the_texels_that_cover() {
     let test = "a_fade_leaves_its_share_of_the_pixels_of_an_instance";
     let Some((device, queue)) = gpu(test) else {

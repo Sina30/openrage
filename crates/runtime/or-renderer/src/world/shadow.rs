@@ -230,10 +230,14 @@ fn room(
     usage: wgpu::BufferUsages,
     bytes: u64,
 ) {
-    if slot.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
+    let most = device.limits().max_buffer_size;
+    if slot
+        .as_ref()
+        .is_none_or(|buffer| buffer.size() < bytes.min(most))
+    {
         *slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
-            size: bytes.next_power_of_two().max(4096),
+            size: bytes.next_power_of_two().max(4096).min(most),
             usage: usage | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         }));
@@ -283,6 +287,9 @@ impl Casting {
         self.of = Some(of);
         (self.laid).clear();
         self.arguments.clear();
+        // ⚠ The buffer is no larger than the device allows: what does not fit in it casts nothing.
+        let instance = std::mem::size_of::<WorldInstance>() as u64;
+        let most = (self.instances.as_ref()).map_or(0, |buffer| buffer.size() / instance) as usize;
         for (cascade, view) in views.iter().enumerate() {
             let ranges = &mut self.ranges[cascade];
             ranges.clear();
@@ -292,9 +299,11 @@ impl Casting {
                     for at in draw.instances.clone() {
                         let sphere = frame.spheres.get(at as usize);
                         let near = |s: &[f32; 4]| reaches(view, Vec3::new(s[0], s[1], s[2]), s[3]);
-                        if let (true, Some(instance)) =
-                            (sphere.is_none_or(near), frame.instances.get(at as usize))
-                        {
+                        let room = self.laid.len() < most;
+                        if let (true, Some(instance)) = (
+                            room && sphere.is_none_or(near),
+                            frame.instances.get(at as usize),
+                        ) {
                             self.laid.push(*instance);
                         }
                     }
