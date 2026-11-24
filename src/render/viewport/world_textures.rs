@@ -177,15 +177,31 @@ fn write(
 /// The widest row a model's palette is laid in: a longer palette runs on into the next row.
 const PALETTE_ROW: usize = 4096;
 
-/// A model's own tint palette on the device: its colours as stored, which the mesh stage reads unconverted, the last row filled out with white, which reads as no colour.
+/// The side and the rows a palette of `colours` is laid in on a device whose textures are at most `most` a side; colours past the last row the device makes are left out, and read as none.
+fn palette_size(colours: usize, most: u32) -> (usize, usize) {
+    let most = (most as usize).max(1);
+    let width = colours.clamp(1, PALETTE_ROW.min(most));
+    let rows = colours.div_ceil(width).clamp(1, most);
+    (width, rows)
+}
+
+/// A model's own tint palette on the device: its colours as stored, which the mesh stage reads unconverted, the last row filled out with white, which reads as no colour; no side longer than `most`.
 pub(super) fn palette(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     colours: &[[u8; 4]],
+    most: u32,
 ) -> wgpu::TextureView {
-    let width = colours.len().clamp(1, PALETTE_ROW);
-    let rows = colours.len().div_ceil(width).max(1);
-    let mut bytes: Vec<u8> = colours.iter().flatten().copied().collect();
+    let (width, rows) = palette_size(colours.len(), most);
+    if width * rows < colours.len() {
+        tracing::warn!(colours = colours.len(), most, "a palette is longer than the device's largest texture holds: its last colours read as none");
+    }
+    let mut bytes: Vec<u8> = colours
+        .iter()
+        .take(width * rows)
+        .flatten()
+        .copied()
+        .collect();
     bytes.resize(width * rows * 4, 255);
     let size = (width as u32, rows as u32);
     write(
@@ -196,6 +212,43 @@ pub(super) fn palette(
         &[bytes],
     )
     .0
+}
+
+/// The tint palettes the models on the device hold themselves, by the key their materials name each by, each with how many of those models hold it.
+#[derive(Default)]
+pub(super) struct Palettes(HashMap<u64, (wgpu::TextureView, u32)>);
+
+impl Palettes {
+    /// One more model holds the palette of `key`, of `colours`: on the device once, of no side longer than `most`.
+    pub(super) fn hold(
+        &mut self,
+        (device, queue): (&wgpu::Device, &wgpu::Queue),
+        key: u64,
+        colours: &[[u8; 4]],
+        most: u32,
+    ) {
+        let held =
+            (self.0.entry(key)).or_insert_with(|| (palette(device, queue, colours, most), 0));
+        held.1 += 1;
+    }
+
+    /// One model fewer holds the palette of `key`: it leaves the device with the last.
+    pub(super) fn release(&mut self, key: u64) {
+        if let Some(held) = self.0.get_mut(&key) {
+            held.1 = held.1.saturating_sub(1);
+            if held.1 == 0 {
+                self.0.remove(&key);
+            }
+        }
+    }
+
+    pub(super) fn get(&self, key: &u64) -> Option<&wgpu::TextureView> {
+        self.0.get(key).map(|(view, _)| view)
+    }
+
+    pub(super) fn contains_key(&self, key: &u64) -> bool {
+        self.0.contains_key(key)
+    }
 }
 
 /// How often a mesh's texture turns over its surface, in turns a metre: the square root of the
@@ -388,6 +441,17 @@ mod tests {
     use wgpu::TextureFormat as F;
 
     use super::*;
+
+    #[test]
+    fn a_palette_is_laid_in_no_side_longer_than_the_device_makes() {
+        assert_eq!(palette_size(0, 8192), (1, 1));
+        assert_eq!(palette_size(300, 8192), (300, 1));
+        assert_eq!(palette_size(PALETTE_ROW * 3 + 1, 8192), (PALETTE_ROW, 4));
+        // A device of 2,048 a side: rows of 2,048, and no more rows than that.
+        assert_eq!(palette_size(5000, 2048), (2048, 3));
+        assert_eq!(palette_size(2048 * 2048 + 9, 2048), (2048, 2048));
+        assert_eq!(palette_size(PALETTE_ROW * 9000, 8192), (PALETTE_ROW, 8192));
+    }
 
     #[test]
     fn a_level_of_blocks_is_whole_blocks() {

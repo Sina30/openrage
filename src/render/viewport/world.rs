@@ -15,18 +15,20 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3;
-use or_renderer::world::{WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
+use or_renderer::world::{ShadowFocus, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
 use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
 use crate::state::drivers::WeatherState;
 use crate::state::gta6_world::worldview::index::ModelRef;
-use crate::state::gta6_world::worldview::{Bucket, CpuMaterial, CpuModel};
+use crate::state::gta6_world::worldview::{Bucket, CpuMaterial};
 
 #[path = "world_budget.rs"]
 mod budget;
 #[path = "world_cards.rs"]
 mod cards;
+#[path = "world_kept.rs"]
+mod kept;
 #[path = "world_layout.rs"]
 mod layout;
 #[path = "world_material.rs"]
@@ -41,13 +43,16 @@ mod textures;
 mod water;
 
 pub use budget::WorldCost;
-use budget::{ahead, evicted, may_take, Budgets, Idle};
+use budget::{ahead, may_take, Budgets};
 use layout::{order, Layout, View};
 use pages::{Pages, Place};
 use textures::{Texture, Textures, ABSENT, MISSING};
 
 /// What a material is told of a map that is a model's own palette.
 const OWN_PALETTE: u64 = u64::MAX;
+
+/// How high above the ground the camera is taken to ride an aircraft, in metres: the viewer's choice, for the game stretches its cascades by what its camera rides and the viewer's camera rides nothing.
+const AIRBORNE: f32 = 30.0;
 
 /// One mesh of a level of a model: where it lies in the pages and what draws it.
 struct Mesh {
@@ -77,6 +82,8 @@ enum Slot {
         held: u64,
         /// Where the nearest instance of it stood when it last drew.
         at: Vec3,
+        /// The keys of the palettes it holds.
+        palettes: Vec<u64>,
     },
     Missing,
 }
@@ -102,6 +109,9 @@ struct Material {
     pixels: u32,
     priority: f32,
     at: Vec3,
+    /// The meshes on the device it draws, and what it was found by: at none it is let go and its slot taken by the next new one.
+    meshes: u32,
+    of: Option<(CpuMaterial, Bucket)>,
 }
 
 /// A run of the layout that draws: a level of a model of the selection, and how far its nearest instance is.
@@ -146,11 +156,11 @@ pub(super) struct WorldGpu {
     model_bytes: u64,
     pages: Pages,
     textures: Textures,
-    /// The tint palettes the models hold themselves, by the key their materials name each by.
-    // ponytail: a palette is never let go; a few hundred bytes each, no more than the install has palettes.
-    palettes: HashMap<u64, wgpu::TextureView>,
+    palettes: textures::Palettes,
     materials: Vec<Material>,
-    material_of: HashMap<(CpuMaterial, Bucket), u32>,
+    /// The materials by what they are made of, one a bucket, and the slots of those let go.
+    material_of: HashMap<CpuMaterial, Vec<(Bucket, u32)>>,
+    free_materials: Vec<u32>,
     /// What the device may hold, worked out the first frame.
     budgets: Option<Budgets>,
     frame: u64,
@@ -173,7 +183,7 @@ pub(super) struct WorldGpu {
     /// The far stand-ins the renderer holds.
     cards: cards::Cards,
     cost: WorldCost,
-    /// The models and textures let go, to count those that come back.
+    /// The models and textures let go, to count those that come back; each set held to a bound by `remember`.
     gone: (HashSet<ModelRef>, HashSet<u64>),
 }
 
@@ -199,149 +209,6 @@ fn merged(mut wanted: Vec<(f32, u64, u32)>) -> Vec<(f32, u64, u32)> {
         same
     });
     wanted
-}
-
-impl WorldGpu {
-    /// The material that draws a mesh of this material in this bucket: one for every mesh that names the same.
-    // ponytail: a material is never forgotten, only what it holds on the device; there are no more than the install has distinct materials.
-    fn material(&mut self, cpu: &CpuMaterial, bucket: Bucket) -> u32 {
-        if let Some(id) = self.material_of.get(&(cpu.clone(), bucket)) {
-            return *id;
-        }
-        let id = self.materials.len() as u32;
-        self.material_of.insert((cpu.clone(), bucket), id);
-        self.materials.push(Material {
-            maps: material::slots_of(cpu),
-            colours: std::array::from_fn(|at| material::is_colour(cpu, at)),
-            whole: std::array::from_fn(|at| material::read_whole(cpu, at)),
-            family: material::family_of(cpu.family),
-            constants: material::constants_of(cpu),
-            bucket: bucket_of(bucket),
-            made: None,
-            making: 0,
-            touched: 0,
-            pixels: 0,
-            priority: 0.0,
-            at: Vec3::ZERO,
-        });
-        id
-    }
-
-    /// Write every mesh of every level of `model` to the pages; a mesh of nothing, or one larger
-    /// than the device makes a buffer, is left out.
-    fn put(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        budgets: &Budgets,
-        model: &CpuModel,
-        (frame, eye): (u64, Vec3),
-    ) -> Slot {
-        for (key, colours) in &model.palettes {
-            (self.palettes.entry(*key))
-                .or_insert_with(|| textures::palette(device, queue, colours));
-        }
-        let mut bytes = 0;
-        let mut lods = Vec::with_capacity(model.lods.len());
-        for lod in &model.lods {
-            let mut meshes = Vec::with_capacity(lod.meshes.len());
-            for mesh in &lod.meshes {
-                let place = (self.pages).put(device, queue, budgets, &mesh.vertices, &mesh.indices);
-                let Some(place) = place else {
-                    continue;
-                };
-                bytes += place.bytes();
-                meshes.push(Mesh {
-                    place,
-                    material: self.material(&mesh.material, mesh.bucket),
-                    density: textures::density(&mesh.vertices, &mesh.indices),
-                    drawn: None,
-                });
-            }
-            lods.push(Lod {
-                until: lod.until,
-                meshes,
-            });
-        }
-        self.model_bytes += bytes;
-        Slot::Ready {
-            lods,
-            bytes,
-            drawn: frame,
-            held: frame,
-            at: eye,
-        }
-    }
-
-    /// Take `model` off the device and give its room in the pages back.
-    fn forget(&mut self, model: &ModelRef) {
-        if let Some(Slot::Ready { lods, bytes, .. }) = self.models.remove(model) {
-            for mesh in lods.iter().flat_map(|lod| &lod.meshes) {
-                self.pages.free(mesh.place);
-            }
-            self.model_bytes -= bytes;
-        }
-    }
-
-    /// Let go of what did not draw in the frame `frame` until the rest fit the budgets: the
-    /// models the selection no longer holds first, and of models and of textures the farthest
-    /// from `eye` first.
-    // ponytail: where what the selection holds is alone over the budget, what of it is out of view is let go and read again; a smaller selection if a card that small shows it.
-    fn evict(&mut self, budgets: &Budgets, frame: u64, eye: Vec3) {
-        if self.model_bytes > budgets.models_kept {
-            let idle = (self.models.iter())
-                .filter_map(|(model, slot)| match slot {
-                    Slot::Ready {
-                        bytes,
-                        drawn,
-                        held,
-                        at,
-                        ..
-                    } if *drawn < frame => Some(Idle {
-                        key: *model,
-                        bytes: *bytes,
-                        held: *held == frame,
-                        away: eye.distance(*at),
-                    }),
-                    _ => None,
-                })
-                .collect();
-            for idle in evicted(idle, self.model_bytes - budgets.models_kept) {
-                self.forget(&idle.key);
-                self.cost.evicted.0 += 1;
-                self.gone.0.insert(idle.key);
-                self.told.push((idle.key, Some(false)));
-                self.changes += 1;
-            }
-        }
-        let gone: HashSet<u64> = (self.textures.evict(budgets.textures_kept, frame, eye))
-            .into_iter()
-            .collect();
-        if gone.is_empty() {
-            return;
-        }
-        self.cost.evicted.1 += gone.len() as u64;
-        self.gone.1.extend(&gone);
-        self.changes += 1;
-        // ⚠ A material and a mesh made with a texture hold it on the device: both let it go here,
-        // or the bytes counted as freed would stay.
-        for material in &mut self.materials {
-            if material.maps.iter().flatten().any(|key| gone.contains(key)) {
-                material.made = None;
-            }
-        }
-        let materials = &self.materials;
-        for slot in self.models.values_mut() {
-            let Slot::Ready { lods, .. } = slot else {
-                continue;
-            };
-            for mesh in lods.iter_mut().flat_map(|lod| &mut lod.meshes) {
-                if materials[mesh.material as usize].made.is_none() {
-                    mesh.drawn = None;
-                }
-            }
-        }
-    }
 }
 
 impl RenderBridge {
@@ -385,9 +252,11 @@ impl RenderBridge {
         }
         let bc = (self.device.features()).contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
         let world = &mut self.world;
-        // ponytail: wgpu 29's adapter states no size of memory, so the kept bytes are the fixed ones; a size read from the backend goes here.
-        let budgets =
-            *(world.budgets).get_or_insert_with(|| Budgets::of(&self.device.limits(), None));
+        // ponytail: wgpu 29's adapter states no size of memory, so the kept bytes are the fixed ones or those a person set; a size read from the backend goes here.
+        let budgets = *(world.budgets).get_or_insert_with(|| {
+            let set = std::env::var(budget::MEMORY_VARIABLE).ok();
+            Budgets::of(&self.device.limits(), budget::memory_set(set.as_deref()))
+        });
         let mut viewer = crate::state::gta6_world::worldview::viewer();
         let eye = viewer.camera.position;
         let now = Instant::now();
@@ -439,8 +308,10 @@ impl RenderBridge {
         }
         world.cost.uploaded.1 = uploaded;
         world.release_whole(viewer.reads_textures());
+        world.cost.taking = taking.elapsed();
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
+        let lighting = Instant::now();
         let metered = self.renderer.metered();
         let (day, lights, exposure) = viewer.sky(days, weather, metered.as_ref());
         let day_for = (
@@ -464,6 +335,14 @@ impl RenderBridge {
         (self.renderer).set_distant_lights(lights.sprite_look, lights.sprites);
         self.renderer.set_coronas(lights.coronas);
         self.renderer.set_world_exposure(exposure);
+        world.cost.lights = lighting.elapsed();
+        // ⚠ The game stretches its cascades by what the camera rides: a camera this high above the ground is taken to ride an aircraft.
+        let ground = viewer.ground_under(eye.x, eye.y);
+        let airborne = ground.is_some_and(|ground| eye.z - ground > AIRBORNE);
+        (self.renderer).set_shadow_focus(match airborne {
+            true => ShadowFocus::AIRCRAFT,
+            false => ShadowFocus::FREE,
+        });
         // The GTA V day is worked out again once the world is left.
         self.day_key = None;
         let water = viewer.water(weather);

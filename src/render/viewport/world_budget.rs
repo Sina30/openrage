@@ -41,6 +41,15 @@ pub(super) struct Budgets {
     pub most_side: u32,
 }
 
+/// The variable a person sets to the device memory, in MiB, the world's budgets are worked out from, where the device states none.
+pub(super) const MEMORY_VARIABLE: &str = "OPENRAGE_WORLD_MEMORY_MIB";
+
+/// The bytes of device memory `value` of [`MEMORY_VARIABLE`] states: a whole number of MiB, none for anything else.
+pub(super) fn memory_set(value: Option<&str>) -> Option<u64> {
+    let mib: u64 = value?.trim().parse().ok()?;
+    mib.checked_mul(1 << 20).filter(|bytes| *bytes > 0)
+}
+
 impl Budgets {
     /// The budgets of a device of these limits and of `memory` bytes, where it says how many.
     pub(super) fn of(limits: &wgpu::Limits, memory: Option<u64>) -> Self {
@@ -73,6 +82,9 @@ pub struct WorldCost {
     /// The whole of the frame's world on the CPU, and whether it laid the world out again.
     pub refresh: Duration,
     pub laid: bool,
+    /// Of the frame: putting what arrived on the device, and working out the day and the lights about the camera.
+    pub taking: Duration,
+    pub lights: Duration,
     /// Of the last layout: drawing the occluders, the cull and the placing, and all of it.
     pub occlude: Duration,
     pub cull: Duration,
@@ -90,6 +102,17 @@ pub struct WorldCost {
     /// Models and textures let go so far, and those of them that came back.
     pub evicted: (u64, u64),
     pub reread: (u64, u64),
+}
+
+/// The most keys a set of what was let go holds before it starts again: a key let go before that is not counted when it comes back.
+const GONE_KEPT: usize = 1 << 16;
+
+/// Remember `key` among `gone`, which starts again once it holds [`GONE_KEPT`].
+pub(super) fn remember<K: Eq + std::hash::Hash>(gone: &mut std::collections::HashSet<K>, key: K) {
+    if gone.len() >= GONE_KEPT {
+        *gone = Default::default();
+    }
+    gone.insert(key);
 }
 
 /// Whether a frame that began putting things on the device at `since`, and has put `bytes` of this kind so far, puts another.
@@ -156,6 +179,23 @@ mod tests {
     }
 
     #[test]
+    fn the_memory_a_person_sets_is_whole_mebibytes() {
+        assert_eq!(memory_set(Some("4096")), Some(4 << 30));
+        assert_eq!(memory_set(Some(" 512 ")), Some(512 << 20));
+        for bad in ["", "0", "-1", "4 GiB", "1.5", "99999999999999999999"] {
+            assert_eq!(memory_set(Some(bad)), None, "{bad}");
+        }
+        assert_eq!(memory_set(None), None);
+        // Four GiB set: the world keeps half of it, three parts of four models.
+        let limits = wgpu::Limits::default();
+        let set = Budgets::of(&limits, memory_set(Some("4096")));
+        assert_eq!(
+            (set.models_kept, set.textures_kept),
+            (1536 << 20, 512 << 20)
+        );
+    }
+
+    #[test]
     fn a_page_is_no_larger_than_the_device_makes_a_buffer() {
         let limits = wgpu::Limits {
             max_buffer_size: 32 << 20,
@@ -204,6 +244,18 @@ mod tests {
         };
         assert!(may_take(long_ago, 0), "the first is always taken");
         assert!(!may_take(long_ago, 1));
+    }
+
+    #[test]
+    fn what_was_let_go_is_remembered_up_to_a_bound() {
+        let mut gone = std::collections::HashSet::new();
+        for key in 0..GONE_KEPT {
+            remember(&mut gone, key);
+        }
+        assert_eq!(gone.len(), GONE_KEPT);
+        remember(&mut gone, GONE_KEPT);
+        assert_eq!(gone.len(), 1, "it starts again");
+        assert!(gone.contains(&GONE_KEPT));
     }
 
     #[test]

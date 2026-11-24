@@ -14,7 +14,7 @@ const VERTEX: u64 = std::mem::size_of::<MeshVertex>() as u64;
 const INDEX: u64 = std::mem::size_of::<u32>() as u64;
 
 /// The free runs of a buffer, counted in what it holds, in order and never touching.
-// ponytail: first fit and no compaction: a page that models left holes in keeps them until it empties.
+// ponytail: first fit and no compaction: a page that models left holes in keeps them until it empties, or `Pages::emptiest` has its models let go.
 #[derive(Debug, PartialEq, Eq)]
 struct Free {
     runs: Vec<Range<u32>>,
@@ -86,8 +86,9 @@ struct Page {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     free: (Free, Free),
-    /// How many vertices and indices it holds.
+    /// How many vertices and indices it holds, and how many of them its meshes take.
     size: (u32, u32),
+    taken: (u32, u32),
 }
 
 impl Page {
@@ -113,7 +114,13 @@ impl Page {
             ),
             free: (Free::new(size.0), Free::new(size.1)),
             size,
+            taken: (0, 0),
         }
+    }
+
+    /// The bytes its meshes take.
+    fn used(&self) -> u64 {
+        u64::from(self.taken.0) * VERTEX + u64::from(self.taken.1) * INDEX
     }
 
     /// Take room for `need` vertices and indices; where each starts, or `None` and nothing taken.
@@ -123,6 +130,7 @@ impl Page {
             self.free.0.give(vertices..vertices + need.0);
             return None;
         };
+        self.taken = (self.taken.0 + need.0, self.taken.1 + need.1);
         Some((vertices, indices))
     }
 }
@@ -162,8 +170,13 @@ impl Pages {
         if need.0 == 0 || need.1 == 0 {
             return None;
         }
-        let mut found = (self.pages.iter_mut().enumerate()).find_map(|(at, page)| {
-            let (vertex, index) = page.as_mut()?.take(need)?;
+        // The fullest page with room first, so that the emptiest empties as its models leave.
+        let mut order: Vec<(u64, usize)> = (self.pages.iter().enumerate())
+            .filter_map(|(at, page)| Some((page.as_ref()?.used(), at)))
+            .collect();
+        order.sort_unstable_by(|a, b| b.cmp(a));
+        let mut found = order.into_iter().find_map(|(_, at)| {
+            let (vertex, index) = self.pages[at].as_mut()?.take(need)?;
             Some((at, vertex, index))
         });
         if found.is_none() {
@@ -211,6 +224,11 @@ impl Pages {
         };
         (page.free.0).give(place.base_vertex..place.base_vertex + place.vertices);
         (page.free.1).give(place.first_index..place.first_index + place.indices);
+        let taken = &mut page.taken;
+        *taken = (
+            taken.0.saturating_sub(place.vertices),
+            taken.1.saturating_sub(place.indices),
+        );
         if page.free.0.is_whole(page.size.0) && page.free.1.is_whole(page.size.1) {
             *slot = None;
         }
@@ -220,6 +238,16 @@ impl Pages {
     pub(super) fn buffers(&self, page: u32) -> Option<(&wgpu::Buffer, &wgpu::Buffer)> {
         let page = self.pages.get(page as usize)?.as_ref()?;
         Some((&page.vertices, &page.indices))
+    }
+
+    /// The page whose meshes take the fewest bytes, where the pages together hold more than `most` bytes of device memory.
+    pub(super) fn emptiest(&self, most: u64) -> Option<u32> {
+        if self.held().1 <= most {
+            return None;
+        }
+        let pages = self.pages.iter().enumerate();
+        let held = pages.filter_map(|(at, page)| Some((at as u32, page.as_ref()?.used())));
+        held.min_by_key(|(_, used)| *used).map(|(at, _)| at)
     }
 
     /// How many pages there are, and the bytes of device memory they hold.
