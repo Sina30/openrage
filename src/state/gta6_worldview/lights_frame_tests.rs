@@ -42,36 +42,77 @@ fn a_light_comes_on_and_goes_off_over_the_last_minute_of_an_hour() {
     assert_eq!(hour_strength(ALL_HOURS, 23.999), 1.0);
 }
 
+/// What the point volumes of `lights` give at `d` metres from `at`, as the pass fades each.
+fn point_light_at(lights: &FrameLights, at: f32, d: f32) -> f32 {
+    (lights.points.iter())
+        .filter(|p| p.position.x == at)
+        .map(|p| {
+            p.intensity
+                * (1.0 - d * d / (p.radius * p.radius))
+                    .max(0.0)
+                    .powf(p.falloff)
+        })
+        .sum()
+}
+
 #[test]
-fn the_brightest_at_the_camera_are_kept_and_spots_go_to_the_spot_pass() {
+fn the_brightest_at_the_camera_are_kept_each_in_the_pass_of_its_kind() {
     let lamps = [
         placed(LightKind::Point, 100.0, ALL_HOURS),
         placed(LightKind::Spot, 10.0, ALL_HOURS),
         placed(LightKind::Capsule, 20.0, ALL_HOURS),
         placed(LightKind::Point, 15.0, 1 << 3),
     ];
-    let (points, spots) = frame_lights(&lamps, Vec3::ZERO, 12.0, 0.5, 2);
-    assert_eq!(spots.len(), 1);
-    let spot = spots[0];
+    let shells = SHELLS.len();
+    let two = frame_lights(&lamps, Vec3::ZERO, 12.0, 0.5, 2);
+    assert_eq!(two.lights, 2);
+    assert!(
+        two.points.is_empty(),
+        "the far point loses to the two near ones"
+    );
+    assert_eq!(two.spots.len(), 2 * shells, "two cones a shell");
+    assert_eq!(two.capsules.len(), shells);
+    let spot = two.spots[0];
     assert_eq!(
-        (spot.position.x, spot.intensity, spot.radius),
-        (10.0, 5.0, 5.0)
+        (spot.position.x, spot.radius, spot.direction),
+        (10.0, 5.0, Vec3::NEG_Z)
     );
     assert_eq!(
-        (spot.outer_degrees, spot.falloff, spot.direction),
-        (40.0, 8.0, Vec3::NEG_Z)
+        (spot.outer_degrees, spot.inner_degrees, spot.falloff),
+        (40.0, 20.0, SHELL_EXPONENT)
     );
-    assert_eq!(points.len(), 1, "the far point loses to the two near ones");
+    let capsule = two.capsules[0];
     assert_eq!(
-        (points[0].position.x, points[0].radius),
-        (20.0, 7.0),
-        "a capsule reaches past its ends"
+        (capsule.position.x, capsule.length, capsule.radius),
+        (20.0, 4.0, 5.0)
     );
-    let (all, _) = frame_lights(&lamps, Vec3::ZERO, 3.5, 1.0, 8);
-    assert_eq!(all.len(), 3, "the hour-3 light is lit at 03:30");
-    assert_eq!(all[0].position.x, 15.0, "the nearest point first");
-    let (none, no_spots) = frame_lights(&lamps, Vec3::ZERO, 3.5, 1.0, 0);
-    assert!(none.is_empty() && no_spots.is_empty());
+    let all = frame_lights(&lamps, Vec3::ZERO, 3.5, 1.0, 8);
+    assert_eq!(all.lights, 4, "the hour-3 light is lit at 03:30");
+    assert_eq!(all.points[0].position.x, 15.0, "the nearest point first");
+    let none = frame_lights(&lamps, Vec3::ZERO, 3.5, 1.0, 0);
+    assert_eq!(none, FrameLights::default());
+}
+
+#[test]
+fn a_light_falls_as_its_intensity_times_the_window_over_the_distance_squared() {
+    // Intensity 10, radius 5, scaled by 0.5: E = 5 · (1 − (d²/25)²)² / d².
+    let lights = frame_lights(
+        &[placed(LightKind::Point, 15.0, ALL_HOURS)],
+        Vec3::ZERO,
+        12.0,
+        0.5,
+        8,
+    );
+    for d in [0.5f32, 1.0, 2.0, 3.0, 4.0] {
+        let x = d * d / 25.0;
+        let law = 5.0 * (1.0 - x * x).powi(2) / (d * d);
+        let drawn = point_light_at(&lights, 15.0, d);
+        assert!(
+            (drawn - law).abs() / (law + 0.02 * 5.0 / 25.0) < 0.17,
+            "{d}: {drawn} {law}"
+        );
+    }
+    assert_eq!(point_light_at(&lights, 15.0, 5.0), 0.0);
 }
 
 #[test]
@@ -119,10 +160,12 @@ fn a_level_of_detail_light_stands_at_its_parents_distant_light_and_fades_out_at_
     let capsule = lamps[1].light;
     assert_eq!((capsule.kind, capsule.length), (LightKind::Capsule, 140.0));
     // A medium light 1,450 m off is half faded; 1,500 m off, gone; and lit at noon.
-    let (_, at_half) = frame_lights(&lamps[..1], Vec3::new(1550.0, 0.0, 0.0), 12.0, 1.0, 8);
-    assert!((at_half[0].intensity - 40.0).abs() < 1e-3, "{at_half:?}");
-    let (_, gone) = frame_lights(&lamps[..1], Vec3::new(1600.0, 0.0, 0.0), 12.0, 1.0, 8);
-    assert!(gone.is_empty());
+    let whole = frame_lights(&lamps[..1], Vec3::new(1300.0, 0.0, 0.0), 12.0, 1.0, 8);
+    let at_half = frame_lights(&lamps[..1], Vec3::new(1550.0, 0.0, 0.0), 12.0, 1.0, 8);
+    let ratio = at_half.spots[0].intensity / whole.spots[0].intensity;
+    assert!((ratio - 0.5).abs() < 1e-3, "{ratio}");
+    let gone = frame_lights(&lamps[..1], Vec3::new(1600.0, 0.0, 0.0), 12.0, 1.0, 8);
+    assert_eq!(gone.lights, 0);
 
     let short = MapLod {
         falloff: vec![3.0],

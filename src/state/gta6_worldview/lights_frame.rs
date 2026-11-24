@@ -1,23 +1,31 @@
 //! The lights the frame draws: each light's strength at the hour and at the camera's distance, in
-//! the frame's units, and the brightest of them at the camera as the frame's point and spot lights.
-//!
-//! ⚠ The frame's passes fade a light by their own curve and its exponent, not by GTA VI's
-//! `(1 − (d²/R²)²)² / d²`; a light's radius, colour, intensity and cone are the file's.
+//! the frame's units, and the brightest of them at the camera as the frame's point, spot and
+//! capsule lights, each as the nested volumes that follow GTA VI's law (`lights_law`).
 
 use glam::Vec3;
 use or_io::gta5::data::visual_settings::VisualSettings;
 use or_io::gta6::map::light_ext::{Light, LightKind};
-use or_renderer::{PointLight, SpotLight};
+use or_renderer::{CapsuleLight, PointLight, SpotLight};
 
+use super::lights_law::{spot_cones, SHELLS, SHELL_EXPONENT};
 use super::lights_lod::{Distant, MapLod};
 
 /// The most lights the frame is handed: the placed lights a dense street holds within 150 m.
 pub const MOST: usize = 2048;
 /// Every hour of the day: a level-of-detail list states none.
 const ALL_HOURS: u32 = 0x00FF_FFFF;
-/// The exponent the frame's passes fade a level-of-detail light by, whose lists state 1 for all.
-// ponytail: one stand-in exponent for the lists, which state 1, until the frame fades a light by GTA VI's window.
-const LOD_FALLOFF: f32 = 8.0;
+/// The falloff exponent every level-of-detail list states, which GTA VI's law does not read.
+const LOD_FALLOFF: f32 = 1.0;
+
+/// The volumes the frame draws the lights with, by the pass of each kind.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FrameLights {
+    pub points: Vec<PointLight>,
+    pub spots: Vec<SpotLight>,
+    pub capsules: Vec<CapsuleLight>,
+    /// How many lights they draw.
+    pub lights: usize,
+}
 /// A level-of-detail light stands for a placed light this near it, in metres.
 const SAME_PLACE: f32 = 0.02;
 
@@ -139,14 +147,8 @@ pub fn without_placed(lod: Vec<Lamp>, placed: &[Lamp]) -> Vec<Lamp> {
         .collect()
 }
 
-/// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` brightest at the camera first, as the frame's point and spot lights.
-pub fn frame_lights(
-    lamps: &[Lamp],
-    eye: Vec3,
-    hour: f32,
-    scale: f32,
-    most: usize,
-) -> (Vec<PointLight>, Vec<SpotLight>) {
+/// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` brightest at the camera first, as the volumes of the frame's passes.
+pub fn frame_lights(lamps: &[Lamp], eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
     let mut lit: Vec<(f32, Light)> = (lamps.iter())
         .filter_map(|lamp| {
             let l = lamp.light;
@@ -169,32 +171,58 @@ pub fn frame_lights(
     }
     lit.truncate(most);
     lit.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
-    let (mut points, mut spots) = (Vec::new(), Vec::new());
+    let mut out = FrameLights {
+        lights: lit.len(),
+        ..FrameLights::default()
+    };
     for (_, l) in lit {
         let (position, colour) = (Vec3::from(l.position), Vec3::from(l.colour));
-        let point = |radius: f32| PointLight {
-            position,
-            colour,
-            intensity: l.intensity,
-            radius,
-            falloff: l.falloff_exponent,
+        let direction = Vec3::from(l.direction).normalize_or_zero();
+        // A spot or a capsule with no axis shines all round.
+        let kind = match direction == Vec3::ZERO {
+            true => LightKind::Point,
+            false => l.kind,
         };
-        match l.kind {
-            LightKind::Spot => spots.push(SpotLight {
-                position,
-                direction: Vec3::from(l.direction),
-                colour,
-                intensity: l.intensity,
-                radius: l.radius,
-                falloff: l.falloff_exponent,
-                outer_degrees: l.cone_outer,
-            }),
-            // ponytail: a capsule shines all round from its middle out past its ends, an area light as a point; their own passes once the frame has them.
-            LightKind::Capsule => points.push(point(l.radius + l.length / 2.0)),
-            LightKind::Point | LightKind::Area => points.push(point(l.radius)),
+        let cones = spot_cones(l.cone_inner, l.cone_outer);
+        // The law's strength is the stated intensity over d², so each volume's is over R².
+        let per_area = l.intensity / (l.radius * l.radius);
+        for (share, strength) in SHELLS {
+            let (radius, intensity) = (l.radius * share.sqrt(), per_area * strength);
+            match kind {
+                LightKind::Spot => {
+                    let cones = cones.iter().filter(|(_, part)| *part > 0.0);
+                    out.spots.extend(cones.map(|&(outer, part)| SpotLight {
+                        position,
+                        direction,
+                        colour,
+                        intensity: intensity * part,
+                        radius,
+                        falloff: SHELL_EXPONENT,
+                        outer_degrees: outer,
+                        inner_degrees: l.cone_inner,
+                    }))
+                }
+                LightKind::Capsule => out.capsules.push(CapsuleLight {
+                    position,
+                    direction,
+                    length: l.length,
+                    colour,
+                    intensity,
+                    radius,
+                    falloff: SHELL_EXPONENT,
+                }),
+                // ponytail: an area light shines as a point from its middle; the frame has no pass for a quad.
+                LightKind::Point | LightKind::Area => out.points.push(PointLight {
+                    position,
+                    colour,
+                    intensity,
+                    radius,
+                    falloff: SHELL_EXPONENT,
+                }),
+            }
         }
     }
-    (points, spots)
+    out
 }
 
 #[cfg(test)]

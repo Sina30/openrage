@@ -1,6 +1,6 @@
 //! The lights of the maps around the camera, read on workers: the lights an entity owns, those its
-//! archetype holds, and the level-of-detail lights of the maps that list them, as the point and
-//! spot lights the frame draws.
+//! archetype holds, and the level-of-detail lights of the maps that list them, as the lights the
+//! frame draws.
 //!
 //! ⚠ A level-of-detail light is a copy of a placed light: where the placed one is read, it is drawn
 //! and the copy is not.
@@ -15,10 +15,9 @@ use or_io::gta6::map::light_ext;
 use or_io::gta6::map::lights::{self as effects, LightOwner, Pose};
 use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
-use or_renderer::{PointLight, SpotLight};
 
 use super::index::{Enabled, WorldIndex};
-use super::lights_frame::{self, Lamp, LodReach};
+use super::lights_frame::{self, FrameLights, Lamp, LodReach};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
 
@@ -253,17 +252,11 @@ impl Lights {
         }
     }
 
-    /// The lights lit at `hour` (0 to 24) brightest at `eye`, at most `most`, their stated intensity times `scale`, as the frame's point and spot lights.
-    pub fn lights(
-        &mut self,
-        eye: Vec3,
-        hour: f32,
-        scale: f32,
-        most: usize,
-    ) -> (Vec<PointLight>, Vec<SpotLight>) {
-        let (points, spots) = lights_frame::frame_lights(&self.lamps, eye, hour, scale, most);
-        self.drawn = points.len() + spots.len();
-        (points, spots)
+    /// The lights lit at `hour` (0 to 24) brightest at `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with.
+    pub fn lights(&mut self, eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
+        let out = lights_frame::frame_lights(&self.lamps, eye, hour, scale, most);
+        self.drawn = out.lights;
+        out
     }
 
     /// The maps whose lights are wanted and not read yet.

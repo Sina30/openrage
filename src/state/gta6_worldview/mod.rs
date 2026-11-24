@@ -19,8 +19,9 @@ use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 pub(crate) mod index;
 mod interior;
 pub(crate) mod lights;
-mod lights_frame;
+pub(crate) mod lights_frame;
 pub(crate) mod lights_index;
+mod lights_law;
 mod lights_lod;
 mod model;
 mod occluders;
@@ -422,7 +423,7 @@ impl Viewer {
         weather: crate::state::drivers::WeatherState,
     ) -> (
         Option<or_renderer::game_shaders::lighting::Day>,
-        (Vec<or_renderer::PointLight>, Vec<or_renderer::SpotLight>),
+        lights_frame::FrameLights,
         f32,
     ) {
         let (eye, hour) = (self.camera.position, self.hour);

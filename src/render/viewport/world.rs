@@ -396,7 +396,7 @@ impl RenderBridge {
         }
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
-        let (day, (lights, spots), exposure) = viewer.sky(days, weather);
+        let (day, lights, exposure) = viewer.sky(days, weather);
         let day_for = (
             viewer.hour.to_bits(),
             days.to_bits(),
@@ -408,8 +408,9 @@ impl RenderBridge {
             world.day = Some(day_for);
             self.renderer.set_day(day);
         }
-        self.renderer.set_point_lights(lights);
-        self.renderer.set_spot_lights(spots);
+        self.renderer.set_point_lights(lights.points);
+        self.renderer.set_spot_lights(lights.spots);
+        self.renderer.set_capsule_lights(lights.capsules);
         self.renderer.set_world_exposure(exposure);
         // The GTA V day is worked out again once the world is left.
         self.day_key = None;
@@ -676,6 +677,7 @@ impl RenderBridge {
             (self.renderer).set_world(&self.device, &self.queue, &[], Vec::new());
             self.renderer.set_point_lights(Vec::new());
             self.renderer.set_spot_lights(Vec::new());
+            self.renderer.set_capsule_lights(Vec::new());
             self.world.hide_cards(&mut self.renderer);
             (self.world.laid_for, self.world.day) = (None, None);
         }
