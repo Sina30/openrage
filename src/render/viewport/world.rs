@@ -39,7 +39,7 @@ mod textures;
 mod water;
 
 pub use budget::WorldCost;
-use budget::{ahead, evicted, Budgets, Idle};
+use budget::{ahead, evicted, may_take, Budgets, Idle};
 use layout::{order, Layout, View};
 use pages::{Pages, Place};
 use textures::{Texture, Textures, ABSENT, MISSING};
@@ -392,8 +392,9 @@ impl RenderBridge {
         });
         world.was = Some((now, eye));
 
+        let taking = Instant::now();
         let mut uploaded = 0u64;
-        while uploaded < budgets.models_a_frame {
+        while uploaded < budgets.models_a_frame && may_take(taking, uploaded) {
             let Some((model, read)) = viewer.take_model() else {
                 break;
             };
@@ -417,7 +418,7 @@ impl RenderBridge {
         }
         world.cost.uploaded.0 = uploaded;
         let mut uploaded = 0u64;
-        while uploaded < budgets.textures_a_frame {
+        while uploaded < budgets.textures_a_frame && may_take(taking, uploaded) {
             let Some((key, pixels, read)) = viewer.take_texture() else {
                 break;
             };

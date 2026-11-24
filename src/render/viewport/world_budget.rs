@@ -1,13 +1,16 @@
 //! How much of the world the device keeps and takes in a frame, what goes first when it holds
 //! too much, and what is asked for first while the camera moves.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use glam::Vec3;
 
 /// The bytes of models, and of textures, put on the device in one frame; the rest wait for the next.
 const MODELS_A_FRAME: u64 = 48 << 20;
 const TEXTURES_A_FRAME: u64 = 8 << 20;
+/// How long a frame spends putting models and textures on the device, all told, once each kind has put something: a quarter of a frame at 60 a second.
+// ⚠ Bytes alone do not bound the time: a frame of many small models paid tens of milliseconds under the byte budget.
+const TAKING: Duration = Duration::from_millis(4);
 /// The bytes of models, and of textures, kept where the device does not say how much memory it
 /// has: those of a card of 8 GiB.
 const MODELS_KEPT: u64 = 3 << 30;
@@ -87,6 +90,11 @@ pub struct WorldCost {
     /// Models and textures let go so far, and those of them that came back.
     pub evicted: (u64, u64),
     pub reread: (u64, u64),
+}
+
+/// Whether a frame that began putting things on the device at `since`, and has put `bytes` of this kind so far, puts another.
+pub(super) fn may_take(since: Instant, bytes: u64) -> bool {
+    bytes == 0 || since.elapsed() < TAKING
 }
 
 /// Something on the device that did not draw this frame.
@@ -185,6 +193,17 @@ mod tests {
         assert_eq!(keys(31), [3, 4, 1, 2]);
         // And asking for more than there is lets everything go.
         assert_eq!(keys(1 << 40), [3, 4, 1, 2]);
+    }
+
+    #[test]
+    fn a_frame_takes_one_of_a_kind_whatever_the_time_and_more_only_within_it() {
+        let now = Instant::now();
+        assert!(may_take(now, 0) && may_take(now, 1 << 20));
+        let Some(long_ago) = now.checked_sub(TAKING * 2) else {
+            return;
+        };
+        assert!(may_take(long_ago, 0), "the first is always taken");
+        assert!(!may_take(long_ago, 1));
     }
 
     #[test]
