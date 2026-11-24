@@ -202,11 +202,12 @@ impl Viewer {
                 crate::state::prefs::config_root().map(|config| index::kept_at(&config, &root));
             let held = (kept.as_ref().filter(|_| !afresh)).and_then(|file| WorldIndex::kept(file));
             let places = |cancel: &Cancel| {
-                let (packs, keys, formats) = places(cancel, &Progress::new())?;
+                let (packs, keys, formats, dictionaries) = places(cancel, &Progress::new())?;
                 Some(Places {
                     packs,
                     keys,
                     formats,
+                    dictionaries,
                 })
             };
             let built = match held {

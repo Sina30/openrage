@@ -271,19 +271,93 @@ pub(super) fn pack_keys(
     }
 }
 
-/// The packs of a folder, the pack each key is in, and the format code each key's texture states.
-pub(super) type PackPlaces = (Vec<PathBuf>, HashMap<u64, u32>, HashMap<u64, u16>);
+/// The install's own texture archive, whose dictionaries the game holds whatever is drawn: the
+/// fills a material binds in place of a map of its own (a blank white, a blank material map) are
+/// there and in no pack.
+const TEXTURE_ARCHIVE: &str = "textures.rpf";
+/// The bytes of a dictionary body kept to read its textures' names: more than any virtual section holds.
+const DICTIONARY_HEAD: usize = 1 << 20;
 
-/// A worker's work that gives the packs under `root` and, for each key, which of them holds it and the format code it states, read as the pack index reads them and kept as it keeps them; `None` once cancelled.
+/// The texture archive under a folder, and the offset of the dictionary body that holds each key.
+pub(super) type DictionaryPlaces = (PathBuf, HashMap<u64, u64>);
+
+/// The packs of a folder, the pack each key is in, the format code each key's texture states, and
+/// the dictionaries of its texture archive that hold a key no pack holds.
+pub(super) type PackPlaces = (
+    Vec<PathBuf>,
+    HashMap<u64, u32>,
+    HashMap<u64, u16>,
+    DictionaryPlaces,
+);
+
+/// A worker's work that gives the packs under `root` and, for each key, which of them holds it and the format code it states, read as the pack index reads them and kept as it keeps them, then the dictionaries of the texture archive; `None` once cancelled.
 // ⚠ Where the index is kept is found here, on the caller's thread, as [`pack_keys`] finds it.
 pub(super) fn pack_places(
     root: &Path,
 ) -> impl FnOnce(&or_job::Cancel, &or_job::Progress) -> Option<PackPlaces> + Send + 'static {
     let (root, kept) = (root.to_path_buf(), Kept::of(root));
     move |cancel, progress| {
-        let (index, _) = index(&root, kept.as_ref(), cancel, progress)?;
-        Some((index.packs, index.keys, index.formats))
+        let (mut index, _) = index(&root, kept.as_ref(), cancel, progress)?;
+        let archive = root.join(TEXTURE_ARCHIVE);
+        let mut bodies = HashMap::new();
+        for (key, (offset, format)) in dictionary_textures(&archive, cancel)? {
+            if !index.keys.contains_key(&key) {
+                bodies.insert(key, offset);
+                index.formats.insert(key, format);
+            }
+        }
+        Some((index.packs, index.keys, index.formats, (archive, bodies)))
     }
+}
+
+/// Each texture that reads in a dictionary of the archive at `archive`, by its key: the offset of
+/// its dictionary's body and the format code a pack would state for it; none where there is no
+/// such archive, and `None` once `cancel` is set.
+// ponytail: the archive is scanned at every start, a few seconds; keep what it gives beside the packs' index if that grows.
+fn dictionary_textures(
+    archive: &Path,
+    cancel: &or_job::Cancel,
+) -> Option<HashMap<u64, (u64, u16)>> {
+    use or_io::container::rpf::{Rpf9BodyKind, Rpf9Role, Rpf9Scan, Rpf9ZlibRun};
+    use or_io::gta6::headerless::{read_dictionary, Entry};
+
+    let mut found = HashMap::new();
+    let Ok(file) = std::fs::File::open(archive) else {
+        return Some(found);
+    };
+    let len = file.metadata().map_or(0, |m| m.len());
+    let Ok(scan) = Rpf9Scan::new(&file, 0..len) else {
+        return Some(found);
+    };
+    let mut scan = scan.keeping(DICTIONARY_HEAD);
+    while let Some(Ok(find)) = scan.next() {
+        if cancel.is_set() {
+            return None;
+        }
+        let Rpf9BodyKind::Zlib(Rpf9ZlibRun {
+            resource: Some(resource),
+            signature: Some(signature),
+            ..
+        }) = find.kind
+        else {
+            continue;
+        };
+        if signature.role() != Some(Rpf9Role::Dictionary) {
+            continue;
+        }
+        // ⚠ The pixels are left unread: untiling every texture of the archive takes many seconds.
+        let (virtual_section, _) = resource.sections(scan.kept(&find));
+        let Ok(dictionary) = read_dictionary(virtual_section, None) else {
+            continue;
+        };
+        for (_, entry) in &dictionary.entries {
+            if let Ok(Entry::Texture(t)) = entry {
+                let format = u16::from(t.format) << 3;
+                (found.entry(name_hash64(t.name.as_bytes()))).or_insert((find.offset, format));
+            }
+        }
+    }
+    Some(found)
 }
 
 impl AppState {

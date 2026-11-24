@@ -105,6 +105,7 @@ fn a_key_no_pack_holds_reads_to_nothing() {
         packs: Vec::new(),
         keys: HashMap::new(),
         formats: HashMap::new(),
+        dictionaries: (PathBuf::new(), HashMap::new()),
     };
     assert!(read_texture(&mut HashMap::new(), &places, 0xC0105, 256).is_none());
     assert!(!places.is_colour(0xC0105));
@@ -114,4 +115,34 @@ fn a_key_no_pack_holds_reads_to_nothing() {
     };
     assert!(colour.is_colour(1), "BC1 sRGB");
     assert!(!colour.is_colour(2), "BC1 linear");
+}
+
+#[test]
+fn a_key_no_pack_holds_reads_from_the_texture_archive_s_dictionary_that_holds_it() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let (made, _) = crate::state::gta6_edit::tests::dictionary_file(dir.path());
+    let root = dir.path().join("install");
+    std::fs::create_dir(&root).expect("a folder");
+    let key = name_hash64(b"zq_paint");
+    let places = crate::state::gta6_texture_index::pack_places(&root);
+    let (cancel, progress) = (or_job::Cancel::new(), or_job::Progress::new());
+    let (.., (_, bodies)) = places(&cancel, &progress).expect("indexed");
+    assert!(
+        bodies.is_empty(),
+        "a folder with no texture archive holds no dictionary"
+    );
+
+    std::fs::copy(&made, root.join("textures.rpf")).expect("copied");
+    let places = crate::state::gta6_texture_index::pack_places(&root);
+    let (packs, keys, formats, dictionaries) = places(&cancel, &progress).expect("indexed");
+    assert_eq!(dictionaries.1, HashMap::from([(key, 0)]));
+    let places = Places {
+        packs,
+        keys,
+        formats,
+        dictionaries,
+    };
+    let read = read_texture(&mut HashMap::new(), &places, key, 256).expect("read");
+    assert!(read.width > 0 && !read.levels.is_empty());
+    assert!(read_texture(&mut HashMap::new(), &places, key ^ 1, 256).is_none());
 }

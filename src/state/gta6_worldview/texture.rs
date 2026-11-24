@@ -2,11 +2,20 @@
 //! block rows its pack stores where a device takes them as they are, else as 8-bit RGBA.
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::path::PathBuf;
 
 use or_io::codec::texture::{decode_level, DxgiFormat, TextureSource};
+use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
+use or_io::gta6::hash::name_hash64;
+use or_io::gta6::headerless::{read_dictionary, Entry};
 use or_io::gta6::{Texture, TexturePack};
 use wgpu::TextureFormat;
+
+use crate::state::gta6_texture_index::DictionaryPlaces;
+
+/// The most a dictionary body read for one of its textures inflates to.
+const BODY_LIMIT: u64 = 1 << 28;
 
 /// A texture on the CPU: its levels, the largest first, each half the last.
 pub struct CpuTexture {
@@ -30,6 +39,8 @@ pub(super) struct Places {
     pub(super) keys: HashMap<u64, u32>,
     /// The format code each key's texture states.
     pub(super) formats: HashMap<u64, u16>,
+    /// The install's texture archive, and the dictionary body in it that holds each key no pack holds.
+    pub(super) dictionaries: DictionaryPlaces,
 }
 
 impl Places {
@@ -113,7 +124,7 @@ pub(super) fn cpu_texture(texture: &Texture) -> Option<CpuTexture> {
 
 /// The texture of the key `key` at the level a screen size of `pixels` asks for and every level
 /// under it, read from the rows of its pack those levels lie in; where the rows of that level do
-/// not decode, from the largest level under it whose rows do. `None` where no pack holds it or
+/// not decode, from the largest level under it whose rows do; a key no pack holds, from the texture archive's dictionary that holds it. `None` where none holds it or
 /// none of it reads.
 pub(super) fn read_texture(
     open: &mut HashMap<u32, OpenPack>,
@@ -121,7 +132,9 @@ pub(super) fn read_texture(
     key: u64,
     pixels: u32,
 ) -> Option<CpuTexture> {
-    let at = *places.keys.get(&key)?;
+    let Some(&at) = places.keys.get(&key) else {
+        return dictionary_texture(&places.dictionaries, key);
+    };
     let pack = open.entry(at).or_insert_with(|| {
         let pack = TexturePack::open(places.packs.get(at as usize)?).ok()?;
         let entries = (pack.entries.iter().enumerate())
@@ -141,6 +154,37 @@ pub(super) fn read_texture(
         _ => texture.face(0)?,
     };
     cpu_texture(&texture)
+}
+
+/// The texture of the key `key` from the dictionary body of the texture archive that holds it,
+/// every level; `None` where none holds it or it does not read.
+// ponytail: the body is read again for each key; these dictionaries are few and small.
+fn dictionary_texture((archive, bodies): &DictionaryPlaces, key: u64) -> Option<CpuTexture> {
+    let offset = *bodies.get(&key)?;
+    let file = File::open(archive).ok()?;
+    let (find, bytes) = read_rpf9_body(&file, offset, BODY_LIMIT).ok()?;
+    let Rpf9BodyKind::Zlib(Rpf9ZlibRun {
+        resource: Some(resource),
+        ..
+    }) = find.kind
+    else {
+        return None;
+    };
+    let (virtual_section, physical) = resource.sections(&bytes);
+    let dictionary = read_dictionary(virtual_section, Some(physical)).ok()?;
+    let texture = dictionary
+        .entries
+        .iter()
+        .find_map(|(_, entry)| match entry {
+            Ok(Entry::Texture(t)) if name_hash64(t.name.as_bytes()) == key => {
+                t.texture.as_ref().ok()
+            }
+            _ => None,
+        })?;
+    match texture.faces {
+        1 => cpu_texture(texture),
+        _ => cpu_texture(&texture.face(0)?),
+    }
 }
 
 #[cfg(test)]
