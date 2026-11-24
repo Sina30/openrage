@@ -1,21 +1,24 @@
-//! The lights of the maps around the camera, read on workers: the lights an entity places, and
-//! the level-of-detail lights of the maps that list them, as the point lights the frame draws.
+//! The lights of the maps around the camera, read on workers: the lights an entity owns, the
+//! lights its archetype holds, and the level-of-detail lights of the maps that list them, as the
+//! point and spot lights the frame draws.
 //!
-//! ⚠ A light an archetype holds stands once at each entity that places it, and no index says
-//! which body declares an archetype: those lights are not read here.
+//! ⚠ A level-of-detail light is a copy of a placed light: where a placed light stands within
+//! 2 cm of it, the placed one is drawn while its map is loaded and the copy is not.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::Arc;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::map::lights::{self as placed, LightOwner};
+use or_io::gta5::data::visual_settings::VisualSettings;
+use or_io::gta6::map::light_ext::{self, Light, LightKind};
+use or_io::gta6::map::lights::{self as effects, LightOwner, Pose};
 use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
-use or_renderer::PointLight;
+use or_renderer::{PointLight, SpotLight};
 
-use super::index::{Enabled, WorldIndex};
+use super::index::{Enabled, WorldIndex, ALL_HOURS};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
 
@@ -24,17 +27,21 @@ const BODY_LIMIT: u64 = 256 << 20;
 /// How far the camera moves before the wanted maps are worked out again, in metres.
 const RELOOK: f32 = 8.0;
 /// How far from the camera a map's entities may lie for their own lights to be read, in metres.
-const PLACED_REACH: f32 = 150.0;
+const PLACED_REACH: f32 = 300.0;
 /// The bits of a map's content flags that say it lists level-of-detail lights, and distant ones.
 const LOD_LIGHTS: u32 = 1 << 7;
 const DISTANT_LIGHTS: u32 = 1 << 8;
 const HIGH_DETAIL: u32 = 1;
+/// How near a placed light stands to a level-of-detail light it is the source of, in metres.
+const SOURCE: f32 = 0.02;
+/// The frame's lights take no exponent: every light fades by the one window.
+const FALLOFF: f32 = 1.0;
 
 /// What was read of the lights around the camera, for a panel to say.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LightsReport {
     pub maps_read: usize,
-    /// Lights an entity places.
+    /// Lights an entity owns or its archetype holds.
     pub placed: usize,
     /// Lights of the maps' level-of-detail light lists.
     pub lod: usize,
@@ -45,16 +52,64 @@ pub struct LightsReport {
     pub drawn: usize,
 }
 
-/// A light an entity places, in the world.
+/// How far from the camera a level-of-detail light of each size class is drawn, and the last stretch it fades out over, in metres.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Placed {
-    position: Vec3,
-    colour: Vec3,
-    intensity: f32,
-    radius: f32,
-    falloff: f32,
-    /// One bit an hour of the day.
-    time_flags: u32,
+pub struct LodRanges {
+    pub range: [f32; 3],
+    pub fadeout: [f32; 3],
+}
+
+impl Default for LodRanges {
+    /// Every light at every distance, where no visual settings are read.
+    fn default() -> Self {
+        Self {
+            range: [f32::INFINITY; 3],
+            fadeout: [0.0; 3],
+        }
+    }
+}
+
+impl LodRanges {
+    /// The ranges the visual settings state under `lodlight.small`, `.medium` and `.large`.
+    pub fn of(settings: &VisualSettings) -> Self {
+        let mut ranges = Self::default();
+        for (k, class) in ["small", "medium", "large"].into_iter().enumerate() {
+            ranges.range[k] = settings.get_f32(&format!("lodlight.{class}.range"), f32::INFINITY);
+            ranges.fadeout[k] = settings.get_f32(&format!("lodlight.{class}.fadeout"), 0.0);
+        }
+        ranges
+    }
+
+    /// How much of a light of size class `category` is drawn `away` metres from the camera.
+    fn strength(&self, category: u16, away: f32) -> f32 {
+        let k = usize::from(category).min(2);
+        let (range, fade) = (self.range[k], self.fadeout[k]);
+        match fade > 0.0 {
+            true => ((range - away) / fade).clamp(0.0, 1.0),
+            false => f32::from(u8::from(away <= range)),
+        }
+    }
+}
+
+/// How much of a light whose hours are `hours` (bit `h` the hour `h`) is lit at `hour`, 0 to 24:
+/// it comes on over the last minute of the hour before its first lit hour and goes out over the
+/// last minute of its last.
+fn hour_strength(hours: u32, hour: f32) -> f32 {
+    let hour = hour.rem_euclid(24.0);
+    let now = (hour as u32).min(23);
+    let lit = |h: u32| f32::from(u8::from(hours >> (h % 24) & 1 == 1));
+    let turning = ((hour - now as f32) * 60.0 - 59.0).clamp(0.0, 1.0);
+    lit(now) + (lit(now + 1) - lit(now)) * turning
+}
+
+/// The angle a level-of-detail light's cone byte states, in degrees.
+fn cone_degrees(byte: u8) -> f32 {
+    f32::from(byte) * 180.0 / 255.0
+}
+
+/// The length a level-of-detail capsule's outer cone byte states, in metres.
+fn capsule_length(byte: u8) -> f32 {
+    f32::from(byte) * 140.0 / 255.0
 }
 
 /// The lights of one map.
@@ -62,12 +117,13 @@ struct Placed {
 pub(super) struct MapLights {
     /// The map its level-of-detail lights take their places from.
     parent: u32,
-    placed: Vec<Placed>,
+    /// In the world.
+    placed: Vec<Light>,
     lod: MapLod,
 }
 
-/// The lights of the map body `model` holds; `None` for any other body.
-fn lights_of(model: &RbmModel) -> Option<MapLights> {
+/// The lights of the map body `model` holds, its archetypes' by `index`; `None` for any other body.
+fn lights_of(model: &RbmModel, index: &WorldIndex) -> Option<MapLights> {
     let MapBody::Data(data) = map::read(model).ok()? else {
         return None;
     };
@@ -75,7 +131,7 @@ fn lights_of(model: &RbmModel) -> Option<MapLights> {
         parent: data.parent,
         ..MapLights::default()
     };
-    match placed::read(model) {
+    match effects::read(model) {
         Ok(read) => {
             for (owner, effect) in &read.effects {
                 let LightOwner::Entity(at) = owner else {
@@ -84,20 +140,21 @@ fn lights_of(model: &RbmModel) -> Option<MapLights> {
                 let Some(entity) = data.entities.get(*at) else {
                     continue;
                 };
-                // ponytail: a spot and a capsule shine all round here; their own passes once the frame takes them.
-                out.placed.extend(effect.lights().map(|light| Placed {
-                    position: Vec3::from(placed::place(effect, light, entity).position),
-                    colour: Vec3::from(light.colour.map(f32::from)) / 255.0,
-                    intensity: light.intensity,
-                    radius: light.falloff,
-                    falloff: light.falloff_exponent,
-                    time_flags: light.time_flags,
-                }));
+                let pose = Pose::of(entity);
+                (out.placed).extend(light_ext::lights_of(effect).map(|l| l.placed(&pose)));
             }
         }
         Err(error) => {
-            tracing::debug!(map = data.name, %error, "a map's placed lights are not read")
+            tracing::debug!(map = data.name, %error, "a map's own lights are not read")
         }
+    }
+    for entity in &data.entities {
+        let rows = index.archetype_lights(entity.archetype_word);
+        if rows.is_empty() {
+            continue;
+        }
+        let pose = Pose::of(entity);
+        (out.placed).extend(rows.iter().filter_map(|r| Some(r.light()?.placed(&pose))));
     }
     match lights_lod::read(model) {
         Ok(lod) => out.lod = lod,
@@ -106,51 +163,114 @@ fn lights_of(model: &RbmModel) -> Option<MapLights> {
     Some(out)
 }
 
-/// The lights of `loaded` lit at `hour`, the level-of-detail ones `night` strong, nearest `eye` first and at most `most`.
+/// The cell of the grid a light's source is looked for in.
+fn cell(p: Vec3) -> [i32; 3] {
+    (p / SOURCE).floor().as_ivec3().to_array()
+}
+
+/// The level-of-detail lights of `map`, which stand at its parent's distant lights, with how much of each `ranges` draws from `eye`.
+fn lod_lights(map: &MapLights, parent: &MapLights, eye: Vec3, ranges: &LodRanges) -> Vec<(Light, f32)> {
+    let (lod, places) = (&map.lod, &parent.lod.distant);
+    if places.len() != lod.falloff.len() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (i, place) in places.iter().enumerate() {
+        let Some(kind) = LightKind::of(place.light_type) else {
+            continue;
+        };
+        let strength = ranges.strength(parent.lod.category, Vec3::from(place.position).distance(eye));
+        if strength <= 0.0 {
+            continue;
+        }
+        let light = Light {
+            kind,
+            position: place.position,
+            direction: lod.direction[i],
+            colour: place.rgb.map(|c| f32::from(c) / 255.0),
+            intensity: place.intensity,
+            radius: lod.falloff[i],
+            falloff_exponent: FALLOFF,
+            // ⚠ The lists state no hours: a level-of-detail light is lit at every hour.
+            hours: ALL_HOURS,
+            flags: 0,
+            cone_inner: cone_degrees(lod.cone_inner[i]),
+            cone_outer: cone_degrees(lod.cone_outer[i]),
+            length: capsule_length(lod.cone_outer[i]),
+        };
+        out.push((light, strength));
+    }
+    out
+}
+
+/// The lights of `loaded` at `hour`, each `scale` times as strong as it states, the `most` that light `eye`'s surroundings most, as the frame's point and spot lights.
 fn collect(
     loaded: &HashMap<u32, MapLights>,
     eye: Vec3,
     hour: f32,
-    night: f32,
     scale: f32,
+    ranges: &LodRanges,
     most: usize,
-) -> Vec<PointLight> {
-    let bit = (hour.rem_euclid(24.0) as u32).min(23);
-    let mut lights: Vec<PointLight> = Vec::new();
+) -> (Vec<PointLight>, Vec<SpotLight>) {
+    let mut sources: HashSet<[i32; 3]> = HashSet::new();
+    let mut lights: Vec<(Light, f32)> = Vec::new();
     for map in loaded.values() {
-        let lit = map.placed.iter().filter(|p| p.time_flags >> bit & 1 == 1);
-        lights.extend(lit.map(|p| PointLight {
-            position: p.position,
-            colour: p.colour,
-            intensity: p.intensity * scale,
-            radius: p.radius,
-            falloff: p.falloff,
-        }));
-        // ⚠ The hours a level-of-detail light is lit in are not found in its lists: they are lit as the night emissives are.
-        let places = loaded.get(&map.parent).map(|parent| &parent.lod.distant);
-        let Some(places) = places.filter(|p| night > 0.0 && p.len() == map.lod.falloff.len())
-        else {
+        for light in &map.placed {
+            sources.insert(cell(Vec3::from(light.position)));
+            let lit = hour_strength(light.hours, hour);
+            if lit > 0.0 {
+                lights.push((*light, lit));
+            }
+        }
+    }
+    let has_source = |p: Vec3| {
+        let [x, y, z] = cell(p);
+        (-1..=1).any(|dx| {
+            (-1..=1).any(|dy| (-1..=1).any(|dz| sources.contains(&[x + dx, y + dy, z + dz])))
+        })
+    };
+    for map in loaded.values() {
+        let Some(parent) = loaded.get(&map.parent) else {
             continue;
         };
-        let reach = map.lod.falloff.iter().zip(&map.lod.falloff_exponent);
-        lights.extend(
-            places
-                .iter()
-                .zip(reach)
-                .map(|(light, (radius, falloff))| PointLight {
-                    position: Vec3::from(light.position),
-                    colour: Vec3::from(light.rgb.map(f32::from)) / 255.0,
-                    intensity: light.intensity * scale * night,
-                    radius: *radius,
-                    falloff: *falloff,
-                }),
-        );
+        let copies = lod_lights(map, parent, eye, ranges).into_iter();
+        lights.extend(copies.filter(|(l, _)| !has_source(Vec3::from(l.position))));
     }
-    lights.retain(|l| l.intensity > 0.0 && l.radius > 0.0);
-    let away = |l: &PointLight| l.position.distance(eye) - l.radius;
-    lights.sort_by(|a, b| away(a).total_cmp(&away(b)));
+    // ponytail: a light ranks by how bright it is where it reaches nearest the camera; rank per tile if a street needs more than `most`.
+    let rank = |(l, s): &(Light, f32)| {
+        let away = (Vec3::from(l.position).distance(eye) - l.radius).max(1.0);
+        l.intensity * s / (away * away)
+    };
+    lights.retain(|(l, s)| l.intensity > 0.0 && l.radius > 0.0 && *s > 0.0);
+    lights.sort_by(|a, b| rank(b).total_cmp(&rank(a)));
     lights.truncate(most);
-    lights
+    let (mut points, mut spots) = (Vec::new(), Vec::new());
+    for (l, s) in lights {
+        let (position, colour) = (Vec3::from(l.position), Vec3::from(l.colour));
+        let intensity = l.intensity * s * scale;
+        let point = |radius: f32| PointLight {
+            position,
+            colour,
+            intensity,
+            radius,
+            falloff: FALLOFF,
+        };
+        match l.kind {
+            LightKind::Spot => spots.push(SpotLight {
+                position,
+                direction: Vec3::from(l.direction),
+                colour,
+                intensity,
+                radius: l.radius,
+                falloff: FALLOFF,
+                outer_degrees: l.cone_outer,
+            }),
+            // ponytail: a capsule shines from its middle as far as its ends reach, and a quad as a point, until the frame has their passes.
+            LightKind::Capsule => points.push(point(l.radius + l.length / 2.0)),
+            LightKind::Point | LightKind::Area => points.push(point(l.radius)),
+        }
+    }
+    (points, spots)
 }
 
 /// The lights of the maps around the camera, read on workers.
@@ -164,8 +284,9 @@ pub struct Lights {
     drawn: usize,
     /// What of the world is switched on, as the streamer is told it.
     enabled: Enabled,
-    /// What a stated intensity is multiplied by for the frame.
-    // ponytail: GTA VI states a light in a photometric unit and exposes its frame for it; the frame has no such exposure, so one scale stands for all until the game's is read.
+    ranges: LodRanges,
+    /// What a stated intensity is multiplied by for the frame: the frame's exposure of a light.
+    // ponytail: a stand-in until the day gives its exposure, which the viewer then sets here.
     pub intensity_scale: f32,
 }
 
@@ -195,7 +316,7 @@ impl Lights {
                 let (virtual_section, physical) = resource.sections(&bytes);
                 let model =
                     or_io::meta::binary::rbm::gta6::read_model(virtual_section, physical).ok()?;
-                lights_of(&model)
+                lights_of(&model, &shared)
             },
         );
         Self {
@@ -206,6 +327,7 @@ impl Lights {
             looked_at: None,
             drawn: 0,
             enabled: Enabled::default(),
+            ranges: LodRanges::default(),
             intensity_scale: 0.1,
         }
     }
@@ -217,6 +339,11 @@ impl Lights {
             // The wanted maps are worked out again at the next look.
             self.looked_at = None;
         }
+    }
+
+    /// Draw the level-of-detail lights to the ranges the install's visual settings state.
+    pub fn set_lod_ranges(&mut self, settings: &VisualSettings) {
+        self.ranges = LodRanges::of(settings);
     }
 
     /// Ask for the lights of the maps within reach of `eye` and take in those read since; whether any came or went.
@@ -269,16 +396,11 @@ impl Lights {
         }
     }
 
-    /// The lights lit at `hour` (0 to 24) nearest `eye`, at most `most`, as the frame's point lights; `night` (0 to 1) is how far the night emissives are on.
-    pub fn point_lights(
-        &mut self,
-        eye: Vec3,
-        hour: f32,
-        night: f32,
-        most: usize,
-    ) -> Vec<PointLight> {
-        let lights = collect(&self.loaded, eye, hour, night, self.intensity_scale, most);
-        self.drawn = lights.len();
+    /// The lights at `hour` (0 to 24) that light `eye`'s surroundings most, at most `most`, as the frame's point and spot lights.
+    pub fn lights(&mut self, eye: Vec3, hour: f32, most: usize) -> (Vec<PointLight>, Vec<SpotLight>) {
+        let scale = self.intensity_scale;
+        let lights = collect(&self.loaded, eye, hour, scale, &self.ranges, most);
+        self.drawn = lights.0.len() + lights.1.len();
         lights
     }
 
@@ -303,110 +425,5 @@ impl Lights {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use lights_lod::Distant;
-
-    fn placed(x: f32, time_flags: u32) -> Placed {
-        Placed {
-            position: Vec3::new(x, 0.0, 0.0),
-            colour: Vec3::ONE,
-            intensity: 10.0,
-            radius: 5.0,
-            falloff: 1.0,
-            time_flags,
-        }
-    }
-
-    fn lod_map(parent: u32, falloff: &[f32]) -> MapLights {
-        MapLights {
-            parent,
-            placed: Vec::new(),
-            lod: MapLod {
-                falloff: falloff.to_vec(),
-                falloff_exponent: vec![2.0; falloff.len()],
-                ..MapLod::default()
-            },
-        }
-    }
-
-    fn distant_map(xs: &[f32]) -> MapLights {
-        let light = |x: &f32| Distant {
-            position: [*x, 0.0, 0.0],
-            rgb: [255, 0, 51],
-            intensity: 80.0,
-        };
-        MapLights {
-            lod: MapLod {
-                distant: xs.iter().map(light).collect(),
-                ..MapLod::default()
-            },
-            ..MapLights::default()
-        }
-    }
-
-    #[test]
-    fn a_placed_light_is_drawn_in_the_hours_its_flags_set_and_the_nearest_come_first() {
-        let night_only = 1 << 23 | 1 << 0;
-        let map = MapLights {
-            placed: vec![
-                placed(50.0, u32::MAX >> 8),
-                placed(10.0, night_only),
-                placed(20.0, u32::MAX >> 8),
-            ],
-            ..MapLights::default()
-        };
-        let loaded = HashMap::from([(1, map)]);
-        let noon = collect(&loaded, Vec3::ZERO, 12.5, 0.0, 0.5, 8);
-        assert_eq!(
-            noon.iter().map(|l| l.position.x).collect::<Vec<_>>(),
-            [20.0, 50.0]
-        );
-        assert_eq!(
-            (noon[0].intensity, noon[0].radius, noon[0].falloff),
-            (5.0, 5.0, 1.0)
-        );
-        let late = collect(&loaded, Vec3::ZERO, 23.9, 0.0, 0.5, 8);
-        assert_eq!(
-            late.iter().map(|l| l.position.x).collect::<Vec<_>>(),
-            [10.0, 20.0, 50.0]
-        );
-        assert_eq!(collect(&loaded, Vec3::ZERO, 23.9, 0.0, 0.5, 2).len(), 2);
-    }
-
-    #[test]
-    fn a_level_of_detail_light_stands_where_its_parents_distant_light_does_and_is_lit_by_night() {
-        let loaded = HashMap::from([
-            (7, lod_map(8, &[3.0, 12.0])),
-            (8, distant_map(&[100.0, 200.0])),
-        ]);
-        assert!(
-            collect(&loaded, Vec3::ZERO, 12.0, 0.0, 1.0, 8).is_empty(),
-            "out by day"
-        );
-        let lit = collect(&loaded, Vec3::ZERO, 23.0, 0.5, 0.1, 8);
-        assert_eq!(lit.len(), 2);
-        assert_eq!(
-            (lit[0].position.x, lit[0].radius, lit[0].falloff),
-            (100.0, 3.0, 2.0)
-        );
-        assert!((lit[0].colour - Vec3::new(1.0, 0.0, 0.2)).length() < 1e-6);
-        assert!((lit[0].intensity - 80.0 * 0.1 * 0.5).abs() < 1e-5);
-        assert_eq!(lit[1].radius, 12.0);
-    }
-
-    #[test]
-    fn lists_that_do_not_pair_light_for_light_draw_nothing() {
-        let alone = HashMap::from([(7, lod_map(8, &[3.0]))]);
-        assert!(collect(&alone, Vec3::ZERO, 23.0, 1.0, 1.0, 8).is_empty());
-        let uneven = HashMap::from([(7, lod_map(8, &[3.0])), (8, distant_map(&[1.0, 2.0]))]);
-        assert!(collect(&uneven, Vec3::ZERO, 23.0, 1.0, 1.0, 8).is_empty());
-    }
-
-    #[test]
-    fn the_lights_of_a_body_that_is_no_map_are_none() {
-        let mut model = lights_lod::tests::model(&[], &[]);
-        model.data_blocks[0].data_type = 1;
-        assert_eq!(lights_of(&model), None);
-    }
-}
+#[path = "lights_tests.rs"]
+mod tests;
