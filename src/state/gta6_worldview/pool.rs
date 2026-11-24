@@ -1,10 +1,20 @@
 //! Workers that serve the nearest request first: the queue is what is wanted now, set anew as the
 //! camera moves, so a request no longer wanted is never served.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
+
+/// The soonest each key of `asks` is needed by, where a key is asked for more than once.
+pub(super) fn soonest<K: Eq + Hash>(asks: impl Iterator<Item = (K, f32)>) -> HashMap<K, f32> {
+    let mut out = HashMap::new();
+    for (key, soon) in asks {
+        let at = out.entry(key).or_insert(soon);
+        *at = at.min(soon);
+    }
+    out
+}
 
 struct Queue<Q> {
     /// What is wanted, each with how far it is from the camera.
@@ -23,6 +33,8 @@ struct Shared<Q> {
 pub(super) struct Pool<Q, A> {
     shared: Arc<Shared<Q>>,
     answers: Receiver<(Q, A)>,
+    /// Answers drawn from the workers that [`Pool::take_soonest`] has not taken yet.
+    arrived: Mutex<Vec<(Q, A)>>,
 }
 
 impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
@@ -78,7 +90,26 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
                 }
             });
         }
-        Self { shared, answers }
+        Self {
+            shared,
+            answers,
+            arrived: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The answer that arrived whose request `soon` says is needed first, the least soonest.
+    // ponytail: every answer waiting is looked at on each take; a heap if a backlog of thousands shows in the frame.
+    pub(super) fn take_soonest(&self, soon: impl Fn(&Q) -> f32) -> Option<(Q, A)> {
+        let mut arrived = self.arrived.lock().unwrap_or_else(|p| p.into_inner());
+        arrived.extend(self.answers.try_iter());
+        let first = (arrived.iter().enumerate())
+            .min_by(|a, b| soon(&a.1 .0).total_cmp(&soon(&b.1 .0)))
+            .map(|(at, _)| at)?;
+        let (request, answer) = arrived.swap_remove(first);
+        drop(arrived);
+        let mut queue = self.shared.queue.lock().unwrap_or_else(|p| p.into_inner());
+        queue.held.remove(&request);
+        Some((request, answer))
     }
 
     /// Ask for `wanted`, each with its distance, in place of what was asked before.
@@ -114,5 +145,33 @@ impl<Q, A> Drop for Pool<Q, A> {
         queue.stopped = true;
         drop(queue);
         self.shared.woken.notify_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_arrived_is_taken_by_how_soon_it_is_needed_now_and_not_as_it_arrived() {
+        let pool = Pool::new(1, || (), |_, request: u32| request * 10);
+        // Read nearest first: 5 then 7.
+        pool.want(vec![(1.0, 5), (2.0, 7)]);
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let mut arrived = pool.arrived.lock().unwrap_or_else(|p| p.into_inner());
+            arrived.extend(pool.answers.try_iter());
+            if arrived.len() == 2 || std::time::Instant::now() > until {
+                break;
+            }
+            drop(arrived);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        // The camera turned: 7 is needed first now.
+        let soon = |request: &u32| if *request == 7 { 0.0 } else { 1.0 };
+        assert_eq!(pool.take_soonest(soon), Some((7, 70)));
+        assert_eq!(pool.take_soonest(soon), Some((5, 50)));
+        assert_eq!(pool.take_soonest(soon), None);
+        assert_eq!(soonest([(1, 3.0), (1, 2.0), (4, 9.0)].into_iter())[&1], 2.0);
     }
 }

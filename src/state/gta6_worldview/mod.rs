@@ -41,7 +41,7 @@ pub use model::{Constants, Emissive, Layer};
 pub use texture::CpuTexture;
 
 use index::{Enabled, ModelRef, WorldIndex};
-use pool::Pool;
+use pool::{soonest, Pool};
 use stream::{Selected, Streaming, World};
 use texture::{OpenPack, Places};
 
@@ -82,6 +82,8 @@ pub struct Viewer {
     /// The models that selection waits for, and those the far stand-ins' atlas waits for.
     wanted: Vec<(f32, ModelRef)>,
     species_models: Vec<(f32, ModelRef)>,
+    /// How soon each model and each texture asked for last is needed: what arrived is put on the device soonest first.
+    soon: (HashMap<ModelRef, f32>, HashMap<u64, f32>),
     models: Option<Pool<ModelRef, Option<CpuModel>>>,
     /// A texture is asked for by its key and the screen size it is needed at.
     textures: Option<Pool<(u64, u32), Option<CpuTexture>>>,
@@ -123,6 +125,7 @@ impl Default for Viewer {
             wanted_of: 0,
             wanted: Vec::new(),
             species_models: Vec::new(),
+            soon: Default::default(),
             models: None,
             textures: None,
             held: Arc::default(),
@@ -407,6 +410,7 @@ impl Viewer {
             .filter(|(_, model)| !self.have.contains(model))
             .collect();
         self.models_waiting = wanted.len();
+        self.soon.0 = soonest(wanted.iter().map(|(soon, model)| (*model, *soon)));
         if let Some(models) = &self.models {
             models.want(wanted);
         }
@@ -420,6 +424,7 @@ impl Viewer {
         } else {
             0
         };
+        self.soon.1 = soonest(wanted.iter().map(|(soon, key, _)| (*key, *soon)));
         if let Some(textures) = &self.textures {
             let asked = wanted.into_iter();
             textures.want(
@@ -437,9 +442,9 @@ impl Viewer {
 
     /// The next texture that arrived, with the pixels asked: `None` where none of it reads, smaller than asked where nothing larger does.
     pub fn take_texture(&mut self) -> Option<(u64, u32, Option<CpuTexture>)> {
-        let mut first = true;
-        let arrived = (self.textures.as_ref()?).take(|| std::mem::take(&mut first));
-        let ((key, pixels), texture) = arrived.into_iter().next()?;
+        let soon = &self.soon.1;
+        let ((key, pixels), texture) = (self.textures.as_ref()?)
+            .take_soonest(|(key, _)| soon.get(key).copied().unwrap_or(f32::INFINITY))?;
         let bytes = texture.as_ref().map_or(0, CpuTexture::bytes);
         self.held.fetch_sub(bytes, Ordering::Relaxed);
         Some((key, pixels, texture))
@@ -447,9 +452,9 @@ impl Viewer {
 
     /// The next model that arrived, `None` where it did not read.
     pub fn take_model(&mut self) -> Option<(ModelRef, Option<CpuModel>)> {
-        let mut first = true;
-        let arrived = (self.models.as_ref()?).take(|| std::mem::take(&mut first));
-        let (model, read) = arrived.into_iter().next()?;
+        let soon = &self.soon.0;
+        let (model, read) = (self.models.as_ref()?)
+            .take_soonest(|model| soon.get(model).copied().unwrap_or(f32::INFINITY))?;
         let bytes = read.as_ref().map_or(0, CpuModel::bytes);
         self.held.fetch_sub(bytes, Ordering::Relaxed);
         Some((model, read))
