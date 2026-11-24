@@ -565,30 +565,34 @@ fn a_child_whose_parent_map_is_not_loaded_draws_alone_until_it_is() {
 }
 
 #[test]
-fn a_list_draws_by_its_box_less_each_instance_whose_entity_draws() {
+fn a_list_draws_by_its_box_s_centre_less_each_instance_whose_entity_draws() {
     let mut forest = Forest::new();
     forest.insert(1, vec![list([0.0; 3], [100.0, 100.0, 10.0], 300.0, None)]);
-    let mut stand_in = entity([10.0, 10.0, 0.0], 50.0, 0.0, Some((1, 0)));
+    let mut stand_in = entity([10.0, 10.0, 5.0], 50.0, 0.0, Some((1, 0)));
     stand_in.instance = Some(4);
-    let mut other = entity([90.0, 90.0, 0.0], 50.0, 0.0, Some((1, 0)));
+    let mut other = entity([90.0, 90.0, 5.0], 50.0, 0.0, Some((1, 0)));
     other.instance = Some(9);
     forest.insert(2, vec![stand_in, other]);
-    let at = |x: f32, y: f32| View::at(Vec3::new(x, y, 0.0), 1.0);
+    let at = |x: f32, y: f32| View::at(Vec3::new(x, y, 5.0), 1.0);
     // Inside the box, beside the first entity: it draws and its instance is left out.
     let near = forest.select(&at(12.0, 12.0), &all_ready);
     assert_eq!(ids(&near), vec![(2, 0)]);
     assert_eq!(near.lists.len(), 1);
     assert_eq!(&near.skipped[near.lists[0].skipped.clone()], &[4]);
-    // 250 m off the box's side the list draws whole, 310 m off it by half, 350 m off it not at all.
-    let off = forest.select(&at(350.0, 50.0), &all_ready);
+    // 55 m from it, 5 m into its band: it draws at three quarters and its instance is still left out.
+    let band = forest.select(&at(10.0, 65.0), &all_ready);
+    assert!(close(fade(&band, (2, 0)), 0.75));
+    assert_eq!(&band.skipped[band.lists[0].skipped.clone()], &[4]);
+    // 290 m from the box's centre the list draws whole, 310 m from it by half, 330 m from it not at all.
+    let off = forest.select(&at(340.0, 50.0), &all_ready);
     assert_eq!(
         (off.drawn.len(), off.lists.len(), off.skipped.len()),
         (0, 1, 0)
     );
     assert!(close(fade(&off, (1, 0)), 1.0));
-    let fading = forest.select(&at(410.0, 50.0), &all_ready);
+    let fading = forest.select(&at(360.0, 50.0), &all_ready);
     assert!(close(fade(&fading, (1, 0)), 0.5));
-    let gone = forest.select(&at(450.0, 50.0), &all_ready);
+    let gone = forest.select(&at(380.0, 50.0), &all_ready);
     assert!(gone.lists.is_empty());
     // An entity still loading leaves its instance drawn and is waited for.
     let waiting = [(2, 0)];
@@ -607,12 +611,12 @@ fn a_list_gives_way_to_the_lists_under_it() {
         2,
         vec![list([0.0; 3], [50.0, 50.0, 10.0], 0.0, Some((1, 0)))],
     );
-    let at = |x: f32| View::at(Vec3::new(x, 50.0, 0.0), 1.0);
+    let at = |x: f32| View::at(Vec3::new(x, 50.0, 5.0), 1.0);
     let lists = |s: &Selection| s.lists.iter().map(|l| l.node).collect::<Vec<_>>();
     assert_eq!(lists(&forest.select(&at(150.0), &all_ready)), vec![(2, 0)]);
     assert_eq!(lists(&forest.select(&at(900.0), &all_ready)), vec![(1, 0)]);
-    // 210 m off the upper list's box both draw: the lower by half, the upper whole.
-    let both = forest.select(&at(310.0), &all_ready);
+    // 210 m from the upper list's centre both draw: the lower by half, the upper whole.
+    let both = forest.select(&at(260.0), &all_ready);
     assert!(close(fade(&both, (2, 0)), 0.5) && close(fade(&both, (1, 0)), 1.0));
 }
 

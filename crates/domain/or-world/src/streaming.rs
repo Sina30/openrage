@@ -201,12 +201,13 @@ pub struct ParentRef {
     pub node: u32,
 }
 
-/// What a node's distance is measured to.
+/// What a node is: one thing, or a list of instances in a box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Extent {
-    /// Its position.
     Point,
-    /// The box of a list of instances, the lowest corner and the highest: nought inside it.
+    /// The box of a list of instances, the lowest corner and the highest.
+    // ⚠ A list's distance is measured to its position, the box's centre, never to the box: a list
+    // of far stand-ins states its half diagonal plus its instances' distance.
     Box(Vec3, Vec3),
 }
 
@@ -546,13 +547,9 @@ impl Pass<'_> {
         *self.forest.node_at(&self.forest.links, at as usize)
     }
 
-    /// How far the camera is from what node `at` is measured to.
+    /// How far the camera is from node `at`'s position: a list's is its box's centre.
     fn away(&self, at: u32) -> f32 {
-        let (node, eye) = (self.node(at), self.view.eye);
-        match node.extent {
-            Extent::Point => eye.distance(node.position),
-            Extent::Box(min, max) => eye.distance(eye.clamp(min, max)),
-        }
+        self.view.eye.distance(self.node(at).position)
     }
 
     /// How far the camera is from what node `at` is judged by: its parent where it stands in for
@@ -712,25 +709,21 @@ impl Pass<'_> {
         }
     }
 
-    /// Whether the entity `at`, which stands in for one instance of a list, is within the distance
-    /// it draws to by its own place.
-    fn stands_in(&self, at: u32) -> bool {
-        self.away(at) <= self.reach(at)
-    }
-
     /// Draw the list `at` less each instance whose own entity draws in its place.
-    // ponytail: an entity takes its instance's place at once, with no fade; a fade an instance if the swap shows.
     fn draw_list(&mut self, at: u32, id: NodeId, fade: f32) {
         let from = self.out.skipped.len();
         let mut child = self.first_child(at);
         while child != NONE {
-            if let Some(instance) = self.node(child).instance.filter(|_| self.stands_in(child)) {
+            // An entity that stands in for an instance fades out over its band by its own place,
+            // which is the instance's, and its instance is left out while it draws at all.
+            let alone = self.by_distance(child);
+            if let Some(instance) = self.node(child).instance.filter(|_| alone > 0.0) {
                 let child_id = self.forest.id_of(child);
                 match (self.state)(child_id) {
                     NodeState::Ready => {
                         self.out.drawn.push(NodeDraw {
                             node: child_id,
-                            fade: 1.0,
+                            fade: alone,
                         });
                         self.out.skipped.push(instance);
                     }

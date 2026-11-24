@@ -304,7 +304,7 @@ fn a_grass_list_is_a_node_after_the_prop_lists_and_a_list_of_far_stand_ins_draws
         "three entities, a prop list, two grass lists"
     );
     let (ferns, far) = (&read.nodes[4], &read.nodes[5]);
-    // A grass list is measured to its box, by the distance it states, and names no parent.
+    // A grass list is a list in a box, by the distance it states, and names no parent.
     assert!(matches!(ferns.extent, Extent::Box(..)));
     assert_eq!((ferns.lod_dist, ferns.parent), (200.0, None));
     assert_eq!((ferns.level, far.level), (Level::OrphanHd, Level::Slod1));
@@ -403,13 +403,15 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
     );
 
     // In a selection the grass scale of 0.8 takes the fade from 32 m to 40 m: the fern at 45 m
-    // is gone.
-    let mut streamer = streamer_with(&grown());
+    // is gone. The list is measured to its box's centre, 567 m off: it states enough to draw.
+    let mut map = grown();
+    map.grass[0].lod_dist = 700.0;
+    let mut streamer = streamer_with(&map);
     let at_rest = streamer.select(&View::at(Vec3::ZERO, 1.0), &|_| Some(true));
     assert_eq!(count(&at_rest, 0x3000), 1);
     // A camera that draws a quarter farther gives the ferns the distances they state: a chunk for
     // the list, each instance with the fade of its own distance.
-    let mut streamer = streamer_with(&grown());
+    let mut streamer = streamer_with(&map);
     let all = streamer.select(&View::at(Vec3::ZERO, 1.25), &|_| Some(true));
     assert_eq!(count(&all, 0x3000), 2);
     assert_eq!(count(&all, 0x4000), 0, "the far stand-ins");
