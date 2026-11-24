@@ -70,15 +70,30 @@ impl CardList {
         }
     }
 
-    /// The same seen with distances scaled by `scale`, `fade` opaque.
-    pub fn seen(&self, scale: f32, fade: f32) -> Self {
+    /// The same seen with distances scaled by `scale`, `fade` opaque, less the instances `hidden`
+    /// names: those a prop drawn near the camera stands in for.
+    pub fn seen(&self, scale: f32, fade: f32, hidden: &[u16]) -> Self {
+        let mut records = Arc::clone(&self.records);
+        if !hidden.is_empty() {
+            let mut less = records.to_vec();
+            for at in hidden {
+                if let Some(record) = less.get_mut(usize::from(*at)) {
+                    record[14..16].copy_from_slice(&HIDDEN.to_le_bytes());
+                }
+            }
+            records = less.into();
+        }
         Self {
             distance: self.distance * scale,
             fade,
+            records,
             ..self.clone()
         }
     }
 }
+
+/// The species id a hidden instance is given: no species table reaches it, so its card draws nothing.
+pub const HIDDEN: u16 = u16::MAX;
 
 /// The archetype the far stand-in id `id` names.
 fn archetype_of(index: &WorldIndex, id: usize) -> Option<&ArchetypeRow> {

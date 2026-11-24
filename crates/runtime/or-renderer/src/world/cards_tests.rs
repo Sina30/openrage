@@ -247,6 +247,12 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
     assert_eq!(drawn(&mut renderer, &one, &[]).0, 0);
     assert_eq!(drawn(&mut renderer, &[list(&[record(0)], 0.0)], &[0]).0, 0);
     assert_eq!(drawn(&mut renderer, &[list(&[record(7)], 1.0)], &[0]).0, 0);
+    // Records rewritten in place, their lists laid out as before, draw as they now stand: hidden, then back
+    assert_eq!(
+        drawn(&mut renderer, &[list(&[record(u16::MAX)], 1.0)], &[0]).0,
+        0
+    );
+    assert_eq!(drawn(&mut renderer, &one, &[0]).0, whole);
     // Half a fade leaves about half the pixels, by the world's dither
     let half = drawn(&mut renderer, &[list(&[record(0)], 0.5)], &[0]).0;
     assert!(

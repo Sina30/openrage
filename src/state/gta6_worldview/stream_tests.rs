@@ -318,6 +318,34 @@ fn a_grass_list_is_a_node_after_the_prop_lists_and_a_list_of_far_stand_ins_draws
 }
 
 #[test]
+fn a_far_stand_in_a_drawn_prop_stands_in_for_is_hidden() {
+    let mut index = made_up_index();
+    index.slod = vec![0; 8];
+    index.slod[7] = FERN;
+    let index = Arc::new(index);
+    // Both lamps stand in for the far list's one instance, the sixth node of their own map.
+    let mut map = grown();
+    map.prop_lists[0].parent = Some(StreamLink {
+        map: None,
+        index: 5,
+        instance: None,
+    });
+    map.prop_lists[0].parent_instances = vec![0, 0];
+    let mut streamer = Streamer::new(Arc::clone(&index));
+    streamer.wanted.insert(55, 0.0);
+    assert!(streamer.insert(55, read_map(&index, &map)));
+    // 300 m from the far list's box: at the lamps' distance, where the far list fades out as they come in.
+    let at = Vec3::new(-300.0, 5.0, 5.0);
+    let selected = streamer.select(&View::at(at, 1.0), &|_| Some(true));
+    assert!(count(&selected, 0x2000) > 0, "the lamps draw");
+    let [cards] = &selected.cards[..] else {
+        panic!("one list of cards, not {}", selected.cards.len());
+    };
+    let id = u16::from_le_bytes([cards.records[0][14], cards.records[0][15]]);
+    assert_eq!(id, super::slod::HIDDEN);
+}
+
+#[test]
 fn a_list_of_far_stand_ins_draws_as_cards_and_waits_for_no_model() {
     let mut index = made_up_index();
     index.slod = vec![0; 8];
@@ -367,6 +395,7 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
     let abrupt = List {
         instances: Instances::Placed(Vec::new()),
         reach: Some((8191.0, 100.0)),
+        stands_in_for: Vec::new(),
     };
     assert_eq!(
         (abrupt.fade(99.0, 1.0), abrupt.fade(101.0, 1.0)),

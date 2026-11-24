@@ -352,6 +352,25 @@ impl Cards {
     fn set_lists(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, lists: &[CardBatch]) {
         let most = device.limits().max_storage_buffer_binding_size / 16;
         let held: usize = lists.iter().map(|list| list.records.len()).sum();
+        let same_spans = lists.len() == self.uploaded.len()
+            && (lists.iter().zip(&self.uploaded))
+                .all(|(list, was)| list.records.len() == was.len());
+        // Lists laid out as before rewrite only the records of those that changed: a list with instances hidden is a new one every selection.
+        if same_spans && self.buffers[RECORDS].is_some() {
+            for (at, list) in lists.iter().enumerate() {
+                let (Some(span), Some(buffer)) = (self.spans.get(at), &self.buffers[RECORDS])
+                else {
+                    continue;
+                };
+                if !Arc::ptr_eq(&list.records, &self.uploaded[at])
+                    && span.len() == list.records.len()
+                {
+                    let offset = u64::from(span.start) * 16;
+                    queue.write_buffer(buffer, offset, bytemuck::cast_slice(&list.records[..]));
+                    self.uploaded[at] = Arc::clone(&list.records);
+                }
+            }
+        }
         let again = lists.len() == self.uploaded.len()
             && (lists.iter().zip(&self.uploaded))
                 .all(|(list, was)| Arc::ptr_eq(&list.records, was));

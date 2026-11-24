@@ -115,10 +115,27 @@ fn a_card_list_keeps_the_box_the_scales_and_each_record_as_stored() {
     // Each species once, for the atlas to wait for.
     assert_eq!(cards.ids[..], [1, 2]);
     // Seen through a view, it scales its distance and takes the list's fade, sharing the records.
-    let seen = cards.seen(1.5, 0.25);
+    let seen = cards.seen(1.5, 0.25, &[]);
     assert_eq!((seen.distance, seen.fade), (1350.0, 0.25));
     assert!(Arc::ptr_eq(&seen.records, &cards.records));
     assert_eq!((seen.centre, seen.radius), (cards.centre, cards.radius));
+}
+
+#[test]
+fn an_instance_a_drawn_prop_stands_in_for_is_hidden_and_the_rest_are_kept() {
+    let cards = CardList::of(&far(), &index());
+    // The second instance's prop is drawn; an instance past the list's end changes nothing.
+    let seen = cards.seen(1.0, 1.0, &[1, 9]);
+    let id =
+        |records: &[[u8; 16]], at: usize| u16::from_le_bytes([records[at][14], records[at][15]]);
+    assert_eq!(id(&seen.records, 1), HIDDEN);
+    assert!(usize::from(HIDDEN) >= species(&index()).len());
+    assert_eq!(seen.records[1][..14], cards.records[1][..14]);
+    for at in [0, 2] {
+        assert_eq!(seen.records[at], cards.records[at]);
+    }
+    // The list itself keeps its own records.
+    assert_eq!(id(&cards.records, 1), 2);
 }
 
 #[test]

@@ -65,6 +65,8 @@ pub(super) struct List {
     /// for a list that draws whole.
     /// Scaled by the list's node's scale.
     pub(super) reach: Option<(f32, f32)>,
+    /// The instance of its parent list each of its instances stands in for; empty for a list with none.
+    pub(super) stands_in_for: Vec<u16>,
 }
 
 impl List {
@@ -275,6 +277,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         lists.push(List {
             instances: Instances::Placed(list.instances.iter().map(rows).collect()),
             reach: alone.then_some((list.instance_lod_dist, list.instance_lod_dist)),
+            stands_in_for: list.parent_instances.clone(),
         });
     }
     for list in &map.grass {
@@ -314,6 +317,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
                 false => Instances::Grass(list.clone()),
             },
             reach: Some((list.lod_fade_start_dist, list.instance_lod_dist)),
+            stands_in_for: Vec::new(),
         });
     }
     ReadMap {

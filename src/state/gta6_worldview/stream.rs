@@ -405,12 +405,31 @@ impl Streamer {
             }
         }
         close(&mut out, from);
+        // A far stand-in a drawn prop stands in for is hidden: the instances of each parent list
+        // the drawn lists name.
+        let mut hidden: HashMap<NodeId, Vec<u16>> = HashMap::new();
+        for draw in &selection.lists {
+            let Some((map, _)) = drawn_of(draw.node) else {
+                continue;
+            };
+            let list = (draw.node.1 as usize)
+                .checked_sub(map.entities.len())
+                .and_then(|at| map.lists.get(at));
+            let parent = (self.forest.node(draw.node)).and_then(|node| node.parent);
+            if let (Some(list), Some(parent)) = (list, parent) {
+                let at = (parent.map, parent.node);
+                if !list.stands_in_for.is_empty() && cards_of(at).is_some() {
+                    (hidden.entry(at).or_default()).extend(&list.stands_in_for);
+                }
+            }
+        }
         // And the instances of one list: a chunk a list.
         let listed = out.instances.len();
         for draw in &selection.lists {
             if let Some(cards) = cards_of(draw.node) {
                 let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
-                (out.cards).push(cards.seen(scale, draw.fade));
+                let less = hidden.get(&draw.node).map_or(&[][..], Vec::as_slice);
+                (out.cards).push(cards.seen(scale, draw.fade, less));
                 continue;
             }
             let Some((map, drawn)) = drawn_of(draw.node) else {
