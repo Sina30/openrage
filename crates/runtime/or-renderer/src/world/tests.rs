@@ -1219,6 +1219,45 @@ fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_pa
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn foliage_reads_no_metal_in_its_material_a_red_and_keeps_a_dielectrics_reflectance() {
+    let Some((device, queue, mut renderer)) = family_frame("foliage_reads_no_metal") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let one = |rgba| texel(&device, &queue, rgba);
+    let leaf = |flags: u32| {
+        let maps = [
+            (slot::colour(0), one([255; 4])),
+            (slot::material_a(0), one([255, 64, 0, 0])),
+        ];
+        let constants = WorldConstants {
+            flags: WorldConstants::default().flags | flags,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Standard, WorldBucket::Opaque);
+        surface(&device, &renderer, family, &maps, constants)
+    };
+    let (foliage, other) = (leaf(WorldConstants::FOLIAGE), leaf(0));
+    let rough = 64.0_f32 / 255.0;
+    let square = coloured_square(&device, [1.0; 4], [1.0; 4], foliage);
+    let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
+    assert!(near(targets[0], [255, 255, 255, 255], 2), "{targets:?}");
+    assert!(
+        near(targets[2], specular_word(1.0 - rough, 0.04), 2),
+        "{targets:?}"
+    );
+    // The same maps as any other material are all metal: a black albedo
+    let square = coloured_square(&device, [1.0; 4], [1.0; 4], other);
+    let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
+    assert!(near(targets[0], [0, 0, 0, 255], 2), "{targets:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn a_two_layer_material_shows_its_second_layer_by_the_control_map_and_the_vertexs_second_colour() {
     let Some((device, queue, mut renderer)) = family_frame("a_two_layer_material_shows_its_second")
     else {

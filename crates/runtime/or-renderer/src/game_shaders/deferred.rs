@@ -13,7 +13,7 @@ use super::distant_lights::{DistantLight, DistantLights, SpriteSize};
 use super::dome::SkyPass;
 use super::engine::EngineConstants;
 use super::fog_volumes::{FogSky, FogVolume, FogVolumes};
-use super::mesh::scene::MATERIAL_CLEAR;
+use super::mesh::scene::{MATERIAL_CLEAR, MATERIAL_TREE, MATERIAL_TYPE_MASK};
 use super::mesh::{bounds, Material, MeshScene, PipelineCache, Route, Surface};
 use super::pack::GamePack;
 use super::pipeline::{DrawState, Target};
@@ -70,6 +70,8 @@ pub const GBUFFER_TARGETS: usize = 4;
 /// The pass of the directional light's technique that lights a surface by the sun, and the one that lights it by the ambient light alone.
 const DIRECTIONAL_STANDARD: usize = 0;
 const DIRECTIONAL_AMBIENT: usize = 1;
+/// The pass that lights a tree by the sun on either side, the side turned away through its leaves.
+const DIRECTIONAL_BACKLIT: usize = 5;
 
 /// How many registers the light parameters of a lighting pass are.
 const LIGHT_PARAMS: usize = 14;
@@ -416,10 +418,30 @@ pub fn over_what_was_not_drawn() -> DrawState {
     }
 }
 
+/// How a pass over the pixels of one material is drawn: where the stencil's material bits equal the pass's reference.
+fn over_one_material() -> DrawState {
+    let drawn = over_what_was_drawn();
+    let face = wgpu::StencilFaceState {
+        compare: wgpu::CompareFunction::Equal,
+        ..drawn.stencil.front
+    };
+    DrawState {
+        stencil: wgpu::StencilState {
+            front: face,
+            back: face,
+            read_mask: MATERIAL_TYPE_MASK,
+            ..drawn.stencil
+        },
+        ..drawn
+    }
+}
+
 /// The game's directional light pass over the whole frame: by the sun where it shines and by the ambient light alone where it does not.
 pub struct LightingPass {
     standard: ScreenPass,
     ambient: ScreenPass,
+    /// None where the pack has no backlit pass: a tree is then lit as any other surface.
+    backlit: Option<ScreenPass>,
 }
 
 impl LightingPass {
@@ -438,8 +460,7 @@ impl LightingPass {
             blend: None,
             colour_attachments: Some(1),
         };
-        let draw = over_what_was_drawn();
-        let build = |pass: usize| {
+        let build = |pass: usize, draw: &DrawState| {
             ScreenPass::new(
                 device,
                 queue,
@@ -448,20 +469,25 @@ impl LightingPass {
                 "directional",
                 pass,
                 &target,
-                &draw,
+                draw,
                 Space::Unit,
                 &mut |name, requirement| provide(device, inputs, name, requirement),
             )
         };
+        let draw = over_what_was_drawn();
         Ok(Self {
-            standard: build(DIRECTIONAL_STANDARD)?,
-            ambient: build(DIRECTIONAL_AMBIENT)?,
+            standard: build(DIRECTIONAL_STANDARD, &draw)?,
+            ambient: build(DIRECTIONAL_AMBIENT, &draw)?,
+            backlit: build(DIRECTIONAL_BACKLIT, &over_one_material()).ok(),
         })
     }
 
     /// Read `inputs` anew, for targets of another size.
     pub fn bind(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, inputs: &Inputs<'_>) {
-        for pass in [&mut self.standard, &mut self.ambient] {
+        for pass in [&mut self.standard, &mut self.ambient]
+            .into_iter()
+            .chain(self.backlit.as_mut())
+        {
             pass.bind(device, queue, &mut |name, requirement| {
                 provide(device, inputs, name, requirement)
             });
@@ -474,6 +500,9 @@ impl LightingPass {
         values.extend(lighting_values(engine, screen));
         self.standard.write(queue, &values);
         self.ambient.write(queue, &values);
+        if let Some(backlit) = &self.backlit {
+            backlit.write(queue, &values);
+        }
     }
 
     /// Draw the pass that suits `sun` into `pass`: its colour target of the format this was built for, and the depth and stencil of the frame, which it only reads.
@@ -481,6 +510,12 @@ impl LightingPass {
         pass.set_stencil_reference(MATERIAL_CLEAR);
         if sun.shines() {
             self.standard.record(pass);
+            // A tree is lit again by the pass that lights its leaves from behind, over what the default pass wrote
+            if let Some(backlit) = &self.backlit {
+                pass.set_stencil_reference(MATERIAL_TREE);
+                backlit.record(pass);
+                pass.set_stencil_reference(MATERIAL_CLEAR);
+            }
         } else {
             self.ambient.record(pass);
         }

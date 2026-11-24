@@ -66,6 +66,7 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
         | flag(c.mask_is_alpha, WorldConstants::MASK_FROM_ALPHA)
         | flag(c.inv_control, WorldConstants::INVERT_CONTROL)
         | flag(c.hard_light, WorldConstants::HARD_LIGHT)
+        | flag(c.foliage, WorldConstants::FOLIAGE)
         | WorldConstants::MODEL_VERTEX;
     let mut constants = WorldConstants {
         fresnel: c.fresnel,
@@ -232,6 +233,22 @@ mod tests {
         // Any other material blends no ground
         let plain = constants_of(&CpuMaterial::default());
         assert_eq!(plain.flags & both, 0);
+    }
+
+    #[test]
+    fn foliage_reaches_the_shader_as_its_flag_and_nothing_else_does() {
+        let tree = CpuMaterial {
+            constants: Constants {
+                foliage: true,
+                ..Constants::default()
+            },
+            ..CpuMaterial::default()
+        };
+        assert_ne!(constants_of(&tree).flags & WorldConstants::FOLIAGE, 0);
+        assert_eq!(
+            constants_of(&CpuMaterial::default()).flags & WorldConstants::FOLIAGE,
+            0
+        );
     }
 
     #[test]

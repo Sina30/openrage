@@ -29,6 +29,12 @@ use super::{
 /// The stencil value a surface of the default material leaves in the G-buffer, which the lighting passes tell from what nothing drew.
 pub const MATERIAL_DEFAULT: u32 = 0;
 
+/// The stencil value a tree leaves, which the directional light's backlit pass lights where the default pass lit the rest.
+pub const MATERIAL_TREE: u32 = 3;
+
+/// The bits of the stencil that name a surface's material; those above are flags.
+pub const MATERIAL_TYPE_MASK: u32 = 7;
+
 /// What the stencil of the G-buffer is cleared to, so that a pixel no surface wrote is left unlit.
 pub const MATERIAL_CLEAR: u32 = 7;
 

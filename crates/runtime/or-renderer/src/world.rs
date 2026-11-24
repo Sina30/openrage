@@ -10,7 +10,7 @@ use wgpu::util::DeviceExt;
 
 use crate::game_shaders::deferred::Sun;
 use crate::game_shaders::engine::EngineConstants;
-use crate::game_shaders::mesh::scene::MATERIAL_DEFAULT;
+use crate::game_shaders::mesh::scene::{MATERIAL_DEFAULT, MATERIAL_TREE};
 use crate::game_shaders::shadow::TILE;
 use crate::game_shaders::stand_in::constant_view;
 use crate::viewport::{MeshVertex, OrbitCamera, ViewportRenderer};
@@ -61,6 +61,8 @@ impl WorldBucket {
 pub struct WorldMaterial {
     maps: Arc<wgpu::BindGroup>,
     bucket: WorldBucket,
+    /// The material the G-buffer's stencil names it by, which picks the pass of the directional light that lights it.
+    stencil: u32,
 }
 
 impl PartialEq for WorldMaterial {
@@ -523,9 +525,15 @@ impl World {
                 }
             }
         };
+        let foliage = surface.constants.flags & WorldConstants::FOLIAGE != 0;
         WorldMaterial {
             maps,
             bucket: surface.bucket,
+            stencil: if foliage {
+                MATERIAL_TREE
+            } else {
+                MATERIAL_DEFAULT
+            },
         }
     }
 
@@ -616,8 +624,10 @@ impl World {
         batches: &[Range<u32>],
         pipelines: &ByBucket,
         cast: Option<(&shadow::Casting, usize)>,
+        stencils: bool,
     ) {
         let mut set: Option<(&wgpu::RenderPipeline, &WorldMesh)> = None;
+        let mut stencil = MATERIAL_DEFAULT;
         for batch in batches {
             let run = &self.draws[batch.start as usize..batch.end as usize];
             let Some(mesh) = run.first().map(|draw| &*draw.mesh) else {
@@ -640,6 +650,11 @@ impl World {
                 pass.set_bind_group(1, &**maps, &[]);
             }
             set = Some((pipeline, mesh));
+            // A batch is of one material, and so names one material in the stencil
+            if stencils && mesh.material.stencil != stencil {
+                stencil = mesh.material.stencil;
+                pass.set_stencil_reference(stencil);
+            }
             // A cascade's arguments follow those of the cascades before it, a draw's for each draw of the frame
             let (arguments, first) = match cast {
                 Some((casting, cascade)) => (&casting.indirect, cascade * self.draws.len()),
@@ -675,6 +690,7 @@ impl World {
         pass: &mut wgpu::RenderPass<'_>,
         camera: &wgpu::BindGroup,
         pipelines: &ByBucket,
+        stencils: bool,
     ) {
         let Some(instances) = self.instances.as_ref().filter(|_| self.draws_anything()) else {
             return;
@@ -682,19 +698,20 @@ impl World {
         pass.set_bind_group(0, camera, &[]);
         pass.set_bind_group(2, &self.light_group, &[]);
         pass.set_vertex_buffer(1, instances.slice(..));
-        self.record(pass, &self.batches, pipelines, None);
+        self.record(pass, &self.batches, pipelines, None, stencils);
     }
 
     /// Draw every bucket of the world lit as the plain modes light a surface, into a pass over the viewport's colour and depth.
     pub(crate) fn draw_forward(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
-        self.draw(pass, camera, &self.pipelines.forward);
+        self.draw(pass, camera, &self.pipelines.forward, false);
         self.cards.draw_forward(pass, camera);
     }
 
     /// Draw what is opaque, then the decals over it, into a pass that fills the G-buffer for the game's lighting passes to light.
     pub(crate) fn draw_gbuffer(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
         pass.set_stencil_reference(MATERIAL_DEFAULT);
-        self.draw(pass, camera, &self.pipelines.gbuffer);
+        self.draw(pass, camera, &self.pipelines.gbuffer, true);
+        pass.set_stencil_reference(MATERIAL_DEFAULT);
         self.cards.draw_gbuffer(pass, camera);
     }
 
@@ -703,7 +720,7 @@ impl World {
         // ⚠ The water draws where the world has nothing else to, as over the open sea; leaving the world takes its mesh away.
         self.water.draw(pass, camera, &self.light_group);
         for faces in &self.pipelines.lit {
-            self.draw(pass, camera, faces);
+            self.draw(pass, camera, faces, false);
         }
     }
 
@@ -771,7 +788,13 @@ impl World {
             if let Some(instances) = instances {
                 pass.set_vertex_buffer(1, instances.slice(..));
                 let batches = &casting.batches[tile];
-                self.record(pass, batches, &self.pipelines.cast, Some((&*casting, tile)));
+                self.record(
+                    pass,
+                    batches,
+                    &self.pipelines.cast,
+                    Some((&*casting, tile)),
+                    false,
+                );
             }
             self.cards.draw_shadow(pass);
         }

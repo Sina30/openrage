@@ -90,6 +90,7 @@ const MODEL_VERTEX: u32 = 16u;
 const INSTANCE_COLOUR: u32 = 32u;
 const GROUND_BLEND: u32 = 64u;
 const TINT_MULTIPLY: u32 = 128u;
+const FOLIAGE: u32 = 256u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
@@ -388,7 +389,8 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
         (*s).smoothness = clamp(maps.a0.g, 0.0, 1.0);
         return maps.n0.xyz * 2.0 - 1.0;
     }
-    (*s).metal = clamp(maps.a0.r, 0.0, 1.0);
+    // ⚠ A tree's material A red is one less its translucency, which the lighting's translucent material stands for: read as a metalness it turns leaves into mirrors.
+    (*s).metal = select(clamp(maps.a0.r, 0.0, 1.0), 0.0, (m.flags & FOLIAGE) != 0u);
     (*s).smoothness = 1.0 - clamp(maps.a0.g, 0.0, 1.0);
     return leaning(maps.n0, m.bumpiness.x);
 }

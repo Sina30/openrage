@@ -470,3 +470,10 @@ fn a_ground_decal_states_the_heights_its_blend_spans_and_whether_its_tint_multip
     let plain = of(&shader(&one_layer(), &[]), 2).constants;
     assert_eq!((plain.ground_heights, plain.tint_multiplies), (None, false));
 }
+
+#[test]
+fn a_tree_is_foliage_by_the_wind_thresholds_its_effect_states_and_a_plain_material_is_not() {
+    let tree = shader(&one_layer(), &[(h("WindMinMaxThreshholds0"), &[0.8, 1.1])]);
+    assert!(of(&tree, 0).constants.foliage);
+    assert!(!of(&shader(&one_layer(), &[]), 0).constants.foliage);
+}

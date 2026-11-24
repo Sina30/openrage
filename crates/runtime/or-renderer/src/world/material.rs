@@ -141,6 +141,8 @@ impl WorldConstants {
     pub const GROUND_BLEND: u32 = 64;
     /// A ground decal's tint multiplies its colour rather than taking its luminance.
     pub const TINT_MULTIPLY: u32 = 128;
+    /// A tree's leaves and bark: no metal, and the lighting's translucent material, which lights the side turned from the sun.
+    pub const FOLIAGE: u32 = 256;
 }
 
 impl Default for WorldConstants {
