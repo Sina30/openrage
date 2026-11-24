@@ -96,6 +96,8 @@ pub struct Constants {
     pub ground_heights: Option<[f32; 2]>,
     /// A ground decal's tint multiplies its colour rather than taking its luminance.
     pub tint_multiplies: bool,
+    /// A ground decal's tint blend is masked by its material A's alpha.
+    pub tint_masked: bool,
     /// A tree's leaves and bark: its material A's red is one less its translucency, not a metalness.
     pub foliage: bool,
     /// It states a palette record whose slot holds no texture.
@@ -148,6 +150,7 @@ impl Default for Constants {
             layer1_uv_scale: [1.0; 2],
             ground_heights: None,
             tint_multiplies: false,
+            tint_masked: false,
             foliage: false,
             palette_unbound: false,
             region_tint: None,
@@ -323,6 +326,7 @@ const LAYER1_UV_SCALE: u32 = name_hash32(b"lyr1UVScale");
 const GROUND_LOW: u32 = 0x1BCE_EA11;
 const GROUND_HIGH: u32 = 0xAED6_191D;
 const TINT_MULTIPLIES: u32 = 0x40D6_CCD6;
+const TINT_MASKED: u32 = 0x236B_91CA;
 /// A constant every tree effect states and no other: the wind's thresholds of its branches.
 const TREE_WIND: u32 = name_hash32(b"WindMinMaxThreshholds0");
 
@@ -444,6 +448,7 @@ fn constants_of(r: &Records) -> Constants {
         ground_heights: (r.words(GROUND_HIGH).is_some() || r.words(GROUND_LOW).is_some())
             .then(|| [r.float(GROUND_LOW, 0.0), r.float(GROUND_HIGH, 1.0)]),
         tint_multiplies: r.flag(TINT_MULTIPLIES, d.tint_multiplies),
+        tint_masked: r.flag(TINT_MASKED, d.tint_masked),
         foliage: r.words(TREE_WIND).is_some(),
         palette_unbound: r.states(PALETTE) && r.key(PALETTE).is_none(),
         region_tint: match r.0.name_hash {

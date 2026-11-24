@@ -1375,6 +1375,45 @@ fn a_ground_decal_whose_palette_slot_is_empty_takes_a_black_tint_and_one_with_a_
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn a_ground_decal_whose_tint_is_masked_takes_it_only_as_far_as_its_material_a_alpha() {
+    let Some((device, queue, mut renderer)) = family_frame("a_ground_decal_whose_tint_is_masked")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    // A black tint, over a white decal: where the mask is nought the decal keeps its own colour
+    for (alpha, wanted) in [(0u8, 255u8), (255, 0)] {
+        let maps = [
+            (slot::colour(0), texel(&device, &queue, [255; 4])),
+            (
+                slot::material_a(0),
+                texel(&device, &queue, [0, 255, 128, alpha]),
+            ),
+        ];
+        let flags = WorldConstants::GROUND_BLEND
+            | WorldConstants::UNBOUND_PALETTE
+            | WorldConstants::TINT_MASKED;
+        let constants = WorldConstants {
+            flags: WorldConstants::default().flags | flags,
+            tint_intensity: [1.0; 4],
+            tint_blend: [1.0; 4],
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Decal, WorldBucket::Opaque);
+        let material = surface(&device, &renderer, family, &maps, constants);
+        let square = coloured_square(&device, [1.0; 4], [1.0; 4], material);
+        let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
+        let grey = [wanted, wanted, wanted, 255];
+        assert!(near(targets[0], grey, 2), "alpha {alpha}: {targets:?}");
+    }
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn a_two_layer_material_shows_its_second_layer_by_the_control_map_and_the_vertexs_second_colour() {
     let Some((device, queue, mut renderer)) = family_frame("a_two_layer_material_shows_its_second")
     else {

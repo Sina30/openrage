@@ -459,16 +459,24 @@ fn a_ground_decal_states_the_heights_its_blend_spans_and_whether_its_tint_multip
             (0x1BCE_EA11, &[0.25]),
             (0xAED6_191D, &[0.75]),
             (0x40D6_CCD6, &[1.0]),
+            (0x236B_91CA, &[1.0]),
         ],
     );
     let c = of(&ground, 2).constants;
     assert_eq!(
-        (c.ground_heights, c.tint_multiplies),
-        (Some([0.25, 0.75]), true)
+        (c.ground_heights, c.tint_multiplies, c.tint_masked),
+        (Some([0.25, 0.75]), true, true)
     );
     // A decal that states neither height blends by its coverage alone
     let plain = of(&shader(&one_layer(), &[]), 2).constants;
-    assert_eq!((plain.ground_heights, plain.tint_multiplies), (None, false));
+    assert_eq!(
+        (
+            plain.ground_heights,
+            plain.tint_multiplies,
+            plain.tint_masked
+        ),
+        (None, false, false)
+    );
 }
 
 #[test]
