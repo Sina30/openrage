@@ -157,6 +157,21 @@ struct Walk<'a> {
     path: Vec<u32>,
     /// How many more rooms it may enter.
     left: usize,
+    /// The openings each portal was crossed through, the way into its first room and the way out.
+    crossed: Vec<[Vec<Vec<Vec3>>; 2]>,
+}
+
+/// Whether every corner of `inner` lies within the convex `outer`, both in a plane facing `normal`.
+fn within(inner: &[Vec3], outer: &[Vec3], normal: Vec3) -> bool {
+    const SLACK: f32 = 1e-4;
+    let turn = |a: Vec3, b: Vec3, p: Vec3| normal.dot((b - a).cross(p - a));
+    let &[a, b, c, ..] = outer else {
+        return false;
+    };
+    let wise = turn(a, b, c).signum();
+    inner.iter().all(|&p| {
+        (0..outer.len()).all(|k| wise * turn(outer[k], outer[(k + 1) % outer.len()], p) >= -SLACK)
+    })
 }
 
 impl Walk<'_> {
@@ -191,21 +206,29 @@ impl Walk<'_> {
             if room == 0 && off * normal.dot(self.middle - point) > 0.0 {
                 continue;
             }
-            let next = match off.abs() < DOORWAY {
+            let opening = clip(portal.corners.to_vec(), self.eye, planes);
+            let doorway = off.abs() < DOORWAY;
+            if opening.len() < 3 && !doorway {
+                continue;
+            }
+            let next = match doorway {
                 // Standing in the opening, the camera sees through all of it what it saw before.
                 true => planes.to_vec(),
-                false => {
-                    let opening = clip(portal.corners.to_vec(), self.eye, planes);
-                    if opening.len() < 3 {
-                        continue;
-                    }
-                    pyramid(self.eye, &opening)
-                }
+                false => pyramid(self.eye, &opening),
             };
             self.seen.portals[k] = true;
             // A shut portal's door is seen, and nothing past it.
             if portal.shut {
                 continue;
+            }
+            // ⚠ Through an opening within one this portal was crossed through the same way, the eye
+            // sees nothing it did not: the walk would otherwise follow every order of the same doors.
+            let way = &mut self.crossed[k][usize::from(other == portal.rooms[0])];
+            if opening.len() >= 3 {
+                if way.iter().any(|seen| within(&opening, seen, normal)) {
+                    continue;
+                }
+                way.push(opening);
             }
             // ⚠ GTA V's rule: from a room the outside is drawn through the portals to it the camera sees.
             let outside = self.seen.outside.as_mut();
@@ -303,6 +326,7 @@ pub(super) fn seen(rooms: &[RoomBox], portals: &[Opening], middle: Vec3, eye: Ve
         },
         path: Vec::new(),
         left: MOST_ENTERED,
+        crossed: vec![Default::default(); portals.len()],
     };
     let start = room_of(rooms, eye).unwrap_or(0) as u32;
     if start != 0 {

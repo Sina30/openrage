@@ -222,4 +222,23 @@ fn rooms_that_all_open_on_each_other_where_the_camera_stands_are_walked_in_bound
         seen.rooms[1..].iter().all(|room| *room),
         "every room is seen"
     );
+    // A door crossed again through what it was crossed through before is not followed: the walk ends.
+    assert!(seen.outside.is_some(), "the walk was not cut short");
+}
+
+#[test]
+fn an_opening_is_within_another_where_each_of_its_corners_is() {
+    let square = |x: f32, y: f32, half: f32| {
+        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            .map(|(a, b)| Vec3::new(x + a * half, y + b * half, 0.0))
+    };
+    let (big, small) = (square(0.0, 0.0, 2.0), square(0.5, 0.5, 1.0));
+    assert!(within(&small, &big, Vec3::Z));
+    assert!(within(&big, &big, Vec3::Z));
+    assert!(!within(&big, &small, Vec3::Z));
+    assert!(!within(&square(2.5, 0.0, 1.0), &big, Vec3::Z));
+    // Either way round the corners go, and whichever way the plane faces.
+    let mut reversed = big;
+    reversed.reverse();
+    assert!(within(&small, &reversed, -Vec3::Z));
 }
