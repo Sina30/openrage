@@ -1,6 +1,7 @@
 //! What a frame of the world lays out: the level of detail each seen instance draws at, the seen
 //! instances side by side a model and level, and the order the draws go out in.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
@@ -76,6 +77,8 @@ pub(super) struct Layout {
     /// selection; infinitely far for a slot that only casts shadows into the view.
     pub nearest: Vec<(f32, u32)>,
     pub laid: Vec<WorldInstance>,
+    /// The chunks in view the last cull left out as the occluders hide them.
+    pub hidden: usize,
     /// The occluders as last drawn: a chunk they hide is not laid out.
     occlusion: Occlusion,
 }
@@ -106,12 +109,18 @@ impl Layout {
         self.occlusion.draw(occluders, view.view_proj, view.eye);
     }
 
+    /// The occluder boxes and models drawn last.
+    pub(super) fn occluders(&self) -> (usize, usize) {
+        self.occlusion.drawn
+    }
+
     /// The instances of `chunks` the view sees, each with the slot of the level its distance picks.
     ///
     /// ⚠ On every core: a selection holds tens of thousands of instances, and a frame that tested
     /// each on the UI thread spent most of its time here.
     pub(super) fn cull(&mut self, chunks: &[Chunk], instances: &[Instance], view: &View) {
         let this = &*self;
+        let hidden = AtomicUsize::new(0);
         let seen = (chunks.par_iter())
             .flat_map_iter(|chunk| {
                 let away = view.eye.distance(chunk.centre);
@@ -120,7 +129,11 @@ impl Layout {
                 let whole = view.frustum.holds_sphere(chunk.centre, chunk.radius);
                 let part = whole || view.frustum.sees_sphere(chunk.centre, wider);
                 // ⚠ As wide as its shadow reaches: what is hidden may cast one into the view.
-                let part = part && !this.occlusion.hides(chunk.centre, wider);
+                let hides = part && this.occlusion.hides(chunk.centre, wider);
+                if hides {
+                    hidden.fetch_add(1, Ordering::Relaxed);
+                }
+                let part = part && !hides;
                 let run = if part { chunk.from..chunk.to } else { 0..0 };
                 run.filter_map(move |at| {
                     let instance = instances.get(at as usize)?;
@@ -145,6 +158,7 @@ impl Layout {
             })
             .collect();
         self.seen = seen;
+        self.hidden = hidden.into_inner();
     }
 
     /// Lay the seen instances out a slot: where each slot's run starts, then each put at its

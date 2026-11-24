@@ -44,6 +44,8 @@ pub(super) struct Occlusion {
     hiz: Vec<f32>,
     /// Whether any texel is covered.
     any: bool,
+    /// How many boxes and models were drawn.
+    pub drawn: (usize, usize),
 }
 
 /// The corners of the box from `min` to `max`, numbered as a box occluder numbers its own.
@@ -125,6 +127,7 @@ impl Occlusion {
         }
         largest(&mut boxes, MOST_BOXES);
         largest(&mut models, MOST_MODELS);
+        self.drawn = (boxes.len(), models.len());
         for (_, corners) in &boxes {
             for triangle in BOX_TRIANGLES {
                 self.triangle(triangle.map(|k| corners[usize::from(k)]));

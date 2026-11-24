@@ -1,6 +1,8 @@
 //! How much of the world the device keeps and takes in a frame, what goes first when it holds
 //! too much, and what is asked for first while the camera moves.
 
+use std::time::Duration;
+
 use glam::Vec3;
 
 /// The bytes of models, and of textures, put on the device in one frame; the rest wait for the next.
@@ -60,6 +62,31 @@ impl Budgets {
             most_side: limits.max_texture_dimension_2d,
         }
     }
+}
+
+/// What the last frame of the world cost the CPU, and what it laid out, for a measurement to read.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct WorldCost {
+    /// The whole of the frame's world on the CPU, and whether it laid the world out again.
+    pub refresh: Duration,
+    pub laid: bool,
+    /// Of the last layout: drawing the occluders, the cull and the placing, and all of it.
+    pub occlude: Duration,
+    pub cull: Duration,
+    pub layout: Duration,
+    /// Chunks the selection gave, and those in view the occluders hid.
+    pub chunks: usize,
+    pub hidden: usize,
+    /// Occluder boxes and models drawn.
+    pub occluders: (usize, usize),
+    /// Instances laid out, and those of them laid out for their shadow alone.
+    pub laid_instances: usize,
+    pub shadow_only: usize,
+    /// Bytes of models and of textures put on the device this frame.
+    pub uploaded: (u64, u64),
+    /// Models and textures let go so far, and those of them that came back.
+    pub evicted: (u64, u64),
+    pub reread: (u64, u64),
 }
 
 /// Something on the device that did not draw this frame.

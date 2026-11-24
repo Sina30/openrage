@@ -44,6 +44,10 @@ pub(super) enum WorldStep {
     Modes(u8),
     /// The camera moved at this velocity, in metres a second, for this long, a frame at a time.
     Fly(glam::Vec3, Duration),
+    /// What this many frames cost at rest and laid out again, written as JSON to this file beside the shots.
+    Perf(String, usize),
+    /// The camera moved to a pose over a time, and what its frames cost written as JSON to this file.
+    Move(Pose, Duration, String),
 }
 
 /// The words `world modes` takes, each with its bit.
@@ -98,8 +102,33 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
                 Duration::from_secs_f32(seconds),
             ))
         }
+        "perf" => {
+            let [name, frames] = args[..] else {
+                return Err("needs a file's name and a number of frames".into());
+            };
+            let frames = (frames.parse::<usize>().ok())
+                .filter(|n| (1..=10_000).contains(n))
+                .ok_or_else(|| format!("`{frames}` is not a number of frames from 1 to 10000"))?;
+            Ok(WorldStep::Perf(file_stem(name)?, frames))
+        }
+        "move" => {
+            let (seconds, rest) = split_word(rest);
+            let (name, rest) = split_word(rest);
+            let [seconds] = numbers::<1>(&[seconds])?;
+            if seconds <= 0.0 || seconds > MOST_SECONDS {
+                return Err(format!(
+                    "a move takes a number of seconds above 0, {MOST_SECONDS} at most"
+                ));
+            }
+            let to = Pose::read(rest)?;
+            Ok(WorldStep::Move(
+                to,
+                Duration::from_secs_f32(seconds),
+                file_stem(name)?,
+            ))
+        }
         other => Err(format!(
-            "no world step `{other}`; use camera, hour, clean, settle, dump, modes or fly"
+            "no world step `{other}`; use camera, hour, clean, settle, dump, modes, fly, perf or move"
         )),
     }
 }
@@ -278,6 +307,8 @@ impl Shell {
             // The groups follow the modes, as they do on the screen until a group is ticked.
             WorldStep::Modes(modes) => viewer().enabled.modes = *modes,
             WorldStep::Fly(velocity, seconds) => self.fly(state, *velocity, *seconds)?,
+            WorldStep::Perf(name, frames) => self.perf(state, *frames, &out.join(name))?,
+            WorldStep::Move(to, over, name) => self.walk(state, to, *over, &out.join(name))?,
         }
         Ok(())
     }
@@ -382,6 +413,23 @@ mod tests {
             parse("fly 30 0 -1.5 2"),
             Ok(WorldStep::Fly(glam::Vec3::new(30.0, 0.0, -1.5), at(2000)))
         );
+        assert_eq!(
+            parse("perf cost-01.json 30"),
+            Ok(WorldStep::Perf("cost-01.json".into(), 30))
+        );
+        assert_eq!(
+            parse("move 1 walk.json 50 0 10 0 -5 60"),
+            Ok(WorldStep::Move(
+                Pose {
+                    position: glam::Vec3::new(50.0, 0.0, 10.0),
+                    yaw: 0.0,
+                    pitch: -5.0,
+                    fov: Some(60.0),
+                },
+                at(1000),
+                "walk.json".into()
+            ))
+        );
     }
 
     #[test]
@@ -427,6 +475,14 @@ mod tests {
             "fly 1 2 3",
             "fly 1 2 3 0",
             "fly 1 2 3 soon",
+            "perf",
+            "perf a.json",
+            "perf a.json 0",
+            "perf ../a.json 3",
+            "move",
+            "move 1 a.json",
+            "move 0 a.json 1 2 3 0 0",
+            "move 1 ../a.json 1 2 3 0 0",
         ] {
             assert!(parse(bad).is_err(), "`world {bad}` should be refused");
         }

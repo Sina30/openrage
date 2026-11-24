@@ -38,6 +38,7 @@ mod textures;
 #[path = "world_water.rs"]
 mod water;
 
+pub use budget::WorldCost;
 use budget::{ahead, evicted, Budgets, Idle};
 use layout::{order, Layout, View};
 use pages::{Pages, Place};
@@ -161,6 +162,9 @@ pub(super) struct WorldGpu {
     water: water::Water,
     /// The far stand-ins the renderer holds.
     cards: cards::Cards,
+    cost: WorldCost,
+    /// The models and textures let go, to count those that come back.
+    gone: (HashSet<ModelRef>, HashSet<u64>),
 }
 
 fn bucket_of(bucket: Bucket) -> WorldBucket {
@@ -290,6 +294,8 @@ impl WorldGpu {
                 .collect();
             for idle in evicted(idle, self.model_bytes - budgets.models_kept) {
                 self.forget(&idle.key);
+                self.cost.evicted.0 += 1;
+                self.gone.0.insert(idle.key);
                 self.told.push((idle.key, Some(false)));
                 self.changes += 1;
             }
@@ -300,6 +306,8 @@ impl WorldGpu {
         if gone.is_empty() {
             return;
         }
+        self.cost.evicted.1 += gone.len() as u64;
+        self.gone.1.extend(&gone);
         self.changes += 1;
         // ⚠ A material and a mesh made with a texture hold it on the device: both let it go here,
         // or the bytes counted as freed would stay.
@@ -328,10 +336,27 @@ impl RenderBridge {
         self.world.drawn
     }
 
+    /// What the last frame of the world cost the CPU, and what its draws ask of the device.
+    pub fn world_cost(&self) -> (WorldCost, or_renderer::world::WorldCalls) {
+        (self.world.cost, self.renderer.world_calls())
+    }
+
+    /// Have the next frame lay the world out again, as though the camera had moved.
+    pub fn relay_world(&mut self) {
+        self.world.laid_for = None;
+    }
+
     /// Draw the GTA VI world this frame, lit by its own day on the `days`th day in `weather`: put
     /// the models and textures that arrived on the device, and lay out the instances of the last
     /// selection the camera sees.
     pub fn refresh_world(&mut self, days: f32, weather: WeatherState) {
+        let started = Instant::now();
+        (self.world.cost.laid, self.world.cost.uploaded) = (false, (0, 0));
+        self.lay_world(days, weather);
+        self.world.cost.refresh = started.elapsed();
+    }
+
+    fn lay_world(&mut self, days: f32, weather: WeatherState) {
         self.world.shown = true;
         self.world.frame += 1;
         let frame = self.world.frame;
@@ -363,6 +388,7 @@ impl RenderBridge {
                 break;
             };
             world.forget(&model);
+            world.cost.reread.0 += u64::from(world.gone.0.remove(&model));
             let slot = match read {
                 Some(read) => {
                     let before = world.model_bytes;
@@ -379,11 +405,13 @@ impl RenderBridge {
             world.changes += 1;
             world.models.insert(model, slot);
         }
+        world.cost.uploaded.0 = uploaded;
         let mut uploaded = 0u64;
         while uploaded < budgets.textures_a_frame {
             let Some((key, pixels, read)) = viewer.take_texture() else {
                 break;
             };
+            world.cost.reread.1 += u64::from(world.gone.1.remove(&key));
             uploaded += world.textures.arrive(
                 &self.device,
                 &self.queue,
@@ -394,6 +422,7 @@ impl RenderBridge {
             );
             world.changes += 1;
         }
+        world.cost.uploaded.1 = uploaded;
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
         let metered = self.renderer.metered();
@@ -452,6 +481,7 @@ impl RenderBridge {
             return;
         }
         world.laid_for = Some(key);
+        let laying = Instant::now();
 
         // A slot for each level of each model of the selection that is on the device.
         let instances = &selected.instances;
@@ -472,9 +502,12 @@ impl RenderBridge {
             lod_scale,
             shadow_far: casts.then_some(or_renderer::world::SHADOW_FAR),
         };
+        let occluding = Instant::now();
         world.layout.occlude(&selected.occluders, &view);
+        let occluded = occluding.elapsed();
         world.layout.cull(&selected.chunks, instances, &view);
         world.layout.place(instances);
+        let culled = occluding.elapsed() - occluded;
 
         // The runs that draw, and for each material they name how large and how soon its maps are needed.
         let per_metre = textures::per_metre(height, fov_y);
@@ -679,6 +712,19 @@ impl RenderBridge {
         (self.renderer).set_world(&self.device, &self.queue, &world.layout.laid, draws);
         world.layout.laid.truncate(laid);
         world.evict(&budgets, frame, eye);
+        let layout = &world.layout;
+        world.cost = WorldCost {
+            laid: true,
+            occlude: occluded,
+            cull: culled,
+            layout: laying.elapsed(),
+            chunks: selected.chunks.len(),
+            hidden: layout.hidden,
+            occluders: layout.occluders(),
+            laid_instances: layout.seen.len(),
+            shadow_only: layout.seen.iter().filter(|seen| !seen.shown).count(),
+            ..world.cost
+        };
     }
 
     /// Take the world, its lights and its day away where no panel asked for it this frame.

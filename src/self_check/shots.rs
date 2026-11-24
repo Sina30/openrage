@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 mod compare;
+mod perf;
 mod png;
 mod script;
 mod waits;

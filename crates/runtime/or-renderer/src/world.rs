@@ -186,6 +186,18 @@ pub struct WorldDraw {
     pub instances: Range<u32>,
 }
 
+/// What the world's draws of a frame ask of the device, for a measurement to read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorldCalls {
+    /// Draws, and the calls they go out in, to the frame and to each cascade of the shadow.
+    pub draws: usize,
+    pub calls: usize,
+    pub cast_calls: usize,
+    /// Triangles drawn, each instance's counted, to the frame and to each cascade of the shadow.
+    pub triangles: u64,
+    pub cast_triangles: u64,
+}
+
 /// The floats of the viewport's camera uniform, two matrices and three vectors: a cascade is seen through a uniform as wide, of which the cast reads the first matrix.
 const CAMERA_FLOATS: usize = 44;
 
@@ -222,6 +234,7 @@ pub(crate) struct World {
     cards: cards::Cards,
     /// GTA VI's water, drawn over a copy of the lit frame before what blends.
     pub(crate) water: water::WaterPass,
+    calls: WorldCalls,
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
 }
@@ -411,6 +424,7 @@ impl World {
             pipelines: Pipelines::new(device, camera_bgl, &materials, &light_layout, colour_format),
             cards: cards::Cards::new(device, queue, camera_bgl, colour_format),
             water: water::WaterPass::new(device, queue, camera_bgl, &light_layout),
+            calls: WorldCalls::default(),
             exposure: 1.0,
             materials,
             sampler,
@@ -481,6 +495,24 @@ impl World {
         draws.sort_by_key(|draw| draw.mesh.material.bucket);
         self.batches = batches(&draws, false);
         self.cast_batches = batches(&draws, true);
+        let triangles = |draw: &WorldDraw| {
+            u64::from(draw.mesh.index_count / 3)
+                * u64::from(draw.instances.end - draw.instances.start)
+        };
+        let casting = draws.iter().filter(|d| d.mesh.material.bucket.casts());
+        self.calls = WorldCalls {
+            draws: draws.len(),
+            calls: match self.multi {
+                true => self.batches.len(),
+                false => draws.len(),
+            },
+            cast_calls: match self.multi {
+                true => self.cast_batches.len(),
+                false => casting.clone().count(),
+            },
+            triangles: draws.iter().map(triangles).sum(),
+            cast_triangles: casting.map(triangles).sum(),
+        };
         if !draws.is_empty() {
             fill(
                 device,
@@ -716,6 +748,11 @@ impl ViewportRenderer {
     /// How many instances the world draws.
     pub fn world_instances(&self) -> u32 {
         self.world.count
+    }
+
+    /// What the world's draws of the last frame set ask of the device.
+    pub fn world_calls(&self) -> WorldCalls {
+        self.world.calls
     }
 
     /// Whether there is a world to draw.

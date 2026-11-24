@@ -1009,6 +1009,8 @@ fn headless_gpu() -> Result<(std::sync::Arc<wgpu::Device>, std::sync::Arc<wgpu::
     for wanted in [
         wgpu::Features::TEXTURE_COMPRESSION_BC,
         wgpu::Features::INDIRECT_FIRST_INSTANCE,
+        // The stages of a frame on the device, which a shots script's `world perf` reads.
+        or_renderer::gpu_timer::FEATURES,
     ] {
         if adapter_features.contains(wanted) {
             required_features |= wanted;
