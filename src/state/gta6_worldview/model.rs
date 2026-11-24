@@ -20,6 +20,8 @@ pub use material::{CpuMaterial, Family};
 
 /// The bytes a model's body is read to.
 const BODY_LIMIT: u64 = 512 << 20;
+/// What the name of a drawable that is a far stand-in of a plant holds: the card pass draws it, never the model pass.
+const STAND_IN: &str = "_imposter";
 
 /// A model on the CPU: its levels of detail, from the highest down.
 pub struct CpuModel {
@@ -89,12 +91,23 @@ fn glows(shader: &Shader) -> bool {
 }
 
 /// `drawable` as a model: each level that holds a mesh, with the distance its body states, each
-/// mesh's bucket and family from its shader's byte of `buckets`; a water mask's mesh is dropped.
+/// mesh's bucket and family from its shader's byte of `buckets`; a water mask's mesh is dropped,
+/// and so is every mesh of a far stand-in.
 pub(super) fn model_of(
     drawable: &Drawable,
     buckets: &[u8],
     srgb: &dyn Fn(u64) -> Option<bool>,
 ) -> CpuModel {
+    // ⚠ A stand-in's texture is an atlas of views of its plant, one a cell: drawn as a mesh its coordinates span every cell, which shows as pale speckles.
+    if drawable.name.contains(STAND_IN) {
+        let nothing = CpuLod {
+            until: f32::INFINITY,
+            meshes: Vec::new(),
+        };
+        return CpuModel {
+            lods: vec![nothing],
+        };
+    }
     let materials: Vec<Option<(CpuMaterial, Bucket)>> = (drawable.shaders.iter().enumerate())
         .map(|(at, shader)| {
             let byte = buckets.get(at).copied().unwrap_or(0);

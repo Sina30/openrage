@@ -191,6 +191,19 @@ fn a_four_layer_mesh_takes_its_weights_from_colour_channel_25_and_every_mesh_its
 }
 
 #[test]
+fn a_far_stand_in_of_a_plant_draws_no_mesh() {
+    let levels = [level(vec![geometry(0, true)]), None, None, None];
+    let mut stand_in = drawable(vec![plain()], levels, [FAR; 4]);
+    stand_in.name = "veg_tree_oak_01_imposter.#dr".to_string();
+    let model = model_of(&stand_in, &[0], &|_| None);
+    assert_eq!(model.lods.len(), 1);
+    assert!(model.lods[0].meshes.is_empty());
+    // The same drawable under another name draws its mesh
+    stand_in.name = "veg_tree_oak_01.#dr".to_string();
+    assert_eq!(model_of(&stand_in, &[0], &|_| None).lods[0].meshes.len(), 1);
+}
+
+#[test]
 fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws_nothing() {
     let of = |byte: u8| Bucket::of(byte, false);
     assert_eq!(of(0), Some(Bucket::Opaque));
