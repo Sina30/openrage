@@ -1,5 +1,6 @@
 use or_io::gta6::map::interior::{InteriorChild, InteriorRoom, InteriorSet};
-use or_io::gta6::map::links::{EntitySetLocation, Room};
+use or_io::gta6::map::links::{EntitySetLocation, Portal, Room};
+use or_world::streaming::FADE;
 
 use super::super::index::tests_support::index_of;
 use super::*;
@@ -40,8 +41,8 @@ fn room(attached_objects: Vec<u32>) -> InteriorRoom {
     InteriorRoom {
         room: Room {
             name: 1,
-            bb_min: [-4.0, -3.0, 0.0],
-            bb_max: [4.0, 3.0, 0.0],
+            bb_min: [-4.0, -3.0, -1.0],
+            bb_max: [4.0, 3.0, 3.0],
             flags: 0,
             portal_count: 0,
             floor_id: 0,
@@ -54,7 +55,7 @@ fn room(attached_objects: Vec<u32>) -> InteriorRoom {
 }
 
 /// An interior 8 m by 6 that draws to 30 m: a chair, a ghost and an entity of no archetype in its
-/// second room, and a lamp in each of two entity sets.
+/// second room, a lamp in each of two entity sets, and the whole of its east wall open.
 fn interior() -> Interior {
     let lamp = |name, at| InteriorSet {
         name,
@@ -75,7 +76,18 @@ fn interior() -> Interior {
             child(0xDEAD, [0.0; 3], -1.0),
         ],
         rooms: vec![room(vec![]), room(vec![0, 1, 2])],
-        portals: vec![],
+        portals: vec![Portal {
+            room_from: 1,
+            room_to: 0,
+            flags: 0,
+            corners: [
+                [4.0, -3.0, -1.0],
+                [4.0, 3.0, -1.0],
+                [4.0, 3.0, 3.0],
+                [4.0, -3.0, 3.0],
+            ],
+            attached_objects: vec![],
+        }],
         entity_sets: vec![lamp(0xA, [0.0, 2.0, 0.0]), lamp(0xB, [0.0, -2.0, 0.0])],
         time_cycle_modifiers: vec![],
     }
@@ -139,6 +151,7 @@ fn an_interior_s_entities_stand_in_the_world_under_the_instance_that_places_it()
         (chair.level, lamp.level),
         (Level::OrphanHd, Level::OrphanHd)
     );
+    assert_eq!((chair.location, lamp.location), (KITCHEN, KITCHEN));
     assert!(near(placed.centre, [10.0, 20.0, 30.0]));
     assert!((placed.radius - 5.0).abs() < 1e-4);
     assert_eq!(placed.lod_dist, 30.0);
@@ -153,18 +166,40 @@ fn an_instance_that_states_a_distance_draws_its_interior_to_it() {
     assert_eq!(place(&index(), &far, &interior()).lod_dist, 80.0);
 }
 
-/// The models `placed` draws at noon for a camera `north` metres along y from its middle.
+/// The models `placed` draws at noon for a camera `north` metres along y from its middle, which
+/// the instance's turn makes the east of the interior.
 fn drawn(placed: &Placed, north: f32, scale: f32) -> Vec<ModelRef> {
     drawn_at(placed, north, &[scale; Level::COUNT], 12)
 }
 
 /// The same with a scale for each level, at the hour `hour`.
 fn drawn_at(placed: &Placed, north: f32, scales: &[f32; Level::COUNT], hour: u32) -> Vec<ModelRef> {
+    (faded_at(placed, north, scales, hour).into_iter())
+        .map(|(model, _)| model)
+        .collect()
+}
+
+fn view(eye: Vec3, scales: &[f32; Level::COUNT]) -> View {
+    View {
+        eye,
+        velocity: Vec3::ZERO,
+        scales: *scales,
+        fade: [FADE; Level::COUNT],
+    }
+}
+
+/// The same with how opaque each draws against the interior, which draws half opaque.
+fn faded_at(
+    placed: &Placed,
+    north: f32,
+    scales: &[f32; Level::COUNT],
+    hour: u32,
+) -> Vec<(ModelRef, f32)> {
     let mut models = Vec::new();
     let eye = placed.centre + Vec3::new(0.0, north, 0.0);
-    placed.each(eye, scales, hour, |child, away| {
+    placed.each(&view(eye, scales), hour, 0.5, |child, away, fade| {
         assert!((away - eye.distance(origin(&child.rows))).abs() < 1e-4);
-        models.push(child.model);
+        models.push((child.model, fade / 0.5));
     });
     models
 }
@@ -174,10 +209,10 @@ fn the_contents_draw_within_the_interior_s_distance_and_each_within_its_own() {
     let placed = place(&index(), &instance(), &interior());
     let (chair, lamp) = (model(0x1000), model(0x2000));
     assert_eq!(drawn(&placed, 0.0, 1.0), [chair, lamp]);
-    // 10 m out the lamp is past its 5 m.
+    // 10 m out the lamp is past its 5 m and the 5 m band past it.
     assert_eq!(drawn(&placed, 10.0, 1.0), [chair]);
-    // 22 m out the chair, a metre north of the middle, is past its 20 m.
-    assert!(drawn(&placed, 22.0, 1.0).is_empty());
+    // 26.5 m out the chair, a metre north of the middle, is past its 20 m and its band.
+    assert!(drawn(&placed, 26.5, 1.0).is_empty());
     // Past the interior's 30 m nothing of it draws, whatever a child's own distance.
     let mut long = placed.clone();
     long.children[0].lod_dist = 500.0;
@@ -214,9 +249,9 @@ fn a_child_s_distance_scales_by_its_level_and_the_interior_s_by_hd() {
     let placed = place(&index(), &instance(), &interior());
     let mut scales = [1.0; Level::COUNT];
     scales[Level::OrphanHd as usize] = 0.5;
-    // The chair, 9 m away, is within half its 20 m; 11 m away it is not.
+    // The chair, 9 m away, is within half its 20 m; 15 m away it is past that and its band.
     assert_eq!(drawn_at(&placed, 10.0, &scales, 12), [model(0x1000)]);
-    assert!(drawn_at(&placed, 12.0, &scales, 12).is_empty());
+    assert!(drawn_at(&placed, 16.0, &scales, 12).is_empty());
     // A tenth of the interior's 30 m is within its 5 m sphere: 6 m out nothing draws.
     let mut scales = [1.0; Level::COUNT];
     scales[Level::Hd as usize] = 0.1;
@@ -225,4 +260,39 @@ fn a_child_s_distance_scales_by_its_level_and_the_interior_s_by_hd() {
         [model(0x1000), model(0x2000)]
     );
     assert!(drawn_at(&placed, 6.0, &scales, 12).is_empty());
+}
+
+#[test]
+fn a_child_fades_out_over_its_band_and_with_the_interior() {
+    let placed = place(&index(), &instance(), &interior());
+    let every = [1.0; Level::COUNT];
+    // The chair states 20 m, which fades over 5: 22.5 m away it is half there.
+    let faded = faded_at(&placed, 23.5, &every, 12);
+    let [(chair, fade)] = faded.as_slice() else {
+        panic!("{faded:?}");
+    };
+    assert_eq!(*chair, model(0x1000));
+    assert!((fade - 0.5).abs() < 1e-4, "{fade}");
+    // Within its distance it is as opaque as the interior.
+    let near = faded_at(&placed, 0.0, &every, 12);
+    assert!(near.iter().all(|(_, fade)| (fade - 1.0).abs() < 1e-6));
+}
+
+#[test]
+fn from_outside_the_contents_draw_seen_through_a_portal_alone() {
+    let placed = place(&index(), &instance(), &interior());
+    // South of the middle is the interior's west, whose wall has no opening.
+    assert!(drawn(&placed, -10.0, 1.0).is_empty());
+    assert_eq!(drawn(&placed, 10.0, 1.0), [model(0x1000)]);
+}
+
+#[test]
+fn the_camera_in_a_room_is_inside_the_interior_and_that_room() {
+    let placed = place(&index(), &instance(), &interior());
+    let inside = placed.inside(placed.centre).expect("in the second room");
+    assert_eq!((inside.interior, inside.room), (9, 1));
+    assert_eq!(
+        placed.inside(placed.centre + Vec3::new(0.0, 10.0, 0.0)),
+        None
+    );
 }

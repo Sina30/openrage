@@ -291,6 +291,11 @@ fn children(blocks: &Blocks, bytes: &[u8], at: usize, what: &str) -> Result<Vec<
         .collect()
 }
 
+/// Whether the body `model` holds declares the class of an interior's instance, which a map that places none need not.
+pub fn places_interiors(model: &RbmModel) -> bool {
+    model.classes.contains_key(&C_MLO_INSTANCE_DEF)
+}
+
 /// The interior instances of the `CMapData` body these two sections hold; refused for a `CMapTypes`.
 pub fn open_instances(virtual_section: &[u8], physical: &[u8]) -> Result<Vec<InteriorInstance>> {
     read_instances(&crate::meta::binary::rbm::gta6::read_model(

@@ -168,7 +168,11 @@ impl Lights {
                 let (virtual_section, physical) = resource.sections(&bytes);
                 let model =
                     or_io::meta::binary::rbm::gta6::read_model(virtual_section, physical).ok()?;
-                lights_of(&model, &shared)
+                let mut read = lights_of(&model, &shared)?;
+                // The lights of an interior's contents stand in the map that places it.
+                let inside = super::interior::lights_placed(&shared, files, &model);
+                (read.placed).extend(inside.into_iter().map(|light| Lamp { light, reach: None }));
+                Some(read)
             },
         );
         Self {

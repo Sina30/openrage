@@ -98,6 +98,8 @@ pub struct Selected {
     pub fading: bool,
     /// The occluders of the occluder maps around the camera; the same list until one comes or goes.
     pub occluders: Arc<[Arc<or_io::gta6::map::occluders::MapOccluders>]>,
+    /// The interior and room the camera stands in, where it stands in one.
+    pub inside: Option<super::interior::Inside>,
 }
 
 /// The models of a selection, each once, in the order they were first drawn with.
@@ -352,8 +354,14 @@ impl Streamer {
                 _ => None,
             }
         };
+        // An interior's instance draws its contents, which wait for nothing as a whole.
+        let interior_of = |id: NodeId| {
+            let map = loaded.get(&(id.0 as u32))?;
+            (map.interiors.iter()).find(|p| p.entity == id.1 as usize)
+        };
         let state = |id: NodeId| match model_of(id).map(ready) {
             _ if cards_of(id).is_some() => NodeState::Ready,
+            None if interior_of(id).is_some() => NodeState::Ready,
             None | Some(None) => NodeState::Absent,
             Some(Some(true)) => NodeState::Ready,
             Some(Some(false)) => NodeState::Loading,
@@ -373,6 +381,8 @@ impl Streamer {
         };
         // The entities of one map stand together: a chunk a map.
         selection.drawn.sort_unstable_by_key(|d| d.node);
+        // How opaque the forest draws each interior's instance, by its map and place.
+        let mut interiors: HashMap<(u32, usize), f32> = HashMap::new();
         let (mut from, mut of_map) = (0, None);
         for draw in &selection.drawn {
             let id = draw.node;
@@ -387,6 +397,8 @@ impl Streamer {
             if let (Some(model), Some(rows)) = (drawn.model_at(hour), rows) {
                 let model = models.ix(model);
                 (out.instances).push(instance(model, *rows, drawn, draw.fade));
+            } else if interior_of(id).is_some() {
+                interiors.insert((id.0 as u32, id.1 as usize), draw.fade);
             }
         }
         close(&mut out, from);
@@ -429,11 +441,18 @@ impl Streamer {
             let nearest = waited.entry(model).or_insert(away);
             *nearest = nearest.min(away);
         }
-        // The contents of each interior the camera is near: a chunk an interior.
-        for map in loaded.values() {
+        // The contents of each interior whose instance draws, or that the camera stands in: a
+        // chunk an interior, as opaque as its instance.
+        for (name, map) in loaded {
             for interior in &map.interiors {
+                let inside = interior.inside(eye);
+                out.inside = out.inside.or(inside);
+                let drawn = interiors.get(&(*name, interior.entity)).copied();
+                let Some(fade) = drawn.or(inside.map(|_| 1.0)) else {
+                    continue;
+                };
                 let from = out.instances.len();
-                interior.each(eye, &view.scales, hour, |child, away| {
+                interior.each(view, hour, fade, |child, away, fade| {
                     match ready(child.model) {
                         Some(true) => {
                             let model = models.ix(child.model);
@@ -442,7 +461,7 @@ impl Streamer {
                                 rows: child.rows,
                                 centre: child.centre,
                                 radius: child.radius,
-                                fade: 1.0,
+                                fade,
                             });
                         }
                         Some(false) => {

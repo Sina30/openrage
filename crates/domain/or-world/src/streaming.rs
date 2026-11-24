@@ -17,7 +17,7 @@ pub const FADE: f32 = 20.0;
 /// The band of an orphan that states 20 m or less, in metres.
 pub const FADE_SMALL: f32 = 5.0;
 /// The farthest an orphan states and still fades over [`FADE_SMALL`], in metres.
-const SMALL: f32 = 20.0;
+pub const SMALL: f32 = 20.0;
 /// How much a fade in time gains in one selection, however long since the last.
 pub const FADE_STEP: f32 = 51.0 / 255.0;
 /// Faster than this nothing fades in time, in metres a second.

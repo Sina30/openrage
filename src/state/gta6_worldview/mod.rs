@@ -18,6 +18,7 @@ use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 
 pub(crate) mod index;
 mod interior;
+mod interior_rooms;
 pub(crate) mod lights;
 pub(crate) mod lights_frame;
 pub(crate) mod lights_index;
@@ -31,6 +32,7 @@ pub(crate) mod stream;
 mod texture;
 pub(crate) mod water;
 
+pub use interior::Inside;
 pub use model::{Bucket, CpuMaterial, CpuModel, Family};
 #[cfg(test)]
 pub use model::{Constants, Emissive, Layer};
@@ -329,6 +331,11 @@ impl Viewer {
         (self.world.as_ref()).map_or_else(Streaming::default, |w| w.latest().streaming)
     }
 
+    /// The interior and room the camera stood in at the last selection, where it stood in one.
+    pub fn inside(&self) -> Option<interior::Inside> {
+        self.world.as_ref()?.latest().inside
+    }
+
     /// What was selected last for the camera, after the world's thread is told where the camera
     /// is and which models came to the device, will never come (`None`) or left it (`false`).
     pub fn selected(
@@ -429,8 +436,19 @@ impl Viewer {
     ) {
         let (eye, hour) = (self.camera.position, self.hour);
         let tables = self.root.as_deref().and_then(sky::tables);
+        let inside = self.inside();
         let moment = (tables.as_ref()).and_then(|tables| {
-            let moment = sky::moment(tables, hour, weather, eye.y)?;
+            let moment = match &inside {
+                // Inside a room, the day takes the room's own modifier over the weather's.
+                Some(inside) => tables.moment_inside(
+                    hour,
+                    sky::weather_name(weather),
+                    eye.y,
+                    inside.timecycle,
+                    inside.blend,
+                ),
+                None => sky::moment(tables, hour, weather, eye.y),
+            }?;
             Some(sky::exposed(tables, moment, hour, weather, metered))
         });
         let scale = sky::scale_of(moment.as_ref());
