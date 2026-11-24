@@ -1,6 +1,7 @@
 //! The lights of a frame drawn as volumes of the game's pass for their kind, over the frame the sun lit: each light one instance of a unit sphere the pass shapes.
 
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 
 use glam::Vec3;
 use or_io::gta5::shaders::spirv_pack::SignatureElement;
@@ -102,9 +103,11 @@ pub struct LightVolumes<L> {
     value: fn(&str, u32, &L) -> [f32; 4],
     /// How many lights the frame was written with.
     drawn: AtomicU32,
+    /// The lights the instances were last written with.
+    written: Mutex<Vec<L>>,
 }
 
-impl<L> LightVolumes<L> {
+impl<L: Copy + PartialEq> LightVolumes<L> {
     /// The pass `effect` and `technique` give for a light that comes from a stream of its own, drawn additively into colour targets of `colour`, over what `frame` holds.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn build(
@@ -194,6 +197,7 @@ impl<L> LightVolumes<L> {
             instances,
             value,
             drawn: AtomicU32::new(0),
+            written: Mutex::new(Vec::new()),
         })
     }
 
@@ -220,6 +224,11 @@ impl<L> LightVolumes<L> {
         let mut values = engine.values();
         values.extend(lighting_values(engine, screen));
         self.pass.write(queue, &values);
+        // ⚠ Thousands of lights, each written attribute by attribute: only when they changed.
+        let mut written = self.written.lock().unwrap_or_else(|p| p.into_inner());
+        if written.as_slice() == lights {
+            return;
+        }
         let streams = self.pass.streams();
         let bytes: Vec<u8> = lights
             .iter()
@@ -233,6 +242,8 @@ impl<L> LightVolumes<L> {
             })
             .collect();
         queue.write_buffer(&self.instances, 0, &bytes);
+        written.clear();
+        written.extend_from_slice(lights);
     }
 
     /// Draw the lights the frame was written with into `pass`: its colour target of the format this was built for, and the depth and stencil of the frame, which it only reads.

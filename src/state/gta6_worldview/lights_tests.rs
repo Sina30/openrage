@@ -69,7 +69,7 @@ fn a_level_of_detail_light_stands_at_its_parents_distant_light_unless_a_placed_o
         (7, lod_map(8, &[3.0, 12.0])),
         (8, distant_map(&[100.0, 200.0])),
     ]);
-    let lamps = lamps_of(&loaded, &REACH);
+    let lamps = lamps_of(&loaded, &REACH, &mut HashMap::new());
     let mut xs: Vec<(f32, bool)> = (lamps.iter())
         .map(|l| (l.light.position[0], l.reach.is_some()))
         .collect();
@@ -84,11 +84,40 @@ fn a_level_of_detail_light_stands_at_its_parents_distant_light_unless_a_placed_o
 }
 
 #[test]
+fn the_lists_kept_between_changes_give_the_lamps_made_afresh() {
+    let mut loaded = HashMap::from([
+        (7, lod_map(8, &[3.0, 12.0])),
+        (8, distant_map(&[100.0, 200.0])),
+    ]);
+    let mut lists = HashMap::new();
+    let positions =
+        |lamps: Vec<Lamp>| -> Vec<[f32; 3]> { lamps.iter().map(|l| l.light.position).collect() };
+    let mut check = |loaded: &HashMap<u32, MapLights>| {
+        let kept = positions(lamps_of(loaded, &REACH, &mut lists));
+        assert_eq!(
+            kept,
+            positions(lamps_of(loaded, &REACH, &mut HashMap::new()))
+        );
+        kept.len()
+    };
+    assert_eq!(check(&loaded), 2);
+    // The parent goes: its child's list draws nothing; it comes back: the list is made again.
+    let parent = loaded.remove(&8);
+    assert_eq!(check(&loaded), 0);
+    loaded.extend(parent.map(|p| (8, p)));
+    assert_eq!(check(&loaded), 2);
+}
+
+#[test]
 fn lists_that_do_not_pair_light_for_light_draw_nothing() {
     let alone = HashMap::from([(7, lod_map(8, &[3.0]))]);
-    assert!(lamps_of(&alone, &REACH).is_empty());
+    assert!(lamps_of(&alone, &REACH, &mut HashMap::new()).is_empty());
     let uneven = HashMap::from([(7, lod_map(8, &[3.0])), (8, distant_map(&[1.0, 2.0]))]);
-    assert_eq!(lamps_of(&uneven, &REACH).len(), 1, "the placed light alone");
+    assert_eq!(
+        lamps_of(&uneven, &REACH, &mut HashMap::new()).len(),
+        1,
+        "the placed light alone"
+    );
 }
 
 #[test]
