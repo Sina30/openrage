@@ -276,7 +276,10 @@ pub(super) struct Places {
 
 /// The shaders of the drawable whose root is at `at`, each with where its values lie.
 pub(super) fn shaders_at(v: Bytes, at: usize) -> Result<Vec<(Shader, Places)>> {
-    shader_pointers(v, at)?.into_iter().map(|p| shader(v, p)).collect()
+    shader_pointers(v, at)?
+        .into_iter()
+        .map(|p| shader(v, p))
+        .collect()
 }
 
 /// Where each shader of the drawable root at `at` lies: its group at 0x10, the group's count at

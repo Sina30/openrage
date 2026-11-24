@@ -207,7 +207,10 @@ fn a_map_s_nodes_take_their_archetype_s_distance_and_name_their_parent_by_its_ma
     );
     assert_eq!(read.nodes[1].instance, Some(1));
     assert_eq!(read.nodes[0].parent, None);
-    assert_eq!((read.nodes[0].level, read.nodes[3].level), (Level::Hd, Level::Lod));
+    assert_eq!(
+        (read.nodes[0].level, read.nodes[3].level),
+        (Level::Hd, Level::Lod)
+    );
     // The list is measured to its box and takes its archetype's distance too.
     assert!(matches!(read.nodes[3].extent, Extent::Box(..)));
     assert_eq!(read.nodes[3].lod_dist, 300.0);
@@ -277,7 +280,11 @@ fn a_selection_draws_each_entity_and_each_instance_with_its_model_and_waits_for_
 #[test]
 fn a_grass_list_is_a_node_after_the_prop_lists_and_a_list_of_far_stand_ins_draws_nothing() {
     let read = read_map(&made_up_index(), &grown());
-    assert_eq!(read.nodes.len(), 6, "three entities, a prop list, two grass lists");
+    assert_eq!(
+        read.nodes.len(),
+        6,
+        "three entities, a prop list, two grass lists"
+    );
     let (ferns, far) = (&read.nodes[4], &read.nodes[5]);
     // A grass list is measured to its box, by the distance it states, and names no parent.
     assert!(matches!(ferns.extent, Extent::Box(..)));
@@ -299,7 +306,10 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
     let near = drawn_from(ferns, 1.0, &[]);
     let fades: Vec<f32> = near.iter().map(|(_, fade)| *fade).collect();
     assert_eq!(fades.len(), 2);
-    assert!(fades[0] == 1.0 && (fades[1] - 0.5).abs() < 1e-3, "{fades:?}");
+    assert!(
+        fades[0] == 1.0 && (fades[1] - 0.5).abs() < 1e-3,
+        "{fades:?}"
+    );
     // Twice the distances: the fade runs from 80 m to 100 m, and all three draw.
     let scaled = drawn_from(ferns, 2.0, &[]);
     assert_eq!(scaled.len(), 3);
@@ -313,7 +323,10 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
         reach: Some((8191.0, 100.0)),
         level: Level::OrphanHd,
     };
-    assert_eq!((abrupt.fade(99.0, 1.0), abrupt.fade(101.0, 1.0)), (Some(1.0), None));
+    assert_eq!(
+        (abrupt.fade(99.0, 1.0), abrupt.fade(101.0, 1.0)),
+        (Some(1.0), None)
+    );
 
     // In a selection: a chunk for the list, each instance with the fade of its own distance.
     let mut streamer = streamer_with(&grown());
@@ -336,8 +349,12 @@ fn a_grass_instance_is_scaled_turned_and_tilted_to_its_ground_then_moved() {
     assert!((origin - Vec3::new(10.0, 0.0, 0.0)).length() < 1e-2);
     // A quarter turn about its up puts the model's x along the world's y, at the least scale.
     let rows = grass::rows(&list, &list.instances[0], origin);
-    assert!(at(place(&rows, Vec3::X) - origin - Vec3::new(0.0, 2.0, 0.0)));
-    assert!(at(place(&rows, Vec3::Z) - origin - Vec3::new(0.0, 0.0, 2.0)));
+    assert!(at(place(&rows, Vec3::X)
+        - origin
+        - Vec3::new(0.0, 2.0, 0.0)));
+    assert!(at(place(&rows, Vec3::Z)
+        - origin
+        - Vec3::new(0.0, 0.0, 2.0)));
     assert!((stretch(&rows) - 2.0).abs() < 1e-3);
     // On ground whose normal lies along x the model's up follows it.
     list.instances[0].normal = [255, 128];
@@ -348,7 +365,9 @@ fn a_grass_instance_is_scaled_turned_and_tilted_to_its_ground_then_moved() {
     // A list that takes none of the ground's tilt stands upright on it.
     list.orient_to_terrain = 0.0;
     let upright = grass::rows(&list, &list.instances[0], origin);
-    assert!(at(place(&upright, Vec3::Z) - origin - Vec3::new(0.0, 0.0, 2.0)));
+    assert!(at(place(&upright, Vec3::Z)
+        - origin
+        - Vec3::new(0.0, 0.0, 2.0)));
 }
 
 #[test]
@@ -415,7 +434,14 @@ fn a_time_archetype_draws_inside_its_hours_alone_and_is_not_waited_for_outside_t
 
 #[test]
 fn an_hour_of_the_day_is_one_of_twenty_four() {
-    for (hour, of) in [(0.0, 0), (0.99, 0), (12.0, 12), (23.99, 23), (24.0, 0), (-1.0, 23)] {
+    for (hour, of) in [
+        (0.0, 0),
+        (0.99, 0),
+        (12.0, 12),
+        (23.99, 23),
+        (24.0, 0),
+        (-1.0, 23),
+    ] {
         assert_eq!(hour_of(hour), of, "{hour}");
     }
     assert_eq!(hour_of(f32::NAN), 0);

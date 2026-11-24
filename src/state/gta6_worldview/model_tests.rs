@@ -29,7 +29,11 @@ fn level(geometries: Vec<Geometry>) -> Option<Vec<Model>> {
     }])
 }
 
-fn drawable(shaders: Vec<Shader>, levels: [Option<Vec<Model>>; 4], distances: [f32; 4]) -> Drawable {
+fn drawable(
+    shaders: Vec<Shader>,
+    levels: [Option<Vec<Model>>; 4],
+    distances: [f32; 4],
+) -> Drawable {
     Drawable {
         name: "box.#dr".to_string(),
         box_min: [0.0; 3],
@@ -94,7 +98,11 @@ fn a_model_holds_every_level_its_body_does_each_drawn_to_its_distance_and_the_la
 
     // One level alone is drawn for ever, whatever distance its body states for it.
     let one = [level(vec![geometry(0, true)]), None, None, None];
-    let model = model_of(&drawable(vec![plain()], one, [40.0, FAR, FAR, FAR]), &[], &|_| None);
+    let model = model_of(
+        &drawable(vec![plain()], one, [40.0, FAR, FAR, FAR]),
+        &[],
+        &|_| None,
+    );
     assert_eq!(model.lods.len(), 1);
     assert_eq!(model.lods[0].until, f32::INFINITY);
 }
@@ -131,7 +139,11 @@ fn a_mesh_takes_the_maps_and_the_bucket_of_its_own_shader_past_a_geometry_that_w
         shader(&[(COLOUR[0], Some(0xC))], &[]),
     ];
     let levels = [
-        level(vec![geometry(0, true), geometry(1, false), geometry(2, true)]),
+        level(vec![
+            geometry(0, true),
+            geometry(1, false),
+            geometry(2, true),
+        ]),
         None,
         None,
         None,
@@ -140,7 +152,10 @@ fn a_mesh_takes_the_maps_and_the_bucket_of_its_own_shader_past_a_geometry_that_w
     let drawn: Vec<(Option<u64>, Bucket)> = (model.lods[0].meshes.iter())
         .map(|mesh| (mesh.maps.colour, mesh.bucket))
         .collect();
-    assert_eq!(drawn, [(Some(0xA), Bucket::Opaque), (Some(0xC), Bucket::Cutout)]);
+    assert_eq!(
+        drawn,
+        [(Some(0xA), Bucket::Opaque), (Some(0xC), Bucket::Cutout)]
+    );
 }
 
 #[test]
@@ -230,7 +245,12 @@ fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws
     // A glow makes an opaque material emissive and leaves a cutout or blended one as it is; the mask is gone.
     assert_eq!(
         buckets,
-        [Bucket::Emissive, Bucket::Opaque, Bucket::Cutout, Bucket::Blend]
+        [
+            Bucket::Emissive,
+            Bucket::Opaque,
+            Bucket::Cutout,
+            Bucket::Blend
+        ]
     );
     // Shaders past the bytes read are opaque.
     let model = model_of(
@@ -238,6 +258,9 @@ fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws
         &[],
         &|_| None,
     );
-    assert!(model.lods[0].meshes.iter().all(|m| m.bucket == Bucket::Opaque));
+    assert!(model.lods[0]
+        .meshes
+        .iter()
+        .all(|m| m.bucket == Bucket::Opaque));
     assert_eq!(model.lods[0].meshes.len(), 5);
 }

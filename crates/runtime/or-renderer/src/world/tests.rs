@@ -133,20 +133,23 @@ fn an_instance_is_the_first_three_rows_of_its_matrix_and_its_tint() {
 }
 
 #[test]
-fn the_buckets_are_declared_in_the_order_they_draw_and_what_blends_or_lies_on_a_surface_casts_no_shadow()
-{
+fn the_buckets_are_declared_in_the_order_they_draw_and_what_blends_or_lies_on_a_surface_casts_no_shadow(
+) {
     use WorldBucket::{Blend, Cutout, Decal, Emissive, Opaque};
     let mut buckets = [Blend, Decal, Emissive, Cutout, Opaque];
     buckets.sort();
     assert_eq!(buckets, [Opaque, Cutout, Emissive, Decal, Blend]);
     assert_eq!(buckets.len(), WorldBucket::COUNT);
-    assert_eq!(buckets.map(WorldBucket::casts), [true, true, true, false, false]);
+    assert_eq!(
+        buckets.map(WorldBucket::casts),
+        [true, true, true, false, false]
+    );
     assert_eq!(WorldBucket::default(), Opaque);
 }
 
 #[test]
-fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_stay_put_in_the_world()
-{
+fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_stay_put_in_the_world(
+) {
     use crate::game_shaders::engine::EngineConstants;
     use crate::game_shaders::shadow::TILE;
     let engine = EngineConstants {
@@ -178,7 +181,10 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
     // A point on the view's axis in each cascade's slice, and one beside it within the view
     let side = camera.view().inverse().x_axis.truncate();
     for (cascade, ahead) in [4.0f32, 20.0, 60.0, 250.0].into_iter().enumerate() {
-        for point in [eye + forward * ahead, eye + forward * ahead + side * (ahead * 0.5)] {
+        for point in [
+            eye + forward * ahead,
+            eye + forward * ahead + side * (ahead * 0.5),
+        ] {
             let at = read(point, cascade);
             assert!(at.x.abs().max(at.y.abs()) < 0.49, "{cascade} {at}");
             // The pass takes the first tile a pixel lies across, whatever its depth: so its depth is one every tile holds
@@ -216,10 +222,7 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
         let texels = |view: Mat4| (view * point.extend(1.0)).truncate() * (TILE as f32 * 0.5);
         let step = texels(is) - texels(*was);
         for across in [step.x, step.y] {
-            assert!(
-                (across - across.round()).abs() < 0.05,
-                "{cascade} {step}"
-            );
+            assert!((across - across.round()).abs() < 0.05, "{cascade} {step}");
         }
     }
 
@@ -310,7 +313,14 @@ fn each_instance_of_a_mesh_is_drawn_where_its_matrix_puts_it_in_its_tint_and_now
         let (vertices, indices) = (whole.vertices.clone(), whole.indices.clone());
         let mut none = draws(&device, 1..1);
         none.push(WorldDraw {
-            mesh: Arc::new(WorldMesh::shared(vertices, indices, 0, 0, 0, material.clone())),
+            mesh: Arc::new(WorldMesh::shared(
+                vertices,
+                indices,
+                0,
+                0,
+                0,
+                material.clone(),
+            )),
             instances: 0..1,
         });
         renderer.set_world(&device, &queue, &instances, none);
@@ -332,8 +342,8 @@ fn each_instance_of_a_mesh_is_drawn_where_its_matrix_puts_it_in_its_tint_and_now
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
-fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out_together_while_their_material_is_one()
-{
+fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out_together_while_their_material_is_one(
+) {
     let test = "meshes_that_are_ranges_of_one_pair_of_buffers";
     for (device, queue) in devices(test) {
         let mut renderer =
@@ -377,8 +387,8 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
             )),
             instances: nth..nth + 1,
         };
-        let instances = [RED, [0.0, 1.0, 0.0, 1.0], WHITE]
-            .map(|tint| WorldInstance::of(Mat4::IDENTITY, tint));
+        let instances =
+            [RED, [0.0, 1.0, 0.0, 1.0], WHITE].map(|tint| WorldInstance::of(Mat4::IDENTITY, tint));
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         renderer.set_world(
             &device,
@@ -393,7 +403,10 @@ fn meshes_that_are_ranges_of_one_pair_of_buffers_draw_their_own_range_and_go_out
         let at = |place: [f32; 2]| image[pixel_of(&camera, Vec3::new(place[0], place[1], 0.0))];
         let (red, green, blue) = (at(places[0]), at(places[1]), at(places[2]));
         assert!(red[0] > 100 && red[1] == 0 && red[2] == 0, "{red:?}");
-        assert!(green[1] > 100 && green[0] == 0 && green[2] == 0, "{green:?}");
+        assert!(
+            green[1] > 100 && green[0] == 0 && green[2] == 0,
+            "{green:?}"
+        );
         assert!(blue[2] > 100 && blue[0] == 0 && blue[1] == 0, "{blue:?}");
         let covered = image.iter().filter(|pixel| **pixel != image[0]).count();
         assert!((60..600).contains(&covered), "{covered}");
@@ -681,7 +694,8 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
     // The pass that receives the shadow writes a target read below
     renderer.set_shadows(false);
     let material = |maps: [Option<[u8; 4]>; 3], bucket| {
-        let [colour, normal, specular] = maps.map(|map| map.map(|rgba| texel(&device, &queue, rgba)));
+        let [colour, normal, specular] =
+            maps.map(|map| map.map(|rgba| texel(&device, &queue, rgba)));
         renderer.world_material(
             &device,
             colour.as_ref(),

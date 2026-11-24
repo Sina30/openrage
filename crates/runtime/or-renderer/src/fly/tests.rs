@@ -135,8 +135,8 @@ fn a_sphere_is_held_only_while_no_plane_cuts_it() {
 }
 
 #[test]
-fn the_sphere_about_a_slice_of_the_view_holds_its_eight_corners_and_keeps_its_size_as_the_camera_turns()
-{
+fn the_sphere_about_a_slice_of_the_view_holds_its_eight_corners_and_keeps_its_size_as_the_camera_turns(
+) {
     let camera = FlyCamera {
         position: Vec3::new(40.0, -7.0, 12.0),
         yaw: 1.1,
@@ -155,17 +155,24 @@ fn the_sphere_about_a_slice_of_the_view_holds_its_eight_corners_and_keeps_its_si
         let ahead = (centre - camera.position).dot(camera.forward());
         assert_eq!(ahead >= far - 1e-3, about_the_far_side, "{ahead}");
         let mut furthest = 0.0f32;
-        for (depth, x, y) in [near, far]
-            .into_iter()
-            .flat_map(|d| [(d, 1.0, 1.0), (d, -1.0, 1.0), (d, 1.0, -1.0), (d, -1.0, -1.0)])
-        {
+        for (depth, x, y) in [near, far].into_iter().flat_map(|d| {
+            [
+                (d, 1.0, 1.0),
+                (d, -1.0, 1.0),
+                (d, 1.0, -1.0),
+                (d, -1.0, -1.0),
+            ]
+        }) {
             let corner = camera.position
                 + (camera.forward() + camera.right() * (x * half * aspect) + up * (y * half))
                     * depth;
             furthest = furthest.max((corner - centre).length());
         }
         // Every corner is inside, and the furthest is on it: no smaller sphere about that centre holds them
-        assert!((furthest - radius).abs() < radius * 1e-4, "{furthest} {radius}");
+        assert!(
+            (furthest - radius).abs() < radius * 1e-4,
+            "{furthest} {radius}"
+        );
         let turned = FlyCamera {
             position: Vec3::new(-900.0, 300.0, 5.0),
             yaw: -2.0,

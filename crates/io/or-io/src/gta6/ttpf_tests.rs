@@ -477,7 +477,9 @@ fn a_texture_reads_from_a_mip_down_out_of_the_rows_those_mips_lie_in() {
         pack.texture(0),
         Err(TtpfError::UnidentifiedCodec { kind: 7, .. })
     ));
-    let (first, texture) = pack.texture_from(0, 0).expect("the mips under the top read");
+    let (first, texture) = pack
+        .texture_from(0, 0)
+        .expect("the mips under the top read");
     assert_eq!((first, texture.width, texture.levels), (1, 128, 6));
     assert!(texture.pixels == expected[0][top..]);
     // And with its first row through one, nothing of it reads.

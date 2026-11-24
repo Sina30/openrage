@@ -428,10 +428,19 @@ mod tests {
 
     fn quad(size: f32, turns: f32) -> (Vec<MeshVertex>, Vec<u32>) {
         let corner = |x: f32, y: f32| {
-            MeshVertex::new([x * size, y * size, 0.0], [0.0, 0.0, 1.0], [x * turns, y * turns])
+            MeshVertex::new(
+                [x * size, y * size, 0.0],
+                [0.0, 0.0, 1.0],
+                [x * turns, y * turns],
+            )
         };
         (
-            vec![corner(0.0, 0.0), corner(1.0, 0.0), corner(1.0, 1.0), corner(0.0, 1.0)],
+            vec![
+                corner(0.0, 0.0),
+                corner(1.0, 0.0),
+                corner(1.0, 1.0),
+                corner(0.0, 1.0),
+            ],
             vec![0, 1, 2, 0, 2, 3],
         )
     }

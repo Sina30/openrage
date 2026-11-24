@@ -12,7 +12,11 @@ fn instance(position: [u16; 3], scale: u8, scale_z: u8, rotation: u8, guid: u16)
     for (axis, q) in position.iter().enumerate() {
         put(&mut i, 2 * axis, &q.to_le_bytes());
     }
-    put(&mut i, 0x06, &[127, 255, 60, 115, 109, scale, scale_z, rotation]);
+    put(
+        &mut i,
+        0x06,
+        &[127, 255, 60, 115, 109, scale, scale_z, rotation],
+    );
     put(&mut i, 0x0E, &guid.to_le_bytes());
     i
 }

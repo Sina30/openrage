@@ -88,7 +88,10 @@ fn list_of(regions: &[Region]) -> Vec<u8> {
     let count = regions.len() as u32;
     body(
         TYPES,
-        &[(REGION_LIST, root(count, count, 2, 0)), (REGION_HEADER, rows)],
+        &[
+            (REGION_LIST, root(count, count, 2, 0)),
+            (REGION_HEADER, rows),
+        ],
     )
 }
 

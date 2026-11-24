@@ -148,11 +148,8 @@ mod tests {
             idle(3, 10, false, 300.0),
             idle(4, 10, false, 40.0),
         ];
-        let keys = |over| -> Vec<u32> {
-            (evicted(all.clone(), over).iter())
-                .map(|i| i.key)
-                .collect()
-        };
+        let keys =
+            |over| -> Vec<u32> { (evicted(all.clone(), over).iter()).map(|i| i.key).collect() };
         assert_eq!(keys(0), [0u32; 0]);
         assert_eq!(keys(1), [3]);
         assert_eq!(keys(10), [3]);

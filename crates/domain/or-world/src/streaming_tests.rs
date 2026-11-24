@@ -61,7 +61,10 @@ fn ids(selection: &Selection) -> Vec<NodeId> {
 fn fade(selection: &Selection, id: NodeId) -> f32 {
     let entity = selection.drawn.iter().find(|d| d.node == id);
     let list = selection.lists.iter().find(|l| l.node == id);
-    entity.map(|d| d.fade).or(list.map(|l| l.fade)).unwrap_or(0.0)
+    entity
+        .map(|d| d.fade)
+        .or(list.map(|l| l.fade))
+        .unwrap_or(0.0)
 }
 
 fn close(a: f32, b: f32) -> bool {
@@ -202,10 +205,7 @@ fn each_level_takes_its_own_scale() {
     // Twice the distance for the high level alone brings them in and takes the parent out.
     let mut view = along(150.0);
     view.scales[Level::Hd as usize] = 2.0;
-    assert_eq!(
-        ids(&forest.select(&view, &all_ready)),
-        vec![(2, 0), (2, 1)]
-    );
+    assert_eq!(ids(&forest.select(&view, &all_ready)), vec![(2, 0), (2, 1)]);
     // A scale of another level leaves them where they were.
     let mut view = along(150.0);
     view.scales[Level::Slod1 as usize] = 2.0;
@@ -325,10 +325,7 @@ fn a_grandparent_draws_until_the_whole_of_what_replaces_it_is_ready() {
     forest.insert(3, vec![entity([0.0; 3], 0.0, 0.0, Some((2, 0)))]);
     let view = View::at(Vec3::new(0.0, 50.0, 0.0), 1.0);
     // The first parent gives way to its child, the second draws itself: three levels at once.
-    assert_eq!(
-        ids(&forest.select(&view, &all_ready)),
-        vec![(2, 1), (3, 0)]
-    );
+    assert_eq!(ids(&forest.select(&view, &all_ready)), vec![(2, 1), (3, 0)]);
     // With the grandchild loading its parent draws, which is ready, so the grandparent still gives way.
     let waiting = [(3, 0)];
     assert_eq!(

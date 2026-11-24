@@ -330,7 +330,8 @@ impl RenderBridge {
         let bc = (self.device.features()).contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
         let world = &mut self.world;
         // ponytail: wgpu 29's adapter states no size of memory, so the kept bytes are the fixed ones; a size read from the backend goes here.
-        let budgets = *(world.budgets).get_or_insert_with(|| Budgets::of(&self.device.limits(), None));
+        let budgets =
+            *(world.budgets).get_or_insert_with(|| Budgets::of(&self.device.limits(), None));
         let mut viewer = crate::state::gta6_world::worldview::viewer();
         let eye = viewer.camera.position;
         let now = Instant::now();
@@ -526,8 +527,7 @@ impl RenderBridge {
                 };
                 match world.textures.map.get_mut(&key) {
                     Some(Texture::Ready(ready)) => {
-                        if ready.used != frame
-                            || eye.distance(material.at) < eye.distance(ready.at)
+                        if ready.used != frame || eye.distance(material.at) < eye.distance(ready.at)
                         {
                             (ready.used, ready.at) = (frame, material.at);
                         }

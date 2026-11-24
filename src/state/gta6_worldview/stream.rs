@@ -20,8 +20,8 @@ mod grass;
 mod read;
 
 pub use read::Rows;
-pub(super) use read::{read_map, ReadMap};
 use read::{place, stretch, Drawn, Loaded};
+pub(super) use read::{read_map, ReadMap};
 
 /// The bytes a map body is read to.
 const BODY_LIMIT: u64 = 256 << 20;
@@ -366,9 +366,14 @@ impl Streamer {
             let skipped = &selection.skipped[draw.skipped.clone()];
             let from = out.instances.len();
             // An instance that fades by its own distance fades with its list too.
-            list.each(eye, view.scales[list.level as usize], skipped, |rows, fade| {
-                (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
-            });
+            list.each(
+                eye,
+                view.scales[list.level as usize],
+                skipped,
+                |rows, fade| {
+                    (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
+                },
+            );
             close(&mut out, from);
         }
         // Each model waited for once, by the nearest node that waits for it.
@@ -407,7 +412,7 @@ impl Streamer {
                 close(&mut out, from);
             }
         }
-        out.wanted =(waited.into_iter().map(|(model, away)| (away, model))).collect();
+        out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
         out.models = models.list;
         self.streaming.drawn = out.instances.len();
         out.streaming = self.streaming;

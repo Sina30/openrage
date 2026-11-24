@@ -133,10 +133,7 @@ impl Pipelines {
                 bias,
             }
         };
-        let (untouched, level) = (
-            wgpu::StencilState::default,
-            wgpu::DepthBiasState::default,
-        );
+        let (untouched, level) = (wgpu::StencilState::default, wgpu::DepthBiasState::default);
         let target = |format, blend, write_mask| {
             Some(wgpu::ColorTargetState {
                 format,
@@ -163,7 +160,10 @@ impl Pipelines {
         };
         let forward = [
             solid("viewport-world-forward-pipeline", "fs_forward"),
-            solid("viewport-world-forward-cutout-pipeline", "fs_forward_cutout"),
+            solid(
+                "viewport-world-forward-cutout-pipeline",
+                "fs_forward_cutout",
+            ),
             solid(
                 "viewport-world-forward-emissive-pipeline",
                 "fs_forward_emissive",
@@ -191,7 +191,10 @@ impl Pipelines {
         };
         let gbuffer = [
             written("viewport-world-gbuffer-pipeline", "fs_gbuffer"),
-            written("viewport-world-gbuffer-cutout-pipeline", "fs_gbuffer_cutout"),
+            written(
+                "viewport-world-gbuffer-cutout-pipeline",
+                "fs_gbuffer_cutout",
+            ),
             written(
                 "viewport-world-gbuffer-emissive-pipeline",
                 "fs_gbuffer_emissive",

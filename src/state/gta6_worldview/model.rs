@@ -109,7 +109,13 @@ fn glows(shader: &Shader) -> bool {
 /// ⚠ A key a pack states as linear is a data or normal map: drawn as a colour it tints the whole
 /// mesh green and blue.
 fn maps_of(shader: &Shader, srgb: &dyn Fn(u64) -> Option<bool>) -> Maps {
-    let key = |slot: u8| shader.texture_keys.get(usize::from(slot)).copied().flatten();
+    let key = |slot: u8| {
+        shader
+            .texture_keys
+            .get(usize::from(slot))
+            .copied()
+            .flatten()
+    };
     let record = |hash: u32| {
         (shader.parameters.iter()).find_map(|p| match p.value {
             ParameterValue::Texture { slot } if p.hash == hash => key(slot),

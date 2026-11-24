@@ -490,8 +490,8 @@ impl Pass<'_> {
     /// gone a band past it.
     fn by_distance(&self, at: u32) -> f32 {
         // ⚠ The band is picked by the distance the node states, before any scale.
-        let small = self.node(at).level == Level::OrphanHd
-            && self.forest.links.range[at as usize] <= FADE;
+        let small =
+            self.node(at).level == Level::OrphanHd && self.forest.links.range[at as usize] <= FADE;
         let band = if small { FADE_SMALL } else { FADE };
         ((self.reach(at) + band - self.judged(at)) / band).clamp(0.0, 1.0)
     }

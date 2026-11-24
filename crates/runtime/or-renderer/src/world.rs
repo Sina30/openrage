@@ -373,13 +373,7 @@ impl World {
             (view, seen)
         });
         Self {
-            pipelines: Pipelines::new(
-                device,
-                camera_bgl,
-                &materials,
-                &light_layout,
-                colour_format,
-            ),
+            pipelines: Pipelines::new(device, camera_bgl, &materials, &light_layout, colour_format),
             materials,
             sampler,
             stand_ins,

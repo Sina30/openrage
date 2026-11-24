@@ -372,7 +372,11 @@ impl Viewer {
         };
         if let Some(textures) = &self.textures {
             let asked = wanted.into_iter();
-            textures.want(asked.map(|(soon, key, pixels)| (soon, (key, pixels))).collect());
+            textures.want(
+                asked
+                    .map(|(soon, key, pixels)| (soon, (key, pixels)))
+                    .collect(),
+            );
         }
     }
 

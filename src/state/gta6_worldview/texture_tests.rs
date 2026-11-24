@@ -25,7 +25,11 @@ fn the_level_asked_for_is_the_smallest_at_least_as_large_as_the_screen_size() {
     assert_eq!(level_for(1024, 512, 300), 1, "256 would be under it");
     assert_eq!(level_for(1024, 1024, 1024), 0);
     assert_eq!(level_for(1024, 1024, 1025), 0);
-    assert_eq!(level_for(100, 60, 256), 0, "a texture smaller than asked gives its top");
+    assert_eq!(
+        level_for(100, 60, 256),
+        0,
+        "a texture smaller than asked gives its top"
+    );
     assert_eq!(level_for(600, 300, 256), 1, "300 by 150");
     assert_eq!(level_for(2048, 4096, 64), 6, "the longer side decides");
     assert_eq!(level_for(1024, 1024, 0), 10);
@@ -46,7 +50,12 @@ fn block_rows_a_device_samples_are_handed_as_they_are_under_their_own_format() {
         let levels: Vec<&[u8]> = read.levels.iter().map(Vec::as_slice).collect();
         assert_eq!(
             levels,
-            [&stored[..32], &stored[32..40], &stored[40..48], &stored[48..]]
+            [
+                &stored[..32],
+                &stored[32..40],
+                &stored[40..48],
+                &stored[48..]
+            ]
         );
         assert_eq!(read.bytes(), 56);
     }
