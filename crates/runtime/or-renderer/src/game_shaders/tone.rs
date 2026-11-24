@@ -250,12 +250,14 @@ impl Tone {
         tone
     }
 
-    /// This tone with its curves blended by the linear `exposure` the light was taken at, against the curves' exposures, as GTA VI's tone mapping blends them.
-    pub fn blended_by(self, exposure: f32) -> Self {
+    /// This tone with its curves blended by the `stops` the light was taken at, against the curves' exposures, as GTA VI blends them for its frame.
+    // ⚠ Read: the blend is worked out on the CPU from the stops the exposure pass wrote the frame
+    // before; a linear exposure here would give the dark curve at every hour.
+    pub fn blended_by(self, stops: f32) -> Self {
         let range = self.dark_exposure - self.bright_exposure;
         let t = match range == 0.0 {
             true => 1.0,
-            false => ((exposure - self.bright_exposure) / range).clamp(0.0, 1.0),
+            false => ((stops - self.bright_exposure) / range).clamp(0.0, 1.0),
         };
         Self {
             blend: Some(t),

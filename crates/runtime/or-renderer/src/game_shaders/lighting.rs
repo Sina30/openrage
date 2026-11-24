@@ -56,7 +56,7 @@ pub struct Stated {
     pub towards_light: Vec3,
     pub sun_fade: f32,
     pub moon_fade: f32,
-    /// The linear exposure every light of the day was given at, which the tone curves are blended by.
+    /// The linear exposure every light of the day was given at, whose stops the tone curves are blended by.
     pub exposure: f32,
 }
 
@@ -93,7 +93,7 @@ impl Day {
     pub fn tone(&self, lighting: &Lighting) -> Tone {
         let tone = Tone::new(&self.tone, Some(&self.keyframe), lighting);
         match self.stated {
-            Some(stated) => tone.blended_by(stated.exposure),
+            Some(stated) => tone.blended_by(stated.exposure.max(f32::MIN_POSITIVE).log2()),
             None => tone,
         }
     }

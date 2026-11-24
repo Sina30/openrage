@@ -200,26 +200,28 @@ fn a_moment_states_its_bloom_and_the_install_the_blends_of_its_blurs() {
 }
 
 #[test]
-fn curves_blended_by_the_linear_exposure_are_written_as_that_blend_whatever_the_stops() {
+fn curves_blended_by_the_stops_of_the_light_are_written_as_that_blend_whatever_the_frames_stops() {
     let tone = Tone {
         bright_exposure: -5.0,
         dark_exposure: -2.5,
-        stops: -12.0,
+        stops: 0.0,
         ..Tone::new(&install(), None, &lit_by(1.0, 1.0))
     };
-    // By the stops the bright curve is whole; by an exposure of two to the minus twelve the dark one.
+    // The frame's own stops, held at nought, would give the dark curve at noon.
     assert_eq!(tone.values()["TonemapParams"], vec![0.4, 2.0]);
-    let blended = tone.blended_by((-12f32).exp2());
-    assert_eq!(blended.values()["TonemapParams"], vec![0.0, 1.0]);
+    let noon = tone.blended_by(-12.0);
+    assert_eq!(noon.values()["TonemapParams"], vec![0.0, 0.0]);
     assert_eq!(
-        blended.one_over_white_point(),
-        1.0 / install().dark.w.max(1e-4)
+        noon.one_over_white_point(),
+        1.0 / install().bright.w.max(1e-4)
     );
-    let between = Tone {
-        bright_exposure: 0.0,
-        dark_exposure: 4.0,
-        ..tone
-    }
-    .blended_by(1.0);
-    assert_eq!(between.values()["TonemapParams"], vec![0.0, 0.25]);
+    // A linear exposure of two to the minus twelve, taken as stops, would be the dark curve whole.
+    assert_eq!(
+        tone.blended_by((-12f32).exp2()).values()["TonemapParams"],
+        vec![0.0, 1.0]
+    );
+    let dusk = tone.blended_by(-4.375);
+    assert_eq!(dusk.values()["TonemapParams"], vec![0.0, 0.25]);
+    let night = tone.blended_by(3.1);
+    assert_eq!(night.values()["TonemapParams"], vec![0.0, 1.0]);
 }
