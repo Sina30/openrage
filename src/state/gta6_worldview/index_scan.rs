@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use or_io::container::rpf::{Rpf9BodyKind, Rpf9Role, Rpf9Scan, Rpf9ScanFind, Rpf9ZlibRun};
 use or_io::gta6::headerless::{read_dictionary, stated_model_word, Entry};
+use or_io::gta6::map::stream::grass::slod::SlodClaim;
 use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::gta6::read_model;
 use or_job::Cancel;
@@ -29,6 +30,10 @@ pub(super) struct Shard {
     /// Each map with the names of its parents' maps and whether it holds something to draw.
     pub(super) maps: Vec<(MapRow, Vec<u32>, bool)>,
     pub(super) archetypes: Vec<ArchetypeRow>,
+    /// The lights the archetypes of each map-types body hold.
+    pub(super) lights: Vec<super::super::lights_rows::ArchetypeLight>,
+    /// The group a script-managed map states, with the 64-bit word the same name hashes to.
+    pub(super) words: Vec<(u32, u64)>,
     /// Where each map-types body that read lies.
     pub(super) types: Vec<u64>,
     /// The word each drawable or fragment body names itself by, with its offset.
@@ -41,6 +46,8 @@ pub(super) struct Shard {
     pub(super) archives: Vec<u64>,
     pub(super) ends: Vec<(u64, u64)>,
     pub(super) unread: u64,
+    /// What each far stand-in list of each map says of its ids.
+    pub(super) slod: Vec<SlodClaim>,
     /// Every offset the scan found a body at, in order.
     pub(super) offsets: Vec<u64>,
 }
@@ -110,7 +117,13 @@ impl Shard {
         if map::root_type(virtual_section) == Some(map::C_MAP_DATA) {
             let m = map::stream::read(&model).ok()?;
             // A body whose class table moves the group reads as a map of no group.
-            self.map(offset, &m, types::group_of(&model).unwrap_or(0));
+            let group = types::group_of(&model).unwrap_or(0);
+            let word = types::word_of(&model).unwrap_or(0);
+            if group != 0 && word != 0 {
+                self.words.push((group, word));
+            }
+            self.map(offset, &m, group);
+            self.slod.extend(m.grass.iter().filter_map(SlodClaim::of));
             return Some(());
         }
         let MapBody::Types(body) = map::read(&model).ok()? else {
@@ -121,7 +134,11 @@ impl Shard {
         if hours.is_none() {
             tracing::debug!(offset, "the hours of a map-types body are not read");
         }
+        // ⚠ A body whose load flags do not read keeps its archetypes, of no kind.
+        let loads = types::load_flags_of(&model).filter(|l| l.len() == body.archetypes.len());
         self.types.push(offset);
+        self.lights
+            .extend(super::super::lights_rows::rows_of(&model));
         (self.interiors).extend(
             (body.archetypes.iter())
                 .filter(|a| a.class == map::ArchetypeClass::Interior)
@@ -141,6 +158,8 @@ impl Shard {
                     radius: a.bs_radius,
                     flags: a.flags,
                     hours: hours.as_ref().map_or(ALL_HOURS, |h| h[k]),
+                    load_flags: loads.as_ref().map_or(0, |l| l[k]),
+                    pad: 0,
                 }),
         );
         Some(())
@@ -185,12 +204,15 @@ impl Shard {
         self.archives.retain(|at| *at >= offset);
         self.ends.retain(|(_, end)| *end > offset);
         self.offsets.retain(|at| *at >= offset);
-        // ⚠ Archetypes carry no offset: those of a body cut here stay, and the later body's stand.
+        // ⚠ Archetypes and group words carry no offset: those of a body cut here stay, and the
+        // later body's stand.
     }
 
     fn append(&mut self, mut more: Shard) {
         self.maps.append(&mut more.maps);
         self.archetypes.append(&mut more.archetypes);
+        self.lights.append(&mut more.lights);
+        self.words.append(&mut more.words);
         self.types.append(&mut more.types);
         self.models.append(&mut more.models);
         self.interiors.append(&mut more.interiors);
@@ -198,6 +220,7 @@ impl Shard {
         self.archives.append(&mut more.archives);
         self.ends.append(&mut more.ends);
         self.unread += more.unread;
+        self.slod.append(&mut more.slod);
         self.offsets.append(&mut more.offsets);
     }
 

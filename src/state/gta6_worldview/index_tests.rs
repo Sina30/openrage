@@ -12,6 +12,8 @@ fn archetype(word: u64, model: u64, dictionary: u64, name: u32) -> ArchetypeRow 
         radius: 2.0,
         flags: 0,
         hours: ALL_HOURS,
+        load_flags: 0,
+        pad: 0,
     }
 }
 
@@ -60,6 +62,7 @@ fn made_up(archive: PathBuf) -> WorldIndex {
             archetype(300, 900, 0, 1),
             ArchetypeRow {
                 hours: 0x0000_00F0,
+                load_flags: 0x0001_0081,
                 ..archetype(100, 800, 0, 2)
             },
             archetype(200, 0, 700, 3),
@@ -67,6 +70,13 @@ fn made_up(archive: PathBuf) -> WorldIndex {
         models: vec![body(900, 0, 0x900), body(800, 0, 0x800)],
         dictionaries: vec![body(700, 0, 0x700)],
         interiors: vec![body(600, 0, 0x650), body(600, 0, 0x600)],
+        slod: vec![0, 300],
+        switches: vec![GroupRow {
+            word: 0xABC,
+            id: 77,
+            pad: 0,
+            hours: [0b101; 8],
+        }],
         report: Report {
             maps: 2,
             at_rest: 1,
@@ -243,12 +253,16 @@ fn the_mount_gives_a_map_its_modes_its_hold_and_its_group() {
             Group {
                 id: 4,
                 name: 4,
-                maps: 1
+                maps: 1,
+                word: 0,
+                hours: [0; 8],
             },
             Group {
                 id: 55,
                 name: 55,
-                maps: 2
+                maps: 2,
+                word: 0,
+                hours: [0; 8],
             }
         ]
     );
@@ -280,6 +294,12 @@ fn a_kept_index_reads_back_as_it_was_until_an_archive_changes() {
     assert_eq!(read.groups(), index.groups());
     assert_eq!(read.groups().len(), 1);
     assert_eq!(read.archetype(100).map(|a| a.hours), Some(0xF0));
+    // A group keeps its word and its hours at rest, an archetype its load flags.
+    assert_eq!(read.groups()[0].word, 0xABC);
+    assert_eq!(read.default_on_in(2.0, 1), [77]);
+    assert_eq!(read.default_on_in(1.0, 1), Vec::<u32>::new());
+    assert_eq!(read.archetype(100).map(|a| a.load_flags), Some(0x0001_0081));
+    assert_eq!(read.slod, index.slod);
 
     // A kept index cut short is refused, never read as fewer rows.
     let whole = std::fs::read(&file).expect("the kept bytes");

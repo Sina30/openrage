@@ -21,6 +21,8 @@ mod keep;
 mod mount;
 #[path = "index_scan.rs"]
 mod scan;
+#[path = "index_states.rs"]
+mod states;
 #[path = "index_types.rs"]
 mod types;
 
@@ -78,6 +80,9 @@ pub struct ArchetypeRow {
     pub flags: u32,
     /// The hours it is on, bit `h` for the hour `h` of 0 to 23; all 24 for one that is no time archetype.
     pub hours: u32,
+    /// The low half of its own load flags: bit 0 terrain, bit 7 environment, bit 16 vegetation.
+    pub load_flags: u32,
+    pub pad: u32,
 }
 
 /// Where a model's body lies, by the word that names it.
@@ -131,6 +136,8 @@ pub struct Report {
     /// The permanent map-types files the sets name, and those whose archive holds a map-types body.
     pub permanent_named: u64,
     pub permanent_found: u64,
+    /// The world-state selectors the game-shape archives hold.
+    pub selectors: u64,
 }
 
 /// What of the world is switched on: the game modes, and the groups of script-managed maps.
@@ -172,6 +179,20 @@ pub struct Group {
     pub name: u32,
     /// How many maps it holds.
     pub maps: u32,
+    /// The 64-bit word of its name, which the world-state data names it by; 0 where no map states one.
+    pub word: u64,
+    /// The hours it is on at rest under each set of modes: bit `h` of `hours[modes]` for the hour `h`.
+    pub hours: [u32; 8],
+}
+
+/// A group's word and the hours the world-state data has it on, as the index keeps them.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
+struct GroupRow {
+    word: u64,
+    id: u32,
+    pad: u32,
+    hours: [u32; 8],
 }
 
 /// The index of one install.
@@ -184,6 +205,11 @@ pub struct WorldIndex {
     models: Vec<BodyRow>,
     dictionaries: Vec<BodyRow>,
     interiors: Vec<BodyRow>,
+    lights: Vec<super::lights_rows::ArchetypeLight>,
+    /// The archetype word each far stand-in id names, by the id; 0 for an id no list settles.
+    pub slod: Vec<u64>,
+    /// Each group's word and hours at rest, by id.
+    switches: Vec<GroupRow>,
     pub report: Report,
     by_name: HashMap<u32, u32>,
     groups: Vec<Group>,
@@ -233,6 +259,29 @@ impl WorldIndex {
         &self.groups
     }
 
+    /// The ids of the groups the world-state data of every mode switches on at `hour`.
+    pub fn default_on(&self, hour: f32) -> Vec<u32> {
+        self.default_on_in(hour, 0b111)
+    }
+
+    /// The same under the selectors of the modes `modes` alone, as [`Enabled::modes`] states them.
+    pub fn default_on_in(&self, hour: f32, modes: u8) -> Vec<u32> {
+        // A NaN hour is midnight.
+        let bit = 1 << (hour.rem_euclid(24.0) as u32).min(23);
+        let modes = usize::from(modes & 0b111);
+        (self.groups.iter())
+            .filter(|g| g.hours[modes] & bit != 0)
+            .map(|g| g.id)
+            .collect()
+    }
+
+    /// The lights archetype `word` holds, in its model's space.
+    pub fn archetype_lights(&self, word: u64) -> &[super::lights_rows::ArchetypeLight] {
+        let from = self.lights.partition_point(|l| l.archetype < word);
+        let to = self.lights.partition_point(|l| l.archetype <= word);
+        &self.lights[from..to]
+    }
+
     /// The middle of the boxes of the maps that stream at rest, where a camera starts.
     pub fn middle(&self) -> Option<Vec3> {
         let at_rest = Enabled::default();
@@ -255,6 +304,7 @@ impl WorldIndex {
         self.archetypes.reverse();
         self.archetypes.dedup_by_key(|a| a.word);
         self.archetypes.reverse();
+        self.lights.sort_by_key(|l| l.archetype);
         for rows in [
             &mut self.models,
             &mut self.dictionaries,
@@ -270,8 +320,20 @@ impl WorldIndex {
         for map in (self.maps.iter()).filter(|m| m.group != 0) {
             *groups.entry(map.group).or_default() += 1;
         }
+        self.switches.sort_unstable_by_key(|s| s.id);
+        self.switches.dedup_by_key(|s| s.id);
+        let switches = &self.switches;
         self.groups = (groups.into_iter())
-            .map(|(id, maps)| Group { id, name: id, maps })
+            .map(|(id, maps)| {
+                let row = by_word(switches, u64::from(id), |s| u64::from(s.id));
+                Group {
+                    id,
+                    name: id,
+                    maps,
+                    word: row.map_or(0, |s| s.word),
+                    hours: row.map_or([0; 8], |s| s.hours),
+                }
+            })
             .collect();
         self.report.archetypes = self.archetypes.len() as u64;
         self.report.models = (self.models.len() + self.dictionaries.len()) as u64;
@@ -353,6 +415,8 @@ pub fn build(
     let mut types_at: HashSet<(u32, u64)> = HashSet::new();
     let mut keys: HashMap<u32, Vec<BodyRow>> = HashMap::new();
     let mut unread = 0;
+    let mut claims = Vec::new();
+    let mut words: Vec<(u32, u64)> = Vec::new();
     for (at, path) in archives.iter().enumerate() {
         let archive = at as u32;
         let shard = match scan::scan_archive(path, cancel, &reached) {
@@ -384,6 +448,8 @@ pub fn build(
             index.maps.push(row);
         }
         index.archetypes.extend(shard.archetypes);
+        index.lights.extend(shard.lights);
+        words.extend(shard.words);
         (index.models).extend(shard.models.into_iter().map(|(word, offset)| BodyRow {
             word,
             offset,
@@ -407,7 +473,13 @@ pub fn build(
             }
         }
         unread += shard.unread;
+        claims.extend(shard.slod);
     }
+    index.slod = or_io::gta6::map::stream::grass::slod::solve(&claims);
+    let Some(selectors) = states::selectors(&mounted, &every, cancel) else {
+        return Ok(None);
+    };
+    index.switches = states::switches(&words, &selectors);
 
     let bound = mounted.bind(&every, &archives, &facts);
     place(&mut index.maps, &facts, &bound.modes);
@@ -427,6 +499,7 @@ pub fn build(
         disagree: bound.disagree as u64,
         permanent_named: bound.permanent_named as u64,
         permanent_found: bound.permanent.intersection(&types_at).count() as u64,
+        selectors: selectors.len() as u64,
         unread,
         ..counted(&index.maps)
     };
@@ -495,6 +568,8 @@ pub(super) mod tests_support {
                 radius: 1.0,
                 flags: 0,
                 hours: ALL_HOURS,
+                load_flags: 0,
+                pad: 0,
             });
             index.models.extend(model.map(|offset| BodyRow {
                 word: word + 1,
