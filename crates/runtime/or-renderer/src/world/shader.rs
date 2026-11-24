@@ -716,10 +716,17 @@ fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) 
     return vec4<f32>(lit, s.coverage + share - s.coverage * share);
 }
 
+// An instance faded below nought is not seen and casts its shadow as opaque as it would be seen.
+fn casting(in: VsOut) -> VsOut {
+    var out = in;
+    out.fade = abs(in.fade);
+    return out;
+}
+
 // What casts the sun's shadow whole: only the fade of its instance leaves a texel out.
 @fragment
 fn fs_cast(in: VsOut) {
-    if (dropped(in, 1.0, 0.0)) {
+    if (dropped(casting(in), 1.0, 0.0)) {
         discard;
     }
 }
@@ -727,7 +734,8 @@ fn fs_cast(in: VsOut) {
 // A cutout casts the shadow of what it draws.
 @fragment
 fn fs_cast_cutout(in: VsOut) {
-    if (dropped(in, cut_coverage(in), CUTOUT_ALPHA)) {
+    let c = casting(in);
+    if (dropped(c, cut_coverage(c), CUTOUT_ALPHA)) {
         discard;
     }
 }

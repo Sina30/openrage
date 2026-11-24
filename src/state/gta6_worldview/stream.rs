@@ -108,6 +108,9 @@ pub struct Selected {
     pub inside: Option<super::interior::Inside>,
     /// The rooms the camera sees of each interior it looks into.
     pub(super) rooms_seen: super::interior::RoomsSeen,
+    /// From the room the camera stands in, the pyramids through it the outside is seen through, as
+    /// unit normals in the world; `None` where nothing of the outside is hidden.
+    pub outside_through: Option<Vec<Vec<Vec3>>>,
 }
 
 /// The models of a selection, each once, in the order they were first drawn with.
@@ -547,6 +550,8 @@ impl Streamer {
         }
         // The contents of each interior whose instance draws, or that the camera stands in: a
         // chunk an interior, as opaque as its instance.
+        let outdoors = out.instances.len();
+        let mut through = None;
         for (name, map) in loaded {
             for interior in &map.interiors {
                 let inside = interior.inside(eye);
@@ -578,11 +583,27 @@ impl Streamer {
                     }
                 });
                 if let Some(seen) = seen {
-                    (out.rooms_seen).insert((*name, interior.entity as u32), seen);
+                    if let (Some(_), None, Some(pyramids)) = (inside, &through, &seen.outside) {
+                        through = Some(interior.to_world(pyramids));
+                    }
+                    (out.rooms_seen).insert((*name, interior.entity as u32), seen.rooms);
                 }
                 close(&mut out, from);
             }
         }
+        // ⚠ GTA V's rule: from a room the outside is seen through the portals to it alone; what stands
+        // out of their sight still casts the sun's shadow in.
+        if let Some(through) = &through {
+            let sees = |i: &Instance| {
+                (through.iter()).any(|p| super::interior_rooms::reaches(p, eye, i.centre, i.radius))
+            };
+            for instance in &mut out.instances[..outdoors] {
+                if instance.ambient == or_renderer::OUTDOORS && !sees(instance) {
+                    instance.fade = -instance.fade.abs();
+                }
+            }
+        }
+        out.outside_through = through;
         out.occluders = self.occluders.held();
         out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
         out.species = Arc::clone(&self.species);

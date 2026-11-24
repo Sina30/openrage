@@ -154,7 +154,9 @@ impl Layout {
                         at,
                         slot: slots.start + level(untils, away, view.lod_scale) as u32,
                         away,
-                        shown: whole || view.frustum.sees_sphere(instance.centre, radius),
+                        // One faded below nought casts its shadow and is not seen.
+                        shown: instance.fade > 0.0
+                            && (whole || view.frustum.sees_sphere(instance.centre, radius)),
                     })
                 })
             })

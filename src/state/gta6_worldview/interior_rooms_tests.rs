@@ -157,6 +157,33 @@ fn a_portal_that_may_close_is_shut_by_what_it_holds_to_the_outside_and_by_its_do
 }
 
 #[test]
+fn from_a_room_the_outside_is_seen_through_the_doors_to_it_alone() {
+    let (rooms, mut portals, middle) = row();
+    let eye = Vec3::new(2.0, 0.0, 1.0);
+    let outside = |portals: &[Opening]| seen(&rooms, portals, middle, eye).outside;
+    let through = outside(&portals).expect("the camera stands in a room");
+    assert_eq!(through.len(), 1, "one door to the outside");
+    let sees = |p: [f32; 3], r: f32| reaches(&through[0], eye, Vec3::from(p), r);
+    // Straight out of the front door, and a sphere that reaches into its line.
+    assert!(sees([-10.0, 0.0, 1.0], 0.1));
+    assert!(sees([-10.0, 4.0, 1.0], 2.0));
+    // Off to the side of it, and behind the camera, through the walls.
+    assert!(!sees([-10.0, 8.0, 1.0], 1.0));
+    assert!(!sees([10.0, 0.0, 1.0], 1.0));
+    // From the outside nothing of it is hidden; with its one door shut, all of it is.
+    assert_eq!(
+        seen(&rooms, &portals, middle, Vec3::new(-5.0, 0.0, 1.0)).outside,
+        None
+    );
+    portals[0].shut = true;
+    assert_eq!(outside(&portals), Some(Vec::new()));
+    // A link opens on another interior, not on the outside.
+    portals[0].shut = false;
+    portals[0].flags = LINK;
+    assert_eq!(outside(&portals), Some(Vec::new()));
+}
+
+#[test]
 fn a_camera_in_a_doorway_sees_through_the_whole_of_it() {
     let (rooms, portals, middle) = row();
     // Five centimetres into room 2 the door's edges pass behind the camera.
