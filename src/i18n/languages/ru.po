@@ -910,6 +910,12 @@ msgstr "Оружие пока не называет ни одного источ
 msgid "The weapons of the project cannot be written"
 msgstr "Оружие проекта невозможно записать"
 
+msgid "The world stopped on an internal error and was started again ({times} times so far)"
+msgstr "Мир остановился из-за внутренней ошибки и был перезапущен (пока {times} раз)"
+
+msgid "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh."
+msgstr "Мир останавливался из-за внутренней ошибки {times} раз и больше не перезапускается: он остаётся таким, каким был нарисован в последний раз. Постройте индекс заново, чтобы начать сначала."
+
 msgid "These maps are linked from another project, which alone edits them: open that project to change them"
 msgstr "Эти карты связаны с другим проектом, который единственный может их менять: откройте тот проект, чтобы изменить их"
 

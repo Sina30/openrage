@@ -172,6 +172,26 @@ fn blocked(
         rebuild_button(ui, viewer);
         any = true;
     }
+    if viewer.world_given_up() {
+        warned(
+            ui,
+            &tr!(
+                "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh.",
+                times = viewer.world_restarts
+            ),
+        );
+        rebuild_button(ui, viewer);
+        any = true;
+    } else if viewer.world_restarts > 0 {
+        warned(
+            ui,
+            &tr!(
+                "The world stopped on an internal error and was started again ({times} times so far)",
+                times = viewer.world_restarts
+            ),
+        );
+        any = true;
+    }
     if drawn.is_some_and(|d| d.draws > 0 && !d.lit_by_the_game) {
         warned(
             ui,

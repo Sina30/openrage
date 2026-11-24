@@ -835,3 +835,28 @@ fn a_camera_keeps_its_speed_between_frames_and_is_still_once_it_stops() {
     let off = velocity_at(&mut moved, still, Vec3::new(18.0, 0.0, 0.0), at(1120));
     assert!((off.x - 300.0).abs() < 1e-2, "{off}");
 }
+
+#[test]
+fn a_world_thread_that_dies_is_started_again_until_it_has_died_too_often_and_the_panel_is_told() {
+    use std::time::Duration;
+    let index = Arc::new(made_up_index());
+    let mut viewer = super::super::Viewer {
+        world: Some(World::new(Arc::clone(&index), Vec3::ZERO, 1.0)),
+        index: Some(index),
+        ..Default::default()
+    };
+    for death in 1..=super::super::MOST_RESTARTS + 1 {
+        let world = viewer.world.as_ref().expect("a world");
+        world.end();
+        let until = Instant::now() + Duration::from_secs(20);
+        while !world.died() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        viewer.selected(&mut Vec::new());
+        let restarts = death.min(super::super::MOST_RESTARTS);
+        assert_eq!(viewer.world_restarts, restarts, "after death {death}");
+        let given_up = death > super::super::MOST_RESTARTS;
+        assert_eq!(viewer.world_given_up(), given_up, "after death {death}");
+        assert_eq!(viewer.world.as_ref().is_some_and(World::died), given_up);
+    }
+}

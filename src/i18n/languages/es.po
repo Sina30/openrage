@@ -910,6 +910,12 @@ msgstr "El arma aún no nombra ninguna fuente"
 msgid "The weapons of the project cannot be written"
 msgstr "Las armas del proyecto no se pueden escribir"
 
+msgid "The world stopped on an internal error and was started again ({times} times so far)"
+msgstr "El mundo se detuvo por un error interno y se volvió a iniciar ({times} veces hasta ahora)"
+
+msgid "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh."
+msgstr "El mundo se detuvo por un error interno {times} veces y no se vuelve a iniciar: queda como se dibujó por última vez. Vuelve a generar el índice para empezar de nuevo."
+
 msgid "These maps are linked from another project, which alone edits them: open that project to change them"
 msgstr "Estos mapas están vinculados desde otro proyecto, que es el único que los edita: abrir ese proyecto para cambiarlos"
 

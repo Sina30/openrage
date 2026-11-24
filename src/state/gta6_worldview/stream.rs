@@ -671,6 +671,7 @@ struct Shared {
 /// selected last and never waits for the selection.
 pub(super) struct World {
     shared: Arc<Shared>,
+    thread: std::thread::JoinHandle<()>,
 }
 
 impl World {
@@ -687,8 +688,20 @@ impl World {
             latest: Mutex::default(),
         });
         let theirs = Arc::clone(&shared);
-        std::thread::spawn(move || run(index, &theirs));
-        Self { shared }
+        let thread = std::thread::spawn(move || run(index, &theirs));
+        Self { shared, thread }
+    }
+
+    /// Whether the thread ended though it was not stopped: a panic in a build that unwinds.
+    pub(super) fn died(&self) -> bool {
+        self.thread.is_finished()
+    }
+
+    /// End the thread as a panic on it would.
+    #[cfg(test)]
+    pub(super) fn end(&self) {
+        (self.shared.told.lock().unwrap_or_else(|p| p.into_inner())).stopped = true;
+        self.shared.woken.notify_one();
     }
 
     /// Tell the thread what `tell` changes, and wake it where that is a change.

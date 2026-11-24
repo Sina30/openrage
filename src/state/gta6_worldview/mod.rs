@@ -4,7 +4,7 @@
 //! ⚠ What is on the device is the render bridge's: a frame asks here what draws and which models
 //! arrived, and says which are on the device.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -64,6 +64,9 @@ fn wait_for_room(held: &AtomicU64) {
 // ⚠ Unbounded, the models read faster than the frames take them pile up in memory while the camera flies.
 const MODELS_WAITING: u64 = 256 << 20;
 const TEXTURES_WAITING: u64 = 64 << 20;
+/// How many times the world's thread is started again after it dies: one that dies on what it
+/// reads dies again on it.
+const MOST_RESTARTS: u32 = 3;
 
 /// How a build of the index ended.
 enum Built {
@@ -90,8 +93,10 @@ pub struct Viewer {
     root: Option<PathBuf>,
     pub index: Option<Arc<WorldIndex>>,
     world: Option<World>,
-    /// The models on the device or known never to come, which are not asked for again.
-    have: HashSet<ModelRef>,
+    /// The models on the device (`Some(true)`) or known never to come (`None`), which are not asked for again.
+    have: HashMap<ModelRef, Option<bool>>,
+    /// How many times the world's thread was found dead and started again.
+    pub world_restarts: u32,
     /// The selection whose waited-for models the readers were last given.
     wanted_of: u64,
     /// The models that selection waits for, and those the far stand-ins' atlas waits for.
@@ -138,7 +143,8 @@ impl Default for Viewer {
             root: None,
             index: None,
             world: None,
-            have: HashSet::new(),
+            have: HashMap::new(),
+            world_restarts: 0,
             wanted_of: 0,
             wanted: Vec::new(),
             species_models: Vec::new(),
@@ -207,7 +213,7 @@ impl Viewer {
             return;
         };
         (self.index, self.world, self.models, self.failed) = (None, None, None, None);
-        self.have.clear();
+        (self.have, self.world_restarts) = (HashMap::new(), 0);
         (self.textures, self.lights) = (None, None);
         // What the workers held goes with them, and a new world's thread is told everything again.
         (self.held, self.sent) = (Arc::default(), None);
@@ -383,11 +389,14 @@ impl Viewer {
         &mut self,
         models: &mut Vec<(ModelRef, Option<bool>)>,
     ) -> Option<Arc<Selected>> {
+        if self.world.as_ref().is_some_and(World::died) && self.world_restarts < MOST_RESTARTS {
+            self.restart_world();
+        }
         let world = self.world.as_ref()?;
         for (model, state) in models.iter() {
             match state {
                 Some(false) => self.have.remove(model),
-                _ => self.have.insert(*model),
+                state => self.have.insert(*model, *state),
             };
         }
         let told = !models.is_empty();
@@ -420,6 +429,38 @@ impl Viewer {
         Some(latest)
     }
 
+    /// Start the world's thread again in place of one that died, told what the dead one was.
+    fn restart_world(&mut self) {
+        self.world_restarts += 1;
+        tracing::error!(
+            times = self.world_restarts,
+            "the GTA VI world's thread stopped on an internal error and is started again"
+        );
+        let Some(index) = &self.index else {
+            return;
+        };
+        let world = World::new(
+            Arc::clone(index),
+            self.camera.position,
+            self.distance_scale(),
+        );
+        world.tell(
+            &mut self
+                .have
+                .iter()
+                .map(|(model, state)| (*model, *state))
+                .collect(),
+        );
+        self.world = Some(world);
+        // The hour and what is enabled are told the new thread again.
+        self.sent = None;
+    }
+
+    /// Whether the world's thread died too often to be started again: the world stands as it was last selected.
+    pub fn world_given_up(&self) -> bool {
+        self.world_restarts >= MOST_RESTARTS && self.world.as_ref().is_some_and(World::died)
+    }
+
     /// Ask for the models the far stand-ins' atlas waits for, after what the selection waits for.
     pub fn want_species_models(&mut self, models: Vec<(f32, ModelRef)>) {
         if models != self.species_models {
@@ -433,7 +474,7 @@ impl Viewer {
         // ⚠ A selection made before a model arrived still waits for it: it is not read twice.
         let wanted: Vec<(f32, ModelRef)> = (self.wanted.iter().chain(&self.species_models))
             .copied()
-            .filter(|(_, model)| !self.have.contains(model))
+            .filter(|(_, model)| !self.have.contains_key(model))
             .collect();
         self.models_waiting = wanted.len();
         self.soon.0 = soonest(wanted.iter().map(|(soon, model)| (*model, *soon)));

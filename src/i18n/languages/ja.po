@@ -910,6 +910,12 @@ msgstr "武器はまだソースを指定していません"
 msgid "The weapons of the project cannot be written"
 msgstr "プロジェクトの武器は書き込めません"
 
+msgid "The world stopped on an internal error and was started again ({times} times so far)"
+msgstr "世界は内部エラーで停止し、再起動されました（これまでに {times} 回）"
+
+msgid "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh."
+msgstr "世界は内部エラーで {times} 回停止したため、再起動しません。最後に描画された状態のままです。最初からやり直すにはインデックスを再作成してください。"
+
 msgid "These maps are linked from another project, which alone edits them: open that project to change them"
 msgstr "これらのマップは別のプロジェクトからリンクされており、そのプロジェクトだけが編集できます：変更するにはそのプロジェクトを開いてください"
 

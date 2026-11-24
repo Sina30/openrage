@@ -910,6 +910,12 @@ msgstr "무기에 아직 지정된 소스가 없습니다"
 msgid "The weapons of the project cannot be written"
 msgstr "프로젝트의 무기를 기록할 수 없습니다"
 
+msgid "The world stopped on an internal error and was started again ({times} times so far)"
+msgstr "월드가 내부 오류로 멈춰 다시 시작되었습니다(지금까지 {times}번)"
+
+msgid "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh."
+msgstr "월드가 내부 오류로 {times}번 멈춰 다시 시작하지 않습니다. 마지막으로 그려진 상태로 남습니다. 처음부터 다시 시작하려면 인덱스를 다시 만드세요."
+
 msgid "These maps are linked from another project, which alone edits them: open that project to change them"
 msgstr "이 맵은 다른 프로젝트에서 연결된 것으로, 해당 프로젝트에서만 편집할 수 있습니다. 변경하려면 그 프로젝트를 여십시오"
 

@@ -910,6 +910,12 @@ msgstr "该武器尚未指定任何源"
 msgid "The weapons of the project cannot be written"
 msgstr "无法写入项目的武器"
 
+msgid "The world stopped on an internal error and was started again ({times} times so far)"
+msgstr "世界因内部错误停止并已重新启动（迄今 {times} 次）"
+
+msgid "The world stopped on an internal error {times} times and is not started again: it stands as it was last drawn. Build the index again to start afresh."
+msgstr "世界因内部错误已停止 {times} 次，不再重新启动：它保持最后一次绘制时的样子。重新构建索引即可从头开始。"
+
 msgid "These maps are linked from another project, which alone edits them: open that project to change them"
 msgstr "这些地图链接自另一个项目，只有该项目可以编辑：打开该项目才能更改"
 
