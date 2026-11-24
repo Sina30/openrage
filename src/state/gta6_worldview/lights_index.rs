@@ -131,9 +131,23 @@ mod tests {
 
     #[test]
     fn a_row_gives_back_its_light_and_a_row_of_another_type_none() {
-        let light = row(1, 5.0).light().expect("a spot");
-        assert_eq!((light.kind, light.intensity), (LightKind::Spot, 5.0));
-        assert_eq!(LightRow::of(1, &light), row(1, 5.0));
+        let light = Light {
+            kind: LightKind::Capsule,
+            position: [1.0, 2.0, 3.0],
+            direction: [0.0, 1.0, 0.0],
+            colour: [1.0, 0.5, 0.25],
+            intensity: 25.0,
+            radius: 8.0,
+            falloff_exponent: 6.0,
+            hours: 0x00E0_007F,
+            flags: 0,
+            cone_inner: 10.0,
+            cone_outer: 30.0,
+            length: 4.0,
+        };
+        let kept = LightRow::of(1, &light);
+        assert_eq!((kept.archetype, kept.light_type), (1, 4));
+        assert_eq!(kept.light(), Some(light));
         assert_eq!(
             LightRow {
                 light_type: 300,
