@@ -220,22 +220,14 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
         }
     }
     let building = viewer.building();
-    let coming = [
-        viewer.streaming().maps_waiting,
-        viewer.models_waiting,
-        viewer.textures_waiting,
-    ];
-    let waiting: usize = coming.iter().sum();
+    let indexed = viewer.index.is_some();
+    let loading = Loading::of(&viewer);
     let failed = (viewer.failed.clone())
-        .map(|why| tr!("The GTA VI world was not indexed: {why}", why = why))
-        .or_else(|| {
-        let empty = (viewer.index.as_ref()).is_some_and(|index| index.report.maps == 0);
-        empty.then(|| tr!("No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in").to_string())
-    });
+        .map(|why| tr!("The GTA VI world was not indexed: {why}", why = why));
     let speed = viewer.camera.speed;
     drop(viewer);
     // The frame is drawn again while the camera moves and while anything is still arriving.
-    if moving || waiting > 0 || building.is_some() {
+    if moving || loading.any() || building.is_some() {
         ui.ctx().request_repaint();
     }
 
@@ -247,7 +239,8 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
         }
         false => ui.painter_at(rect),
     };
-    match bridge {
+    match bridge.filter(|_| indexed) {
+        // ⚠ With no index held the frame holds only the water and the ground at the origin, which reads as the world: a plain backdrop until it is.
         Some(bridge) => {
             let ppp = ui.ctx().pixels_per_point();
             bridge.set_desired_size(
@@ -274,7 +267,7 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
     if clean {
         return;
     }
-    let mut line = match (building, failed) {
+    let line = match (building, failed) {
         (Some(done), _) => tr!(
             "Indexing the GTA VI world: {percent} %",
             percent = (done * 100.0).round() as u32
@@ -285,27 +278,83 @@ pub fn draw_view(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
             speed = speed.round() as u32
         ),
     };
-    if building.is_none() && waiting > 0 {
-        let [maps, models, textures] = coming;
-        line.push('\n');
-        line.push_str(&tr!(
-            "Streaming in: {maps} maps, {models} models and {textures} textures still to come",
-            maps = maps,
-            models = models,
-            textures = textures
-        ));
-    }
-    let at = rect.left_top() + egui::vec2(8.0, 6.0);
-    let font = egui::FontId::proportional(12.0);
     let wrap = (rect.width() - 22.0).max(VIEW_MIN);
-    let galley = painter.layout(line, font, theme::TEXT_PRIMARY.get(), wrap);
-    let back = egui::Rect::from_min_size(at, galley.size()).expand(3.0);
-    painter.rect_filled(
-        back,
-        egui::CornerRadius::same(theme::RADIUS_SMALL),
-        theme::BG_L2,
-    );
-    painter.galley(at, galley, theme::TEXT_PRIMARY.get());
+    let chip = |text: String, at: egui::Pos2, anchor: egui::Align2| {
+        let font = egui::FontId::proportional(12.0);
+        let galley = painter.layout(text, font, theme::TEXT_PRIMARY.get(), wrap);
+        let at = anchor.anchor_size(at, galley.size()).min;
+        let back = egui::Rect::from_min_size(at, galley.size()).expand(3.0);
+        painter.rect_filled(
+            back,
+            egui::CornerRadius::same(theme::RADIUS_SMALL),
+            theme::BG_L2,
+        );
+        painter.galley(at, galley, theme::TEXT_PRIMARY.get());
+    };
+    // With no world to fly yet, what stands in the way is said in the middle of the view.
+    match indexed {
+        true => chip(
+            line,
+            rect.left_top() + egui::vec2(8.0, 6.0),
+            egui::Align2::LEFT_TOP,
+        ),
+        false => chip(line, rect.center(), egui::Align2::CENTER_CENTER),
+    }
+    // What is still on its way, in the corner below; nothing is said once nothing is.
+    if let Some(said) = loading.said().filter(|_| building.is_none()) {
+        let corner = rect.left_bottom() + egui::vec2(8.0, -6.0);
+        chip(said, corner, egui::Align2::LEFT_BOTTOM);
+    }
+}
+
+/// What the world still waits for: maps, models, textures, maps' lights, and the water's ground and fog.
+struct Loading {
+    counts: [usize; 4],
+    water: bool,
+}
+
+impl Loading {
+    fn of(viewer: &Viewer) -> Self {
+        Self {
+            counts: [
+                viewer.streaming().maps_waiting,
+                viewer.models_waiting,
+                viewer.textures_waiting,
+                viewer.lights.as_ref().map_or(0, |lights| lights.waiting()),
+            ],
+            water: viewer.water_reading(),
+        }
+    }
+
+    fn any(&self) -> bool {
+        self.water || self.counts.iter().any(|n| *n > 0)
+    }
+
+    /// The readout, `None` once nothing is still loading.
+    fn said(&self) -> Option<String> {
+        let [maps, models, textures, lights] = self.counts;
+        let mut parts = Vec::new();
+        if maps > 0 {
+            parts.push(tr_n!("{count} map", "{count} maps", maps));
+        }
+        if models > 0 {
+            parts.push(tr_n!("{count} model", "{count} models", models));
+        }
+        if textures > 0 {
+            parts.push(tr_n!("{count} texture", "{count} textures", textures));
+        }
+        if lights > 0 {
+            parts.push(tr_n!(
+                "the lights of {count} map",
+                "the lights of {count} maps",
+                lights
+            ));
+        }
+        if self.water {
+            parts.push(tr!("the ground and fog under the water").to_string());
+        }
+        (!parts.is_empty()).then(|| tr!("Still loading: {what}", what = parts.join(", ")))
+    }
 }
 
 /// The whole window as the view, sensed over everything the dock draws.

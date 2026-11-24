@@ -16676,9 +16676,6 @@ msgstr "アーカイブのテーブルで対応付け、レベルの変更セッ
 msgid "In the interior {interior}, room {room}"
 msgstr "インテリア {interior}、部屋 {room} の中"
 
-msgid "Outside every interior"
-msgstr "どのインテリアの中にもいない"
-
 msgid "Time and weather"
 msgstr "時刻と天候"
 
@@ -16709,12 +16706,6 @@ msgstr "マップが最も多い512 m四方のひとつを北向きに見下ろ�
 msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
 msgstr "GTA VIのキースナップショットが見つからなかったため、マップはブロックマップで対応付けられ、どの時刻でもスクリプト管理のグループはオンになりません。gtavi_magic.datを設定フォルダーに置くか、OPENRAGE_GTA6_KEYSで指定してから、インデックスを再作成してください。"
 
-msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
-msgstr "このフォルダーにはGTA VIのマップが見つかりませんでした：「設定 ▸ ゲーム」でGTA VIがインストールされているフォルダーを指定してください"
-
-msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
-msgstr "ストリーミング中：マップ {maps} 個、モデル {models} 個、テクスチャ {textures} 個がまだ届いていません"
-
 msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
 msgstr "初回はレベルのすべてのアーカイブを読むため数分かかります。インデックスは保持されるので、次回はすぐに開きます。「バックグラウンドジョブ」で停止できます。"
 
@@ -16734,3 +16725,60 @@ msgstr "データ以外に新しいゲームについて想定するもの（ス
 
 msgid "{label} (inferred)"
 msgstr "{label}（推定）"
+
+msgid "GTA VI world index"
+msgstr "GTA VI ワールドインデックス"
+
+msgid "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives"
+msgstr "{folder} に GTA VI のファイルが見つかりませんでした。「設定 ▸ ゲーム」で GTA VI がインストールされているフォルダー、つまり .rpf アーカイブを含むフォルダーを指定してください"
+
+msgid "Still loading: {what}"
+msgstr "読み込み中：{what}"
+
+msgid "the ground and fog under the water"
+msgstr "水中の地面と霧"
+
+msgid "The level from above: the brighter, the more maps; click to look over a place"
+msgstr "上から見たレベル：明るいほどマップが多い。クリックすると場所を見渡します"
+
+msgid "Click to look north over a place, from 250 m south of it"
+msgstr "クリックすると、その場所の 250 m 南から北向きに見渡します"
+
+msgid "Over {name}, {height} m above the ground, looking {direction}"
+msgstr "{name} の上空、地上 {height} m、{direction}向き"
+
+msgid "Over {name}, at {height} m, looking {direction}"
+msgstr "{name} の上空、高度 {height} m、{direction}向き"
+
+msgid "{height} m above the ground, looking {direction}"
+msgstr "地上 {height} m、{direction}向き"
+
+msgid "At {height} m, looking {direction}"
+msgstr "高度 {height} m、{direction}向き"
+
+msgid "north-east"
+msgstr "北東"
+
+msgid "south-east"
+msgstr "南東"
+
+msgid "south-west"
+msgstr "南西"
+
+msgid "north-west"
+msgstr "北西"
+
+msgid "{count} map"
+msgid_plural "{count} maps"
+msgstr[0] "マップ {count} 個"
+msgstr[1] "マップ {count} 個"
+
+msgid "{count} model"
+msgid_plural "{count} models"
+msgstr[0] "モデル {count} 個"
+msgstr[1] "モデル {count} 個"
+
+msgid "the lights of {count} map"
+msgid_plural "the lights of {count} maps"
+msgstr[0] "マップ {count} 個のライト"
+msgstr[1] "マップ {count} 個のライト"

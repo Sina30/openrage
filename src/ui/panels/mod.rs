@@ -66,6 +66,7 @@ pub mod viewport_texture_badge;
 pub mod wardrobe;
 pub mod weapons;
 pub mod world_viewer;
+mod world_viewer_map;
 mod world_viewer_places;
 pub mod world_viewer_prefs;
 mod world_viewer_side;

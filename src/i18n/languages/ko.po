@@ -16676,9 +16676,6 @@ msgstr "아카이브 테이블로 연결, 레벨의 변경 집합 중 {ciphered}
 msgid "In the interior {interior}, room {room}"
 msgstr "인테리어 {interior}, 방 {room} 안"
 
-msgid "Outside every interior"
-msgstr "모든 인테리어 밖"
-
 msgid "Time and weather"
 msgstr "시간과 날씨"
 
@@ -16709,12 +16706,6 @@ msgstr "맵이 가장 많은 512m 정사각형 중 하나를 북쪽으로 내려
 msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
 msgstr "GTA VI 키 스냅샷을 찾지 못해 맵이 블록 맵으로 연결되었고, 어느 시각에도 스크립트로 관리되는 그룹이 켜지지 않습니다. gtavi_magic.dat을 구성 폴더에 넣거나 OPENRAGE_GTA6_KEYS로 지정한 다음 인덱스를 다시 만드십시오."
 
-msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
-msgstr "이 폴더에서 GTA VI 맵을 찾지 못했습니다: 설정 ▸ 게임에서 GTA VI가 설치된 폴더를 지정해야 합니다"
-
-msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
-msgstr "스트리밍 중: 맵 {maps}개, 모델 {models}개, 텍스처 {textures}개가 아직 남았습니다"
-
 msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
 msgstr "처음 방문할 때는 레벨의 모든 아카이브를 읽느라 몇 분이 걸립니다. 인덱스는 보관되므로 다음 방문은 바로 열립니다. 백그라운드 작업에서 멈출 수 있습니다."
 
@@ -16734,3 +16725,60 @@ msgstr "데이터 밖에서 새 게임에 대해 가정하는 것, 즉 스크립
 
 msgid "{label} (inferred)"
 msgstr "{label} (추정)"
+
+msgid "GTA VI world index"
+msgstr "GTA VI 월드 인덱스"
+
+msgid "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives"
+msgstr "{folder}에서 GTA VI 파일을 찾지 못했습니다. 설정 ▸ 게임에서 GTA VI가 설치된 폴더, 즉 .rpf 아카이브가 들어 있는 폴더를 지정해야 합니다"
+
+msgid "Still loading: {what}"
+msgstr "아직 불러오는 중: {what}"
+
+msgid "the ground and fog under the water"
+msgstr "물 아래의 지면과 안개"
+
+msgid "The level from above: the brighter, the more maps; click to look over a place"
+msgstr "위에서 본 레벨: 밝을수록 맵이 많습니다. 클릭하면 그 장소를 내려다봅니다"
+
+msgid "Click to look north over a place, from 250 m south of it"
+msgstr "클릭하면 그 장소의 남쪽 250m에서 북쪽을 바라봅니다"
+
+msgid "Over {name}, {height} m above the ground, looking {direction}"
+msgstr "{name} 위, 지면에서 {height}m, {direction}쪽을 봄"
+
+msgid "Over {name}, at {height} m, looking {direction}"
+msgstr "{name} 위, 높이 {height}m, {direction}쪽을 봄"
+
+msgid "{height} m above the ground, looking {direction}"
+msgstr "지면에서 {height}m, {direction}쪽을 봄"
+
+msgid "At {height} m, looking {direction}"
+msgstr "높이 {height}m, {direction}쪽을 봄"
+
+msgid "north-east"
+msgstr "북동"
+
+msgid "south-east"
+msgstr "남동"
+
+msgid "south-west"
+msgstr "남서"
+
+msgid "north-west"
+msgstr "북서"
+
+msgid "{count} map"
+msgid_plural "{count} maps"
+msgstr[0] "맵 {count}개"
+msgstr[1] "맵 {count}개"
+
+msgid "{count} model"
+msgid_plural "{count} models"
+msgstr[0] "모델 {count}개"
+msgstr[1] "모델 {count}개"
+
+msgid "the lights of {count} map"
+msgid_plural "the lights of {count} maps"
+msgstr[0] "맵 {count}개의 조명"
+msgstr[1] "맵 {count}개의 조명"

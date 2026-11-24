@@ -16676,9 +16676,6 @@ msgstr "通过归档的表匹配；关卡的变更集中有 {ciphered} 个已加
 msgid "In the interior {interior}, room {room}"
 msgstr "在室内 {interior}，房间 {room}"
 
-msgid "Outside every interior"
-msgstr "在所有室内之外"
-
 msgid "Time and weather"
 msgstr "时间和天气"
 
@@ -16709,12 +16706,6 @@ msgstr "向北俯瞰地图最多的 512 米方格之一；运行“收集名称�
 msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
 msgstr "未找到 GTA VI 密钥快照，因此地图通过区块地图匹配，且任何时刻都不会启用由脚本管理的组。将 gtavi_magic.dat 放入配置文件夹，或用 OPENRAGE_GTA6_KEYS 指定它，然后重新构建索引。"
 
-msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
-msgstr "此文件夹中未找到 GTA VI 的地图：“设置 ▸ 游戏”必须指定 GTA VI 的安装文件夹"
-
-msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
-msgstr "正在流式加载：还有 {maps} 个地图、{models} 个模型和 {textures} 个纹理待加载"
-
 msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
 msgstr "首次访问会读取关卡的每个归档，需要几分钟；索引会被保留，因此下次访问会立即打开。可在“后台任务”中停止。"
 
@@ -16734,3 +16725,60 @@ msgstr "不计入数据之外对新游戏的假定：其脚本的请求和开局
 
 msgid "{label} (inferred)"
 msgstr "{label}（推断）"
+
+msgid "GTA VI world index"
+msgstr "GTA VI 世界索引"
+
+msgid "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives"
+msgstr "在 {folder} 中未找到 GTA VI 的文件。“设置 ▸ 游戏”必须指定 GTA VI 的安装文件夹，即包含其 .rpf 归档的文件夹"
+
+msgid "Still loading: {what}"
+msgstr "仍在加载：{what}"
+
+msgid "the ground and fog under the water"
+msgstr "水下的地面和雾"
+
+msgid "The level from above: the brighter, the more maps; click to look over a place"
+msgstr "从上方俯瞰关卡：越亮地图越多；点击以俯瞰某处"
+
+msgid "Click to look north over a place, from 250 m south of it"
+msgstr "点击以从某处以南 250 米处向北俯瞰"
+
+msgid "Over {name}, {height} m above the ground, looking {direction}"
+msgstr "位于 {name} 上空，离地 {height} 米，朝向{direction}"
+
+msgid "Over {name}, at {height} m, looking {direction}"
+msgstr "位于 {name} 上空，高度 {height} 米，朝向{direction}"
+
+msgid "{height} m above the ground, looking {direction}"
+msgstr "离地 {height} 米，朝向{direction}"
+
+msgid "At {height} m, looking {direction}"
+msgstr "高度 {height} 米，朝向{direction}"
+
+msgid "north-east"
+msgstr "东北"
+
+msgid "south-east"
+msgstr "东南"
+
+msgid "south-west"
+msgstr "西南"
+
+msgid "north-west"
+msgstr "西北"
+
+msgid "{count} map"
+msgid_plural "{count} maps"
+msgstr[0] "{count} 个地图"
+msgstr[1] "{count} 个地图"
+
+msgid "{count} model"
+msgid_plural "{count} models"
+msgstr[0] "{count} 个模型"
+msgstr[1] "{count} 个模型"
+
+msgid "the lights of {count} map"
+msgid_plural "the lights of {count} maps"
+msgstr[0] "{count} 个地图的灯光"
+msgstr[1] "{count} 个地图的灯光"

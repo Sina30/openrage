@@ -16815,9 +16815,6 @@ msgstr "Сопоставлено по таблицам архивов; заши�
 msgid "In the interior {interior}, room {room}"
 msgstr "В интерьере {interior}, комната {room}"
 
-msgid "Outside every interior"
-msgstr "Вне всех интерьеров"
-
 msgid "Time and weather"
 msgstr "Время и погода"
 
@@ -16848,12 +16845,6 @@ msgstr "Посмотреть на север над одним из квадра
 msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
 msgstr "Снимок ключей GTA VI не найден, поэтому карты сопоставлены по картам блоков, и ни один час не включает группы, управляемые скриптом. Поместите gtavi_magic.dat в папку конфигурации или укажите его в OPENRAGE_GTA6_KEYS, затем постройте индекс заново."
 
-msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
-msgstr "В этой папке не найдено ни одной карты GTA VI: в разделе Параметры ▸ Игры должна быть указана папка, в которую установлена GTA VI"
-
-msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
-msgstr "Подгрузка: ещё ожидается карт: {maps}, моделей: {models}, текстур: {textures}"
-
 msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
 msgstr "Первое посещение читает все архивы уровня и занимает несколько минут; индекс сохраняется, поэтому следующее посещение открывается сразу. Остановить его можно в разделе «Фоновые задачи»."
 
@@ -16874,3 +16865,63 @@ msgstr "Не учитывать то, что предполагается о н�
 
 msgid "{label} (inferred)"
 msgstr "{label} (выведено)"
+
+msgid "GTA VI world index"
+msgstr "Индекс мира GTA VI"
+
+msgid "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives"
+msgstr "в {folder} не найдено файлов GTA VI. В разделе Параметры ▸ Игры должна быть указана папка, в которую установлена GTA VI, та, где лежат её архивы .rpf"
+
+msgid "Still loading: {what}"
+msgstr "Ещё загружается: {what}"
+
+msgid "the ground and fog under the water"
+msgstr "дно и туман под водой"
+
+msgid "The level from above: the brighter, the more maps; click to look over a place"
+msgstr "Уровень сверху: чем светлее, тем больше карт; щёлкните, чтобы осмотреть место"
+
+msgid "Click to look north over a place, from 250 m south of it"
+msgstr "Щёлкните, чтобы посмотреть на место с севера, с 250 м южнее"
+
+msgid "Over {name}, {height} m above the ground, looking {direction}"
+msgstr "Над {name}, {height} м над землёй, взгляд на {direction}"
+
+msgid "Over {name}, at {height} m, looking {direction}"
+msgstr "Над {name}, на высоте {height} м, взгляд на {direction}"
+
+msgid "{height} m above the ground, looking {direction}"
+msgstr "{height} м над землёй, взгляд на {direction}"
+
+msgid "At {height} m, looking {direction}"
+msgstr "На высоте {height} м, взгляд на {direction}"
+
+msgid "north-east"
+msgstr "северо-восток"
+
+msgid "south-east"
+msgstr "юго-восток"
+
+msgid "south-west"
+msgstr "юго-запад"
+
+msgid "north-west"
+msgstr "северо-запад"
+
+msgid "{count} map"
+msgid_plural "{count} maps"
+msgstr[0] "{count} карта"
+msgstr[1] "{count} карты"
+msgstr[2] "{count} карт"
+
+msgid "{count} model"
+msgid_plural "{count} models"
+msgstr[0] "{count} модель"
+msgstr[1] "{count} модели"
+msgstr[2] "{count} моделей"
+
+msgid "the lights of {count} map"
+msgid_plural "the lights of {count} maps"
+msgstr[0] "огни {count} карты"
+msgstr[1] "огни {count} карт"
+msgstr[2] "огни {count} карт"

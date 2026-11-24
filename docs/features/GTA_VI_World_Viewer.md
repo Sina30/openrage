@@ -7,29 +7,33 @@ Settings ▸ Games names, and writes nothing into it.
 ## Opening it
 
 The rail shows **World**, a globe with a small gamepad, once a GTA VI folder is set. It opens the
-World workspace: the view, and beside it the World panel. With no folder set, both say so and offer
-**Settings ▸ Games…**.
+World workspace: the view the whole height of the window, and beside it the World panel, with
+**Jobs** and **Log** as tabs behind it. With no folder set, both say so and offer
+**Settings ▸ Games…**. While the World screen shows a GTA VI folder, the status bar names GTA VI.
 
-The first visit builds an index of the install as a job with progress and Stop. The index is kept
-in the configuration folder under `gta6_world`, and is built again only when an archive's size or
-modification time changes, or from **Build the index again**.
+The first visit builds an index of the install as a job, **GTA VI world index**, with progress and
+Stop; until the index is held the view is a plain backdrop. The index is kept in the configuration
+folder under `gta6_world`, and is built again only when an archive's size or modification time
+changes, or from **Build the index again**. A folder that holds no GTA VI files fails the job, and
+the view, the panel and the job list say that no GTA VI files were found in it and that the folder
+to name is the one GTA VI is installed in, which holds its `.rpf` archives.
 
 The World panel lists its sections in the order they are used:
 
 1. What stands in the way, each with what to do about it: the index being built, with its
-   progress; a build that failed; a folder that holds no map of GTA VI; no key snapshot (the
-   maps are then bound by their block maps, see below); and a frame lit by the plain pass because
-   no shader pack is read.
+   progress; a build that failed, with **Settings ▸ Games…** and **Build the index again**; no key
+   snapshot (the maps are then bound by their block maps, see below); and a frame lit by the plain
+   pass because no shader pack is read.
 2. **Time and weather**: the hour and the weather the world is drawn at.
-3. **Camera**: **Go to**, the interior and room the camera stands in, its position, its speed and
-   the level-of-detail scale.
+3. **Camera**: **Go to**, the overhead map, where the camera stands in words, the interior and room
+   it stands in, its position, its speed and the level-of-detail scale.
 4. **What streams**: the story pack, the shared minigames and the script-managed groups.
 5. **Capture**.
 6. **Streaming**, what is streamed in and on the device, and **Mount**, what the index holds, closed
    until opened.
 
-The line over the view says how to fly and, while anything is still on its way, how many maps,
-models and textures are yet to come.
+The line over the view says how to fly. The corner under it says what is still loading (maps,
+models, textures, maps' lights, the ground and fog under the water) and goes away once nothing is.
 
 The hour, the weather, the modes, the level-of-detail scale and the camera's speed are kept in the
 preferences and come back on the next run; the groups chosen and the camera's place do not.
@@ -199,8 +203,23 @@ The keys are read while the pointer is over the view or the view holds the focus
 **Go to** lists up to eight places found in the index when it is opened: the squares of 512 m that
 hold the most maps streaming at rest, one for each run of letters their maps' names start with
 (the letters before the first digit or underscore), densest first. A place none of whose maps is
-named, which is every place until **Harvest names** has run, is listed by its coordinates. Choosing one puts the camera 250 m south of the middle of its maps and 80 m over the
+named is listed by its coordinates. Choosing one puts the camera 250 m south of the middle of its maps and 80 m over the
 tallest of them, looking north.
+
+The **overhead map** under it is drawn when the index is opened: the square over the maps that
+stream at rest, north up, each cell as bright as the number of maps whose middle lies in it. The
+camera is a dot with a stroke the way it looks. A click puts the camera 250 m south of the point
+clicked and 80 m over the tallest building within 256 m of it (or the ground, where none stands),
+looking north.
+
+The line under the map says where the camera is in words: the smallest map at rest under it whose
+name is known, how high it is over the ground the level's height map gives, and which of the eight
+points of the compass it looks to.
+
+Names come from the vocabulary the app serves: the names **Harvest names** found in this install's
+archives, and the recovered-names corpus in the folder `OPENRAGE_GTA6_NAMES` names (its
+`vocabulary.txt`), read once on a worker. A place, a map, an interior, a room or a script-managed
+group the vocabulary does not name is shown by its hash.
 
 ## Time, weather and what streams
 
@@ -224,7 +243,11 @@ The **Capture** section of the World panel makes a frame that can be drawn again
   view in degrees. A yaw of zero looks along +Y and a growing yaw turns towards −X.
 - The field under it takes such a line and puts the camera there on Enter.
 
-A shots script reads the same line, sets the hour, waits for the world to settle and measures
+Each of these jumps, like **Go to** and a click on the overhead map, is a cut: the exposure is taken
+again at the new place rather than adapted from the old one.
+
+A shots script reads the same line, sets the hour, waits for the world to settle (in the plain pass,
+which meters no frame, without waiting for the exposure) and measures
 the frame against a reference image ([screenshots](../guides/Development_Workflow.md#screenshots)).
 
 ## Limits

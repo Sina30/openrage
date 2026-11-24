@@ -26,7 +26,7 @@ const EXEMPT: [&str; 2] = [
 ];
 
 /// How many literals each file under `src/ui` and `src/app` holds.
-const LEDGER: [(&str, usize); 14] = [
+const LEDGER: [(&str, usize); 15] = [
     ("src/ui/focus_ring.rs", 2),
     ("src/ui/no_text_the_shell_paints_reads_under_4_5_to_1.rs", 1),
     ("src/ui/panels/game_picker.rs", 1),
@@ -38,6 +38,7 @@ const LEDGER: [(&str, usize); 14] = [
     ("src/ui/panels/timeline.rs", 4),
     ("src/ui/panels/timeline_ycd.rs", 9),
     ("src/ui/panels/viewport.rs", 13),
+    ("src/ui/panels/world_viewer_map.rs", 1),
     ("src/ui/timeline/channels.rs", 1),
     ("src/ui/timeline/provider.rs", 1),
     ("src/ui/timeline/ruler.rs", 2),

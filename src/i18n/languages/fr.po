@@ -16676,9 +16676,6 @@ msgstr "Association par les tables des archives ; {ciphered} des jeux de modifi
 msgid "In the interior {interior}, room {room}"
 msgstr "Dans l'intérieur {interior}, pièce {room}"
 
-msgid "Outside every interior"
-msgstr "Hors de tout intérieur"
-
 msgid "Time and weather"
 msgstr "Heure et météo"
 
@@ -16709,12 +16706,6 @@ msgstr "Regarder vers le nord au-dessus d'un des carrés de 512 m qui contiennen
 msgid "No GTA VI key snapshot was found, so the maps were bound by their block maps and no hour switches a script-managed group. Put gtavi_magic.dat in the configuration folder, or name it with OPENRAGE_GTA6_KEYS, then build the index again."
 msgstr "Aucun instantané de clés de GTA VI n'a été trouvé : les cartes ont été associées par leurs cartes de blocs et aucune heure n'active de groupe géré par script. Placez gtavi_magic.dat dans le dossier de configuration, ou indiquez-le avec OPENRAGE_GTA6_KEYS, puis reconstruisez l'index."
 
-msgid "No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"
-msgstr "Aucune carte de GTA VI n'a été trouvée dans ce dossier : Paramètres ▸ Jeux doit désigner le dossier où GTA VI est installé"
-
-msgid "Streaming in: {maps} maps, {models} models and {textures} textures still to come"
-msgstr "Streaming en cours : {maps} cartes, {models} modèles et {textures} textures encore attendus"
-
 msgid "The first visit reads every archive of the level, which takes a few minutes; the index is kept, so the next visit opens at once. Background jobs can stop it."
 msgstr "La première visite lit toutes les archives du niveau, ce qui prend quelques minutes ; l'index est conservé, la visite suivante s'ouvre donc aussitôt. Tâches en arrière-plan peut l'arrêter."
 
@@ -16734,3 +16725,60 @@ msgstr "Laisser de côté ce qu'on suppose d'une nouvelle partie au-delà des do
 
 msgid "{label} (inferred)"
 msgstr "{label} (déduit)"
+
+msgid "GTA VI world index"
+msgstr "Index du monde de GTA VI"
+
+msgid "no GTA VI files were found in {folder}. Settings ▸ Games must name the folder GTA VI is installed in, the one that holds its .rpf archives"
+msgstr "aucun fichier de GTA VI n'a été trouvé dans {folder}. Paramètres ▸ Jeux doit désigner le dossier où GTA VI est installé, celui qui contient ses archives .rpf"
+
+msgid "Still loading: {what}"
+msgstr "Encore en chargement : {what}"
+
+msgid "the ground and fog under the water"
+msgstr "le sol et le brouillard sous l'eau"
+
+msgid "The level from above: the brighter, the more maps; click to look over a place"
+msgstr "Le niveau vu d'en haut : plus c'est clair, plus il y a de cartes ; cliquez pour regarder un lieu"
+
+msgid "Click to look north over a place, from 250 m south of it"
+msgstr "Cliquez pour regarder un lieu vers le nord, depuis 250 m au sud"
+
+msgid "Over {name}, {height} m above the ground, looking {direction}"
+msgstr "Au-dessus de {name}, à {height} m du sol, regard vers le {direction}"
+
+msgid "Over {name}, at {height} m, looking {direction}"
+msgstr "Au-dessus de {name}, à {height} m, regard vers le {direction}"
+
+msgid "{height} m above the ground, looking {direction}"
+msgstr "À {height} m du sol, regard vers le {direction}"
+
+msgid "At {height} m, looking {direction}"
+msgstr "À {height} m, regard vers le {direction}"
+
+msgid "north-east"
+msgstr "nord-est"
+
+msgid "south-east"
+msgstr "sud-est"
+
+msgid "south-west"
+msgstr "sud-ouest"
+
+msgid "north-west"
+msgstr "nord-ouest"
+
+msgid "{count} map"
+msgid_plural "{count} maps"
+msgstr[0] "{count} carte"
+msgstr[1] "{count} cartes"
+
+msgid "{count} model"
+msgid_plural "{count} models"
+msgstr[0] "{count} modèle"
+msgstr[1] "{count} modèles"
+
+msgid "the lights of {count} map"
+msgid_plural "the lights of {count} maps"
+msgstr[0] "les lumières de {count} carte"
+msgstr[1] "les lumières de {count} cartes"

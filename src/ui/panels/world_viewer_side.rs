@@ -4,6 +4,7 @@
 
 use super::log::grouped;
 use super::world_viewer::{offered, Capture, Pose};
+use super::world_viewer_map as map;
 use super::world_viewer_places::{self as places, Place};
 use super::world_viewer_prefs::{LOD_SCALES, SPEEDS};
 use crate::render::RenderBridge;
@@ -65,17 +66,25 @@ fn name_of(hash: u32) -> String {
     crate::state::gta6_names::name32(hash).unwrap_or_else(|| format!("{hash:08X}"))
 }
 
-/// Which interior and room the camera stands in, as the Camera section says it.
-fn where_inside(inside: Option<gta6_worldview::Inside>) -> String {
-    match inside {
-        Some(inside) => tr!(
-            "In the interior {interior}, room {room}",
-            interior = name_of(inside.interior),
-            room = name_of(inside.room),
-        )
-        .to_string(),
-        None => tr!("Outside every interior").to_string(),
-    }
+/// The name the vocabulary gives `group`, by its word or its hash, else its hash.
+fn group_name(
+    vocabulary: &or_io::gta6::names::Vocabulary,
+    group: &gta6_worldview::index::Group,
+) -> String {
+    let named = (group.word != 0)
+        .then(|| vocabulary.name64(group.word))
+        .flatten();
+    (named.or_else(|| vocabulary.name32(group.name)))
+        .map_or_else(|| or_maps::Name::of(group.name).shown(), str::to_string)
+}
+
+/// Which interior and room the camera stands in, where it stands in one.
+fn where_inside(inside: gta6_worldview::Inside) -> String {
+    tr!(
+        "In the interior {interior}, room {room}",
+        interior = name_of(inside.interior),
+        room = name_of(inside.room),
+    )
 }
 
 /// The panel beside the view.
@@ -147,23 +156,18 @@ fn blocked(
             ui,
             &tr!("The GTA VI world was not indexed: {why}", why = why),
         );
-        rebuild_button(ui, viewer);
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(tr!("Settings ▸ Games…")).clicked() {
+                super::settings_window::open_settings_at(state, SettingsCategory::Games);
+            }
+            rebuild_button(ui, viewer);
+        });
         return true;
     }
     let Some(index) = viewer.index.clone() else {
         return false;
     };
     let mut any = false;
-    if index.report.maps == 0 {
-        warned(
-            ui,
-            tr!("No map of GTA VI was found in this folder: Settings ▸ Games must name the folder GTA VI is installed in"),
-        );
-        if ui.button(tr!("Settings ▸ Games…")).clicked() {
-            super::settings_window::open_settings_at(state, SettingsCategory::Games);
-        }
-        return true;
-    }
     if index.report.by_table == 0 {
         warned(
             ui,
@@ -336,6 +340,7 @@ fn go_to(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
         ui.label(tr!("Go to"));
         if let Some(pose) = chosen.inner.flatten() {
             pose.put(&mut viewer.camera);
+            viewer.cuts += 1;
             ui.ctx().request_repaint();
         }
     });
@@ -345,7 +350,14 @@ fn go_to(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
 fn camera(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
     ui.strong(tr!("Camera"));
     go_to(ui, state, viewer);
-    said(ui, &where_inside(viewer.inside()));
+    let overview = state.panels.get::<map::Overview>();
+    map::draw(ui, overview, viewer);
+    // Inside, the interior and its room say where the camera is; outside, the map under it and the ground.
+    match viewer.inside() {
+        Some(inside) => said(ui, &where_inside(inside)),
+        None if viewer.index.is_some() => said(ui, &map::place_words(overview, viewer)),
+        None => {}
+    }
     ui.horizontal_wrapped(|ui| {
         let position = &mut viewer.camera.position;
         for (axis, value) in [
@@ -452,10 +464,13 @@ fn streams(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
                 .desired_width(f32::INFINITY);
             named(ui.add(field), tr!("Filter groups by name"));
             let needle = filter.to_lowercase();
-            let rows: Vec<(&gta6_worldview::index::Group, String)> = (groups.iter())
-                .map(|group| (group, or_maps::Name::of(group.name).shown().to_string()))
+            let vocabulary = crate::state::gta6_names::vocabulary();
+            let mut rows: Vec<(&gta6_worldview::index::Group, String)> = (groups.iter())
+                .map(|group| (group, group_name(&vocabulary, group)))
                 .filter(|(_, name)| needle.is_empty() || name.to_lowercase().contains(&needle))
                 .collect();
+            // The groups the vocabulary names come first, then those shown by their hash.
+            rows.sort_by_cached_key(|(group, name)| (name.starts_with("hash_"), group.id));
             if rows.is_empty() {
                 said(ui, tr!("No group's name holds that text"));
                 return;
@@ -511,6 +526,7 @@ fn capture(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
         match Pose::read(&held.line) {
             Ok(pose) => {
                 pose.put(&mut viewer.camera);
+                viewer.cuts += 1;
                 held.line.clear();
                 ui.ctx().request_repaint();
             }
