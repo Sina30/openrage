@@ -35,9 +35,8 @@ const OFFSETS: usize = 32;
 pub(crate) struct Cascades {
     /// Where each tile lies across the light.
     fits: [Fit; CASCADES],
+    // ⚠ One depth for all four: the receiving pass gives a pixel the first tile it lies across whatever its depth, so a tile that held only the depths of its own sphere would shade everything past them.
     /// What a point of the world is multiplied by for its depth in every tile, from nought at the nearest the sun any cascade reaches to one at the furthest.
-    ///
-    /// ⚠ One depth for all four: the receiving pass gives a pixel the first tile it lies across whatever its depth, so a tile that held only the depths of its own sphere would shade everything past them.
     depth: Vec4,
     /// How far ahead of the camera the last ends.
     far: f32,
