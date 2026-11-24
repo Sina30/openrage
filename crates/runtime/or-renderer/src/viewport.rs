@@ -687,8 +687,7 @@ impl ViewportRenderer {
             self.draw_surface_meshes(&mut pass, mode);
             // The deferred frame has drawn the world into its G-buffer already, and a wireframe shows no surface
             if deferred.is_none() && mode != ShadingMode::Wireframe {
-                self.world
-                    .draw_forward(&mut pass, &self.bind_group, &self.fallback_material_bg);
+                self.world.draw_forward(&mut pass, &self.bind_group);
             }
 
             if let Some(game) = &self.game_particles {
