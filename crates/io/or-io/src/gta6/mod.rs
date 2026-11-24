@@ -31,7 +31,13 @@ pub mod text;
 pub mod text_language;
 pub mod texture_names;
 mod tiling;
+#[cfg(feature = "gta5")]
+pub mod timecycle;
 pub mod ttpf;
 pub mod ui_tree;
+#[cfg(all(feature = "gta5", feature = "meta"))]
+pub mod water;
+#[cfg(feature = "gta5")]
+pub mod weather;
 
 pub use ttpf::{Entry, Format, Header, Row, RowRole, Texture, TexturePack, TtpfError};
