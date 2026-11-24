@@ -1388,3 +1388,27 @@ fn a_terrain_lod_reads_its_material_green_as_a_smoothness_and_its_normal_map_who
     assert!(near(standard[1], [204, 128, 230, 0], 2), "{standard:?}");
     assert!(accepted(scope), "the device accepted every pass");
 }
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_vertex_coloured_mesh_takes_its_albedo_from_its_first_colour_where_a_standard_one_reads_a_palette_column(
+) {
+    let Some((device, queue, mut renderer)) = family_frame("a_vertex_coloured_mesh") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut drawn = |family: WorldFamily| {
+        let family = (family, WorldBucket::Opaque);
+        let material = surface(&device, &renderer, family, &[], WorldConstants::default());
+        let mesh = coloured_square(&device, [1.0, 0.0, 0.0, 1.0], [1.0; 4], material);
+        shade(&device, &queue, &mut renderer, &[(mesh, WHITE)]).0
+    };
+    let coloured = drawn(WorldFamily::VertexColoured);
+    assert!(near(coloured[0], [255, 0, 0, 255], 2), "{coloured:?}");
+    let standard = drawn(WorldFamily::Standard);
+    assert!(near(standard[0], [255; 4], 2), "{standard:?}");
+    assert!(accepted(scope), "the device accepted every pass");
+}

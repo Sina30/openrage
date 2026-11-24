@@ -76,6 +76,7 @@ const FOUR_LAYER: u32 = 2u;
 const EMISSIVE_FAMILY: u32 = 5u;
 const GRASS: u32 = 6u;
 const TERRAIN_LOD: u32 = 8u;
+const VERTEX_COLOURED: u32 = 9u;
 
 const VERTEX_TINT: u32 = 1u;
 const MASK_FROM_ALPHA: u32 = 2u;
@@ -314,7 +315,9 @@ fn two_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
 fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) -> vec3<f32> {
     let family = m.family.x;
     var colour = maps.c0.rgb;
-    if (family == GRASS) {
+    if (family == VERTEX_COLOURED) {
+        colour = colour * in.colour.rgb;
+    } else if (family == GRASS) {
         // The instance's colour, squared already, as far as the vertex's second colour lets it
         let own = 1.0 + in.colour1.r * (in.tint - 1.0);
         colour = colour * (1.0 + m.grass_tint * (own - 1.0));

@@ -74,6 +74,8 @@ pub enum WorldFamily {
     Grass = 6,
     Other = 7,
     TerrainLod = 8,
+    /// The albedo is the vertex's first colour, for meshes the viewer builds itself.
+    VertexColoured = 9,
 }
 
 /// The constants a material's arithmetic reads, by the names its effect gives them; `Default` is what most effects state.
