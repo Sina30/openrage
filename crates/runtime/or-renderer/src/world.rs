@@ -166,7 +166,7 @@ impl WorldMesh {
     }
 }
 
-/// Where one instance of a mesh stands: the rows of its 3×4 model matrix, a tint whose colour its surface is multiplied by and whose alpha is how much of it its fade leaves, and how much of the natural and of the artificial ambient light it takes.
+/// Where one instance of a mesh stands: the rows of its 3×4 model matrix, a tint whose colour its surface is multiplied by and whose alpha is how much of it its fade leaves (below nought, by the inverse dither of what it gives way to), and how much of the natural and of the artificial ambient light it takes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct WorldInstance {

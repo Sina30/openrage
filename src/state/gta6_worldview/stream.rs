@@ -52,7 +52,7 @@ pub struct Instance {
     pub rows: Rows,
     pub centre: Vec3,
     pub radius: f32,
-    /// How opaque it is, above 0 and to 1.
+    /// How opaque it is, to 1: below 0 where it fades out for its children, drawn by the inverse of their dither.
     pub fade: f32,
     /// The colour its material's arithmetic tints it by: white but for grass.
     pub tint: [f32; 3],
@@ -173,6 +173,15 @@ fn close(out: &mut Selected, from: usize) {
             from: from as u32,
             to: out.instances.len() as u32,
         });
+    }
+}
+
+/// An instance's fade as the renderer takes it: below nought where it gives way to its children.
+fn signed(fade: f32, yields: bool) -> f32 {
+    if yields {
+        -fade
+    } else {
+        fade
     }
 }
 
@@ -419,7 +428,13 @@ impl Streamer {
             let rows = map.entities.get(id.1 as usize);
             if let (Some(model), Some(rows)) = (drawn.model_at(hour), rows) {
                 let model = models.ix(model);
-                (out.instances).push(instance(model, *rows, drawn, draw.fade, [1.0; 3]));
+                (out.instances).push(instance(
+                    model,
+                    *rows,
+                    drawn,
+                    signed(draw.fade, draw.yields),
+                    [1.0; 3],
+                ));
             } else if interior_of(id).is_some() {
                 interiors.insert((id.0 as u32, id.1 as usize), draw.fade);
             }
@@ -484,7 +499,13 @@ impl Streamer {
             let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
             // An instance that fades by its own distance fades with its list too.
             list.each(eye, scale, &skipped, |rows, fade, tint| {
-                (out.instances).push(instance(model, rows, drawn, fade * draw.fade, tint));
+                (out.instances).push(instance(
+                    model,
+                    rows,
+                    drawn,
+                    fade * signed(draw.fade, draw.yields),
+                    tint,
+                ));
             });
             close(&mut out, from);
         }

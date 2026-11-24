@@ -191,8 +191,11 @@ fn dither(pixel: vec2<f32>) -> f32 {
 }
 
 // Whether nothing of the pixel is drawn: its coverage is under `cut`, or the fade of its instance leaves it out.
+// ⚠ A fade below nought gives way to children fading in: it keeps the pixels their dither leaves, or the two leave holes.
 fn dropped(in: VsOut, alpha: f32, cut: f32) -> bool {
-    return alpha < cut || in.fade < dither(in.clip_pos.xy);
+    let t = dither(in.clip_pos.xy);
+    let faded = select(in.fade < t, -in.fade < 1.0 - t, in.fade < 0.0);
+    return alpha < cut || faded;
 }
 
 // Below this a texel of a cutout is not drawn.

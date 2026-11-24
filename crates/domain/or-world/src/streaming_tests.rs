@@ -217,6 +217,20 @@ fn what_the_camera_s_velocity_brings_into_range_is_asked_for_before_it_is_in_ran
 }
 
 #[test]
+fn a_parent_that_fades_out_for_its_children_yields_and_they_do_not() {
+    let mut forest = parent_and_two_children();
+    let yields = |selection: &Selection, id: NodeId| {
+        (selection.drawn.iter().find(|d| d.node == id)).map(|d| d.yields)
+    };
+    let band = forest.select(&along(110.0), &all_ready);
+    assert_eq!(yields(&band, (1, 0)), Some(true));
+    assert_eq!(yields(&band, (2, 0)), Some(false));
+    // Held whole for a child on its way, it gives way to nothing.
+    let held = forest.select(&along(110.0), &loading(&[(2, 1)]));
+    assert_eq!(yields(&held, (1, 0)), Some(false));
+}
+
+#[test]
 fn a_parent_draws_beside_its_children_until_as_many_as_it_states_are_loaded() {
     let mut forest = parent_and_two_children();
     // It states a third child, whose map is not loaded.

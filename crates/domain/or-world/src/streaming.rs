@@ -299,6 +299,8 @@ pub struct NodeDraw {
     pub node: NodeId,
     /// How opaque, above 0 and to 1.
     pub fade: f32,
+    /// It fades out for its children: drawn by the inverse of their dither, the two leave no pixel bare.
+    pub yields: bool,
 }
 
 /// A list that draws, and the instances left out of it.
@@ -307,6 +309,8 @@ pub struct ListDraw {
     pub node: NodeId,
     /// How opaque every instance of it drawn is, above 0 and to 1.
     pub fade: f32,
+    /// It fades out for its children, as [`NodeDraw::yields`].
+    pub yields: bool,
     /// A range of [`Selection::skipped`].
     pub skipped: std::ops::Range<usize>,
 }
@@ -705,6 +709,7 @@ impl Pass<'_> {
         let node = self.node(at);
         // ⚠ Only a parent the distance leaves whole fades out for its children.
         let crosses = !node.batch && node.num_children > 0 && found == node.num_children;
+        let yields = !held && crosses && own >= 1.0;
         let target = match () {
             _ if held => 1.0,
             _ if crosses && own >= 1.0 => 1.0 - most,
@@ -728,13 +733,17 @@ impl Pass<'_> {
         }
         let fade = self.settle(at, target);
         match self.node(at).extent {
-            Extent::Box(..) => self.draw_list(at, id, fade),
-            Extent::Point => self.out.drawn.push(NodeDraw { node: id, fade }),
+            Extent::Box(..) => self.draw_list(at, id, fade, yields),
+            Extent::Point => self.out.drawn.push(NodeDraw {
+                node: id,
+                fade,
+                yields,
+            }),
         }
     }
 
     /// Draw the list `at` less each instance whose own entity draws in its place.
-    fn draw_list(&mut self, at: u32, id: NodeId, fade: f32) {
+    fn draw_list(&mut self, at: u32, id: NodeId, fade: f32, yields: bool) {
         let from = self.out.skipped.len();
         let mut child = self.first_child(at);
         while child != NONE {
@@ -752,6 +761,7 @@ impl Pass<'_> {
         self.out.lists.push(ListDraw {
             node: id,
             fade,
+            yields,
             skipped: from..self.out.skipped.len(),
         });
     }
