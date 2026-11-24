@@ -17,6 +17,7 @@ fn row() -> (Vec<RoomBox>, Vec<Opening>, Vec3) {
             Vec3::new(x, y[0], 2.0),
         ],
         flags: 0,
+        shut: false,
     };
     let rooms = vec![
         room(0.0, 12.0),
@@ -120,6 +121,39 @@ fn a_mirror_is_seen_and_nothing_is_seen_through_it() {
     let seen = seen(&rooms, &portals, middle, Vec3::new(1.0, 0.0, 1.0));
     assert_eq!(seen.rooms, [true, true, false, false]);
     assert_eq!(seen.portals, [true, true, false]);
+}
+
+#[test]
+fn a_shut_door_is_seen_and_lets_neither_the_eye_nor_the_sky_through() {
+    let (rooms, mut portals, middle) = row();
+    portals[1].shut = true;
+    let from_room_1 = seen(&rooms, &portals, middle, Vec3::new(1.0, 0.0, 1.0));
+    assert_eq!(from_room_1.rooms, [true, true, false, false]);
+    assert_eq!(from_room_1.portals, [true, true, false]);
+    portals[0].shut = true;
+    assert_eq!(
+        seen(&rooms, &portals, middle, Vec3::new(-5.0, 0.0, 1.0)).rooms,
+        [true, false, false, false]
+    );
+    assert_eq!(
+        ambient_of(&rooms, &portals, 1, Vec3::new(0.0, 0.0, 1.0)),
+        [0.0, 0.0]
+    );
+}
+
+#[test]
+fn a_portal_that_may_close_is_shut_by_what_it_holds_to_the_outside_and_by_its_doors_within() {
+    let closing = ALLOW_CLOSING | 8;
+    // To the outside, whatever it holds shuts it; holding nothing, or looked through one way, never.
+    assert!(shut_at_rest(closing, [3, 0], 1, 0));
+    assert!(!shut_at_rest(closing, [3, 0], 0, 0));
+    assert!(!shut_at_rest(closing | ONE_WAY, [0, 3], 2, 1));
+    // Between two rooms, a door shuts it and a frame alone does not.
+    assert!(shut_at_rest(closing, [1, 2], 2, 1));
+    assert!(!shut_at_rest(closing, [1, 2], 2, 0));
+    // One that may not close, or that links another interior, never shuts.
+    assert!(!shut_at_rest(8, [1, 0], 2, 1));
+    assert!(!shut_at_rest(closing | LINK, [1, 0], 2, 1));
 }
 
 #[test]

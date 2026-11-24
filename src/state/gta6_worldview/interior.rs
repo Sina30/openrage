@@ -23,6 +23,9 @@ use super::stream::{Chunk, Instance, Rows};
 
 /// The bytes a body of interiors is read to.
 const BODY_LIMIT: u64 = 256 << 20;
+/// An archetype's flag: what it draws is a door.
+// ⚠ GTA V's bit, which the build's archetypes held by closable portals carry.
+const DOOR: u32 = 1 << 26;
 
 fn rows_of(m: Mat4) -> Rows {
     let t = m.transpose().to_cols_array_2d();
@@ -131,11 +134,24 @@ pub(super) fn place(
         instance.rotation,
         instance.position,
     );
-    let portals: Vec<Opening> = (interior.portals.iter())
-        .map(|p| Opening {
+    // What each portal holds, and how many of those are doors.
+    let mut held = vec![(0, 0); interior.portals.len()];
+    for (e, location) in interior.drawn(&instance.default_entity_sets) {
+        let EntitySetLocation::Portal(k) = location else {
+            continue;
+        };
+        if let Some((all, doors)) = held.get_mut(k as usize) {
+            *all += 1;
+            let flags = index.archetype(e.archetype_word).map_or(0, |a| a.flags);
+            *doors += usize::from(flags & DOOR != 0);
+        }
+    }
+    let portals: Vec<Opening> = (interior.portals.iter().zip(held))
+        .map(|(p, (all, doors))| Opening {
             rooms: [p.room_from, p.room_to],
             corners: p.corners.map(Vec3::from),
             flags: p.flags,
+            shut: interior_rooms::shut_at_rest(p.flags, [p.room_from, p.room_to], all, doors),
         })
         .collect();
     let rooms: Vec<RoomBox> = (interior.rooms.iter())

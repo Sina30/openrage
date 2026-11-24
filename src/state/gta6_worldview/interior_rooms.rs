@@ -38,6 +38,8 @@ pub(super) struct Opening {
     pub(super) rooms: [u32; 2],
     pub(super) corners: [Vec3; 4],
     pub(super) flags: u32,
+    /// Whether it is shut as the interior stands at rest: its own entities are seen, nothing past it.
+    pub(super) shut: bool,
 }
 
 // ⚠ GTA V's bits, which the build's portals match in kind: every portal with 4 (many of them also
@@ -46,6 +48,25 @@ pub(super) struct Opening {
 const MIRROR: u32 = 4;
 /// A portal's flag: it opens on another interior, not on the sky.
 const LINK: u32 = 2;
+/// A portal's flag: it is looked through one way alone, and never shut.
+const ONE_WAY: u32 = 1;
+/// A portal's flag: it shuts while what it holds is shut.
+const ALLOW_CLOSING: u32 = 64;
+
+/// Whether a portal of `flags` that holds `held` entities, `doors` of them doors, is shut while
+/// every door stands closed, as an interior stands when it is placed: one to the outside that may
+/// close is shut by whatever it holds, one between two rooms by the doors it holds.
+// ⚠ GTA V's rule: an interior shuts its closable portals to the outside that hold anything when it
+// is placed, and a door reopens its portal only once it opens.
+pub(super) fn shut_at_rest(flags: u32, rooms: [u32; 2], held: usize, doors: usize) -> bool {
+    if flags & ALLOW_CLOSING == 0 || flags & LINK != 0 {
+        return false;
+    }
+    match rooms.contains(&0) {
+        true => flags & ONE_WAY == 0 && held > 0,
+        false => doors > 0,
+    }
+}
 
 /// What a camera sees of an interior: by room and by portal.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -175,7 +196,10 @@ impl Walk<'_> {
                 }
             };
             self.seen.portals[k] = true;
-            self.enter(other, &next);
+            // A shut portal's door is seen, and nothing past it.
+            if !portal.shut {
+                self.enter(other, &next);
+            }
         }
         self.path.pop();
     }
@@ -234,7 +258,7 @@ pub(super) fn ambient_of(rooms: &[RoomBox], portals: &[Opening], room: u32, p: V
         return or_renderer::OUTDOORS;
     };
     let outward = portals.iter().filter(|o| {
-        o.rooms.contains(&room) && o.rooms.contains(&0) && o.flags & (MIRROR | LINK) == 0
+        o.rooms.contains(&room) && o.rooms.contains(&0) && o.flags & (MIRROR | LINK) == 0 && !o.shut
     });
     let (mut window, mut near) = (0.0, 0.0);
     for o in outward {
