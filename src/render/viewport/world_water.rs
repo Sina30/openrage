@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use glam::{Mat4, Vec3};
+use or_renderer::world::water::WaterMedia;
 use or_renderer::{ViewportRenderer, WorldBucket, WorldDraw, WorldInstance, WorldMesh};
 
 use crate::state::gta6_world::worldview::water::{mesh, tint, Seen, SeenKey};
@@ -22,6 +23,8 @@ pub(super) struct Water {
     built: Option<Built>,
     /// The blended surface and its tint, where the frame's water pass does not draw the water.
     plain: Option<(Arc<WorldMesh>, [f32; 3])>,
+    /// Which fog atlas the frame's water pass was given, by where it is held.
+    media: Option<usize>,
 }
 
 impl Water {
@@ -38,6 +41,23 @@ impl Water {
             renderer.set_world_water(device, None);
             return self.built.take().is_some();
         };
+        let fog = water.fog.as_deref();
+        let held = fog.map(|f| f as *const _ as usize);
+        if self.media != held {
+            self.media = held;
+            renderer.set_world_water_media(
+                device,
+                fog.map(|f| WaterMedia {
+                    west: f.atlas.west(),
+                    north: f.atlas.north(),
+                    size: f.atlas.size,
+                    width: f.extinction.width(),
+                    height: f.extinction.height(),
+                    extinction: f.extinction.texels(),
+                    scattering: f.scattering.texels(),
+                }),
+            );
+        }
         let (of, lit) = (water.key(), renderer.has_deferred());
         if let Some((was, was_lit, at)) = &self.built {
             if *was == of && *was_lit == lit && at.distance(eye) < REBUILD {

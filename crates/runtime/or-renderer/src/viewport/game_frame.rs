@@ -290,6 +290,7 @@ impl ViewportRenderer {
             });
             let water = &mut self.world.water;
             water.give_ripples(device, queue, self.water_textures.bump2.as_ref());
+            water.upload(queue);
             water.bind(
                 device,
                 behind,

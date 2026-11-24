@@ -144,9 +144,11 @@ pub(super) struct Found {
     pub standing: [usize; 4],
     /// The frame's exposure is still on its way to what its meter wants.
     pub adapting: bool,
+    /// A part of the water that was asked for is still being read.
+    pub water: bool,
 }
 
-/// The rule `world settle` waits by: an index held, nothing waited for, the exposure arrived, and nothing changed for [`QUIET`].
+/// The rule `world settle` waits by: an index held, nothing waited for, the exposure arrived, no water being read, and nothing changed for [`QUIET`].
 // ⚠ Nothing waited for is not enough: for a frame or two after the camera jumps, the world's
 // thread has not yet asked for the maps of the new place.
 #[derive(Debug, Default)]
@@ -158,7 +160,7 @@ pub(super) struct Settle {
 impl Settle {
     /// Whether the world has settled at `now`, a time on a clock that only runs forward, given what this frame found.
     pub(super) fn settled(&mut self, now: Duration, found: Found) -> bool {
-        let quiet = found.indexed && found.waiting == [0; 4] && !found.adapting;
+        let quiet = found.indexed && found.waiting == [0; 4] && !found.adapting && !found.water;
         if !quiet || self.last != Some(found) {
             (self.last, self.since) = (Some(found), now);
             return false;
@@ -171,6 +173,9 @@ impl Settle {
         match self.last {
             None => "no frame was drawn".into(),
             Some(found) if !found.indexed => "no index of the install is held".into(),
+            Some(found) if found.waiting == [0; 4] && found.water => {
+                "the water's ground or fog was still being read".into()
+            }
             Some(Found {
                 waiting: [0, 0, 0, 0],
                 adapting: true,
@@ -211,6 +216,7 @@ fn found() -> Result<Found, String> {
             streaming.drawn,
         ],
         adapting: crate::state::gta6_world::worldview::sky::adapting(),
+        water: viewer.water_reading(),
     })
 }
 
@@ -389,6 +395,7 @@ mod tests {
         waiting: [0; 4],
         standing: [40, 40, 900, 700],
         adapting: false,
+        water: false,
     };
 
     fn at(millis: u64) -> Duration {
@@ -557,7 +564,20 @@ mod tests {
             rule.still(),
             "2 maps, 0 models, 7 textures and 0 maps' lights were still waited for"
         );
-        assert!(!rule.settled(QUIET * 12, IDLE));
+        let water = Found {
+            water: true,
+            ..IDLE
+        };
+        assert!(!rule.settled(QUIET * 12, water));
+        assert!(
+            !rule.settled(QUIET * 20, water),
+            "never while the water is read"
+        );
+        assert_eq!(
+            rule.still(),
+            "the water's ground or fog was still being read"
+        );
+        assert!(!rule.settled(QUIET * 21, IDLE));
         assert_eq!(rule.still(), "what is streamed in was still changing");
     }
 }

@@ -10,6 +10,7 @@ use or_io::container::rpf::{
     read_rpf9_body, GtaViKeys, Rpf9BodyKind, Rpf9Role, Rpf9Scan, Rpf9ZlibRun,
 };
 use or_io::gta6::headerless::{read_dictionary, Entry};
+use or_io::gta6::ttpf::Texture;
 use or_io::gta6::water::height::{Heights, WaterGround};
 use or_io::gta6::water::GridAtlas;
 use or_title::gta6_mount::table::{entry_offset, Table};
@@ -33,11 +34,21 @@ static HELD: Mutex<Vec<(PathBuf, Read)>> = Mutex::new(Vec::new());
 
 /// The ground under the water of the install at `root`, read once on a worker and held: `None` until it is read, and where the install's tables give none or it does not read.
 pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
-    let mut held = HELD.lock().unwrap_or_else(|p| p.into_inner());
+    held(&HELD, root, "the ground under the water", read)
+}
+
+/// What `read` makes of the install at `root`, read once on a worker and held in `slots`: `None` until it is read, and where it does not read.
+pub(super) fn held<T: Send + Sync + 'static>(
+    slots: &'static Mutex<Vec<(PathBuf, Arc<OnceLock<Option<Arc<T>>>>)>>,
+    root: &Path,
+    what: &'static str,
+    read: fn(&Path, &GtaViKeys) -> Result<T, String>,
+) -> Option<Arc<T>> {
+    let mut held = slots.lock().unwrap_or_else(|p| p.into_inner());
     let slot = match held.iter().find(|(path, _)| path == root) {
         Some((_, slot)) => Arc::clone(slot),
         None => {
-            let slot = Read::default();
+            let slot = Arc::<OnceLock<Option<Arc<T>>>>::default();
             held.push((root.to_path_buf(), Arc::clone(&slot)));
             let (filled, root) = (Arc::clone(&slot), root.to_path_buf());
             // ⚠ Where the key snapshot lies is found here, on the caller's thread, as the index finds it.
@@ -48,21 +59,18 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
                     Some(keys) => read(&root, &keys),
                     None => Err("no key snapshot deciphers the install's tables".to_string()),
                 };
-                let ground = match read {
-                    Ok(ground) => {
-                        tracing::info!(
-                            tiles = ground.tiles(),
-                            seconds = started.elapsed().as_secs_f32(),
-                            "GTA VI's ground under the water was read"
-                        );
-                        Some(Arc::new(ground))
+                let value = match read {
+                    Ok(value) => {
+                        let seconds = started.elapsed().as_secs_f32();
+                        tracing::info!(what, seconds, "a part of GTA VI's water was read");
+                        Some(Arc::new(value))
                     }
                     Err(why) => {
-                        tracing::warn!(root = %root.display(), %why, "GTA VI's ground under the water is not read");
+                        tracing::warn!(root = %root.display(), what, %why, "a part of GTA VI's water is not read");
                         None
                     }
                 };
-                let _ = filled.set(ground);
+                let _ = filled.set(value);
             });
             slot
         }
@@ -70,24 +78,41 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
     slot.get()?.clone()
 }
 
-/// The grid the height map of the install at `root` is tiled by.
-fn atlas(root: &Path, keys: &GtaViKeys) -> Result<GridAtlas, String> {
+/// Whether what `slots` holds for `root` was asked for and is still being read.
+pub(super) fn reading<T>(
+    slots: &Mutex<Vec<(PathBuf, Arc<OnceLock<Option<Arc<T>>>>)>>,
+    root: &Path,
+) -> bool {
+    let held = slots.lock().unwrap_or_else(|p| p.into_inner());
+    (held.iter()).any(|(path, slot)| path == root && slot.get().is_none())
+}
+
+/// Whether the ground under the water of the install at `root` was asked for and is still being read.
+pub fn ground_reading(root: &Path) -> bool {
+    reading(&HELD, root)
+}
+
+/// The grid the document `entry` of the install at `root` states.
+pub(super) fn atlas(root: &Path, keys: &GtaViKeys, entry: &str) -> Result<GridAtlas, String> {
     let archive = root.join(ATLAS_ARCHIVE);
-    let at = entry_offset(&archive, ATLAS_ENTRY, keys)
-        .ok_or("the table names no grid of the height map")?;
+    let at = entry_offset(&archive, entry, keys).ok_or("the table names no grid")?;
     let file = File::open(&archive).map_err(|e| e.to_string())?;
     let (_, text) = read_rpf9_body(&file, at, BODY_LIMIT).map_err(|e| e.to_string())?;
     GridAtlas::parse(&String::from_utf8_lossy(&text)).map_err(|e| e.to_string())
 }
 
-/// The height map of the install at `root`: its fallback, and every tile laid where it matches.
-fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
-    let atlas = atlas(root, keys)?;
-    let archive = root.join(ARCHIVE);
+/// What `take` makes of each texture of the dictionaries of the archive `nested` that the archive `archive` of the install at `root` holds, read on several workers.
+pub(super) fn textures<T: Send>(
+    root: &Path,
+    keys: &GtaViKeys,
+    (archive, nested): (&str, &str),
+    take: &(dyn Fn(&str, &Texture) -> Option<T> + Sync),
+) -> Result<Vec<T>, String> {
+    let archive = root.join(archive);
     let table = Table::open(&archive, keys).map_err(|e| e.to_string())?;
     let nested = table
-        .find_archive(HEIGHTS)
-        .ok_or("the table names no archive of the height map")?;
+        .find_archive(nested)
+        .ok_or("the table names no such nested archive")?;
     let span = nested.offset..nested.offset.saturating_add(nested.stored);
     let scanned = File::open(&archive).map_err(|e| e.to_string())?;
     let mut dictionaries = Vec::new();
@@ -95,7 +120,7 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
         let find = match find {
             Ok(find) => find,
             Err(why) => {
-                tracing::warn!(%why, "the scan of the height map's archive stopped");
+                tracing::warn!(%why, "the scan of a water archive stopped");
                 break;
             }
         };
@@ -114,30 +139,22 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
     // The bodies are inflated and read on a worker each, in runs of the scan's order.
     let workers = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
     let run = dictionaries.len().div_ceil(workers).max(1);
-    let (path, named) = (&archive, atlas.fallback.as_str());
-    let read: Vec<Vec<(bool, Heights)>> = std::thread::scope(|scope| {
+    let path = &archive;
+    let read: Vec<Vec<T>> = std::thread::scope(|scope| {
         let handles: Vec<_> = (dictionaries.chunks(run))
-            .map(|offsets| scope.spawn(move || heights_at(path, offsets, named)))
+            .map(|offsets| scope.spawn(move || textures_at(path, offsets, take)))
             .collect();
         handles.into_iter().flat_map(|h| h.join().ok()).collect()
     });
-    let (mut fallback, mut tiles) = (None, Vec::new());
-    for (is_fallback, heights) in read.into_iter().flatten() {
-        match is_fallback {
-            true => fallback = Some(heights),
-            false => tiles.push(heights),
-        }
-    }
-    let fallback = fallback.ok_or("the height map's archive holds no fallback")?;
-    let mut ground = WaterGround::new(&atlas, fallback).map_err(|e| e.to_string())?;
-    for tile in tiles {
-        ground.add_tile(tile);
-    }
-    Ok(ground)
+    Ok(read.into_iter().flatten().collect())
 }
 
-/// The height textures of the dictionaries at `offsets` of `archive`, each marked whether it is the fallback named `fallback`; a tile is held shrunk until it is laid.
-fn heights_at(archive: &Path, offsets: &[u64], fallback: &str) -> Vec<(bool, Heights)> {
+/// What `take` makes of each texture of the dictionaries at `offsets` of `archive`.
+fn textures_at<T>(
+    archive: &Path,
+    offsets: &[u64],
+    take: &(dyn Fn(&str, &Texture) -> Option<T> + Sync),
+) -> Vec<T> {
     let Ok(file) = File::open(archive) else {
         return Vec::new();
     };
@@ -161,14 +178,40 @@ fn heights_at(archive: &Path, offsets: &[u64], fallback: &str) -> Vec<(bool, Hei
             let Ok(Entry::Texture(texture)) = entry else {
                 continue;
             };
-            let Some(heights) = texture.texture.as_ref().ok().and_then(Heights::of) else {
-                continue;
-            };
-            match texture.name == fallback {
-                true => out.push((true, heights)),
-                false => out.push((false, heights.shrunk(KEPT).unwrap_or(heights))),
+            if let Some(taken) =
+                (texture.texture.as_ref().ok()).and_then(|t| take(&texture.name, t))
+            {
+                out.push(taken);
             }
         }
     }
     out
+}
+
+/// The height map of the install at `root`: its fallback, and every tile laid where it matches.
+fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
+    let atlas = atlas(root, keys, ATLAS_ENTRY)?;
+    let named = atlas.fallback.as_str();
+    // A tile is held shrunk until it is laid.
+    let take = |name: &str, texture: &Texture| {
+        let heights = Heights::of(texture)?;
+        Some(match name == named {
+            true => (true, heights),
+            false => (false, heights.shrunk(KEPT).unwrap_or(heights)),
+        })
+    };
+    let read = textures(root, keys, (ARCHIVE, HEIGHTS), &take)?;
+    let (mut fallback, mut tiles) = (None, Vec::new());
+    for (is_fallback, heights) in read {
+        match is_fallback {
+            true => fallback = Some(heights),
+            false => tiles.push(heights),
+        }
+    }
+    let fallback = fallback.ok_or("the height map's archive holds no fallback")?;
+    let mut ground = WaterGround::new(&atlas, fallback).map_err(|e| e.to_string())?;
+    for tile in tiles {
+        ground.add_tile(tile);
+    }
+    Ok(ground)
 }

@@ -15,11 +15,14 @@ use or_title::gta6_day::DayTables;
 
 use crate::state::drivers::WeatherState;
 
+#[path = "water_fog.rs"]
+mod fog;
 #[path = "water_ground.rs"]
 mod ground;
 #[path = "water_mesh.rs"]
 mod mesh;
 
+pub use fog::{fog, WaterFog};
 pub use ground::ground;
 pub use mesh::{mesh, tint, Medium};
 
@@ -75,6 +78,17 @@ pub fn water(root: &Path) -> Option<Arc<WaterData>> {
     slot.get()?.clone()
 }
 
+impl super::Viewer {
+    /// Whether a part of the install's water that was asked for is still being read: its quads, the ground under them or its fog.
+    pub fn water_reading(&self) -> bool {
+        self.root.as_deref().is_some_and(|root| {
+            ground::reading(&HELD, &root.join(ARCHIVE))
+                || ground::ground_reading(root)
+                || fog::fog_reading(root)
+        })
+    }
+}
+
 /// What the mesh of the water is built of, by the place of each part that is held: a part that arrives or changes asks for it again.
 pub type SeenKey = (usize, usize, usize, &'static str);
 
@@ -83,6 +97,7 @@ pub type SeenKey = (usize, usize, usize, &'static str);
 pub struct Seen {
     pub quads: Arc<WaterData>,
     pub ground: Option<Arc<WaterGround>>,
+    pub fog: Option<Arc<WaterFog>>,
     day: Option<Arc<DayTables>>,
     hour: f32,
     /// The name of the day's cycle the weather stands for.
@@ -115,6 +130,7 @@ pub fn seen(root: &Path, hour: f32, weather: WeatherState, y: f32) -> Option<See
     Some(Seen {
         quads: water(root)?,
         ground: ground(root),
+        fog: fog(root),
         day: super::sky::tables(root),
         hour,
         weather: super::sky::weather_name(weather),

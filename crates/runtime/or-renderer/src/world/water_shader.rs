@@ -26,6 +26,8 @@ struct Water {
     light: vec4<f32>,
     // One over the frame's width and height; in `z` whether there are ripples, in `w` their scale a metre.
     screen: vec4<f32>,
+    // The medium's grid: its west and north edges in metres and one over its extent; nought in `z` where there is none.
+    grid: vec4<f32>,
     fog: array<vec4<f32>, 5>,
     fog_colour: array<vec4<f32>, 4>,
 };
@@ -40,6 +42,9 @@ struct Water {
 @group(1) @binding(5) var ripples: texture_2d<f32>;
 @group(1) @binding(6) var clamped: sampler;
 @group(1) @binding(7) var repeated: sampler;
+// The medium by place: how much of each channel a metre takes out, and how much it scatters.
+@group(1) @binding(8) var medium_extinction: texture_2d<f32>;
+@group(1) @binding(9) var medium_scattering: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> light: Light;
 
 // A depth of the frame at or past this is the sky, or no depth at all.
@@ -121,14 +126,22 @@ fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
         path = max(scene - in.view_depth - step, 0.0) * dist / max(in.view_depth, 1e-3);
     }
     let under = textureSampleLevel(behind, clamped, in.clip.xy * water.screen.xy, 0.0).rgb;
-    let through = exp(-water.extinction.rgb * path);
+    var extinction = water.extinction.rgb;
+    var albedo = water.albedo.rgb;
+    if (water.grid.z > 0.0) {
+        let at = vec2<f32>((in.world.x - water.grid.x) * water.grid.z, (water.grid.y - in.world.y) * water.grid.w);
+        extinction = max(textureSampleLevel(medium_extinction, clamped, at, 0.0).rgb, vec3<f32>(1e-6));
+        let scattering = textureSampleLevel(medium_scattering, clamped, at, 0.0).rgb;
+        albedo = min(scattering / extinction, vec3<f32>(1.0));
+    }
+    let through = exp(-extinction * path);
     let cosine = saturate(dot(n, v));
     let fresnel = textureSampleLevel(fresnel_row, clamped, vec2<f32>(cosine, 0.5), 0.0).r;
     let r = reflect(-v, n);
     let reflected = textureSampleLevel(sky, clamped, paraboloid(r), 0.0).rgb * water.albedo.w;
     // What shows of what lies behind, and the light the water gives of its own: what it scatters and what it reflects.
     let passed = (1.0 - fresnel) * through;
-    let own = (1.0 - fresnel) * (1.0 - through) * water.albedo.rgb * water.light.rgb + fresnel * reflected;
+    let own = (1.0 - fresnel) * (1.0 - through) * albedo * water.light.rgb + fresnel * reflected;
     // ⚠ What lies behind was fogged as the frame was lit: the fog covers only the water's own share.
     let fog = fog_of(-to_eye);
     let colour = under * passed + mix(own, fog.rgb * (1.0 - passed), fog.a);

@@ -10,6 +10,8 @@ use crate::meta::binary::pso::table_form;
 use crate::meta::binary::rbm::schema::RbmModel;
 use crate::meta::error::MetaError;
 
+#[path = "water_fog.rs"]
+pub mod fog;
 #[path = "water_height.rs"]
 pub mod height;
 

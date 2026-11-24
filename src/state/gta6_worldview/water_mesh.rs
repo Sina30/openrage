@@ -16,9 +16,9 @@ const NEAR: f32 = 1_000.0;
 const SHORE: f32 = 1.0;
 /// The depth a vertex is given where the ground under it is not known: deeper than light goes.
 pub const DEEP: f32 = 1_000.0;
-/// What turns the day's extinction into one a metre: its unit is not known.
-// ponytail: chosen so that red is gone in about a metre and blue-green in about two.
-const PATH_SCALE: f32 = 0.1;
+/// What turns the day's extinction and scattering into ones a metre: the day states them a kilometre at a time.
+// ⚠ Inferred: the fog atlas's commonest texel, which is a metre's, is the day's values over a thousand in three of six channels.
+const PATH_SCALE: f32 = 0.001;
 /// The water's colour where the day states no medium.
 const TINT: [f32; 3] = [0.05, 0.18, 0.22];
 

@@ -30,6 +30,21 @@ pub struct WaterLook {
     pub reflection: f32,
 }
 
+/// The medium of the water by place: two grids of texels over the world, each row from the north edge, each west to east.
+#[derive(Debug, Clone, Copy)]
+pub struct WaterMedia<'a> {
+    /// The grid's west and north edges and its extent along x and y, in metres.
+    pub west: f32,
+    pub north: f32,
+    pub size: [f32; 2],
+    pub width: u32,
+    pub height: u32,
+    /// How much of each channel a metre of water takes out.
+    pub extinction: &'a [[f32; 3]],
+    /// How much of each channel a metre of water scatters.
+    pub scattering: &'a [[f32; 3]],
+}
+
 /// The program's `Water` uniform.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -38,8 +53,18 @@ struct WaterUniform {
     albedo: [f32; 4],
     light: [f32; 4],
     screen: [f32; 4],
+    /// The medium's grid: its west and north edges and one over its extent; nought in `z` where there is none.
+    grid: [f32; 4],
     fog: [[f32; 4]; 5],
     fog_colour: [[f32; 4]; 4],
+}
+
+/// A grid of the medium as half floats, four to a texel.
+fn halves(texels: &[[f32; 3]]) -> Vec<u8> {
+    (texels.iter())
+        .flat_map(|t| [t[0], t[1], t[2], 0.0])
+        .flat_map(|v| or_io::f32_to_half(v).to_le_bytes())
+        .collect()
 }
 
 /// The water's pipeline, what it reads, and the mesh of this frame.
@@ -56,6 +81,15 @@ pub(crate) struct WaterPass {
     mesh: Option<(wgpu::Buffer, wgpu::Buffer, u32)>,
     look: WaterLook,
     inputs: Option<wgpu::BindGroup>,
+    /// The medium by place: its extinction and scattering, the grid, and the texels still to upload.
+    media: Option<Media>,
+}
+
+struct Media {
+    extinction: (wgpu::Texture, wgpu::TextureView),
+    scattering: (wgpu::Texture, wgpu::TextureView),
+    grid: [f32; 4],
+    pending: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 impl WaterPass {
@@ -101,6 +135,8 @@ impl WaterPass {
                 texture(5),
                 sampler(6),
                 sampler(7),
+                texture(8),
+                texture(9),
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -196,7 +232,43 @@ impl WaterPass {
                 reflection: 1.0,
             },
             inputs: None,
+            media: None,
         }
+    }
+
+    /// The medium by place, uploaded with the next frame's constants; `None` leaves the day's one medium everywhere.
+    fn set_media(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
+        self.media = media
+            .filter(|m| {
+                let texels = m.width as usize * m.height as usize;
+                texels > 0 && m.extinction.len() == texels && m.scattering.len() == texels
+            })
+            .map(|m| {
+                let texture = || {
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("viewport-water-medium"),
+                        size: wgpu::Extent3d {
+                            width: m.width,
+                            height: m.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
+                    let view = texture.create_view(&Default::default());
+                    (texture, view)
+                };
+                Media {
+                    extinction: texture(),
+                    scattering: texture(),
+                    grid: [m.west, m.north, 1.0 / m.size[0], 1.0 / m.size[1]],
+                    pending: Some((halves(m.extinction), halves(m.scattering))),
+                }
+            });
     }
 
     /// The mesh to draw and what it is made of; `None` draws no water.
@@ -285,11 +357,46 @@ impl WaterPass {
             binding: 7,
             resource: wgpu::BindingResource::Sampler(&self.repeated),
         });
+        // Without a medium by place the program reads the day's one medium, and these are not read.
+        let (extinction, scattering) = match &self.media {
+            Some(m) => (&m.extinction.1, &m.scattering.1),
+            None => (&self.flat, &self.flat),
+        };
+        for (binding, view) in [(8, extinction), (9, scattering)] {
+            entries.push(wgpu::BindGroupEntry {
+                binding,
+                resource: wgpu::BindingResource::TextureView(view),
+            });
+        }
         self.inputs = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("viewport-water-bg"),
             layout: &self.layout,
             entries: &entries,
         }));
+    }
+
+    /// Upload the medium by place where it is new.
+    pub(crate) fn upload(&mut self, queue: &wgpu::Queue) {
+        if let Some(media) = &mut self.media {
+            if let Some((extinction, scattering)) = media.pending.take() {
+                for ((texture, _), bytes) in [
+                    (&media.extinction, extinction),
+                    (&media.scattering, scattering),
+                ] {
+                    let size = texture.size();
+                    queue.write_texture(
+                        texture.as_image_copy(),
+                        &bytes,
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(size.width * 8),
+                            rows_per_image: Some(size.height),
+                        },
+                        size,
+                    );
+                }
+            }
+        }
     }
 
     /// Write what the water is lit and fogged by this frame, for a frame `width` by `height`.
@@ -318,6 +425,7 @@ impl WaterPass {
                 f32::from(u8::from(self.ripples.is_some())),
                 RIPPLE_SCALE,
             ],
+            grid: self.media.as_ref().map_or([0.0; 4], |m| m.grid),
             fog,
             fog_colour,
         };
@@ -352,5 +460,10 @@ impl ViewportRenderer {
         water: Option<(&[MeshVertex], &[u32], WaterLook)>,
     ) {
         self.world.water.set(device, water);
+    }
+
+    /// The water's medium by place; `None` leaves the day's one medium everywhere.
+    pub fn set_world_water_media(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
+        self.world.water.set_media(device, media);
     }
 }
