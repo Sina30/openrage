@@ -342,8 +342,8 @@ mod tests {
             let at = |i: usize| layout.laid[i].rows[1][3];
             let away = |y: f32| (y - eye.y).abs();
             assert!(away(at(1)) >= away(at(2)), "{} before {}", at(1), at(2));
-            for i in 1..3 {
-                assert_eq!(layout.spheres[i][1], at(i));
+            for (sphere, instance) in layout.spheres.iter().zip(&layout.laid) {
+                assert_eq!(sphere[1], instance.rows[1][3]);
             }
         }
         assert_eq!(layout.laid[0].rows[1][3], 5.0);
