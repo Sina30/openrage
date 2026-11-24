@@ -537,12 +537,13 @@ fn layout_for(ws: Workspace) -> DockState<Tab> {
     state
 }
 
-/// The World workspace: the view, what the mount found and what is streaming beside it, and the jobs under it.
+/// The World workspace: the view the whole height, and beside it the World panel with the jobs and the log as tabs behind it.
 fn world_layout() -> DockState<Tab> {
     let mut state = DockState::new(center_tabs(Workspace::World));
     let surface = state.main_surface_mut();
-    let [center, _] = surface.split_right(NodeIndex::root(), 0.78, vec![Tab::WORLD]);
-    let [center, _] = surface.split_below(center, 0.86, vec![Tab::JOBS, Tab::LOG]);
+    // ⚠ The panel says how the index's build stands itself: a pane of jobs under the view took a quarter of it for a line.
+    let beside = vec![Tab::WORLD, Tab::JOBS, Tab::LOG];
+    let [center, _] = surface.split_right(NodeIndex::root(), 0.78, beside);
     state.set_focused_node_and_surface(egui_dock::NodePath {
         surface: egui_dock::SurfaceIndex::main(),
         node: center,
