@@ -72,7 +72,7 @@ fn card_of(instance: u32) -> Card {
     let r = records[instance];
     let list = lists[list_of[instance]];
     var c: Card;
-    // Bytes 0..5 place it in the list's box by sixteenths of 65535.
+    // Bytes 0..5 are three u16 that place it in the list's box, in steps of 1/65535 of its size.
     let q = vec3<f32>(f32(r.x & 0xffffu), f32(r.x >> 16u), f32(r.y & 0xffffu));
     c.at = list.low.xyz + q / 65535.0 * list.size.xyz;
     // Bytes 6 and 7 are its up axis, octahedral, folded below the equator.
@@ -350,17 +350,16 @@ fn vs_bake(in: VsIn) -> VsOut {
     return out;
 }
 
-// Whatever is drawn covers its texel whole.
+// Whatever is drawn covers its texel whole. A vertex's colour is a palette index or layer weights, never albedo: only its alpha counts, as coverage.
 @fragment
 fn fs_bake(in: VsOut) -> @location(0) vec4<f32> {
-    let colour = textureSample(colour_tex, colour_smp, in.uv) * in.colour;
-    return vec4<f32>(colour.rgb, 1.0);
+    return vec4<f32>(textureSample(colour_tex, colour_smp, in.uv).rgb, 1.0);
 }
 
 @fragment
 fn fs_bake_cutout(in: VsOut) -> @location(0) vec4<f32> {
-    let colour = textureSample(colour_tex, colour_smp, in.uv) * in.colour;
-    if (colour.a < 0.5) {
+    let colour = textureSample(colour_tex, colour_smp, in.uv);
+    if (colour.a * in.colour.a < 0.5) {
         discard;
     }
     return vec4<f32>(colour.rgb, 1.0);

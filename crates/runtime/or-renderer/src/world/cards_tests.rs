@@ -86,13 +86,13 @@ fn a_frames_view_takes_the_sphere_to_the_whole_cell_and_its_depth_from_near_to_f
     assert!((at(centre + Vec3::Z * radius).y - 1.0).abs() < 1e-5, "up is the top of the cell");
 }
 
-/// A cube of `half` a side about the origin, red.
-fn cube(device: &wgpu::Device, half: f32) -> (wgpu::Buffer, wgpu::Buffer, u32) {
-    let red = [1.0, 0.0, 0.0, 1.0];
+/// A cube of `half` a side about `centre`, its vertices white: a vertex's colour is no albedo.
+fn cube(device: &wgpu::Device, half: f32, centre: Vec3) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let vertices: Vec<MeshVertex> = (0..8)
         .map(|at| {
-            let corner = [0, 1, 2].map(|axis| if (at >> axis) & 1 == 1 { half } else { -half });
-            MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], red)
+            let corner = [0, 1, 2]
+                .map(|axis| centre[axis] + if (at >> axis) & 1 == 1 { half } else { -half });
+            MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], [1.0; 4])
         })
         .collect();
     let faces: [[u32; 4]; 6] = [[0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4], [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5]];
@@ -152,29 +152,41 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         radius,
         slot,
     };
-    let drawn = |renderer: &mut ViewportRenderer, lists: &[CardBatch], shown: &[u32]| {
+    // The places of the red pixels, row by row, and how many cards were drawn.
+    let reds = |renderer: &mut ViewportRenderer,
+                camera: &OrbitCamera,
+                lists: &[CardBatch],
+                shown: &[u32]| {
         renderer.set_card_lists(&device, &queue, lists);
         renderer.show_card_lists(shown);
         let mut encoder = device.create_command_encoder(&Default::default());
-        renderer.render(&mut encoder, &queue, &camera, ShadingMode::Material);
+        renderer.render(&mut encoder, &queue, camera, ShadingMode::Material);
         queue.submit([encoder.finish()]);
         let read = read_back(&device, &queue, renderer.colour_texture(), renderer.colour_format, SIZE);
-        let pixels = read.bytes.as_chunks::<4>().0.to_vec();
-        let red = pixels.iter().filter(|p| p[0] > 2 * p[1].max(p[2]) && p[0] > 40).count();
+        let red: Vec<usize> = (read.bytes.as_chunks::<4>().0.iter().enumerate())
+            .filter(|(_, p)| p[0] > 2 * p[1].max(p[2]) && p[0] > 40)
+            .map(|(at, _)| at)
+            .collect();
         (red, renderer.card_instances())
+    };
+    let drawn = |renderer: &mut ViewportRenderer, lists: &[CardBatch], shown: &[u32]| {
+        let (red, instances) = reds(renderer, &camera, lists, shown);
+        (red.len(), instances)
     };
     let one = [list(&[record(0)], 1.0)];
     // Before its species is baked a card draws nothing
     renderer.set_card_species(&device, &queue, &[species(None)]);
     assert_eq!(drawn(&mut renderer, &one, &[0]), (0, 1));
-    let (vertices, indices, count) = cube(&device, 1.0);
+    // The red is the colour map's alone: the vertices are white
+    let red = crate::game_shaders::stand_in::constant_view(&device, &queue, [1.0, 0.0, 0.0, 1.0]);
+    let (vertices, indices, count) = cube(&device, 1.0, Vec3::ZERO);
     let mesh = CardMesh {
         vertices: &vertices,
         indices: &indices,
         base_vertex: 0,
         first_index: 0,
         index_count: count,
-        colour: None,
+        colour: Some(&red),
         cutout: false,
     };
     assert!(renderer.bake_card_slot(&device, &queue, 0, [0.0; 3], radius, &[mesh]));
@@ -193,6 +205,41 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
     let two = [list(&[record(0)], 1.0), list(&[record(0), record(0)], 1.0)];
     assert_eq!(drawn(&mut renderer, &two, &[0, 1]).1, 3);
     assert_eq!(drawn(&mut renderer, &two, &[1]).1, 2);
+    // A model off its centre is seen on the side of the card it stands on. Placed across the
+    // view's diagonal, a frame chosen or laid out mirrored in either axis shows it in the middle.
+    let off = Vec3::new(0.85, -0.85, 0.0);
+    let (off_vertices, off_indices, off_count) = cube(&device, 0.3, off);
+    let mesh = CardMesh {
+        vertices: &off_vertices,
+        indices: &off_indices,
+        base_vertex: 0,
+        first_index: 0,
+        index_count: off_count,
+        colour: Some(&red),
+        cutout: false,
+    };
+    assert!(renderer.bake_card_slot(&device, &queue, 1, [0.0; 3], 1.6, &[mesh]));
+    let aside = CardSpecies {
+        centre: [0.0; 3],
+        radius: 1.6,
+        slot: Some(1),
+    };
+    renderer.set_card_species(&device, &queue, &[aside]);
+    let near = OrbitCamera::default();
+    let (red_at, _) = reds(&mut renderer, &near, &one, &[0]);
+    assert!(!red_at.is_empty());
+    let column = red_at
+        .iter()
+        .map(|at| (at % SIZE as usize) as f32)
+        .sum::<f32>()
+        / red_at.len() as f32;
+    let expected = (near.view_proj(1.0).project_point3(off).x + 1.0) * 0.5 * SIZE as f32;
+    let middle = SIZE as f32 / 2.0;
+    assert!(
+        (column - middle) * (expected - middle) > 0.0
+            && (column - middle).abs() > SIZE as f32 / 8.0,
+        "the red lies at column {column}, the model's side is at {expected}"
+    );
     // A slot past the device's is refused
     let past = renderer.card_slots(&device);
     let mesh = CardMesh {
