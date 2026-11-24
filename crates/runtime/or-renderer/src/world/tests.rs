@@ -1219,6 +1219,49 @@ fn a_standard_material_is_metal_and_rough_by_its_material_a_and_tinted_by_the_pa
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn a_palette_row_is_256_colours_whatever_the_width_its_image_is_laid_in_and_one_past_the_last_is_the_last(
+) {
+    let Some((device, queue, mut renderer)) = family_frame("a_palette_row_is_256_colours") else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    // Four rows of 256 in one row of 1024 texels, white but for the second column of each row: red, green, blue, black
+    let mut bytes = vec![255u8; 1024 * 4];
+    for (row, rgb) in [[255, 0, 0], [0, 255, 0], [0, 0, 255], [0, 0, 0]]
+        .iter()
+        .enumerate()
+    {
+        bytes[(row * 256 + 1) * 4..][..3].copy_from_slice(rgb);
+    }
+    let palette = uploaded_view(&device, &queue, 1024, 1, &bytes, false);
+    // A row past the palette's fourth reads the fourth
+    for (row, wanted) in [
+        (1.0, [0, 255, 0, 255]),
+        (2.0, [0, 0, 255, 255]),
+        (9.0, [0, 0, 0, 255]),
+    ] {
+        let maps = [
+            (slot::colour(0), texel(&device, &queue, [255; 4])),
+            (slot::TINT, palette.clone()),
+        ];
+        let constants = WorldConstants {
+            palette_row: row,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Standard, WorldBucket::Opaque);
+        let material = surface(&device, &renderer, family, &maps, constants);
+        let square = coloured_square(&device, [1.0, 1.0, 1.0 / 255.0, 1.0], [1.0; 4], material);
+        let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
+        assert!(near(targets[0], wanted, 2), "row {row}: {targets:?}");
+    }
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn foliage_reads_no_metal_in_its_material_a_red_and_keeps_a_dielectrics_reflectance() {
     let Some((device, queue, mut renderer)) = family_frame("foliage_reads_no_metal") else {
         return;

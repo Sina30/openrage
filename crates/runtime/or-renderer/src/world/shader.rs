@@ -265,16 +265,20 @@ fn hard_light(base: vec3<f32>, over: vec3<f32>) -> vec3<f32> {
     return select(screen, 2.0 * base * over, over < vec3<f32>(0.5));
 }
 
-// The texel of the palette the vertex's first colour picks in the material's row: a column past the row's end runs on into the next, as in the game's one-dimensional image, and one past the image's last colour reads none, which leaves the tint white.
+// The colours of a row of a palette, as the game's mesh stage counts them whatever the width of the image it lies in.
+const PALETTE_ROW: u32 = 256u;
+
+// The texel of the palette the vertex's first colour picks in the material's row: a row past the last is the last, a column past the row's end runs on into the next, as in the game's one-dimensional image, and one past the image's last colour reads none, which leaves the tint white.
 fn palette(colour0: vec4<f32>) -> vec3<f32> {
     let size = textureDimensions(tint_map);
     let width = max(size.x, 1u);
-    let rows = max(size.y, 1u);
+    let held = width * max(size.y, 1u);
+    let rows = max(held / PALETTE_ROW, 1u);
     let row = min(u32(max(m.palette_row, 0.0)), rows - 1u);
     // ⚠ The column is the third byte of the first colour as stored: a far prop list's meshes hold small whole numbers there, within their palette's length, and in the first byte numbers past it.
-    let at = row * width + u32(255.0 * colour0.b + 0.5);
-    let texel = vec2<u32>(at % width, min(at / width, rows - 1u));
-    return select(vec3<f32>(1.0), textureLoad(tint_map, texel, 0).rgb, at < width * rows);
+    let at = row * PALETTE_ROW + u32(255.0 * colour0.b + 0.5);
+    let texel = vec2<u32>(at % width, at / width);
+    return select(vec3<f32>(1.0), textureLoad(tint_map, texel, 0).rgb, at < held);
 }
 
 // A four-layer layer's colour: its vertex tint, then its palette tint, the second unless the vertex's second colour turns it off.
