@@ -15,6 +15,8 @@ fn node(kind: Kind) -> Node {
         kind,
         category: Category::Other,
         radius: 0.0,
+        num_children: 0,
+        batch: false,
     }
 }
 

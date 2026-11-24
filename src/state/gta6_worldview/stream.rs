@@ -10,7 +10,7 @@ use std::time::Instant;
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
 use or_io::gta5::data::visual_settings::VisualSettings;
-use or_world::streaming::{Forest, Level, NodeId, NodeState, View, FADE};
+use or_world::streaming::{Forest, Kind, Level, NodeId, NodeState, View, FADE};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -270,16 +270,6 @@ impl Streamer {
             .filter(|(name, _)| !self.loaded.contains_key(name) && !self.failed.contains(name))
             .map(|(name, away)| (*away, *name))
             .collect();
-        // A map whose child map is wanted and not loaded yet holds its nodes in place.
-        let mut held: HashSet<u32> = HashSet::new();
-        for (_, name) in &asked {
-            if let Some(at) = self.index.map_named(*name) {
-                held.extend(self.index.parents_of(&self.index.maps[at]));
-            }
-        }
-        for name in self.loaded.keys() {
-            (self.forest).set_complete(u64::from(*name), !held.contains(name));
-        }
         self.streaming.maps_wanted = self.wanted.len();
         self.streaming.maps_loaded = self.loaded.len();
         self.streaming.maps_waiting = asked.len();
@@ -405,9 +395,9 @@ impl Streamer {
             }
         }
         close(&mut out, from);
-        // A far stand-in a drawn prop stands in for is hidden: the instances of each parent list
-        // the drawn lists name.
-        let mut hidden: HashMap<NodeId, Vec<u16>> = HashMap::new();
+        // A prop list of the batch LOD level that draws leaves out the instances of its parent prop
+        // list it stands in for, all of them where it names none; the stand-ins' own come after.
+        let mut hidden: HashMap<NodeId, Vec<u32>> = HashMap::new();
         for draw in &selection.lists {
             let Some((map, _)) = drawn_of(draw.node) else {
                 continue;
@@ -416,10 +406,25 @@ impl Streamer {
                 .checked_sub(map.entities.len())
                 .and_then(|at| map.lists.get(at));
             let parent = (self.forest.node(draw.node)).and_then(|node| node.parent);
-            if let (Some(list), Some(parent)) = (list, parent) {
-                let at = (parent.map, parent.node);
-                if !list.stands_in_for.is_empty() && cards_of(at).is_some() {
-                    (hidden.entry(at).or_default()).extend(&list.stands_in_for);
+            let Some((list, parent)) = list.zip(parent).filter(|(list, _)| list.batch_lod) else {
+                continue;
+            };
+            let at = (parent.map, parent.node);
+            let of_props = (self.forest.node(at)).is_some_and(|node| node.kind == Kind::Props);
+            let count = drawn_of(at)
+                .and_then(|(map, _)| {
+                    map.lists
+                        .get((at.1 as usize).checked_sub(map.entities.len())?)
+                })
+                .map_or(0, |parent| match &parent.instances {
+                    Instances::Placed(placed) => placed.len(),
+                    _ => 0,
+                });
+            if of_props {
+                let left_out = hidden.entry(at).or_default();
+                match list.stands_in_for.is_empty() {
+                    true => left_out.extend(0..count as u32),
+                    false => left_out.extend(list.stands_in_for.iter().map(|i| u32::from(*i))),
                 }
             }
         }
@@ -428,8 +433,7 @@ impl Streamer {
         for draw in &selection.lists {
             if let Some(cards) = cards_of(draw.node) {
                 let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
-                let less = hidden.get(&draw.node).map_or(&[][..], Vec::as_slice);
-                (out.cards).push(cards.seen(scale, draw.fade, less));
+                (out.cards).push(cards.seen(scale, draw.fade, &[]));
                 continue;
             }
             let Some((map, drawn)) = drawn_of(draw.node) else {
@@ -442,12 +446,14 @@ impl Streamer {
                 continue;
             };
             let model = models.ix(model);
-            let skipped = &selection.skipped[draw.skipped.clone()];
+            let mut skipped = hidden.remove(&draw.node).unwrap_or_default();
+            skipped.extend(&selection.skipped[draw.skipped.clone()]);
+            skipped.sort_unstable();
             let from = out.instances.len();
             // ⚠ An instance's own distances take the list's whole scale, grass's included.
             let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
             // An instance that fades by its own distance fades with its list too.
-            list.each(eye, scale, skipped, |rows, fade, tint| {
+            list.each(eye, scale, &skipped, |rows, fade, tint| {
                 (out.instances).push(instance(model, rows, drawn, fade * draw.fade, tint));
             });
             close(&mut out, from);

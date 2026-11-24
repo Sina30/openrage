@@ -14,6 +14,10 @@ use super::grass;
 /// The rows of a 3×4 matrix: the model's axes, with the translation in the fourth column.
 pub type Rows = [[f32; 4]; 3];
 
+/// The flags of a prop list of the batch LOD level, and of the batch SLOD level.
+const BATCH_LOD: u32 = 1 << 11;
+const BATCH: u32 = BATCH_LOD | 1 << 12;
+
 pub(super) fn rows_of(m: Mat4) -> Rows {
     let c = m.to_cols_array_2d();
     std::array::from_fn(|row| [c[0][row], c[1][row], c[2][row], c[3][row]])
@@ -67,6 +71,11 @@ pub(super) struct List {
     pub(super) reach: Option<(f32, f32)>,
     /// The instance of its parent list each of its instances stands in for; empty for a list with none.
     pub(super) stands_in_for: Vec<u16>,
+    /// A prop list of the batch LOD level: while it draws, the instances of its parent prop list
+    /// it stands in for are left out, all of them where it names none.
+    pub(super) batch_lod: bool,
+    /// Each placed instance's tint, its `Tint`'s first three bytes over 255; empty for a list that states none.
+    pub(super) tints: Vec<[f32; 3]>,
 }
 
 impl List {
@@ -89,7 +98,7 @@ impl List {
     }
 
     /// Call `draw` with where each instance that draws for a camera at `eye` stands, how opaque
-    /// it is and the colour it is tinted by, less the instances `skipped` names.
+    /// it is and the colour it is tinted by, less the instances `skipped` names in rising order.
     // ponytail: every instance of a list that draws is measured at each selection; a grid of the list's box if the walk shows.
     pub(super) fn each(
         &self,
@@ -101,19 +110,20 @@ impl List {
         match &self.instances {
             Instances::Placed(placed) => {
                 for (at, rows) in placed.iter().enumerate() {
-                    if skipped.contains(&(at as u32)) {
+                    if skipped.binary_search(&(at as u32)).is_ok() {
                         continue;
                     }
                     let origin = Vec3::new(rows[0][3], rows[1][3], rows[2][3]);
-                    // A prop's tint takes no part in its colour: every material samples state its amount as nought.
+                    // ⚠ The tint colours only a material that names no colour map: the renderer leaves it out of every other.
+                    let tint = self.tints.get(at).copied().unwrap_or([1.0; 3]);
                     if let Some(fade) = self.fade(eye.distance(origin), scale) {
-                        draw(*rows, fade, [1.0; 3]);
+                        draw(*rows, fade, tint);
                     }
                 }
             }
             Instances::Grass(list) => {
                 for (at, instance) in list.instances.iter().enumerate() {
-                    if skipped.contains(&(at as u32)) {
+                    if skipped.binary_search(&(at as u32)).is_ok() {
                         continue;
                     }
                     let origin = Vec3::from(list.position_of(instance));
@@ -167,16 +177,18 @@ fn distance(stated: f32, archetype: f32) -> f32 {
     (if stated > 0.0 { stated } else { archetype }).trunc()
 }
 
-/// The node of a list in the box `min` to `max`, scaled as a prop list: it is measured to the box,
-/// and one that states no distance takes its archetype's.
+/// The node of a list in the box `min` to `max`, scaled as a prop list: it is measured to the box's
+/// centre, and one that states no distance takes its archetype's.
 fn list_node(
     (min, max): (Vec3, Vec3),
     (lod_dist, archetype_dist): (f32, f32),
-    child_lod_dist: f32,
+    (child_lod_dist, num_children): (f32, u32),
     parent: Option<ParentRef>,
     (level, category): (u8, Category),
 ) -> Node {
     Node {
+        num_children,
+        batch: false,
         position: (min + max) / 2.0,
         extent: Extent::Box(min, max),
         lod_dist: distance(lod_dist, archetype_dist),
@@ -237,6 +249,8 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             // ponytail: the sphere's radius alone, the index keeps no box to measure the sphere's
             // offset from; add `|M·(box centre − sphere centre)|` once the archetype row has one.
             radius: what.radius,
+            num_children: e.num_children,
+            batch: false,
         });
         // An interior has no model of its own: its contents are placed by `interior::read_placed`.
         drawn.push(Drawn {
@@ -257,13 +271,16 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             Vec3::from(list.batch_aabb.min),
             Vec3::from(list.batch_aabb.max),
         );
-        nodes.push(list_node(
-            corners,
-            (list.lod_dist, archetype_dist),
-            list.child_lod_dist,
-            parent,
-            (list.lod_level, category),
-        ));
+        nodes.push(Node {
+            batch: list.flags & BATCH != 0,
+            ..list_node(
+                corners,
+                (list.lod_dist, archetype_dist),
+                (list.child_lod_dist, list.num_children),
+                parent,
+                (list.lod_level, category),
+            )
+        });
         drawn.push(what);
         // A list states each instance as its three axes, each with one part of the translation.
         let rows = |a: &[[f32; 4]; 3]| -> Rows {
@@ -278,6 +295,10 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             instances: Instances::Placed(list.instances.iter().map(rows).collect()),
             reach: alone.then_some((list.instance_lod_dist, list.instance_lod_dist)),
             stands_in_for: list.parent_instances.clone(),
+            batch_lod: list.flags & BATCH_LOD != 0,
+            tints: (list.tints.iter())
+                .map(|t| [t[0], t[1], t[2]].map(|c| f32::from(c) / 255.0))
+                .collect(),
         });
     }
     for list in &map.grass {
@@ -290,7 +311,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         let node = list_node(
             corners,
             (list.lod_dist, archetype_dist),
-            0.0,
+            (0.0, list.num_children),
             None,
             (list.lod_level, category),
         );
@@ -318,6 +339,8 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             },
             reach: Some((list.lod_fade_start_dist, list.instance_lod_dist)),
             stands_in_for: Vec::new(),
+            batch_lod: false,
+            tints: Vec::new(),
         });
     }
     ReadMap {

@@ -61,9 +61,11 @@ fn lamps(instances: Vec<[[f32; 4]; 3]>) -> StreamPropList {
         child_lod_dist: 0.0,
         instance_lod_dist: 50.0,
         lod_level: 1,
+        flags: 0,
+        num_children: 0,
         parent: None,
         batch_aabb: boxed([0.0; 3], [30.0, 10.0, 10.0]),
-        tints: vec![[0; 4]; instances.len()],
+        tints: vec![[51, 102, 255, 255]; instances.len()],
         parent_instances: Vec::new(),
         instances,
     }
@@ -122,6 +124,7 @@ fn ferns(instances: Vec<GrassInstance>) -> StreamGrassList {
         position: [40.0, 0.0, 0.0],
         lod_dist: 200.0,
         lod_level: 5,
+        num_children: 0,
         batch_aabb: boxed([0.0; 3], [655.35; 3]),
         scale_range: [2.0, 4.0],
         lod_fade_start_dist: 40.0,
@@ -179,15 +182,16 @@ fn drawn_from(list: &List, scale: f32, skipped: &[u32]) -> Vec<(Rows, f32)> {
 }
 
 #[test]
-fn a_grass_instance_is_tinted_by_its_colour_squared_and_a_prop_by_white() {
+fn a_grass_instance_is_tinted_by_its_colour_squared_and_a_prop_by_its_tint() {
     let read = read_map(&made_up_index(), &grown());
     let mut tints = Vec::new();
     read.loaded.lists[1].each(Vec3::ZERO, 1.0, &[], |_, _, tint| tints.push(tint));
     let squared = [60.0f32, 115.0, 109.0].map(|c| (c / 255.0) * (c / 255.0));
     assert_eq!(tints, vec![squared; 2]);
+    // A prop's `Tint` of 51, 102, 255: its first three bytes over 255, the alpha left out.
     let mut props = Vec::new();
     read.loaded.lists[0].each(Vec3::ZERO, 1.0, &[], |_, _, tint| props.push(tint));
-    assert!(props.iter().all(|tint| *tint == [1.0; 3]));
+    assert_eq!(props, vec![[0.2, 0.4, 1.0]; 2]);
 }
 
 fn streamer_with(map: &StreamMap) -> Streamer {
@@ -318,12 +322,12 @@ fn a_grass_list_is_a_node_after_the_prop_lists_and_a_list_of_far_stand_ins_draws
 }
 
 #[test]
-fn a_far_stand_in_a_drawn_prop_stands_in_for_is_hidden() {
+fn a_list_of_far_stand_ins_fades_out_whole_as_the_list_under_it_fades_in() {
     let mut index = made_up_index();
     index.slod = vec![0; 8];
     index.slod[7] = FERN;
     let index = Arc::new(index);
-    // Both lamps stand in for the far list's one instance, the sixth node of their own map.
+    // The lamps stand in for the far list's one instance, the sixth node of their own map.
     let mut map = grown();
     map.prop_lists[0].parent = Some(StreamLink {
         map: None,
@@ -331,19 +335,82 @@ fn a_far_stand_in_a_drawn_prop_stands_in_for_is_hidden() {
         instance: None,
     });
     map.prop_lists[0].parent_instances = vec![0, 0];
-    let mut streamer = Streamer::new(Arc::clone(&index));
-    streamer.wanted.insert(55, 0.0);
-    assert!(streamer.insert(55, read_map(&index, &map)));
-    // 300 m from the far list's box's centre: at the lamps' distance, where the far list fades out
-    // as they come in.
-    let at = Vec3::splat(655.35 / 2.0) - Vec3::new(300.0, 0.0, 0.0);
-    let selected = streamer.select(&View::at(at, 1.0), &|_| Some(true));
-    assert!(count(&selected, 0x2000) > 0, "the lamps draw");
-    let [cards] = &selected.cards[..] else {
-        panic!("one list of cards, not {}", selected.cards.len());
+    let select = |map: &StreamMap| {
+        let mut streamer = Streamer::new(Arc::clone(&index));
+        streamer.wanted.insert(55, 0.0);
+        assert!(streamer.insert(55, read_map(&index, map)));
+        // Beside the lamps, which draw whole, and 567 m from the far list's centre, inside its distance.
+        streamer.select(&View::at(Vec3::ZERO, 1.0), &|_| Some(true))
+    };
+    // A far list that states no child draws on beside them, every card kept.
+    let alone = select(&map);
+    assert!(count(&alone, 0x2000) > 0, "the lamps draw");
+    let [cards] = &alone.cards[..] else {
+        panic!("one list of cards, not {}", alone.cards.len());
     };
     let id = u16::from_le_bytes([cards.records[0][14], cards.records[0][15]]);
-    assert_eq!(id, super::slod::HIDDEN);
+    assert_ne!(id, super::slod::HIDDEN);
+    // One that states the lamps as its child gives way to them whole.
+    map.grass[1].num_children = 1;
+    let given_way = select(&map);
+    assert!(count(&given_way, 0x2000) > 0 && given_way.cards.is_empty());
+}
+
+#[test]
+fn a_drawn_list_of_the_batch_lod_level_leaves_out_the_instances_of_its_batch_parent_it_names() {
+    let index = Arc::new(made_up_index());
+    let mut far = lamps(vec![
+        plain([5.0, 5.0, 5.0]),
+        plain([25.0, 5.0, 5.0]),
+        plain([15.0, 5.0, 5.0]),
+    ]);
+    (far.flags, far.num_children, far.lod_dist) = (1 << 12, 1, 2000.0);
+    let parent_map = StreamMap {
+        name: 77,
+        lod_parents: Vec::new(),
+        entities: Vec::new(),
+        prop_lists: vec![far],
+        ..made_up()
+    };
+    // The near list stands in for the far list's third lamp.
+    let mut near = lamps(vec![plain([15.0, 5.0, 6.0])]);
+    near.parent = Some(StreamLink {
+        map: Some(0),
+        index: 0,
+        instance: None,
+    });
+    near.parent_instances = vec![2];
+    let lamps_drawn = |near: &StreamPropList| {
+        let child_map = StreamMap {
+            entities: Vec::new(),
+            prop_lists: vec![near.clone()],
+            ..made_up()
+        };
+        let mut streamer = Streamer::new(Arc::clone(&index));
+        for map in [&parent_map, &child_map] {
+            streamer.wanted.insert(map.name, 0.0);
+            assert!(streamer.insert(map.name, read_map(&index, map)));
+        }
+        let selected = streamer.select(&View::at(Vec3::new(15.0, 5.0, 5.0), 1.0), &|_| Some(true));
+        let mut at: Vec<[i32; 3]> = (selected.instances.iter())
+            .filter(|i| selected.models[i.model as usize].offset == 0x2000)
+            .map(|i| [i.rows[0][3], i.rows[1][3], i.rows[2][3]].map(|v| v as i32))
+            .collect();
+        at.sort_unstable();
+        at
+    };
+    // Of the batch LOD level, it draws in the third lamp's place.
+    near.flags = 1 << 11;
+    assert_eq!(lamps_drawn(&near), vec![[5, 5, 5], [15, 5, 6], [25, 5, 5]]);
+    // Of no batch level, it leaves every lamp of its parent drawn.
+    near.flags = 0;
+    assert_eq!(
+        lamps_drawn(&near),
+        vec![[5, 5, 5], [15, 5, 5], [15, 5, 6], [25, 5, 5]]
+    );
+    // One that names none leaves out all of them.
+    (near.flags, near.parent_instances) = (1 << 11, Vec::new());
+    assert_eq!(lamps_drawn(&near), vec![[15, 5, 6]]);
 }
 
 #[test]
@@ -397,6 +464,8 @@ fn a_grass_instance_draws_by_its_own_distance_and_fades_before_it_is_gone() {
         instances: Instances::Placed(Vec::new()),
         reach: Some((8191.0, 100.0)),
         stands_in_for: Vec::new(),
+        batch_lod: false,
+        tints: Vec::new(),
     };
     assert_eq!(
         (abrupt.fade(99.0, 1.0), abrupt.fade(101.0, 1.0)),

@@ -20,6 +20,16 @@ fn entity(at: [f32; 3], lod_dist: f32, child_lod_dist: f32, parent: Option<(u64,
         kind: Kind::Entity,
         category: Category::Other,
         radius: 0.0,
+        num_children: 0,
+        batch: false,
+    }
+}
+
+/// `node` stating `count` children.
+fn with_children(node: Node, count: u32) -> Node {
+    Node {
+        num_children: count,
+        ..node
     }
 }
 
@@ -36,6 +46,8 @@ fn list(min: [f32; 3], max: [f32; 3], lod_dist: f32, parent: Option<(u64, u32)>)
         kind: Kind::Props,
         category: Category::Other,
         radius: (max - min).length() / 2.0,
+        num_children: 0,
+        batch: false,
     }
 }
 
@@ -86,14 +98,18 @@ fn fade(selection: &Selection, id: NodeId) -> f32 {
         .unwrap_or(0.0)
 }
 
+/// Within a step of opacity, which goes by 255ths.
 fn close(a: f32, b: f32) -> bool {
-    (a - b).abs() < 1e-4
+    (a - b).abs() < 1.0 / 255.0
 }
 
 /// A parent at the origin drawn to 1,000 m whose two children, 300 m apart, draw within 100 m of it.
 fn parent_and_two_children() -> Forest {
     let mut forest = Forest::new();
-    forest.insert(1, vec![entity([0.0; 3], 1000.0, 100.0, None)]);
+    forest.insert(
+        1,
+        vec![with_children(entity([0.0; 3], 1000.0, 100.0, None), 2)],
+    );
     forest.insert(
         2,
         vec![
@@ -116,14 +132,13 @@ fn the_children_of_one_parent_swap_together_by_the_distance_to_the_parent() {
 }
 
 #[test]
-fn a_parent_and_its_children_cross_fade_over_a_band_either_side_of_their_distance() {
+fn a_parent_fades_out_as_its_children_fade_in_over_their_band() {
     let mut forest = parent_and_two_children();
-    // What draws at each distance from the parent: the parent, then each child.
+    // What draws at each distance from the parent: the parent, then each child; together whole.
     for (away, parent, child) in [
         (130.0, 1.0, 0.0),
-        (110.0, 1.0, 0.5),
-        (100.0, 1.0, 1.0),
-        (90.0, 0.5, 1.0),
+        (110.0, 0.5, 0.5),
+        (100.0, 0.0, 1.0),
         (80.0, 0.0, 1.0),
     ] {
         let drawn = forest.select(&along(away), &all_ready);
@@ -137,11 +152,12 @@ fn a_parent_and_its_children_cross_fade_over_a_band_either_side_of_their_distanc
 }
 
 #[test]
-fn a_parent_draws_until_every_child_is_ready_and_the_child_is_waited_for() {
+fn a_parent_is_held_whole_while_a_child_that_draws_is_not_ready_and_the_child_is_waited_for() {
     let mut forest = parent_and_two_children();
     let waiting = [(2, 1)];
+    // The ready child draws beside its parent.
     let held = forest.select(&along(90.0), &loading(&waiting));
-    assert_eq!(ids(&held), vec![(1, 0)]);
+    assert_eq!(ids(&held), vec![(1, 0), (2, 0)]);
     assert!(close(fade(&held, (1, 0)), 1.0));
     assert_eq!(held.wanted, vec![(2, 1)]);
     // In the band before their distance the children are waited for already.
@@ -153,14 +169,23 @@ fn a_parent_draws_until_every_child_is_ready_and_the_child_is_waited_for() {
 }
 
 #[test]
-fn a_parent_draws_while_a_child_map_of_its_map_is_not_loaded() {
+fn a_parent_draws_beside_its_children_until_as_many_as_it_states_are_loaded() {
     let mut forest = parent_and_two_children();
-    forest.set_complete(1, false);
-    let held = forest.select(&along(70.0), &all_ready);
-    assert_eq!(ids(&held), vec![(1, 0)]);
-    forest.set_complete(1, true);
+    // It states a third child, whose map is not loaded.
+    forest.insert(
+        1,
+        vec![with_children(entity([0.0; 3], 1000.0, 100.0, None), 3)],
+    );
+    let short = forest.select(&along(70.0), &all_ready);
+    assert_eq!(ids(&short), vec![(1, 0), (2, 0), (2, 1)]);
+    assert!(close(fade(&short, (1, 0)), 1.0));
+    forest.insert(3, vec![entity([0.0; 3], 40.0, 0.0, Some((1, 0)))]);
     let swapped = forest.select(&along(70.0), &all_ready);
-    assert_eq!(ids(&swapped), vec![(2, 0), (2, 1)]);
+    assert_eq!(ids(&swapped), vec![(2, 0), (2, 1), (3, 0)]);
+    // A parent that states none never fades out for the children that name it.
+    forest.insert(1, vec![entity([0.0; 3], 1000.0, 100.0, None)]);
+    let stated_none = forest.select(&along(70.0), &all_ready);
+    assert_eq!(ids(&stated_none), vec![(1, 0), (2, 0), (2, 1), (3, 0)]);
 }
 
 #[test]
@@ -172,7 +197,10 @@ fn a_child_takes_the_distance_its_parent_states_for_its_children() {
     assert!(close(fade(&drawn, (2, 0)), 1.0) && close(fade(&drawn, (2, 1)), 1.0));
     // A parent that states none takes the farthest of its children's.
     let mut unstated = Forest::new();
-    unstated.insert(1, vec![entity([0.0; 3], 1000.0, 0.0, None)]);
+    unstated.insert(
+        1,
+        vec![with_children(entity([0.0; 3], 1000.0, 0.0, None), 2)],
+    );
     unstated.insert(
         2,
         vec![
@@ -181,10 +209,13 @@ fn a_child_takes_the_distance_its_parent_states_for_its_children() {
         ],
     );
     assert_eq!(ids(&unstated.select(&at(95.0), &all_ready)), vec![(1, 0)]);
-    // Within 70 m the parent gives way, and the child of 40 m is itself out of its distance.
+    // Within 70 m the parent is gone, and the child of 40 m is itself out of its distance.
     let part = unstated.select(&at(60.0), &all_ready);
-    assert_eq!(ids(&part), vec![(1, 0), (2, 1)]);
-    assert!(close(fade(&part, (1, 0)), 0.5) && close(fade(&part, (2, 1)), 1.0));
+    assert_eq!(ids(&part), vec![(2, 1)]);
+    assert!(close(fade(&part, (2, 1)), 1.0));
+    // Half into the band of the child of 40 m it draws as whole as its sibling.
+    let shared = unstated.select(&at(50.0), &all_ready);
+    assert!(close(fade(&shared, (2, 0)), 1.0) && close(fade(&shared, (2, 1)), 1.0));
     assert_eq!(
         ids(&unstated.select(&at(30.0), &all_ready)),
         vec![(2, 0), (2, 1)]
@@ -384,21 +415,19 @@ fn each_level_fades_out_over_its_own_band() {
 }
 
 #[test]
-fn a_parent_fades_down_its_children_s_band_short_of_their_distance() {
-    // Children of a band of 30 m: they draw from 130 m, whole from 100 m; the parent is whole
-    // to 90 m and gone at 70 m.
+fn a_parent_takes_what_its_child_leaves_over_the_child_s_own_band() {
+    // A child of a band of 30 m: it draws from 130 m and whole from 100 m, and the parent takes the rest.
     let mut bands = [FADE; Level::COUNT];
     bands[Level::Slod2 as usize] = 30.0;
     let mut forest = Forest::new();
     let parent = leveled(entity([0.0; 3], 5000.0, 100.0, None), Level::Slod3);
-    forest.insert(1, vec![parent]);
+    forest.insert(1, vec![with_children(parent, 1)]);
     let child = entity([1.0, 0.0, 0.0], 40.0, 0.0, Some((1, 0)));
     forest.insert(2, vec![leveled(child, Level::Slod2)]);
     for (away, parent, child) in [
-        (127.0, 1.0, 0.1),
-        (115.0, 1.0, 0.5),
-        (90.0, 1.0, 1.0),
-        (80.0, 0.5, 1.0),
+        (127.0, 0.9, 0.1),
+        (115.0, 0.5, 0.5),
+        (100.0, 0.0, 1.0),
         (70.0, 0.0, 1.0),
     ] {
         let view = View {
@@ -523,13 +552,16 @@ fn a_camera_narrower_than_forty_five_degrees_draws_farther() {
 }
 
 #[test]
-fn a_grandparent_draws_until_the_whole_of_what_replaces_it_is_ready() {
+fn a_grandparent_draws_while_a_child_that_draws_is_not_ready() {
     let mut forest = Forest::new();
-    forest.insert(1, vec![entity([0.0; 3], 5000.0, 1000.0, None)]);
+    forest.insert(
+        1,
+        vec![with_children(entity([0.0; 3], 5000.0, 1000.0, None), 2)],
+    );
     forest.insert(
         2,
         vec![
-            entity([0.0; 3], 0.0, 100.0, Some((1, 0))),
+            with_children(entity([0.0; 3], 0.0, 100.0, Some((1, 0))), 1),
             entity([400.0, 0.0, 0.0], 0.0, 100.0, Some((1, 0))),
         ],
     );
@@ -543,10 +575,10 @@ fn a_grandparent_draws_until_the_whole_of_what_replaces_it_is_ready() {
         ids(&forest.select(&view, &loading(&waiting))),
         vec![(2, 0), (2, 1)]
     );
-    // With that parent loading as well nothing can take the grandparent's place.
+    // With that parent loading as well the grandparent is held, beside the child that is ready.
     let waiting = [(3, 0), (2, 0)];
     let held = forest.select(&view, &loading(&waiting));
-    assert_eq!(ids(&held), vec![(1, 0)]);
+    assert_eq!(ids(&held), vec![(1, 0), (2, 1)]);
     assert!(held.wanted.contains(&(2, 0)) && held.wanted.contains(&(3, 0)));
 }
 
@@ -602,9 +634,12 @@ fn a_list_draws_by_its_box_s_centre_less_each_instance_whose_entity_draws() {
 }
 
 #[test]
-fn a_parent_gives_way_by_each_child_s_own_scale_and_the_farthest_of_them() {
+fn a_parent_gives_way_by_each_child_s_own_scale_and_the_most_opaque_of_them() {
     let mut forest = Forest::new();
-    forest.insert(1, vec![entity([0.0; 3], 1000.0, 100.0, None)]);
+    forest.insert(
+        1,
+        vec![with_children(entity([0.0; 3], 1000.0, 100.0, None), 2)],
+    );
     // The same stated 100 m: a plain child draws whole to 100 m, an environment one of the second
     // level with a sphere of 50 m to 50 + 0.6 × 50 = 80 m.
     let mut shorter = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
@@ -612,33 +647,56 @@ fn a_parent_gives_way_by_each_child_s_own_scale_and_the_farthest_of_them() {
     let plain = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
     forest.insert(2, vec![plain, shorter]);
     // 115 m off, inside the plain child's band and past the other's: the plain child draws at a
-    // quarter, and the parent stays whole until the farthest child's band short of it, 80 m + 20 m.
+    // quarter and the parent at the rest.
     let drawn = forest.select(&along(115.0), &all_ready);
     assert!(close(fade(&drawn, (2, 0)), 0.25));
     assert!(close(fade(&drawn, (2, 1)), 0.0));
-    assert!(close(fade(&drawn, (1, 0)), 1.0));
-    // At 90 m the parent is half gone, and so is the other child, half into its band.
+    assert!(close(fade(&drawn, (1, 0)), 0.75));
+    // At 90 m the parent is gone, and the other child, half into its own band, is as whole as the plain one.
     let near = forest.select(&along(90.0), &all_ready);
-    assert!(close(fade(&near, (1, 0)), 0.5) && close(fade(&near, (2, 1)), 0.5));
+    assert!(close(fade(&near, (1, 0)), 0.0) && close(fade(&near, (2, 1)), 1.0));
 }
 
 #[test]
-fn a_list_gives_way_to_the_lists_under_it() {
+fn a_list_gives_way_to_the_lists_under_it_each_judged_by_its_own_box() {
     let mut forest = Forest::new();
-    let mut far = list([0.0; 3], [100.0, 100.0, 10.0], 2000.0, None);
+    let mut far = list([0.0; 3], [1000.0, 100.0, 10.0], 2000.0, None);
     far.child_lod_dist = 200.0;
-    forest.insert(1, vec![far]);
+    forest.insert(1, vec![with_children(far, 1)]);
+    // The lower list's centre stands 400 m from the upper's.
     forest.insert(
         2,
-        vec![list([0.0; 3], [50.0, 50.0, 10.0], 0.0, Some((1, 0)))],
+        vec![list([0.0; 3], [200.0, 100.0, 10.0], 0.0, Some((1, 0)))],
     );
     let at = |x: f32| View::at(Vec3::new(x, 50.0, 5.0), 1.0);
     let lists = |s: &Selection| s.lists.iter().map(|l| l.node).collect::<Vec<_>>();
-    assert_eq!(lists(&forest.select(&at(150.0), &all_ready)), vec![(2, 0)]);
-    assert_eq!(lists(&forest.select(&at(900.0), &all_ready)), vec![(1, 0)]);
-    // 210 m from the upper list's centre both draw: the lower by half, the upper whole.
-    let both = forest.select(&at(260.0), &all_ready);
-    assert!(close(fade(&both, (2, 0)), 0.5) && close(fade(&both, (1, 0)), 1.0));
+    // Beside the lower list and 400 m from the upper's centre: the lower draws in its place.
+    assert_eq!(lists(&forest.select(&at(100.0), &all_ready)), vec![(2, 0)]);
+    assert_eq!(lists(&forest.select(&at(1500.0), &all_ready)), vec![(1, 0)]);
+    // 210 m from the lower list's centre: it draws by half, and the upper by the other half.
+    let both = forest.select(&at(310.0), &all_ready);
+    assert!(close(fade(&both, (2, 0)), 0.5) && close(fade(&both, (1, 0)), 0.5));
+}
+
+#[test]
+fn a_prop_list_of_the_batch_levels_draws_on_beside_the_lists_under_it() {
+    let mut forest = Forest::new();
+    let far = list([0.0; 3], [100.0, 100.0, 10.0], 2000.0, None);
+    forest.insert(
+        1,
+        vec![Node {
+            batch: true,
+            ..with_children(far, 1)
+        }],
+    );
+    forest.insert(
+        2,
+        vec![list([0.0; 3], [50.0, 50.0, 10.0], 300.0, Some((1, 0)))],
+    );
+    let drawn = forest.select(&View::at(Vec3::new(25.0, 25.0, 5.0), 1.0), &all_ready);
+    let mut lists: Vec<(NodeId, f32)> = drawn.lists.iter().map(|l| (l.node, l.fade)).collect();
+    lists.sort_by_key(|l| l.0);
+    assert_eq!(lists, vec![((1, 0), 1.0), ((2, 0), 1.0)]);
 }
 
 #[test]

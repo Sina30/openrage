@@ -1,10 +1,11 @@
 //! Which maps a camera streams in, and which nodes of the loaded maps' level-of-detail forest draw
-//! and how opaque: a parent and its children cross-fade by the distance to the parent, a parent is
-//! held while a child is not ready, a far node with no parent fades in a step a selection, and an
-//! instance of a list is left out while the entity that stands in for it draws.
+//! and how opaque: every node draws by its own distance, the children of one parent as opaque as
+//! the most opaque of them, a parent with all its children found fades out as they fade in and is
+//! held while one that draws is not ready, a far node with no parent fades in a step a selection,
+//! and an instance of a list is left out while the entity that stands in for it draws.
 //!
-//! ⚠ A child is judged by the distance to its **parent's** position, never its own, so the
-//! children of one parent appear and go together.
+//! ⚠ An entity that stands in for the whole of its parent is judged by the distance to its
+//! **parent's** position, never its own; a list is judged by its own box's centre.
 
 use std::collections::HashMap;
 
@@ -12,7 +13,7 @@ use glam::Vec3;
 
 /// How far past its box a map streams in, in metres.
 pub const PRESTREAM: f32 = 50.0;
-/// The band inside its children's distance over which a parent fades down, in metres.
+/// The band past its distance a level fades out over where the install states none, in metres.
 pub const FADE: f32 = 20.0;
 /// The band of an orphan that states 20 m or less, in metres.
 pub const FADE_SMALL: f32 = 5.0;
@@ -229,6 +230,12 @@ pub struct Node {
     pub category: Category,
     /// What a scale below 1 leaves of its distance, in metres: a list's half diagonal, an entity's sphere.
     pub radius: f32,
+    /// How many children it states, the entities that stand in for its instances among them: it
+    /// fades out as they fade in only once that many are loaded.
+    pub num_children: u32,
+    /// A prop list of the batch levels: it never fades out for its children, which leave out the
+    /// instances they stand in for instead.
+    pub batch: bool,
 }
 
 impl Node {
@@ -311,8 +318,6 @@ const NONE: u32 = u32::MAX;
 struct Loaded {
     key: u64,
     nodes: Vec<Node>,
-    /// Whether every wanted map that names this one as a parent is loaded.
-    complete: bool,
     /// How opaque each node drew at the selection before this one, and at this one.
     was: Vec<f32>,
     now: Vec<f32>,
@@ -348,8 +353,6 @@ pub struct Forest {
     slots: HashMap<u64, usize>,
     links: Links,
     stale: bool,
-    /// Whether each node gives way to its children this selection: 0 not yet known, 1 yes, 2 no.
-    yields: Vec<u8>,
     /// Where the camera stood at the last selection, and the scales it had.
     last: Option<(Vec3, [f32; Level::COUNT])>,
 }
@@ -378,7 +381,6 @@ impl Forest {
     pub fn insert(&mut self, key: u64, nodes: Vec<Node>) {
         let loaded = Loaded {
             key,
-            complete: true,
             was: vec![0.0; nodes.len()],
             now: vec![0.0; nodes.len()],
             nodes,
@@ -403,14 +405,6 @@ impl Forest {
             self.slots.insert(moved.key, at);
         }
         self.stale = true;
-    }
-
-    /// Say whether every wanted map that names the map `key` as a parent is loaded: until then none
-    /// of its nodes gives way to its children.
-    pub fn set_complete(&mut self, key: u64, complete: bool) {
-        if let Some(at) = self.slots.get(&key) {
-            self.maps[*at].complete = complete;
-        }
     }
 
     /// The node `id` names, where its map is loaded.
@@ -491,8 +485,6 @@ impl Forest {
         if self.stale {
             self.relink();
         }
-        self.yields.clear();
-        self.yields.resize(self.links.slot.len(), 0);
         for map in &mut self.maps {
             std::mem::swap(&mut map.was, &mut map.now);
             map.now.fill(0.0);
@@ -514,7 +506,7 @@ impl Forest {
         };
         for k in 0..pass.forest.links.roots.len() {
             let root = pass.forest.links.roots[k];
-            pass.draw(root);
+            pass.draw(root, None);
         }
         pass.out
     }
@@ -539,32 +531,18 @@ impl Pass<'_> {
         self.view.eye.distance(self.node(at).position)
     }
 
-    /// How far the camera is from what node `at` is judged by: its parent where it stands in for
-    /// the whole of one, itself otherwise.
+    /// How far the camera is from what node `at` is judged by: its parent where it is an entity
+    /// that stands in for the whole of one, itself otherwise.
     fn judged(&self, at: u32) -> f32 {
         let parent = self.forest.links.parent[at as usize];
-        let whole_child = parent != NONE && self.node(at).instance.is_none();
-        self.away(if whole_child { parent } else { at })
+        let node = self.node(at);
+        let from_parent = parent != NONE && node.instance.is_none() && node.extent == Extent::Point;
+        self.away(if from_parent { parent } else { at })
     }
 
     /// How far node `at` draws whole, by its scale.
     fn reach(&self, at: u32) -> f32 {
         (self.node(at)).scaled(self.forest.links.range[at as usize], self.view)
-    }
-
-    /// Over the children that stand in for the whole of node `at`, each by its own scale and band:
-    /// the farthest one starts to draw from, and the farthest the parent is gone within.
-    fn children_reach(&self, at: u32) -> (f32, f32) {
-        let (mut start, mut gone) = (f32::MIN, f32::MIN);
-        let mut child = self.first_child(at);
-        while child != NONE {
-            if self.node(child).instance.is_none() {
-                let (reach, band) = (self.reach(child), self.band(child));
-                (start, gone) = (start.max(reach + band), gone.max(reach - band));
-            }
-            child = self.next_sibling(child);
-        }
-        (start, gone)
     }
 
     /// The band past its distance over which node `at` fades out.
@@ -578,10 +556,12 @@ impl Pass<'_> {
     }
 
     /// How opaque the distance alone makes node `at`: whole within the distance it draws to, and
-    /// gone its band past it.
+    /// gone its band past it, in steps of 1/255.
     fn by_distance(&self, at: u32) -> f32 {
         let band = self.band(at);
-        ((self.reach(at) + band - self.judged(at)) / band).clamp(0.0, 1.0)
+        let share = ((self.reach(at) + band - self.judged(at)) / band).clamp(0.0, 1.0);
+        // ⚠ The step is taken down from a fifth of a hundredth of a step above: a node just short of its band's end draws nothing.
+        (0.0255 + 255.0 * share).floor() / 255.0
     }
 
     fn first_child(&self, at: u32) -> u32 {
@@ -590,47 +570,6 @@ impl Pass<'_> {
 
     fn next_sibling(&self, at: u32) -> u32 {
         self.forest.links.next_sibling[at as usize]
-    }
-
-    /// Whether node `at` gives way to the children that stand in for the whole of it: it has some,
-    /// its map's child maps are loaded, the camera is within the band before their distance and
-    /// each is ready.
-    fn yields(&mut self, at: u32) -> bool {
-        match self.forest.yields[at as usize] {
-            1 => return true,
-            2 => return false,
-            _ => {}
-        }
-        let complete = self.forest.maps[self.forest.links.slot[at as usize] as usize].complete;
-        let near = self.away(at) <= self.children_reach(at).0;
-        let (mut any, mut ready) = (false, true);
-        let mut child = if near { self.first_child(at) } else { NONE };
-        // Every child is asked, so that each one still loading is waited for.
-        while child != NONE {
-            if self.node(child).instance.is_none() {
-                any = true;
-                ready &= self.ready(child);
-            }
-            child = self.next_sibling(child);
-        }
-        let yields = any && ready && complete;
-        self.forest.yields[at as usize] = if yields { 1 } else { 2 };
-        yields
-    }
-
-    /// Whether node `at` can take its parent's place: its model is on the device, or it gives way
-    /// to children that can.
-    fn ready(&mut self, at: u32) -> bool {
-        if self.yields(at) {
-            return true;
-        }
-        match (self.state)(self.forest.id_of(at)) {
-            NodeState::Ready | NodeState::Absent => true,
-            NodeState::Loading => {
-                self.out.wanted.push(self.forest.id_of(at));
-                false
-            }
-        }
     }
 
     /// Whether node `at` fades in by time: one with no parent that is neither of the high level
@@ -654,28 +593,40 @@ impl Pass<'_> {
         fade
     }
 
-    /// Draw node `at`, whose parent has given way to it or which has none.
-    fn draw(&mut self, at: u32) {
-        let mut target = self.by_distance(at);
-        if target <= 0.0 {
+    /// Draw node `at` and every node under it, each by its own distance; `shared` is how opaque the
+    /// most opaque child of its parent is, where it stands in for the whole of that parent.
+    fn draw(&mut self, at: u32, shared: Option<f32>) {
+        // Over its children, those that stand in for an instance among them: the most opaque, how
+        // many are loaded, and whether one that draws at all is not on the device yet.
+        let (mut most, mut found, mut held) = (0.0f32, 0u32, false);
+        let mut child = self.first_child(at);
+        while child != NONE {
+            let alpha = self.by_distance(child);
+            let loading = (self.state)(self.forest.id_of(child)) == NodeState::Loading;
+            (most, found, held) = (most.max(alpha), found + 1, held || (alpha > 0.0 && loading));
+            child = self.next_sibling(child);
+        }
+        let mut child = self.first_child(at);
+        while child != NONE {
+            let whole = self.node(child).instance.is_none();
+            self.draw(child, whole.then_some(most));
+            child = self.next_sibling(child);
+        }
+        let own = self.by_distance(at);
+        if own <= 0.0 {
             return;
         }
-        // ⚠ A parent is held whole for a child that is not ready, never for one that fades in.
-        if self.yields(at) {
-            let mut child = self.first_child(at);
-            while child != NONE {
-                if self.node(child).instance.is_none() {
-                    self.draw(child);
-                }
-                child = self.next_sibling(child);
-            }
-            // It is whole until its children's band short of the band past their distance, and
-            // gone [`FADE`] nearer.
-            let inside = self.children_reach(at).1 + FADE - self.away(at);
-            target *= (1.0 - inside / FADE).clamp(0.0, 1.0);
-            if target <= 0.0 {
-                return;
-            }
+        let node = self.node(at);
+        // ⚠ Only a parent the distance leaves whole fades out for its children.
+        let crosses = !node.batch && node.num_children > 0 && found == node.num_children;
+        let target = match () {
+            _ if held => 1.0,
+            _ if crosses && own >= 1.0 => 1.0 - most,
+            // A child is as opaque as the most opaque of its parent's.
+            _ => shared.unwrap_or(own),
+        };
+        if target <= 0.0 {
+            return;
         }
         let id = self.forest.id_of(at);
         match (self.state)(id) {
@@ -698,22 +649,13 @@ impl Pass<'_> {
         let from = self.out.skipped.len();
         let mut child = self.first_child(at);
         while child != NONE {
-            // An entity that stands in for an instance fades out over its band by its own place,
-            // which is the instance's, and its instance is left out while it draws at all.
+            // An entity that stands in for an instance draws by its own place, which is the
+            // instance's, and its instance is left out while it draws at all; one with no model
+            // leaves its instance drawn.
             let alone = self.by_distance(child);
             if let Some(instance) = self.node(child).instance.filter(|_| alone > 0.0) {
-                let child_id = self.forest.id_of(child);
-                match (self.state)(child_id) {
-                    NodeState::Ready => {
-                        self.out.drawn.push(NodeDraw {
-                            node: child_id,
-                            fade: alone,
-                        });
-                        self.out.skipped.push(instance);
-                    }
-                    NodeState::Loading => self.out.wanted.push(child_id),
-                    // An entity with no model leaves its instance drawn.
-                    NodeState::Absent => {}
+                if (self.state)(self.forest.id_of(child)) == NodeState::Ready {
+                    self.out.skipped.push(instance);
                 }
             }
             child = self.next_sibling(child);
