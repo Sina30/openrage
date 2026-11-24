@@ -19,7 +19,17 @@ pub mod waves;
 
 pub const WATER_DATA: u32 = lit(b"WaterData");
 pub const WATER_QUAD: u32 = lit(b"WaterQuad");
+pub const WATER_BORDERS: u32 = lit(b"WaterBorders");
+pub const BORDER_SEGMENT: u32 = lit(b"BorderSegment");
 const ROOT_SIZE: usize = 0x100;
+/// Where the root holds its `BorderInfo`, and where that holds its segments: twelve, then their count.
+const BORDER: usize = 0x08;
+const SEGMENTS: usize = 0x10;
+const SEGMENT_SIZE: usize = 0x10;
+const SEGMENTS_HELD: usize = 12;
+const STRUCT: u8 = 0x05;
+const FIXED_ARRAY: u8 = 0x53;
+const ENUM32: u8 = 0x62;
 const QUAD_SIZE: usize = 0x2C;
 /// Where the root holds its `WaterQuads`.
 const QUADS: usize = 0xE0;
@@ -86,10 +96,27 @@ pub struct WaterQuad {
     pub no_stencil: bool,
 }
 
-/// The quads of a `WaterData` document.
+/// One `BorderSegment`: a stretch of one side of the quads' bounds, `range` along it, where the sea past them stands at `height`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BorderSegment {
+    pub side: u32,
+    pub range: [f32; 2],
+    pub height: f32,
+}
+
+/// A `WaterBorders`: the height of the sea past the quads' bounds by corner, and the stretches of its sides that stand otherwise.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WaterBorders {
+    /// North-east, south-east, south-west and north-west.
+    pub corners: [f32; 4],
+    pub segments: Vec<BorderSegment>,
+}
+
+/// The quads of a `WaterData` document, and the sea past them where it states its `BorderInfo`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WaterData {
     pub quads: Vec<WaterQuad>,
+    pub border: Option<WaterBorders>,
 }
 
 fn broken(why: impl Into<String>) -> WaterError {
@@ -140,8 +167,85 @@ impl WaterData {
                 "{count} quads are over the capacity {capacity}"
             )));
         }
+        // The border is read only where the body declares it as this reads it.
+        let float = |at: usize| f32::from_le_bytes(std::array::from_fn(|k| root.data[at + k]));
+        let corners = [
+            lit(b"NorthEast"),
+            lit(b"SouthEast"),
+            lit(b"SouthWest"),
+            lit(b"NorthWest"),
+        ];
+        let has_border = declares(
+            WATER_DATA,
+            "WaterData",
+            lit(b"BorderInfo"),
+            BORDER as u32,
+            STRUCT,
+        )
+        .is_ok()
+            && (corners.iter().zip(0u32..)).all(|(&name, k)| {
+                declares(WATER_BORDERS, "WaterBorders", name, 4 * k, FLOAT).is_ok()
+            });
+        let border = has_border.then(|| {
+            let at = BORDER + SEGMENTS;
+            let held = u32::from_le_bytes(std::array::from_fn(|k| {
+                root.data[at + SEGMENTS_HELD * SEGMENT_SIZE + k]
+            }));
+            let segments_read = declares(
+                WATER_BORDERS,
+                "WaterBorders",
+                lit(b"BorderSegments"),
+                SEGMENTS as u32,
+                FIXED_ARRAY,
+            )
+            .is_ok()
+                && declares(
+                    BORDER_SEGMENT,
+                    "BorderSegment",
+                    lit(b"WhichSide"),
+                    0,
+                    ENUM32,
+                )
+                .is_ok()
+                && [
+                    (lit(b"RangeMin"), 4),
+                    (lit(b"RangeMax"), 8),
+                    (lit(b"Height"), 12),
+                ]
+                .iter()
+                .all(|&(name, offset)| {
+                    declares(BORDER_SEGMENT, "BorderSegment", name, offset, FLOAT).is_ok()
+                });
+            let count = if segments_read {
+                (held as usize).min(SEGMENTS_HELD)
+            } else {
+                0
+            };
+            WaterBorders {
+                corners: std::array::from_fn(|k| float(BORDER + 4 * k)),
+                segments: (0..count)
+                    .map(|k| at + k * SEGMENT_SIZE)
+                    .map(|s| BorderSegment {
+                        side: u32::from_le_bytes(std::array::from_fn(|k| root.data[s + k])),
+                        range: [float(s + 4), float(s + 8)],
+                        height: float(s + 12),
+                    })
+                    .collect(),
+            }
+        });
+        if border.as_ref().is_some_and(|b| {
+            !b.corners
+                .iter()
+                .chain(b.segments.iter().map(|s| &s.height))
+                .all(|v| v.is_finite())
+        }) {
+            return Err(broken("a height of the border is no number"));
+        }
         if count == 0 {
-            return Ok(Self::default());
+            return Ok(Self {
+                quads: Vec::new(),
+                border,
+            });
         }
         // A quad is read only where the body declares it as this reads it.
         for &(member, offset, code) in QUAD {
@@ -179,7 +283,7 @@ impl WaterData {
         if let Some(bad) = quads.iter().find(|q| !q.z.is_finite()) {
             return Err(broken(format!("a quad's height is {}", bad.z)));
         }
-        Ok(Self { quads })
+        Ok(Self { quads, border })
     }
 }
 

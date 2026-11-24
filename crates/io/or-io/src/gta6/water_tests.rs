@@ -114,6 +114,77 @@ fn an_empty_document_has_no_quad() {
 }
 
 #[test]
+fn a_border_is_read_where_the_body_declares_it_and_none_where_it_does_not() {
+    let mut classes = classes(QUAD);
+    classes[0].members.push(member(
+        lit(b"BorderInfo"),
+        BORDER as u32,
+        STRUCT,
+        0,
+        WATER_BORDERS,
+    ));
+    let corners = [
+        lit(b"NorthEast"),
+        lit(b"SouthEast"),
+        lit(b"SouthWest"),
+        lit(b"NorthWest"),
+    ];
+    let mut borders: Vec<_> = (corners.iter().zip(0u32..))
+        .map(|(&name, k)| member(name, 4 * k, FLOAT, 0, 0))
+        .collect();
+    borders.push(member(
+        lit(b"BorderSegments"),
+        SEGMENTS as u32,
+        FIXED_ARRAY,
+        0,
+        0,
+    ));
+    classes.push(Class {
+        name: WATER_BORDERS,
+        size: 212,
+        members: borders,
+    });
+    classes.push(Class {
+        name: BORDER_SEGMENT,
+        size: SEGMENT_SIZE as u32,
+        members: vec![
+            member(lit(b"WhichSide"), 0, ENUM32, 0, 0),
+            member(lit(b"RangeMin"), 4, FLOAT, 0, 0),
+            member(lit(b"RangeMax"), 8, FLOAT, 0, 0),
+            member(lit(b"Height"), 12, FLOAT, 0, 0),
+        ],
+    });
+    let mut root = vec![0u8; ROOT_SIZE];
+    for (k, v) in [1.0f32, 2.0, 3.0, 4.0].into_iter().enumerate() {
+        root[BORDER + 4 * k..BORDER + 4 * k + 4].copy_from_slice(&v.to_le_bytes());
+    }
+    let segment = BORDER + SEGMENTS;
+    root[segment..segment + 4].copy_from_slice(&2u32.to_le_bytes());
+    for (k, v) in [-50.0f32, 70.0, 0.5].into_iter().enumerate() {
+        root[segment + 4 + 4 * k..segment + 8 + 4 * k].copy_from_slice(&v.to_le_bytes());
+    }
+    let count = segment + SEGMENTS_HELD * SEGMENT_SIZE;
+    root[count..count + 4].copy_from_slice(&1u32.to_le_bytes());
+    let water = WaterData::open(&body(&classes, &[(WATER_DATA, root.clone())], 1)).expect("read");
+    let border = water.border.expect("a border");
+    assert_eq!(border.corners, [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(
+        border.segments,
+        vec![BorderSegment {
+            side: 2,
+            range: [-50.0, 70.0],
+            height: 0.5
+        }]
+    );
+    let plain = WaterData::open(&body(&self::classes(QUAD), &[(WATER_DATA, root)], 1));
+    assert_eq!(
+        plain.expect("read").border,
+        None,
+        "a body that does not declare it"
+    );
+}
+
+#[test]
 fn a_grid_atlas_states_its_grid_and_the_names_of_its_tiles() {
     let text = r#"<?xml version="1.0" encoding="UTF-8"?>
 <GridAtlasInfo>
