@@ -58,19 +58,25 @@ fn a_sample_is_found_by_the_suns_angle_and_eased_by_the_first_of_the_two() {
 fn the_sun_rises_in_the_east_tops_in_the_south_and_is_under_the_floor_at_night() {
     let noon = SOLAR_NOON * 24.0;
     let at = |hours: f32| sun_towards(sun_round(hours), LATITUDE);
+    // The clock bends about the middle of sunrise and sunset, which is not noon, so the top is near noon only.
     let top = at(noon);
-    assert!(top[0].abs() < 1e-4 && top[1] < 0.0, "{top:?}");
+    assert!(top[0].abs() < 0.01 && top[1] < 0.0, "{top:?}");
     assert!((top[2] - LATITUDE.cos()).abs() < 1e-4, "{top:?}");
-    let rise = at(noon - 6.0);
-    assert!(rise[0] > 0.99 && rise[2].abs() < 1e-3, "{rise:?}");
-    let set = at(noon + 6.0);
-    assert!(set[0] < -0.99 && set[2].abs() < 1e-3, "{set:?}");
+    assert!((sun_round(noon) - PI / 2.0).abs() < 0.01);
+    assert!((sun_angle(top) - PI / 2.0).abs() < 0.01);
+    // At the bend's ends the clock is the day's own, and the sun is on the horizon the search allows.
+    let turn = |a: f32, b: f32| ((a - b + PI).rem_euclid(TAU) - PI).abs();
+    for part in [SUNRISE, SUNSET] {
+        let unbent = PI / 2.0 + (part - SOLAR_NOON) * TAU;
+        assert!(turn(sun_round(part * 24.0), unbent) < 1e-4, "{part}");
+    }
+    let rise = at(SUNRISE * 24.0);
+    assert!(rise[0] > 0.99 && rise[2].abs() < 0.05, "{rise:?}");
+    let set = at(SUNSET * 24.0);
+    assert!(set[0] < -0.99 && set[2].abs() < 0.05, "{set:?}");
     assert!(at(1.0)[2] < 0.0 && at(23.0)[2] < 0.0);
-    assert!((sun_round(noon - 6.0)).abs() < 1e-4);
-    assert!((sun_round(noon) - PI / 2.0).abs() < 1e-4);
     // It lingers near the horizon: an hour after its rise it has turned less than a twelfth of a half turn.
-    assert!(sun_round(noon - 5.0) < PI / 12.0);
-    assert!((sun_angle(top) - PI / 2.0).abs() < 1e-4);
+    assert!(sun_round(SUNRISE * 24.0 + 1.0) - sun_round(SUNRISE * 24.0) < PI / 12.0);
 }
 
 #[test]

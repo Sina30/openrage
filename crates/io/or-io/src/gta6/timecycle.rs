@@ -10,13 +10,14 @@ use crate::gta5::data::timecycle::{attr, tokens, Keyframe, Token};
 /// When the sun is highest, as a part of the day: one o'clock by the summer clock and the
 /// minutes the first day of spring adds.
 const SOLAR_NOON: f32 = (13.0 * 60.0 + 27.0) / 1440.0;
-/// The part of a day from the sun's rise to its noon on that day, when it stands on the equator.
-const QUARTER_DAY: f32 = 0.25;
+/// The parts of the day the clock is bent between: the first and last quarter hour the sun is on the horizon.
+const SUNRISE: f32 = 29.0 / 96.0;
+const SUNSET: f32 = 78.0 / 96.0;
 /// How the clock lingers near sunrise and sunset: the power the way through half a day or half
 /// a night is raised to.
 const HORIZON_LINGER: f32 = 1.25;
 /// The latitude at the middle of the map, in radians, for an install whose settings state no range.
-pub const LATITUDE: f32 = 26.64 * PI / 180.0;
+pub const LATITUDE: f32 = 25.8 * PI / 180.0;
 
 /// Where a cycle's samples stand on the sun's round, east to west through the top: the angle of
 /// the sun in the plane of east and up, nought where it rises, and the sample that holds there.
@@ -146,7 +147,7 @@ impl DayTable {
 /// The clock as the sun follows it: `day` is the part of the day gone by, and each half of the
 /// day and of the night is slowed near the horizon.
 fn sun_clock(day: f32) -> f32 {
-    let (rise, set) = (SOLAR_NOON - QUARTER_DAY, SOLAR_NOON + QUARTER_DAY);
+    let (rise, set) = (SUNRISE, SUNSET);
     let (from, to) = match day {
         day if day < rise => (set - 1.0, rise),
         day if day > set => (set, rise + 1.0),
