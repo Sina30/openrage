@@ -91,7 +91,7 @@ fn cube(device: &wgpu::Device, half: f32) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let red = [1.0, 0.0, 0.0, 1.0];
     let vertices: Vec<MeshVertex> = (0..8)
         .map(|at| {
-            let corner = [0, 1, 2].map(|axis| if at >> axis & 1 == 1 { half } else { -half });
+            let corner = [0, 1, 2].map(|axis| if (at >> axis) & 1 == 1 { half } else { -half });
             MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], red)
         })
         .collect();
