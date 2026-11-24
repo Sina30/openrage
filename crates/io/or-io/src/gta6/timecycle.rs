@@ -310,20 +310,16 @@ pub fn blend_modifiers(
 
 /// Lay the modifier `vars` over `keyframe` at full strength, each variable by its [`modifier_kind`].
 pub fn apply_modifier(keyframe: &mut Keyframe, vars: &BTreeMap<String, [f32; 2]>) {
-    // ponytail: no strength is stated for a weather's modifiers, so it is taken as one.
-    const STRENGTH: f32 = 1.0;
+    // ponytail: no strength is stated for a weather's modifiers, so it is taken as one: a blend
+    // towards the first value is that value, and the maximum weighs the cycle's own by nought.
     for (name, &[a, b]) in vars {
         let value = match (modifier_kind(name), keyframe.get(name)) {
             (ModifierKind::Leave, _) => continue,
-            (ModifierKind::Replace, _) => a,
-            (ModifierKind::Interp, base) => {
-                let base = base.unwrap_or(a);
-                base + (a - base) * STRENGTH
-            }
+            (ModifierKind::Replace | ModifierKind::Interp, _) => a,
             (_, None) => continue,
-            (ModifierKind::InterpMult, Some(base)) => base + (a - base) * b * STRENGTH,
+            (ModifierKind::InterpMult, Some(base)) => base + (a - base) * b,
             (ModifierKind::Clamp, Some(base)) => base.max(a.min(b)).min(a.max(b)),
-            (ModifierKind::Max, Some(base)) => ((1.0 - STRENGTH) * base).max(STRENGTH * a),
+            (ModifierKind::Max, Some(_)) => a.max(0.0),
         };
         keyframe.set(name, value);
     }
