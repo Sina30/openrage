@@ -16600,3 +16600,72 @@ msgstr "ワールドビュー"
 
 msgid "{textures} textures on the device, {unread} not read, {waiting} waited for"
 msgstr "グラフィックスカード上のテクスチャ {textures} 個、読み込めなかったもの {unread} 個、{waiting} 個を待機中"
+
+msgid "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn"
+msgstr "{maps} 個のマップのライト：配置 {placed} 個、LOD {lod} 個、遠景 {distant} 個、リフレクションプローブ {probes} 個、描画 {drawn} 個"
+
+msgid "Capture"
+msgstr "キャプチャ"
+
+msgid "Clean frame"
+msgstr "クリーンなフレーム"
+
+msgid "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
+msgstr "線もパネルも重ねずにウィンドウ全体に世界だけを描画します。Escで元に戻ります"
+
+msgid "Copy the camera"
+msgstr "カメラをコピー"
+
+msgid "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
+msgstr "カメラの位置と向きを、ショットスクリプトが読み込み下のフィールドが受け付ける1行としてコピー"
+
+msgid "Paste a camera line, then press Enter"
+msgstr "カメラの行を貼り付けてEnterを押してください"
+
+msgid "A camera line to jump to"
+msgstr "ジャンプ先のカメラの行"
+
+msgid "That is not a camera line: copy one with Copy the camera"
+msgstr "カメラの行ではありません：「カメラをコピー」でコピーしてください"
+
+msgid "Time and modes"
+msgstr "時刻とモード"
+
+msgid "Hour"
+msgstr "時刻"
+
+msgid "The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"
+msgstr "1日の時刻：特定の時間帯に配置されたものはその時間帯に描画され、世界はその時刻の1日の光で照らされます"
+
+msgid "Story pack"
+msgstr "ストーリーパック"
+
+msgid "Stream the maps the story pack adds"
+msgstr "ストーリーパックが追加するマップをストリーミング"
+
+msgid "Shared minigames"
+msgstr "共有ミニゲーム"
+
+msgid "Stream the maps the shared minigames add"
+msgstr "共有ミニゲームが追加するマップをストリーミング"
+
+msgid "The index holds no script-managed group"
+msgstr "インデックスにスクリプト管理のグループはありません"
+
+msgid "Script-managed groups: {on} of {groups} on"
+msgstr "スクリプト管理のグループ：{groups} 個中 {on} 個がオン"
+
+msgid "Nothing says which are on at rest: a group ticked streams its maps in"
+msgstr "既定でどれがオンかは示されていません。チェックしたグループのマップがストリーミングされます"
+
+msgid "{name}, {maps} maps"
+msgstr "{name}、マップ {maps} 個"
+
+msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
+msgstr "ストーリーパックのマップ {story} 個、共有ミニゲームのマップ {minigames} 個、スクリプト管理のグループ {groups} 個"
+
+msgid "Bound by block maps: no key snapshot was found"
+msgstr "ブロックマップで対応付け：キースナップショットが見つかりませんでした"
+
+msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
+msgstr "アーカイブのテーブルで対応付け、レベルの変更セットのうち {ciphered} 件が暗号化されています"
