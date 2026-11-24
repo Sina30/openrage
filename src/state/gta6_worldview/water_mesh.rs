@@ -133,7 +133,14 @@ impl Quad<'_> {
     fn vertex(&self, x: f32, y: f32) -> MeshVertex {
         let (u, v) = self.across(x, y);
         let [sw, se, ne, nw] = self.quad.alpha.map(|a| f32::from(a) / 255.0);
-        let cover = sw * (1.0 - u) * (1.0 - v) + se * u * (1.0 - v) + ne * u * v + nw * (1.0 - u) * v;
+        // A cut quad's opacity is barycentric over the three corners it keeps.
+        let cover = match self.quad.kind {
+            1 => sw * (1.0 - u - v) + se * u + nw * v,
+            2 => sw * (1.0 - v) + ne * u + nw * (v - u),
+            3 => se * (1.0 - v) + ne * (u + v - 1.0) + nw * (1.0 - u),
+            4 => sw * (1.0 - u) + se * (u - v) + ne * v,
+            _ => sw * (1.0 - u) * (1.0 - v) + se * u * (1.0 - v) + ne * u * v + nw * (1.0 - u) * v,
+        };
         let z = self.quad.z;
         let depth = self.ground.and_then(|g| g.ground(x, y)).map(|h| z - h);
         let colour = shade(cover, depth, self.medium);

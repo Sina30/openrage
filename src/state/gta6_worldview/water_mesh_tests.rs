@@ -134,6 +134,17 @@ fn a_quads_opacity_is_its_corners_from_south_west_round_to_north_west() {
 }
 
 #[test]
+fn a_cut_quad_takes_no_opacity_from_the_corner_it_leaves_out() {
+    let cut = WaterQuad {
+        alpha: [0, 0, 255, 0],
+        ..quad([0, 0], [10, 10], 1)
+    };
+    let (vertices, _) = plain(&[cut], [5.0, 5.0]);
+    assert!(!vertices.is_empty());
+    assert!(vertices.iter().all(|v| v.colour[3] == 0.0));
+}
+
+#[test]
 fn a_quad_out_of_reach_a_hidden_one_a_deleted_one_and_one_of_no_area_are_left_out() {
     let far = quad([1000, 1000], [1100, 1100], 0);
     let hidden = WaterQuad {
