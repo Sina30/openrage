@@ -751,3 +751,23 @@ fn a_map_of_every_tier_is_asked_for_at_any_speed() {
         assert!(map.wanted(&moving(300.0), flags), "{flags:#x}");
     }
 }
+
+#[test]
+fn a_chain_of_parents_far_deeper_than_the_levels_is_selected_and_never_overflows_the_stack() {
+    // A map's own bytes name each node's parent: here each node names the one before it.
+    const DEEP: u32 = 200_000;
+    let nodes = (0..DEEP)
+        .map(|k| entity([0.0; 3], 1e9, 0.0, k.checked_sub(1).map(|p| (1, p))))
+        .collect();
+    let mut forest = Forest::new();
+    forest.insert(1, nodes);
+    let chosen = std::thread::spawn(move || {
+        forest
+            .select(&View::at(Vec3::ZERO, 1.0), &|_| NodeState::Ready)
+            .drawn
+            .len()
+    })
+    .join()
+    .expect("the selection ends");
+    assert!(chosen > 0);
+}

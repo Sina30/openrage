@@ -344,7 +344,37 @@ impl Links {
         let slot = self.slot[at] as usize;
         (slot, at - self.base[slot] as usize)
     }
+
+    /// Make a root of each node `most` links below a root, so that no chain is longer.
+    // ⚠ A parent is named by a map's own bytes, and a selection walks a chain by recursion.
+    fn cut_deeper_than(&mut self, most: usize) {
+        let mut open: Vec<(u32, usize)> = self.roots.iter().map(|root| (*root, 0)).collect();
+        while let Some((at, depth)) = open.pop() {
+            let mut child = self.first_child[at as usize];
+            if depth + 1 >= most {
+                self.first_child[at as usize] = NONE;
+            }
+            while child != NONE {
+                let next = self.next_sibling[child as usize];
+                match depth + 1 >= most {
+                    true => {
+                        (
+                            self.parent[child as usize],
+                            self.next_sibling[child as usize],
+                        ) = (NONE, NONE);
+                        self.roots.push(child);
+                        open.push((child, 0));
+                    }
+                    false => open.push((child, depth + 1)),
+                }
+                child = next;
+            }
+        }
+    }
 }
+
+/// The longest chain of parents a selection walks: far past the levels of detail a map states.
+const DEEPEST: usize = 64;
 
 /// The level-of-detail forest of the maps streamed in.
 #[derive(Default)]
@@ -454,6 +484,7 @@ impl Forest {
                 at += 1;
             }
         }
+        links.cut_deeper_than(DEEPEST);
         // A parent that states a distance for its children gives it to each child that stands in
         // for the whole of it.
         for child in 0..count {
