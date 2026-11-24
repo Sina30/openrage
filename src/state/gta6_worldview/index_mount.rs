@@ -24,7 +24,7 @@ pub(super) struct Mount {
 
 /// The key snapshot of this run, where one is found and reads.
 pub(super) fn keys() -> Option<GtaViKeys> {
-    GtaViKeys::for_install(or_title::config::config_dir().as_deref())
+    GtaViKeys::for_install(crate::state::prefs::config_root().as_deref())
         .inspect_err(|error| tracing::warn!(%error, "the GTA VI key snapshot is not read"))
         .ok()
         .flatten()
@@ -44,7 +44,9 @@ pub(super) fn read(
         }
         let table = keys.and_then(|keys| {
             Table::open(path, keys)
-                .inspect_err(|error| tracing::info!(path = %path.display(), %error, "no table read"))
+                .inspect_err(
+                    |error| tracing::info!(path = %path.display(), %error, "no table read"),
+                )
                 .ok()
         });
         let found = match &table {
@@ -67,7 +69,12 @@ pub(super) fn read(
     if stopped() {
         return None;
     }
-    let table_of = |at: usize| tables.iter().find(|(t, _)| *t == at).map(|(_, table)| table);
+    let table_of = |at: usize| {
+        tables
+            .iter()
+            .find(|(t, _)| *t == at)
+            .map(|(_, table)| table)
+    };
     let registry = Registry::listed(
         (documents.into_iter()).map(|(at, documents)| (every[at].clone(), documents, table_of(at))),
     );
@@ -88,7 +95,8 @@ impl Mount {
         (self.tables.iter())
             .map(|(at, table)| Listed {
                 // An archive the index is not built from holds no map of it.
-                archive: (archives.iter().position(|p| *p == every[*at])).map_or(u32::MAX, |i| i as u32),
+                archive: (archives.iter().position(|p| *p == every[*at]))
+                    .map_or(u32::MAX, |i| i as u32),
                 path: &every[*at],
                 table,
             })
@@ -148,7 +156,10 @@ impl Mount {
             .filter(|(table, scan)| (**table & base) != **scan)
             .count();
         if disagree > 0 {
-            tracing::info!(disagree, "maps the tables and the block maps bind differently");
+            tracing::info!(
+                disagree,
+                "maps the tables and the block maps bind differently"
+            );
         }
         Bound {
             modes: by_table.modes,
