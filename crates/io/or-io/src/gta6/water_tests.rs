@@ -49,7 +49,10 @@ fn document(quads: &[[u8; QUAD_SIZE]], count: u16, quad_members: &[(u32, u32, u8
 #[test]
 fn the_quads_of_a_document_are_read_with_their_heights_and_corners() {
     let bytes = document(
-        &[quad([-10, -20], [30, 40], 0.3, 0), quad([5, 6], [7, 8], 28.5, 3)],
+        &[
+            quad([-10, -20], [30, 40], 0.3, 0),
+            quad([5, 6], [7, 8], 28.5, 3),
+        ],
         2,
         QUAD,
     );
@@ -57,7 +60,10 @@ fn the_quads_of_a_document_are_read_with_their_heights_and_corners() {
     assert_eq!(water.quads.len(), 2);
     let first = water.quads[0];
     assert_eq!((first.min, first.max), ([-10, -20], [30, 40]));
-    assert_eq!((first.z, first.kind, first.alpha), (0.3, 0, [26, 30, 40, 50]));
+    assert_eq!(
+        (first.z, first.kind, first.alpha),
+        (0.3, 0, [26, 30, 40, 50])
+    );
     assert!(first.ocean && !first.invisible && !first.limited_depth && !first.no_stencil);
     assert_eq!((water.quads[1].z, water.quads[1].kind), (28.5, 3));
 }
@@ -77,13 +83,26 @@ fn a_body_that_declares_a_quad_another_way_is_refused_and_another_root_is_not_wa
     moved[8].1 = 0x14;
     let read = WaterData::open(&document(&[quad([0, 0], [1, 1], 1.0, 0)], 1, &moved));
     assert!(
-        matches!(read, Err(WaterError::Layout { class: "WaterQuad", offset: 0x18, .. })),
+        matches!(
+            read,
+            Err(WaterError::Layout {
+                class: "WaterQuad",
+                offset: 0x18,
+                ..
+            })
+        ),
         "{read:?}"
     );
     let other = body(&classes(QUAD), &[(WATER_QUAD, vec![0; QUAD_SIZE])], 1);
     let read = WaterData::open(&other);
-    assert!(matches!(read, Err(WaterError::NotWater(WATER_QUAD))), "{read:?}");
-    assert!(matches!(WaterData::open(b"nothing"), Err(WaterError::Model(_))));
+    assert!(
+        matches!(read, Err(WaterError::NotWater(WATER_QUAD))),
+        "{read:?}"
+    );
+    assert!(matches!(
+        WaterData::open(b"nothing"),
+        Err(WaterError::Model(_))
+    ));
 }
 
 #[test]
@@ -112,11 +131,20 @@ fn a_grid_atlas_states_its_grid_and_the_names_of_its_tiles() {
 </GridAtlasInfo>"#;
     let atlas = GridAtlas::parse(text).expect("an atlas");
     assert_eq!(atlas.client, "Heights");
-    assert_eq!((atlas.tile_prefix.as_str(), atlas.tile_suffix.as_str()), ("heights-", "heights"));
+    assert_eq!(
+        (atlas.tile_prefix.as_str(), atlas.tile_suffix.as_str()),
+        ("heights-", "heights")
+    );
     assert_eq!(atlas.fallback, "heights_all");
-    assert_eq!((atlas.origin, atlas.size), ([-100.0, 200.0], [1024.0, 2048.0]));
+    assert_eq!(
+        (atlas.origin, atlas.size),
+        ([-100.0, 200.0], [1024.0, 2048.0])
+    );
     assert_eq!((atlas.tile_size, atlas.stream_radius), (512.0, 300.0));
-    assert!(matches!(GridAtlas::parse("<Other/>"), Err(WaterError::NotAnAtlas(_))));
+    assert!(matches!(
+        GridAtlas::parse("<Other/>"),
+        Err(WaterError::NotAnAtlas(_))
+    ));
     assert!(matches!(
         GridAtlas::parse("<GridAtlasInfo></GridAtlasInfo>"),
         Err(WaterError::NotAnAtlas(_))

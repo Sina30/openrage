@@ -113,7 +113,13 @@ impl WaterData {
                 code,
             })
         };
-        declares(WATER_DATA, "WaterData", lit(b"WaterQuads"), QUADS as u32, ARRAY)?;
+        declares(
+            WATER_DATA,
+            "WaterData",
+            lit(b"WaterQuads"),
+            QUADS as u32,
+            ARRAY,
+        )?;
         if root.data.len() < ROOT_SIZE {
             return Err(broken("its root is shorter than a WaterData"));
         }
