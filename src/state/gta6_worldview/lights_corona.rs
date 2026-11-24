@@ -128,7 +128,10 @@ pub fn coronas<'a>(
         }
         let ramp = ((z - reach.bias_ramp[0]) / (reach.bias_ramp[1] - reach.bias_ramp[0]).max(1e-3))
             .clamp(0.0, 1.0);
-        let held = (ramp * bias).clamp(reach.bias_range[0], reach.bias_range[1]);
+        // ⚠ Not `clamp`: the bounds are the install's own numbers, which may stand reversed.
+        let held = (ramp * bias)
+            .max(reach.bias_range[0])
+            .min(reach.bias_range[1]);
         let pull = (held + reach.bias_added) / z;
         side -= side * pull;
         if let Some(most) = reach.most {
@@ -241,6 +244,19 @@ mod tests {
             (held[0].position.y - 20.0 * (1.0 - 0.35 / 20.0)).abs() < 1e-4,
             "held to the most"
         );
+    }
+
+    #[test]
+    fn settings_whose_bias_bounds_stand_reversed_or_are_no_number_still_draw_coronas() {
+        let lamps = [lamp(LightKind::Point, 20.0, [2.0, 3.0, 0.2])];
+        for range in [[0.5, 0.1], [f32::NAN; 2]] {
+            let reach = CoronaReach {
+                bias_range: range,
+                ..reach()
+            };
+            let out = coronas(&lamps, &view(), 12.0, 1.0, &reach);
+            assert_eq!(out.len(), 1, "{range:?}");
+        }
     }
 
     #[test]
