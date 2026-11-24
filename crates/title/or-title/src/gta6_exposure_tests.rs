@@ -245,3 +245,24 @@ fn the_dome_is_lit_by_the_body_that_leads_and_the_disc_by_the_sun_alone() {
     assert!(night.dome[0][2] < 1e-3 * noon.dome[0][2]);
     assert!(night.dome[0][2] > 0.0, "the moon lights the sky");
 }
+
+#[test]
+fn a_storm_shades_the_ground_from_its_sun_and_lights_it_by_what_its_clouds_scatter() {
+    let settings = settings();
+    let (clear, _) = light(&day(), at_zenith(15.0), at_zenith(45.0), &settings);
+    let mut k = day();
+    k.set("cloud_cover", 1.0);
+    k.set("cloud_type", 1.0);
+    let (storm, _) = light(&k, at_zenith(15.0), at_zenith(45.0), &settings);
+    // The sun is as strong above the clouds; what reaches the ground straight is none of it.
+    assert_eq!(storm.illuminance, clear.illuminance);
+    assert!(storm.body_transmittance[1] < 1e-6 * clear.body_transmittance[1]);
+    // What the clouds scatter down is a small part of a clear noon's light, and not none.
+    let sun = clear.illuminance * clear.body_transmittance[1] * clear.towards_up;
+    let whole = sun + clear.sky[1];
+    assert!(
+        (0.05 * whole..0.5 * whole).contains(&storm.sky[1]),
+        "{:?} {whole}",
+        storm.sky
+    );
+}

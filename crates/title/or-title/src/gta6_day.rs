@@ -34,6 +34,8 @@ const ROOTS: [&str; 4] = [
 ];
 /// A name the visual settings state, by which their text is told from any other plain text.
 const VISUAL_SETTINGS_MARK: &str = "Tonemapping.";
+/// The high-level values of a cycle a moment carries among its own variables, for its cloud layer.
+const CLOUD_VARS: [&str; 2] = ["cloud_cover", "cloud_type"];
 
 /// What a GTA VI install states of the look of its day.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -246,6 +248,15 @@ impl DayTables {
         let along = along.clamp(0.0, 1.0);
         let mut own = (self.timecycle).keyframe_between(between, a, b, along, 0.0)?;
         self.modify(&mut own, from, to, along);
+        // The cloud layer's cover and kind are the cycles' high-level values, blended as the weathers are.
+        for name in CLOUD_VARS {
+            let of = |cycle: &str| {
+                (self.high_level.get(&cycle.to_ascii_lowercase())).and_then(|v| v.get(name))
+            };
+            if let (Some(x), Some(y)) = (of(a), of(b)) {
+                own.set(name, x + (y - x) * along);
+            }
+        }
         if let Some((vars, strength)) = room {
             let mut full = own.clone();
             apply_modifier(&mut full, vars);

@@ -7,6 +7,7 @@ use std::f32::consts::{PI, TAU};
 use or_io::gta5::data::timecycle::Keyframe;
 use or_io::gta6::timecycle::{FrameLight, DOME_TRANSITION};
 
+use crate::gta6_cloud::CloudLayer;
 use crate::gta6_sky::Atmosphere;
 
 /// The stops the build's curve takes off what its terms give.
@@ -259,9 +260,16 @@ pub fn light(
     let rgb = |stem: &str| ["r", "g", "b"].map(|c| get(&format!("{stem}_{c}"), 1.0));
     let air = Atmosphere::of(k);
     let lit = bodies(k, sun, moon);
-    let body_transmittance = air.transmittance(lit.body[2]);
+    let clear = air.transmittance(lit.body[2]);
     let sky_light = normalised([lit.body[0], lit.body[1], lit.body[2].max(LOWEST_SKY_LIGHT)]);
-    let sky = air.irradiance(sky_light, lit.illuminance);
+    let clear_sky = air.irradiance(sky_light, lit.illuminance);
+    // The clouds shade the ground from the body by what they cover, and send on down as the sky's
+    // light what they scatter of it: a storm's dark is its cloud, its sun as strong as a clear noon's.
+    let clouds = CloudLayer::of(k);
+    let up = lit.towards[2];
+    let body_transmittance = clear.map(|t| t * clouds.direct_through(up));
+    let scattered = clouds.diffuse_through(up) * lit.fade * lit.illuminance * up;
+    let sky = [0, 1, 2].map(|c| clear_sky[c] * (1.0 - clouds.cover) + scattered * clear[c]);
 
     let tint = rgb("light_dir_col");
     let direct = get("light_dir_mult", 1.0) * lit.fade * lit.illuminance;
