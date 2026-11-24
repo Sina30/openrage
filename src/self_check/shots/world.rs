@@ -48,6 +48,8 @@ pub(super) enum WorldStep {
     Perf(String, usize),
     /// The camera moved to a pose over a time, and what its frames cost written as JSON to this file.
     Move(Pose, Duration, String),
+    /// A script-managed group, by its id, switched on or off as the person ticks it; the hour then no longer sets the groups.
+    Group(u32, bool),
 }
 
 /// The words `world modes` takes, each with its bit.
@@ -127,8 +129,20 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
                 file_stem(name)?,
             ))
         }
+        "group" => {
+            let [id, on] = args[..] else {
+                return Err("needs a group's id in hex and on or off".into());
+            };
+            let id = u32::from_str_radix(id.trim_start_matches("0x"), 16)
+                .map_err(|_| format!("`{id}` is not a group's id in hex"))?;
+            match on {
+                "on" => Ok(WorldStep::Group(id, true)),
+                "off" => Ok(WorldStep::Group(id, false)),
+                other => Err(format!("no group state `{other}`; use on or off")),
+            }
+        }
         other => Err(format!(
-            "no world step `{other}`; use camera, hour, clean, settle, dump, modes, fly, perf or move"
+            "no world step `{other}`; use camera, hour, clean, settle, dump, modes, fly, perf, move or group"
         )),
     }
 }
@@ -323,6 +337,15 @@ impl Shell {
             WorldStep::Fly(velocity, seconds) => self.fly(state, *velocity, *seconds)?,
             WorldStep::Perf(name, frames) => self.perf(state, *frames, &out.join(name))?,
             WorldStep::Move(to, over, name) => self.walk(state, to, *over, &out.join(name))?,
+            WorldStep::Group(id, on) => {
+                let mut viewer = viewer();
+                viewer.groups_chosen = true;
+                viewer.enabled.groups.retain(|g| g != id);
+                if *on {
+                    viewer.enabled.groups.push(*id);
+                    viewer.enabled.groups.sort_unstable();
+                }
+            }
         }
         Ok(())
     }
@@ -446,6 +469,11 @@ mod tests {
                 "walk.json".into()
             ))
         );
+        assert_eq!(
+            parse("group 0D93912D on"),
+            Ok(WorldStep::Group(0x0D93_912D, true))
+        );
+        assert_eq!(parse("group 0x1 off"), Ok(WorldStep::Group(1, false)));
     }
 
     #[test]
@@ -488,6 +516,10 @@ mod tests {
             "dump two words",
             "modes",
             "modes base online",
+            "group",
+            "group 0D93912D",
+            "group zz on",
+            "group 1 maybe",
             "fly 1 2 3",
             "fly 1 2 3 0",
             "fly 1 2 3 soon",
