@@ -122,9 +122,11 @@ impl WaterGround {
         }
         let tiles_across = atlas.size.map(|s| (s / tile_size).round() as u32);
         let block = fallback.width / tiles_across[0].max(1);
+        // ⚠ The tiles across come from the document: a product of them is checked, never trusted.
+        // ⚠ The tiles across come from the document: their product with the block is checked.
         let fits = block > 0
-            && fallback.width == tiles_across[0] * block
-            && fallback.height == tiles_across[1] * block;
+            && Some(fallback.width) == tiles_across[0].checked_mul(block)
+            && Some(fallback.height) == tiles_across[1].checked_mul(block);
         if !fits {
             return Err(refused(format!(
                 "a fallback of {} by {} texels over {} by {} tiles",

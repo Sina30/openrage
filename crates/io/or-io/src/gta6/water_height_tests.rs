@@ -130,3 +130,16 @@ fn an_r16_texture_reads_as_its_values_and_another_format_does_not() {
     };
     assert!(Heights::of(&other).is_none());
 }
+
+#[test]
+fn a_grid_of_more_tiles_than_a_number_holds_is_refused_and_never_a_panic() {
+    // Sixteen texels a side over 8 tiles is a block of 2, and the grid states 2^32 rows of them.
+    for size in [[128.0, 1e30], [1e30, 128.0], [1e30, 1e30]] {
+        let far = GridAtlas {
+            size,
+            tile_size: 16.0,
+            ..atlas()
+        };
+        assert!(WaterGround::new(&far, fallback()).is_err(), "{size:?}");
+    }
+}
