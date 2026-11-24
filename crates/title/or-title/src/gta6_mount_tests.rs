@@ -3,7 +3,7 @@
 
 use super::*;
 
-fn document(xml: &str) -> Document {
+pub(super) fn document(xml: &str) -> Document {
     Document::parse(xml.as_bytes()).expect("a registration document")
 }
 
@@ -23,7 +23,7 @@ fn setup(name: &str, kind: &str, order: i32, groups: &[(&str, &[&str])]) -> Docu
     ))
 }
 
-const LEVEL: &str = "EXTRACONTENT_LEVEL_PACK";
+pub(super) const LEVEL: &str = "EXTRACONTENT_LEVEL_PACK";
 const COMPAT: &str = "EXTRACONTENT_COMPAT_PACK";
 
 /// The elements of a change set `id` that registers `files`.
@@ -34,7 +34,7 @@ fn set_body(id: &str, files: &[&str]) -> String {
     format!("<id>{id}</id><flags>FIRST SECOND</flags><fileList>{files}</fileList>")
 }
 
-fn change_set(id: &str, files: &[&str]) -> Document {
+pub(super) fn change_set(id: &str, files: &[&str]) -> Document {
     let body = set_body(id, files);
     document(&format!(
         "<CDataFileMgr__ContentChangeSetDef>{body}</CDataFileMgr__ContentChangeSetDef>"
@@ -42,7 +42,7 @@ fn change_set(id: &str, files: &[&str]) -> Document {
 }
 
 /// A content definition of inline sets, of sets included by id and of ones included by load path.
-fn content(inline: &[(&str, &[&str])], ids: &[&str], paths: &[&str]) -> Document {
+pub(super) fn content(inline: &[(&str, &[&str])], ids: &[&str], paths: &[&str]) -> Document {
     let inline: String = (inline.iter())
         .map(|(id, files)| format!("<Item>{}</Item>", set_body(id, files)))
         .collect();
@@ -57,7 +57,7 @@ fn content(inline: &[(&str, &[&str])], ids: &[&str], paths: &[&str]) -> Document
     ))
 }
 
-fn one_pack(documents: Vec<Document>) -> Pack {
+pub(super) fn one_pack(documents: Vec<Document>) -> Pack {
     let mut registry = Registry::of(vec![("one.rpf".into(), documents)]);
     assert_eq!(registry.packs.len(), 1);
     registry.packs.remove(0)
@@ -261,7 +261,7 @@ fn rpf(filename: &str) -> RegisteredFile {
 }
 
 /// A map that holds something, named `name`, whose block map is `block`, or none where it is empty.
-fn map(archive: u32, container: Option<u64>, name: &str, block: &str) -> MapFact {
+pub(super) fn map(archive: u32, container: Option<u64>, name: &str, block: &str) -> MapFact {
     MapFact {
         archive,
         container,
@@ -417,7 +417,7 @@ fn stored(body: &[u8]) -> Vec<u8> {
 }
 
 /// A file of four bodies: a setup, a document of another root, a change set and plain text.
-fn scanned_file(dir: &Path) -> (PathBuf, u64) {
+pub(super) fn scanned_file(dir: &Path) -> (PathBuf, u64) {
     let set = format!(
         "\u{feff}<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <CDataFileMgr__ContentChangeSetDef>{}</CDataFileMgr__ContentChangeSetDef>",
