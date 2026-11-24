@@ -23,7 +23,7 @@ const HEIGHTS: &str = "levels/americas/watersystemheightmap/watersystemheightmap
 /// The bytes a body is read to: the fallback, the largest, is a few MiB.
 const BODY_LIMIT: u64 = 16 << 20;
 /// The texels a side a tile is held at.
-// ponytail: every tile is held at 128 a side, 4 m a texel of a 512 m tile and about 24 MiB in all;
+// ponytail: every tile is held at 128 a side, 4 m a texel of a 512 m tile;
 // stream the tiles by the grid's radius at their own size if a shore needs the metre.
 const KEPT: u32 = 128;
 
