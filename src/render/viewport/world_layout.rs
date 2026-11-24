@@ -180,7 +180,12 @@ impl Layout {
             let end = &mut self.ends[seen.slot as usize];
             self.laid[*end as usize] = WorldInstance {
                 rows: instance.rows,
-                tint: [1.0, 1.0, 1.0, instance.fade],
+                tint: [
+                    instance.tint[0],
+                    instance.tint[1],
+                    instance.tint[2],
+                    instance.fade,
+                ],
             };
             *end += 1;
         }
@@ -225,6 +230,7 @@ mod tests {
             centre: at,
             radius: 1.0,
             fade,
+            tint: [1.0; 3],
         }
     }
 

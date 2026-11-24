@@ -86,15 +86,15 @@ impl List {
         (fade > 0.0).then_some(fade)
     }
 
-    /// Call `draw` with where each instance that draws for a camera at `eye` stands and how opaque
-    /// it is, less the instances `skipped` names.
+    /// Call `draw` with where each instance that draws for a camera at `eye` stands, how opaque
+    /// it is and the colour it is tinted by, less the instances `skipped` names.
     // ponytail: every instance of a list that draws is measured at each selection; a grid of the list's box if the walk shows.
     pub(super) fn each(
         &self,
         eye: Vec3,
         scale: f32,
         skipped: &[u32],
-        mut draw: impl FnMut(Rows, f32),
+        mut draw: impl FnMut(Rows, f32, [f32; 3]),
     ) {
         match &self.instances {
             Instances::Placed(placed) => {
@@ -103,8 +103,9 @@ impl List {
                         continue;
                     }
                     let origin = Vec3::new(rows[0][3], rows[1][3], rows[2][3]);
+                    // A prop's tint takes no part in its colour: every material samples state its amount as nought.
                     if let Some(fade) = self.fade(eye.distance(origin), scale) {
-                        draw(*rows, fade);
+                        draw(*rows, fade, [1.0; 3]);
                     }
                 }
             }
@@ -115,7 +116,8 @@ impl List {
                     }
                     let origin = Vec3::from(list.position_of(instance));
                     if let Some(fade) = self.fade(eye.distance(origin), scale) {
-                        draw(grass::rows(list, instance, origin), fade);
+                        let rows = grass::rows(list, instance, origin);
+                        draw(rows, fade, grass::tint(instance));
                     }
                 }
             }

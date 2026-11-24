@@ -6,6 +6,12 @@ use or_io::gta6::map::stream::{GrassInstance, StreamGrassList};
 
 use super::read::{rows_of, Rows};
 
+/// The colour `instance` tints its blades by, squared as the mesh stage squares it: the grass
+/// arithmetic takes `1 + colour1.r * (tint - 1)` of it.
+pub(super) fn tint(instance: &GrassInstance) -> [f32; 3] {
+    instance.colour.map(|c| (f32::from(c) / 255.0).powi(2))
+}
+
 /// The rows that place `instance` of `list` at `origin`, its place in the world.
 pub(super) fn rows(list: &StreamGrassList, instance: &GrassInstance, origin: Vec3) -> Rows {
     let [across, up] = list.scale_of(instance);

@@ -54,6 +54,8 @@ pub struct Instance {
     pub radius: f32,
     /// How opaque it is, above 0 and to 1.
     pub fade: f32,
+    /// The colour its material's arithmetic tints it by: white but for grass.
+    pub tint: [f32; 3],
 }
 
 /// A run of a selection's instances that stand together, and the sphere that holds them all: a
@@ -372,12 +374,13 @@ impl Streamer {
             ..Selected::default()
         };
         let mut models = Models::default();
-        let instance = |model: u32, rows: Rows, drawn: &Drawn, fade: f32| Instance {
+        let instance = |model: u32, rows: Rows, drawn: &Drawn, fade: f32, tint| Instance {
             model,
             rows,
             centre: place(&rows, drawn.centre),
             radius: drawn.radius * stretch(&rows),
             fade,
+            tint,
         };
         // The entities of one map stand together: a chunk a map.
         selection.drawn.sort_unstable_by_key(|d| d.node);
@@ -396,7 +399,7 @@ impl Streamer {
             let rows = map.entities.get(id.1 as usize);
             if let (Some(model), Some(rows)) = (drawn.model_at(hour), rows) {
                 let model = models.ix(model);
-                (out.instances).push(instance(model, *rows, drawn, draw.fade));
+                (out.instances).push(instance(model, *rows, drawn, draw.fade, [1.0; 3]));
             } else if interior_of(id).is_some() {
                 interiors.insert((id.0 as u32, id.1 as usize), draw.fade);
             }
@@ -425,8 +428,8 @@ impl Streamer {
             // ⚠ An instance's own distances take the list's whole scale, grass's included.
             let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
             // An instance that fades by its own distance fades with its list too.
-            list.each(eye, scale, skipped, |rows, fade| {
-                (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
+            list.each(eye, scale, skipped, |rows, fade, tint| {
+                (out.instances).push(instance(model, rows, drawn, fade * draw.fade, tint));
             });
             close(&mut out, from);
         }
@@ -462,6 +465,7 @@ impl Streamer {
                                 centre: child.centre,
                                 radius: child.radius,
                                 fade,
+                                tint: [1.0; 3],
                             });
                         }
                         Some(false) => {

@@ -172,10 +172,22 @@ fn placed(list: &List) -> &[Rows] {
 /// Each instance of `list` that draws for a camera at the origin, with how opaque it is.
 fn drawn_from(list: &List, scale: f32, skipped: &[u32]) -> Vec<(Rows, f32)> {
     let mut out = Vec::new();
-    list.each(Vec3::ZERO, scale, skipped, |rows, fade| {
+    list.each(Vec3::ZERO, scale, skipped, |rows, fade, _| {
         out.push((rows, fade))
     });
     out
+}
+
+#[test]
+fn a_grass_instance_is_tinted_by_its_colour_squared_and_a_prop_by_white() {
+    let read = read_map(&made_up_index(), &grown());
+    let mut tints = Vec::new();
+    read.loaded.lists[1].each(Vec3::ZERO, 1.0, &[], |_, _, tint| tints.push(tint));
+    let squared = [60.0f32, 115.0, 109.0].map(|c| (c / 255.0) * (c / 255.0));
+    assert_eq!(tints, vec![squared; 2]);
+    let mut props = Vec::new();
+    read.loaded.lists[0].each(Vec3::ZERO, 1.0, &[], |_, _, tint| props.push(tint));
+    assert!(props.iter().all(|tint| *tint == [1.0; 3]));
 }
 
 fn streamer_with(map: &StreamMap) -> Streamer {
