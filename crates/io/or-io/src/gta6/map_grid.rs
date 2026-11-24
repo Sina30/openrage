@@ -84,7 +84,9 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Region>, MapGridError> {
         })
         .ok_or(no("its regions are not whole headers inside their block"))?;
     Ok(rows
-        .chunks_exact(HEADER)
+        .as_chunks::<HEADER>()
+        .0
+        .iter()
         .map(|row| Region {
             x: le32(row, 0) as i32,
             y: le32(row, 4) as i32,
