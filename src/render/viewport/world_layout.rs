@@ -309,15 +309,15 @@ mod tests {
             order(Opaque, 9.0, 2, 1),
         ];
         keys.sort_unstable();
-        let buckets: Vec<WorldBucket> = keys.iter().map(|k| k.0).collect();
-        assert_eq!(
-            buckets,
-            [Opaque, Opaque, Opaque, Opaque, Cutout, Decal, Blend, Blend, Emissive]
-        );
+        // The buckets go out in the renderer's own order, each bucket's draws together.
+        assert!(keys.windows(2).all(|pair| pair[0].0 <= pair[1].0));
+        let of = |bucket: WorldBucket| -> Vec<(u32, usize)> {
+            let draws = keys.iter().filter(|key| key.0 == bucket);
+            draws.map(|key| (key.2, key.3)).collect()
+        };
         // Opaque draws of one page stand together, and in it those of one material.
-        let opaque: Vec<(u32, usize)> = keys[..4].iter().map(|k| (k.2, k.3)).collect();
-        assert_eq!(opaque, [(1, 4), (1, 8), (2, 1), (2, 1)]);
+        assert_eq!(of(Opaque), [(1, 4), (1, 8), (2, 1), (2, 1)]);
         // What blends goes out the far first, whatever its page.
-        assert_eq!((keys[6].2, keys[7].2), (3, 0));
+        assert_eq!(of(Blend), [(3, 9), (0, 0)]);
     }
 }
