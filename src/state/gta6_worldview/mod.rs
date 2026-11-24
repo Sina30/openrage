@@ -466,7 +466,7 @@ impl Viewer {
                     hour,
                     sky::weather_name(weather),
                     eye.y,
-                    inside.timecycle,
+                    [inside.timecycle, inside.secondary_timecycle],
                     inside.blend,
                 ),
                 None => sky::moment(tables, hour, weather, eye.y),

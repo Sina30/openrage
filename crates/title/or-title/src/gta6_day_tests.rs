@@ -52,7 +52,7 @@ const SETTINGS: &str = "# Visual Configuration Table\nmisc.MoonDimMult\t0.3\nTon
 fn tables() -> DayTables {
     let (time, dry, wet) = (time(), cycle("Sunny", 1.0), cycle("Rainy", 0.5));
     let clear = cycle("ClearSky", 0.25);
-    let mods = r#"<timecycle_modifier_data><modifier name="m" userFlags="0"><far_clip>1 1</far_clip></modifier></timecycle_modifier_data>"#;
+    let mods = r#"<timecycle_modifier_data><modifier name="m" userFlags="0"><far_clip>1 1</far_clip><fog_start>2 2</fog_start></modifier><modifier name="s" userFlags="0"><far_clip>3 3</far_clip></modifier></timecycle_modifier_data>"#;
     DayTables::of_texts([
         wet.as_str(),
         "<some_other_table/>",
@@ -74,7 +74,7 @@ fn nameless_texts_are_told_apart_by_what_they_open_with_in_any_order() {
     assert_eq!(tables.weathers(), ["Rainy", "Sunny", "ClearSky"]);
     assert_eq!(tables.high_level["sunny"]["cloud_cover"], 0.25);
     assert_eq!(tables.weather.datas.len(), 2);
-    assert_eq!(tables.modifiers.len(), 1);
+    assert_eq!(tables.modifiers.len(), 2);
     assert_eq!(tables.visual_settings.get_f32("misc.MoonDimMult", 1.0), 0.3);
     assert!(DayTables::of_texts(["<other/>", "words"]).is_empty());
 }
@@ -215,10 +215,10 @@ fn a_room_lays_its_modifier_over_the_day_by_its_blend_and_one_not_read_changes_n
     // The room names the modifier `m` by its hash, whatever the case.
     let room = or_io::hash::string_hash(b"M");
     let whole = tables
-        .moment_inside(12.0, "Sunny", 0.0, room, 1.0)
+        .moment_inside(12.0, "Sunny", 0.0, [room, 0], 1.0)
         .expect("a moment");
     let half = tables
-        .moment_inside(12.0, "Sunny", 0.0, room, 0.5)
+        .moment_inside(12.0, "Sunny", 0.0, [room, 0], 0.5)
         .expect("a moment");
     assert_eq!(clip(&whole), 1.0);
     assert!(
@@ -227,7 +227,18 @@ fn a_room_lays_its_modifier_over_the_day_by_its_blend_and_one_not_read_changes_n
         clip(&half)
     );
     let unread = tables
-        .moment_inside(12.0, "Sunny", 0.0, room ^ 1, 1.0)
+        .moment_inside(12.0, "Sunny", 0.0, [room ^ 1, 0], 1.0)
         .expect("a moment");
     assert_eq!(unread, day);
+    // A second modifier stands in for the first where it states a variable, and leaves the rest.
+    let second = or_io::hash::string_hash(b"s");
+    let both = tables
+        .moment_inside(12.0, "Sunny", 0.0, [room, second], 1.0)
+        .expect("a moment");
+    assert_eq!(clip(&both), 3.0);
+    assert_eq!(both.own.get("fog_start"), Some(2.0));
+    let alone = tables
+        .moment_inside(12.0, "Sunny", 0.0, [room ^ 1, second], 1.0)
+        .expect("a moment");
+    assert_eq!(alone, day);
 }

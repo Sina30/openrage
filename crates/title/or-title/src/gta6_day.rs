@@ -192,18 +192,27 @@ impl DayTables {
         self.moment_between(hour, weather, weather, 0.0, y)
     }
 
-    /// The moment at `hour` in `weather` inside a room whose time-cycle modifier the hash `modifier` names, laid `strength` (0 to 1) of the way over the weather's; the weather's alone where no modifier of that name is read.
+    /// The moment at `hour` in `weather` inside a room whose time-cycle modifier and second modifier the hashes `modifiers` name, laid `strength` (0 to 1) of the way over the weather's; the weather's alone where no first modifier of that name is read.
     pub fn moment_inside(
         &self,
         hour: f32,
         weather: &str,
         y: f32,
-        modifier: u32,
+        modifiers: [u32; 2],
         strength: f32,
     ) -> Option<Moment> {
-        let room = (self.modifiers.iter())
-            .find(|m| or_io::hash::string_hash_str(&m.name) == modifier)
-            .map(|m| (&m.vars, strength.clamp(0.0, 1.0)));
+        let named = |hash: u32| {
+            (self.modifiers.iter()).find(|m| or_io::hash::string_hash_str(&m.name) == hash)
+        };
+        // ⚠ GTA V's, assumed: each variable the second modifier states stands in for the first's.
+        let room = named(modifiers[0]).map(|first| {
+            let mut vars = first.vars.clone();
+            if let Some(second) = named(modifiers[1]) {
+                vars.extend(second.vars.iter().map(|(k, v)| (k.clone(), *v)));
+            }
+            vars
+        });
+        let room = room.as_ref().map(|vars| (vars, strength.clamp(0.0, 1.0)));
         self.moment_of(hour, weather, weather, 0.0, y, room)
     }
 
