@@ -51,11 +51,14 @@ hours it states.
 - A map is wanted while the camera is within 50 m of the box it streams by. Its level-of-detail
   parent maps are wanted with it. A map's body is read when it is wanted, on a worker.
 - Every tier of map streams in at any speed.
-- A node with a parent is judged by the distance to its **parent**, so the children of one parent
-  appear together. A parent gives way to its children once every child map is loaded and every
-  child's model is on the device; until then it draws alone, so no hole opens while models arrive.
-  It stays whole until the farthest-drawing of its children, each by its own scale, is a band short
-  of its distance, and fades out over the next 20 m.
+- Every node draws by its own distance. An entity that stands in for the whole of its parent is
+  judged by the distance to its **parent**, a list by its own box's centre, and the children of one
+  parent draw as opaque as the most opaque of them.
+- A parent that states how many children it has fades out as they fade in, taking what the most
+  opaque of them leaves, once that many are loaded and while its own distance leaves it whole. It is
+  held whole while a child that draws has no model on the device yet, so no hole opens while models
+  arrive. A prop list of the batch levels never fades out for its children: each list under it of
+  the batch LOD level leaves out the instances it stands in for, all of them where it names none.
 - A node is whole within the distance it draws to and fades out over a band past it: 20 m for the
   high, orphan, first and second levels of detail, 25 m for the three farthest, 5 m for an orphan that
   draws to 20 m or less.
@@ -107,13 +110,14 @@ does nothing.
   model, once that model and its colour maps are on the device; a species the world never draws
   near is read for its atlas alone, after everything that draws, and until it is baked its cards
   draw nothing. Which species each stand-in names is worked out at index build from the far
-  stand-in lists of every map. A stand-in is hidden while the prop that takes its place near the
-  camera draws.
+  stand-in lists of every map. A list of stand-ins fades out as the lists under it fade in, by the
+  rules of any parent.
 - A cut-out surface is cut by its colour map's first level, whatever level the screen samples, so
   that leaves and grass keep their coverage far from the camera; a far stand-in's card the same
   by its atlas.
 - A grass instance is tinted by its own colour, as far as its material's grass tint and the
-  vertex's second colour let it.
+  vertex's second colour let it. A prop instance's own tint is the whole colour of a material that
+  names no colour map and no palette, as the region-tint far prop lists are, and no part of any other.
 - A fading instance is drawn through an ordered dither, the same in every pass.
 - In Shaded the instances are written into the frame the game's own lighting passes light, where a
   game shader pack is read, and the sun casts their shadow in four cascades about what the camera
@@ -181,7 +185,6 @@ the frame against a reference image ([screenshots](../guides/Development_Workflo
 - A far stand-in's card is baked from its species' own model, not read from the game's own atlas,
   and its colour and normal are the bake's, not the game's.
 - A cut-out surface cut by its first level sparkles as the camera moves.
-- A prop instance's tint is read and not drawn: every material read states its amount as nought.
 - A tree's own imposter model, which the game draws as a card, is drawn as a plain mesh.
 - An interior's contents come and go at their distance with no fade, and draw at every hour.
 - The atmosphere scatters light once, so the sky and its light are dimmer than the game's; the
