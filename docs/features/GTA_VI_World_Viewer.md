@@ -127,7 +127,7 @@ The **Capture** section of the World panel makes a frame that can be drawn again
   it. Escape brings the panels back.
 - **Copy the camera** copies where the camera stands and looks as one line,
   `world camera X Y Z YAW PITCH FOV`: metres, then the yaw, the pitch and the vertical field of
-  view in degrees. A yaw of 0 looks along +Y and a growing yaw turns towards −X.
+  view in degrees. A yaw of zero looks along +Y and a growing yaw turns towards −X.
 - The field under it takes such a line and puts the camera there on Enter.
 
 A shots script reads the same line, sets the hour, waits for the world to settle and measures
