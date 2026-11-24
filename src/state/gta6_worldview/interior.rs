@@ -2,8 +2,8 @@
 //! its instance turns on, in the world under the instance, drawn while the camera is within the
 //! interior's own distance.
 //!
-//! ⚠ No visibility pass: the rooms and portals are kept as read and every child in range draws.
-//! A child draws at every hour, and comes and goes at its distance with no fade.
+//! ⚠ No visibility pass: the rooms and portals are not read and every child in range draws.
+//! A child comes and goes at its distance with no fade.
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -11,12 +11,12 @@ use std::fs::File;
 
 use glam::{Mat4, Quat, Vec3};
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::map::interior::{self, Interior, InteriorInstance, InteriorRoom};
-use or_io::gta6::map::links::{EntitySetLocation, Portal};
+use or_io::gta6::map::interior::{self, Interior, InteriorInstance};
 use or_io::gta6::map::stream::StreamMap;
+use or_world::streaming::Level;
 
 use super::index::{BodyRow, ModelRef, WorldIndex};
-use super::stream::Rows;
+use super::stream::{rows_of, stretch, Rows};
 
 /// The bytes a body of interiors is read to.
 const BODY_LIMIT: u64 = 256 << 20;
@@ -31,8 +31,10 @@ pub(super) struct Child {
     pub(super) radius: f32,
     /// How far from where it stands it draws.
     pub(super) lod_dist: f32,
-    /// The room or the portal of the interior it stands in.
-    pub(super) location: EntitySetLocation,
+    /// Which of the view's scales its distance takes.
+    pub(super) level: Level,
+    /// The hours it draws in, bit `h` for the hour from `h`: its archetype's.
+    pub(super) hours: u32,
 }
 
 /// One interior as a map places it.
@@ -44,23 +46,6 @@ pub(super) struct Placed {
     /// How far from `centre` the camera may be while the contents draw.
     pub(super) lod_dist: f32,
     pub(super) children: Vec<Child>,
-    /// Where the interior stands: its rooms and portals are in its own space.
-    pub(super) rows: Rows,
-    pub(super) rooms: Vec<InteriorRoom>,
-    pub(super) portals: Vec<Portal>,
-}
-
-fn rows_of(m: Mat4) -> Rows {
-    let c = m.to_cols_array_2d();
-    std::array::from_fn(|row| [c[0][row], c[1][row], c[2][row], c[3][row]])
-}
-
-/// The length of the longest axis of `m`, which a sphere's radius grows by.
-fn stretch(m: Mat4) -> f32 {
-    [m.x_axis, m.y_axis, m.z_axis]
-        .map(|axis| axis.truncate().length())
-        .into_iter()
-        .fold(0.0, f32::max)
 }
 
 fn placing(scale_xy: f32, scale_z: f32, rotation: [f32; 4], position: [f32; 3]) -> Mat4 {
@@ -84,53 +69,62 @@ pub(super) fn place(
         instance.position,
     );
     let children = (interior.drawn(&instance.default_entity_sets))
-        .filter_map(|(e, location)| {
+        .filter_map(|(e, _)| {
             let archetype = index.archetype(e.archetype_word)?;
             let model = index.model(archetype)?;
             let m = outer * placing(e.scale_xy, e.scale_z, e.rotation, e.position);
+            let rows = rows_of(m);
             Some(Child {
                 model,
-                rows: rows_of(m),
+                rows,
                 centre: m.transform_point3(Vec3::from(archetype.centre)),
-                radius: archetype.radius * stretch(m),
+                radius: archetype.radius * stretch(&rows),
                 // An entity that states no distance takes its archetype's.
                 lod_dist: if e.lod_dist > 0.0 {
                     e.lod_dist
                 } else {
                     archetype.lod_dist
                 },
-                location,
+                level: Level::from_raw(e.lod_level),
+                hours: archetype.hours,
             })
         })
         .collect();
     let (min, max) = (Vec3::from(interior.bb_min), Vec3::from(interior.bb_max));
     Placed {
         centre: outer.transform_point3((min + max) / 2.0),
-        radius: (max - min).length() / 2.0 * stretch(outer),
+        radius: (max - min).length() / 2.0 * stretch(&rows_of(outer)),
         lod_dist: if instance.lod_dist > 0.0 {
             instance.lod_dist
         } else {
             interior.lod_dist
         },
         children,
-        rows: rows_of(outer),
-        rooms: interior.rooms.clone(),
-        portals: interior.portals.clone(),
     }
 }
 
 impl Placed {
-    /// Call `draw` with each child that draws for a camera at `eye`, distances scaled by `scale`,
-    /// and how far from the camera it stands.
-    pub(super) fn each(&self, eye: Vec3, scale: f32, mut draw: impl FnMut(&Child, f32)) {
+    /// Call `draw` with each child that draws for a camera at `eye` at the hour `hour`, 0 to 23,
+    /// distances scaled by `scales` by level, and how far from the camera it stands.
+    pub(super) fn each(
+        &self,
+        eye: Vec3,
+        scales: &[f32; Level::COUNT],
+        hour: u32,
+        mut draw: impl FnMut(&Child, f32),
+    ) {
         // A camera inside the interior's own sphere is in range whatever distance it states.
+        let scale = scales[Level::Hd as usize];
         if eye.distance(self.centre) > (self.lod_dist * scale).max(self.radius) {
             return;
         }
         for child in &self.children {
+            if (child.hours >> hour) & 1 == 0 {
+                continue;
+            }
             let r = &child.rows;
             let away = eye.distance(Vec3::new(r[0][3], r[1][3], r[2][3]));
-            if away <= child.lod_dist * scale {
+            if away <= child.lod_dist * scales[child.level as usize] {
                 draw(child, away);
             }
         }

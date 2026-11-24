@@ -1,5 +1,5 @@
-use or_io::gta6::map::interior::{InteriorChild, InteriorSet};
-use or_io::gta6::map::links::Room;
+use or_io::gta6::map::interior::{InteriorChild, InteriorRoom, InteriorSet};
+use or_io::gta6::map::links::{EntitySetLocation, Room};
 
 use super::super::index::tests_support::index_of;
 use super::*;
@@ -32,6 +32,7 @@ fn child(word: u64, at: [f32; 3], lod_dist: f32) -> InteriorChild {
         scale_z: 1.0,
         lod_dist,
         flags: 0,
+        lod_level: 5,
     }
 }
 
@@ -134,12 +135,13 @@ fn an_interior_s_entities_stand_in_the_world_under_the_instance_that_places_it()
     assert!(near(chair.centre, [10.0, 21.0, 30.0]) && (chair.radius - 1.0).abs() < 1e-4);
     // The chair states no distance and takes its archetype's; the lamp states its own.
     assert_eq!((chair.lod_dist, lamp.lod_dist), (20.0, 5.0));
-    assert_eq!((chair.location, lamp.location), (KITCHEN, KITCHEN));
+    assert_eq!(
+        (chair.level, lamp.level),
+        (Level::OrphanHd, Level::OrphanHd)
+    );
     assert!(near(placed.centre, [10.0, 20.0, 30.0]));
     assert!((placed.radius - 5.0).abs() < 1e-4);
     assert_eq!(placed.lod_dist, 30.0);
-    assert!(near(origin(&placed.rows), [10.0, 20.0, 30.0]));
-    assert_eq!((placed.rooms.len(), placed.portals.len()), (2, 0));
 }
 
 #[test]
@@ -151,11 +153,16 @@ fn an_instance_that_states_a_distance_draws_its_interior_to_it() {
     assert_eq!(place(&index(), &far, &interior()).lod_dist, 80.0);
 }
 
-/// The models `placed` draws for a camera `north` metres along y from its middle.
+/// The models `placed` draws at noon for a camera `north` metres along y from its middle.
 fn drawn(placed: &Placed, north: f32, scale: f32) -> Vec<ModelRef> {
+    drawn_at(placed, north, &[scale; Level::COUNT], 12)
+}
+
+/// The same with a scale for each level, at the hour `hour`.
+fn drawn_at(placed: &Placed, north: f32, scales: &[f32; Level::COUNT], hour: u32) -> Vec<ModelRef> {
     let mut models = Vec::new();
     let eye = placed.centre + Vec3::new(0.0, north, 0.0);
-    placed.each(eye, scale, |child, away| {
+    placed.each(eye, scales, hour, |child, away| {
         assert!((away - eye.distance(origin(&child.rows))).abs() < 1e-4);
         models.push(child.model);
     });
@@ -186,4 +193,36 @@ fn a_camera_inside_the_interior_s_sphere_is_in_range_of_a_shorter_distance() {
     placed.lod_dist = 2.0;
     assert_eq!(drawn(&placed, 4.0, 1.0), [model(0x1000), model(0x2000)]);
     assert!(drawn(&placed, 6.0, 1.0).is_empty());
+}
+
+#[test]
+fn a_child_of_a_time_archetype_draws_inside_its_hours_alone() {
+    let mut placed = place(&index(), &instance(), &interior());
+    let chair = index().archetype(CHAIR).expect("the chair").hours;
+    assert_eq!(placed.children[0].hours, chair);
+    placed.children[0].hours = 1 << 20;
+    let every = [1.0; Level::COUNT];
+    assert_eq!(
+        drawn_at(&placed, 0.0, &every, 20),
+        [model(0x1000), model(0x2000)]
+    );
+    assert_eq!(drawn_at(&placed, 0.0, &every, 12), [model(0x2000)]);
+}
+
+#[test]
+fn a_child_s_distance_scales_by_its_level_and_the_interior_s_by_hd() {
+    let placed = place(&index(), &instance(), &interior());
+    let mut scales = [1.0; Level::COUNT];
+    scales[Level::OrphanHd as usize] = 0.5;
+    // The chair, 9 m away, is within half its 20 m; 11 m away it is not.
+    assert_eq!(drawn_at(&placed, 10.0, &scales, 12), [model(0x1000)]);
+    assert!(drawn_at(&placed, 12.0, &scales, 12).is_empty());
+    // A tenth of the interior's 30 m is within its 5 m sphere: 6 m out nothing draws.
+    let mut scales = [1.0; Level::COUNT];
+    scales[Level::Hd as usize] = 0.1;
+    assert_eq!(
+        drawn_at(&placed, 4.0, &scales, 12),
+        [model(0x1000), model(0x2000)]
+    );
+    assert!(drawn_at(&placed, 6.0, &scales, 12).is_empty());
 }
