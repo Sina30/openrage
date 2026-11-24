@@ -17,6 +17,7 @@ use or_renderer::FlyCamera;
 use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 
 pub(crate) mod index;
+mod interior;
 mod model;
 mod pool;
 pub(crate) mod stream;
