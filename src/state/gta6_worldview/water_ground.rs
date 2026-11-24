@@ -43,6 +43,7 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
             // ⚠ Where the key snapshot lies is found here, on the caller's thread, as the index finds it.
             let keys = super::super::index::keys();
             std::thread::spawn(move || {
+                let started = std::time::Instant::now();
                 let read = match keys {
                     Some(keys) => read(&root, &keys),
                     None => Err("no key snapshot deciphers the install's tables".to_string()),
@@ -51,6 +52,7 @@ pub fn ground(root: &Path) -> Option<Arc<WaterGround>> {
                     Ok(ground) => {
                         tracing::info!(
                             tiles = ground.tiles(),
+                            seconds = started.elapsed().as_secs_f32(),
                             "GTA VI's ground under the water was read"
                         );
                         Some(Arc::new(ground))
@@ -87,11 +89,8 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
         .find_archive(HEIGHTS)
         .ok_or("the table names no archive of the height map")?;
     let span = nested.offset..nested.offset.saturating_add(nested.stored);
-    let (scanned, file) = (
-        File::open(&archive).map_err(|e| e.to_string())?,
-        File::open(&archive).map_err(|e| e.to_string())?,
-    );
-    let (mut fallback, mut tiles) = (None, Vec::new());
+    let scanned = File::open(&archive).map_err(|e| e.to_string())?;
+    let mut dictionaries = Vec::new();
     for find in Rpf9Scan::new(&scanned, span).map_err(|e| e.to_string())? {
         let find = match find {
             Ok(find) => find,
@@ -108,10 +107,43 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
         else {
             continue;
         };
-        if signature.role() != Some(Rpf9Role::Dictionary) {
-            continue;
+        if signature.role() == Some(Rpf9Role::Dictionary) {
+            dictionaries.push(find.offset);
         }
-        let Ok((body, bytes)) = read_rpf9_body(&file, find.offset, BODY_LIMIT) else {
+    }
+    // The bodies are inflated and read on a worker each, in runs of the scan's order.
+    let workers = std::thread::available_parallelism().map_or(4, |n| n.get().min(8));
+    let run = dictionaries.len().div_ceil(workers).max(1);
+    let (path, named) = (&archive, atlas.fallback.as_str());
+    let read: Vec<Vec<(bool, Heights)>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (dictionaries.chunks(run))
+            .map(|offsets| scope.spawn(move || heights_at(path, offsets, named)))
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().ok()).collect()
+    });
+    let (mut fallback, mut tiles) = (None, Vec::new());
+    for (is_fallback, heights) in read.into_iter().flatten() {
+        match is_fallback {
+            true => fallback = Some(heights),
+            false => tiles.push(heights),
+        }
+    }
+    let fallback = fallback.ok_or("the height map's archive holds no fallback")?;
+    let mut ground = WaterGround::new(&atlas, fallback).map_err(|e| e.to_string())?;
+    for tile in tiles {
+        ground.add_tile(tile);
+    }
+    Ok(ground)
+}
+
+/// The height textures of the dictionaries at `offsets` of `archive`, each marked whether it is the fallback named `fallback`; a tile is held shrunk until it is laid.
+fn heights_at(archive: &Path, offsets: &[u64], fallback: &str) -> Vec<(bool, Heights)> {
+    let Ok(file) = File::open(archive) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for &offset in offsets {
+        let Ok((body, bytes)) = read_rpf9_body(&file, offset, BODY_LIMIT) else {
             continue;
         };
         let Rpf9BodyKind::Zlib(Rpf9ZlibRun {
@@ -132,17 +164,11 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
             let Some(heights) = texture.texture.as_ref().ok().and_then(Heights::of) else {
                 continue;
             };
-            // ⚠ The tiles come before the fallback, whose name sorts after theirs: each is held shrunk until it is laid.
-            match texture.name == atlas.fallback {
-                true => fallback = Some(heights),
-                false => tiles.push(heights.shrunk(KEPT).unwrap_or(heights)),
+            match texture.name == fallback {
+                true => out.push((true, heights)),
+                false => out.push((false, heights.shrunk(KEPT).unwrap_or(heights))),
             }
         }
     }
-    let fallback = fallback.ok_or("the height map's archive holds no fallback")?;
-    let mut ground = WaterGround::new(&atlas, fallback).map_err(|e| e.to_string())?;
-    for tile in tiles {
-        ground.add_tile(tile);
-    }
-    Ok(ground)
+    out
 }
