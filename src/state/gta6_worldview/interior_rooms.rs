@@ -10,6 +10,10 @@ use glam::Vec3;
 const DOORWAY: f32 = 0.1;
 /// How many portals deep a camera looks.
 const DEPTH: usize = 8;
+/// How many rooms a walk enters, along all its paths, before it gives up and takes every room as seen.
+// ⚠ The paths a walk follows grow as the portals' count to the power of `DEPTH`: rooms whose
+// doors all open where the camera stands would hold the world's thread for hours.
+const MOST_ENTERED: usize = 1 << 14;
 
 /// A room's box, in the interior's space.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -123,6 +127,8 @@ struct Walk<'a> {
     middle: Vec3,
     seen: Seen,
     path: Vec<u32>,
+    /// How many more rooms it may enter.
+    left: usize,
 }
 
 impl Walk<'_> {
@@ -130,7 +136,8 @@ impl Walk<'_> {
         if let Some(slot) = self.seen.rooms.get_mut(room as usize) {
             *slot = true;
         }
-        if self.path.len() >= DEPTH {
+        self.left = self.left.saturating_sub(1);
+        if self.path.len() >= DEPTH || self.left == 0 {
             return;
         }
         self.path.push(room);
@@ -257,9 +264,15 @@ pub(super) fn seen(rooms: &[RoomBox], portals: &[Opening], middle: Vec3, eye: Ve
             portals: vec![false; portals.len()],
         },
         path: Vec::new(),
+        left: MOST_ENTERED,
     };
     let start = room_of(rooms, eye).unwrap_or(0) as u32;
     walk.enter(start, &[]);
+    if walk.left == 0 {
+        // A walk cut short has not seen what it left out: it hides nothing.
+        walk.seen.rooms.fill(true);
+        walk.seen.portals.fill(true);
+    }
     walk.seen
 }
 

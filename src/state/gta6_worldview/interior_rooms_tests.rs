@@ -129,3 +129,35 @@ fn a_camera_in_a_doorway_sees_through_the_whole_of_it() {
     let seen = seen(&rooms, &portals, middle, Vec3::new(4.05, 0.0, 1.0));
     assert!(seen.rooms[1] && seen.rooms[0]);
 }
+
+#[test]
+fn rooms_that_all_open_on_each_other_where_the_camera_stands_are_walked_in_bounded_time() {
+    // Sixteen rooms in one box, each pair joined by a door in the plane x = 0 the camera stands in:
+    // every path of eight doors stays open, and there are some five hundred million of them.
+    const ROOMS: u32 = 16;
+    let rooms = vec![
+        RoomBox {
+            min: Vec3::splat(-5.0),
+            max: Vec3::splat(5.0),
+        };
+        ROOMS as usize
+    ];
+    let door = |rooms| Opening {
+        rooms,
+        corners: [
+            Vec3::new(0.0, -1.0, -1.0),
+            Vec3::new(0.0, 1.0, -1.0),
+            Vec3::new(0.0, 1.0, 1.0),
+            Vec3::new(0.0, -1.0, 1.0),
+        ],
+        flags: 0,
+    };
+    let portals: Vec<Opening> = (1..ROOMS)
+        .flat_map(|a| (a + 1..ROOMS).map(move |b| door([a, b])))
+        .collect();
+    let seen = seen(&rooms, &portals, Vec3::ZERO, Vec3::ZERO);
+    assert!(
+        seen.rooms[1..].iter().all(|room| *room),
+        "every room is seen"
+    );
+}
