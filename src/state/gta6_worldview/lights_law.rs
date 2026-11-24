@@ -8,13 +8,15 @@ pub const SHELL_EXPONENT: f32 = 2.0;
 /// Each nested volume: its radius squared as a share of the light's, and its strength times `R²`.
 /// A least-squares fit of `(1 − t²)²/t`, `t = d²/R²`, between `R/32` and `R`; how near it keeps is
 /// `the_shells_follow_the_window_over_the_distance_squared`.
-pub const SHELLS: [(f32, f32); 6] = [
-    (1.0, 4.564_416),
-    (1.0 / 3.0, 10.917_236),
-    (1.0 / 9.0, 28.255_035),
-    (1.0 / 27.0, 90.790_76),
-    (1.0 / 81.0, 258.035_6),
-    (1.0 / 243.0, 877.843_6),
+pub const SHELLS: [(f32, f32); 8] = [
+    (1.0, 4.426_201),
+    (0.4, 7.504_387),
+    (0.16, 16.259_49),
+    (0.064, 43.694_015),
+    (0.025_6, 106.876_38),
+    (0.010_24, 267.191_7),
+    (0.004_096, 683.169_2),
+    (0.001_638_4, 1_558.555_3),
 ];
 
 /// The window over the distance squared, times `R²`, at `t = d²/R²`.
@@ -65,7 +67,7 @@ mod tests {
                 (shells(t) - law(t)).abs() / (law(t) + 0.02)
             })
             .fold(0.0, f32::max);
-        assert!(worst < 0.17, "{worst}");
+        assert!(worst < 0.11, "{worst}");
         // Nothing past the light's radius, and a straight fall with the exponent the pass is given would not do
         assert_eq!(shells(1.0), 0.0);
         let one = |t: f32| law(0.25) * (1.0 - t).powi(2) / 0.75f32.powi(2);
