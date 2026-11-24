@@ -517,7 +517,7 @@ mod tests {
 
     fn light(light_type: u8) -> LightAttr {
         LightAttr {
-            hash_30eca388: [0.0; 3],
+            hash_30eca388: [1.0, 0.0, 0.0],
             posn: [1.0, 0.0, 0.0],
             colour: [255, 128, 0],
             vol_outer_colour: [0; 3],
