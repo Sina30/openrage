@@ -59,7 +59,11 @@ groups are on, as a new game shows them; without one, none is. A selector with n
 takes its default. Only the selectors of the layers the level loads count, and of the layers a
 configuration they pick loads in turn: a layer only a mission, a script or a system asks for switches
 nothing at rest. A rule on the player reads as a new game: no wanted level, nothing unlocked, nothing
-held, no time yet spent in a configuration. The same section lists the groups,
+held, no time yet spent in a configuration. Of two requests on one selector the higher priority
+wins, the first made of equal ones. What a fresh game is taken to have beyond the data, the requests
+its scripts make and the flags it starts with, is read from `fresh_game.json` beside the kept index
+in the configuration folder when one is there; a group it switches is marked inferred in the list,
+and **Only what the data proves** leaves it out. The same section lists the groups,
 and a group ticked there streams its maps in; from then on the hour no longer sets them, until
 **The game's own groups** puts them back.
 
