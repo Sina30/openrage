@@ -21,6 +21,8 @@ const MOST_PITCH: f32 = 89.0;
 const FIELDS_OF_VIEW: std::ops::RangeInclusive<f32> = 5.0..=150.0;
 /// The area and the layer a clean frame is sensed and painted through.
 const CLEAN: &str = "world_viewer_clean";
+/// How many script-managed groups the list shows before it scrolls.
+const GROUP_ROWS: f32 = 12.0;
 
 /// Where a camera line puts the camera: metres, then degrees.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -375,6 +377,8 @@ pub fn draw_side(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
         ui.separator();
         capture(ui, state, &mut viewer);
         ui.separator();
+        enabled(ui, state, &mut viewer);
+        ui.separator();
         let again = ui.add_enabled(
             viewer.building().is_none(),
             egui::Button::new(tr!("Build the index again")),
@@ -428,6 +432,82 @@ fn capture(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
     }
 }
 
+/// The hour, the game's modes and the script-managed groups that stream.
+fn enabled(ui: &mut egui::Ui, state: &mut AppState, viewer: &mut Viewer) {
+    use or_title::gta6_mount::Mode;
+    ui.strong(tr!("Time and modes"));
+    let hour = ui.add(egui::Slider::new(&mut viewer.hour, 0.0..=23.99).text(tr!("Hour")));
+    let hour = named(
+        hour,
+        tr!("The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"),
+    );
+    if hour.changed() {
+        // ⚠ The Time bar and the world say one hour: a day left running would move the bar alone.
+        let day = &mut state.drivers.time_of_day;
+        day.set_hour(viewer.hour);
+        day.playing = false;
+    }
+    for (mode, label, hint) in [
+        (
+            Mode::Story,
+            tr!("Story pack"),
+            tr!("Stream the maps the story pack adds"),
+        ),
+        (
+            Mode::Minigames,
+            tr!("Shared minigames"),
+            tr!("Stream the maps the shared minigames add"),
+        ),
+    ] {
+        let mut on = viewer.enabled.modes & mode.bit() != 0;
+        if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
+            viewer.enabled.modes ^= mode.bit();
+        }
+    }
+    let Some(index) = viewer.index.clone() else {
+        return;
+    };
+    let groups = index.groups();
+    if groups.is_empty() {
+        said(ui, tr!("The index holds no script-managed group"));
+        return;
+    }
+    let row_height = ui.spacing().interact_size.y;
+    let title = tr!(
+        "Script-managed groups: {on} of {groups} on",
+        on = viewer.enabled.groups.len(),
+        groups = groups.len(),
+    );
+    egui::CollapsingHeader::new(title)
+        .id_salt("world_viewer_groups")
+        .show(ui, |ui| {
+            said(
+                ui,
+                tr!("Nothing says which are on at rest: a group ticked streams its maps in"),
+            );
+            egui::ScrollArea::vertical()
+                .id_salt("world_viewer_group_rows")
+                .max_height(row_height * GROUP_ROWS)
+                .auto_shrink([false, true])
+                .show_rows(ui, row_height, groups.len(), |ui, range| {
+                    for group in &groups[range] {
+                        let mut on = viewer.enabled.groups.contains(&group.id);
+                        let label = tr!(
+                            "{name}, {maps} maps",
+                            name = or_maps::Name::of(group.name).shown(),
+                            maps = group.maps,
+                        );
+                        if ui.checkbox(&mut on, label).changed() {
+                            match on {
+                                true => viewer.enabled.groups.push(group.id),
+                                false => viewer.enabled.groups.retain(|id| *id != group.id),
+                            }
+                        }
+                    }
+                });
+        });
+}
+
 /// What the mount found: the documents read, the archives bound and the maps that stream at rest.
 fn mount(ui: &mut egui::Ui, viewer: &Viewer) {
     ui.strong(tr!("Mount"));
@@ -469,6 +549,25 @@ fn mount(ui: &mut egui::Ui, viewer: &Viewer) {
             scripted = count(r.script_managed),
             empty = count(r.empty),
         ),
+    );
+    said(
+        ui,
+        &tr!(
+            "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups",
+            story = count(r.story),
+            minigames = count(r.minigames),
+            groups = count(r.groups),
+        ),
+    );
+    said(
+        ui,
+        &match r.by_table {
+            0 => tr!("Bound by block maps: no key snapshot was found").to_string(),
+            _ => tr!(
+                "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered",
+                ciphered = r.sets_ciphered,
+            ),
+        },
     );
     said(
         ui,
