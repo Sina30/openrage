@@ -113,8 +113,8 @@ fn an_empty_document_has_no_quad() {
     assert_eq!(WaterData::open(&bytes).expect("read"), WaterData::default());
 }
 
-#[test]
-fn a_border_is_read_where_the_body_declares_it_and_none_where_it_does_not() {
+/// The classes of a document that declares its border: its corners' heights and its segments.
+fn bordered_classes() -> Vec<Class> {
     let mut classes = classes(QUAD);
     classes[0].members.push(member(
         lit(b"BorderInfo"),
@@ -154,6 +154,11 @@ fn a_border_is_read_where_the_body_declares_it_and_none_where_it_does_not() {
             member(lit(b"Height"), 12, FLOAT, 0, 0),
         ],
     });
+    classes
+}
+
+/// A root whose border's corners stand at 1 to 4 m and whose one segment is side 2 from -50 to 70 at 0.5 m.
+fn bordered_root() -> Vec<u8> {
     let mut root = vec![0u8; ROOT_SIZE];
     for (k, v) in [1.0f32, 2.0, 3.0, 4.0].into_iter().enumerate() {
         root[BORDER + 4 * k..BORDER + 4 * k + 4].copy_from_slice(&v.to_le_bytes());
@@ -165,7 +170,14 @@ fn a_border_is_read_where_the_body_declares_it_and_none_where_it_does_not() {
     }
     let count = segment + SEGMENTS_HELD * SEGMENT_SIZE;
     root[count..count + 4].copy_from_slice(&1u32.to_le_bytes());
-    let water = WaterData::open(&body(&classes, &[(WATER_DATA, root.clone())], 1)).expect("read");
+    root
+}
+
+#[test]
+fn a_border_is_read_where_the_body_declares_it_and_none_where_it_does_not() {
+    let root = bordered_root();
+    let bordered = body(&bordered_classes(), &[(WATER_DATA, root.clone())], 1);
+    let water = WaterData::open(&bordered).expect("read");
     let border = water.border.expect("a border");
     assert_eq!(border.corners, [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(
@@ -233,6 +245,11 @@ fn every_changed_byte_is_read_or_refused_and_never_a_panic() {
         QUAD,
     );
     crate::gta6::mutated_tests::every_change(&bytes, |bytes| {
+        let _ = WaterData::open(bytes);
+    });
+    // The border is read only from a body that declares it.
+    let bordered = body(&bordered_classes(), &[(WATER_DATA, bordered_root())], 1);
+    crate::gta6::mutated_tests::every_change(&bordered, |bytes| {
         let _ = WaterData::open(bytes);
     });
 }
