@@ -68,9 +68,20 @@ pub fn day_of(
     weather: WeatherState,
     y: f32,
 ) -> Option<Day> {
+    lit_day(tables, hour, days, weather, y).map(|(day, _)| day)
+}
+
+/// The day as [`day_of`] gives it, and what a light the game states in its own unit is multiplied by to be the frame's: the moment's exposure over pi.
+pub fn lit_day(
+    tables: &DayTables,
+    hour: f32,
+    days: f32,
+    weather: WeatherState,
+    y: f32,
+) -> Option<(Day, f32)> {
     let moment = tables.moment(hour, weather_name(weather), y)?;
     let visual = &tables.visual_settings;
-    Some(Day {
+    let day = Day {
         keyframe: moment.keyframe,
         table: moment.table,
         hours: moment.frame_hours,
@@ -83,16 +94,17 @@ pub fn day_of(
             visual.get_f32("emissive.night.start.time", 20.0) as u32,
             visual.get_f32("emissive.night.end.time", 7.0) as u32,
         ),
-        // ⚠ GTA VI's exposure curve has the frame's name and another shape (a vertical offset and
-        // a bending in place of a power and an offset): read by the frame it sets the exposure a
-        // hundred stops off, so the frame keeps its own.
+        // ⚠ GTA VI's exposure curve has the frame's name and another shape (a natural logarithm, a
+        // bending and offsets in place of a power): the moment is exposed by it already and the
+        // frame's own exposure held at nought, so the frame is never given it.
         tone: ToneSettings::from_visual(
             &|name, default| match name.starts_with("Exposure.curve.") {
                 true => default,
                 false => visual.get_f32(name, default),
             },
         ),
-    })
+    };
+    Some((day, moment.light_scale))
 }
 
 #[cfg(test)]
@@ -108,7 +120,7 @@ mod tests {
         let cycle = r#"<timecycle_keyframe_data><cycle name="Sunny" regions="1"><region name="GLOBAL">
             <light_dir_mult> 1 1 1 1 1 1 1 1 1 1 1 1 1</light_dir_mult>
             </region></cycle></timecycle_keyframe_data>"#;
-        let settings = "Tonemapping.dark.filmic.W 11.2\nExposure.curve.scale -1.15\nemissive.night.start.time 22\nemissive.night.end.time 4\n";
+        let settings = "Tonemapping.dark.filmic.W 11.2\nExposure.curve.scale -2.0\nemissive.night.start.time 22\nemissive.night.end.time 4\n";
         DayTables::of_texts([time.as_str(), cycle, settings])
     }
 
@@ -146,6 +158,24 @@ mod tests {
         assert_eq!(day.cycle_time, NEAR_FULL_MOON + 2.0 + 23.0 / 24.0);
         let noon = day_of(&tables, 12.0, 0.0, WeatherState::Clear, 0.0).expect("a day");
         assert_eq!(noon.night_emissive, 0.0);
+    }
+
+    #[test]
+    fn the_frame_maps_the_moment_at_nought_stops_and_the_lights_take_its_exposure() {
+        let tables = tables();
+        let view = View {
+            camera_height: 0.0,
+            projection: glam::Mat4::IDENTITY,
+            near: 0.1,
+        };
+        for hour in [13.45f32, 1.0] {
+            let (day, scale) =
+                lit_day(&tables, hour, 0.0, WeatherState::Clear, 0.0).expect("a day");
+            assert_eq!(day.tone(&day.lighting(&view)).stops, 0.0, "at {hour}");
+            let moment = tables.moment(hour, "Sunny", 0.0).expect("a moment");
+            assert_eq!(scale, moment.light_scale);
+            assert!(scale > 0.0);
+        }
     }
 
     #[test]
