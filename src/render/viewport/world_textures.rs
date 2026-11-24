@@ -174,6 +174,30 @@ fn write(
     (on_device.create_view(&Default::default()), bytes)
 }
 
+/// The widest row a model's palette is laid in: a longer palette runs on into the next row.
+const PALETTE_ROW: usize = 4096;
+
+/// A model's own tint palette on the device: its colours as stored, which the mesh stage reads unconverted, the last row filled out with white, which reads as no colour.
+pub(super) fn palette(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    colours: &[[u8; 4]],
+) -> wgpu::TextureView {
+    let width = colours.len().clamp(1, PALETTE_ROW);
+    let rows = colours.len().div_ceil(width).max(1);
+    let mut bytes: Vec<u8> = colours.iter().flatten().copied().collect();
+    bytes.resize(width * rows * 4, 255);
+    let size = (width as u32, rows as u32);
+    write(
+        device,
+        queue,
+        wgpu::TextureFormat::Rgba8Unorm,
+        size,
+        &[bytes],
+    )
+    .0
+}
+
 /// How often a mesh's texture turns over its surface, in turns a metre: the square root of the
 /// UV area over the surface area of a sample of its triangles; nought for a mesh of no surface.
 pub(super) fn density(vertices: &[MeshVertex], indices: &[u32]) -> f32 {

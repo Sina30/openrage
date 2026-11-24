@@ -255,7 +255,7 @@ fn hard_light(base: vec3<f32>, over: vec3<f32>) -> vec3<f32> {
     return select(screen, 2.0 * base * over, over < vec3<f32>(0.5));
 }
 
-// The texel of the palette the vertex's first colour picks in the material's row: a column past the row's end runs on into the next, as in the game's one-dimensional image.
+// The texel of the palette the vertex's first colour picks in the material's row: a column past the row's end runs on into the next, as in the game's one-dimensional image, and one past the image's last colour reads none, which leaves the tint white.
 fn palette(colour0: vec4<f32>) -> vec3<f32> {
     let size = textureDimensions(tint_map);
     let width = max(size.x, 1u);
@@ -263,7 +263,7 @@ fn palette(colour0: vec4<f32>) -> vec3<f32> {
     let row = min(u32(max(m.palette_row, 0.0)), rows - 1u);
     let at = row * width + u32(255.0 * colour0.r + 0.5);
     let texel = vec2<u32>(at % width, min(at / width, rows - 1u));
-    return textureLoad(tint_map, texel, 0).rgb;
+    return select(vec3<f32>(1.0), textureLoad(tint_map, texel, 0).rgb, at < width * rows);
 }
 
 // A four-layer layer's colour: its vertex tint, then its palette tint, the second unless the vertex's second colour turns it off.

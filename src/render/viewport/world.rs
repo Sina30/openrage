@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3;
-use or_renderer::world::{WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
+use or_renderer::world::{slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
 use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
@@ -43,6 +43,9 @@ use budget::{ahead, evicted, Budgets, Idle};
 use layout::{order, Layout, View};
 use pages::{Pages, Place};
 use textures::{Texture, Textures, ABSENT, MISSING};
+
+/// What a material is told of a map that is a model's own palette.
+const OWN_PALETTE: u64 = u64::MAX;
 
 /// One mesh of a level of a model: where it lies in the pages and what draws it.
 struct Mesh {
@@ -141,6 +144,9 @@ pub(super) struct WorldGpu {
     model_bytes: u64,
     pages: Pages,
     textures: Textures,
+    /// The tint palettes the models hold themselves, by the key their materials name each by.
+    // ponytail: a palette is never let go; a few hundred bytes each, no more than the install has palettes.
+    palettes: HashMap<u64, wgpu::TextureView>,
     materials: Vec<Material>,
     material_of: HashMap<(CpuMaterial, Bucket), u32>,
     /// What the device may hold, worked out the first frame.
@@ -227,6 +233,10 @@ impl WorldGpu {
         model: &CpuModel,
         (frame, eye): (u64, Vec3),
     ) -> Slot {
+        for (key, colours) in &model.palettes {
+            (self.palettes.entry(*key))
+                .or_insert_with(|| textures::palette(device, queue, colours));
+        }
         let mut bytes = 0;
         let mut lods = Vec::with_capacity(model.lods.len());
         for lod in &model.lods {
@@ -584,6 +594,11 @@ impl RenderBridge {
                 let Some(key) = key else {
                     continue;
                 };
+                // A model's own palette came with it and never leaves
+                if world.palettes.contains_key(&key) {
+                    *stamp = OWN_PALETTE;
+                    continue;
+                }
                 // ⚠ A palette is read texel by texel: a smaller copy of it moves every column.
                 let pixels = match material.whole[at] {
                     true => budgets.most_side,
@@ -607,9 +622,16 @@ impl RenderBridge {
             }
             if (material.made.as_ref()).is_none_or(|(_, made_with)| *made_with != with) {
                 // A colour map that is not on the device is a mid grey; a slot that names none samples the renderer's own stand-in.
+                // A material that names no colour map is coloured by its palette where it names one, else a mid grey: its colour is the game's, never white
+                let unnamed = material.maps[slot::colour(0)].is_none()
+                    && material.maps[slot::TINT].is_none()
+                    && material.family != WorldFamily::FourLayer;
                 let maps = std::array::from_fn(|at| {
+                    if unnamed && at == slot::colour(0) {
+                        return Some(&grey);
+                    }
                     let key = material.maps[at]?;
-                    let view = world.textures.of(key).1;
+                    let view = (world.palettes.get(&key)).or(world.textures.of(key).1);
                     match material.colours[at] {
                         true => Some(view.unwrap_or(&grey)),
                         false => view,

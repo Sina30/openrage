@@ -240,7 +240,8 @@ const LOOKUP: [u32; 2] = [
     name_hash32(b"lookupTexture"),
     name_hash32(b"controlTextureTex"),
 ];
-const PALETTE: u32 = name_hash32(b"TintPaletteTex");
+/// The record of the palette the mesh stage reads a texel of.
+pub(super) const PALETTE: u32 = name_hash32(b"TintPaletteTex");
 const TINT: u32 = name_hash32(b"tintTexture");
 const TINT_NORMAL: u32 = name_hash32(b"tintBumpTexture");
 const DIRT: [u32; 2] = [name_hash32(b"DiffuseTex2"), name_hash32(b"dirtDiffuseTex")];

@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::fs::File;
 
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::headerless::{self, Drawable, Entry, ParameterValue, Resource, Shader};
+use or_io::gta6::headerless::{
+    self, Drawable, Entry, ParameterValue, Resource, Shader, TintPalette,
+};
 use or_renderer::MeshVertex;
 
 use super::index::{ModelRef, WorldIndex};
@@ -13,7 +15,7 @@ use super::texture::Places;
 
 #[path = "material.rs"]
 mod material;
-use material::{material_of, GLOW};
+use material::{material_of, GLOW, PALETTE};
 #[cfg(test)]
 pub use material::{Constants, Emissive, Layer};
 pub use material::{CpuMaterial, Family};
@@ -26,6 +28,8 @@ const STAND_IN: &str = "_imposter";
 /// A model on the CPU: its levels of detail, from the highest down.
 pub struct CpuModel {
     pub lods: Vec<CpuLod>,
+    /// The tint palettes the model holds itself, by the key its materials name each by: no pack holds them.
+    pub palettes: Vec<(u64, Vec<[u8; 4]>)>,
 }
 
 /// One level of a model, drawn while its instance is nearer than `until` metres; the last is drawn for ever.
@@ -106,6 +110,7 @@ pub(super) fn model_of(
         };
         return CpuModel {
             lods: vec![nothing],
+            palettes: Vec::new(),
         };
     }
     let materials: Vec<Option<(CpuMaterial, Bucket)>> = (drawable.shaders.iter().enumerate())
@@ -169,7 +174,36 @@ pub(super) fn model_of(
             meshes: Vec::new(),
         }),
     }
-    CpuModel { lods }
+    CpuModel {
+        lods,
+        palettes: Vec::new(),
+    }
+}
+
+/// Each palette key `drawable`'s shaders name, the first named taking the first of `rows` and the second the second, with that row's colours.
+fn palettes_of(drawable: &Drawable, rows: &[TintPalette]) -> Vec<(u64, Vec<[u8; 4]>)> {
+    let mut keys: Vec<u64> = Vec::new();
+    for shader in &drawable.shaders {
+        let named = shader.parameters.iter().filter_map(|p| match p.value {
+            ParameterValue::Texture { slot } if p.hash == PALETTE => shader
+                .texture_keys
+                .get(usize::from(slot))
+                .copied()
+                .flatten(),
+            _ => None,
+        });
+        for key in named {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+    }
+    (keys.into_iter().enumerate())
+        .filter_map(|(at, key)| {
+            let row = rows.get(at).or(rows.first())?;
+            Some((key, row.colours.clone()))
+        })
+        .collect()
 }
 
 /// The model `model` names, read from its archive; `None` where it does not read.
@@ -214,7 +248,15 @@ pub(super) fn read_model(
         headerless::shader_buckets(signature, virtual_section, model.entry).unwrap_or_default();
     // With the packs indexed a key is a colour map or it is not; with none nothing is known of it.
     let srgb = |key: u64| places.map(|places| places.is_colour(key));
-    Some(model_of(drawable, &buckets, &srgb))
+    let mut cpu = model_of(drawable, &buckets, &srgb);
+    // ponytail: a drawable of a dictionary keeps its palettes unread; read its entry's head where its props show grey.
+    if model.entry.is_none() {
+        if let Ok(head) = headerless::read_drawable_head(virtual_section, Some(physical), false) {
+            let rows: Vec<_> = head.palettes.into_iter().flatten().collect();
+            cpu.palettes = palettes_of(drawable, &rows);
+        }
+    }
+    Some(cpu)
 }
 
 #[cfg(test)]

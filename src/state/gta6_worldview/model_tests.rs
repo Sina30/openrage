@@ -1,5 +1,6 @@
 use or_io::gta6::headerless::{
-    Geometry, HeaderlessError, Model, Palette, Parameter, ParameterValue, Shader, Vertices,
+    Geometry, HeaderlessError, Model, Palette, Parameter, ParameterValue, Shader, TintPalette,
+    Vertices,
 };
 
 use super::*;
@@ -188,6 +189,33 @@ fn a_four_layer_mesh_takes_its_weights_from_colour_channel_25_and_every_mesh_its
     assert_eq!(first(0), [255, 0, 0, 255]);
     assert_eq!(first(1), [0, 0, 255, 255]);
     assert_eq!(model.lods[0].meshes[1].vertices[0].colour[..2], [0.5, 0.25]);
+}
+
+#[test]
+fn each_palette_key_takes_the_models_own_palette_in_the_order_its_shaders_name_them() {
+    let palette = or_io::gta6::hash::name_hash32(b"TintPaletteTex");
+    let shaders = vec![
+        shader(&[(DIFFUSE, Some(0xA)), (palette, Some(0x1))], &[]),
+        shader(&[(palette, Some(0x1))], &[]),
+        shader(&[(palette, Some(0x2))], &[]),
+    ];
+    let model = drawable(shaders, [None, None, None, None], [FAR; 4]);
+    let row = |colour: u8| TintPalette {
+        at: 0,
+        colours: vec![[colour, 0, 0, 255]],
+    };
+    let two = palettes_of(&model, &[row(10), row(20)]);
+    assert_eq!(
+        two,
+        [(0x1, vec![[10, 0, 0, 255]]), (0x2, vec![[20, 0, 0, 255]])]
+    );
+    // One palette serves every key; none, no key
+    let one = palettes_of(&model, &[row(10)]);
+    assert_eq!(
+        one.iter().map(|(_, c)| c[0][0]).collect::<Vec<_>>(),
+        [10, 10]
+    );
+    assert!(palettes_of(&model, &[]).is_empty());
 }
 
 #[test]
