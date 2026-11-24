@@ -1301,6 +1301,44 @@ fn foliage_reads_no_metal_in_its_material_a_red_and_keeps_a_dielectrics_reflecta
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn a_leaf_that_lets_more_than_half_the_sun_through_sets_the_backlit_flag_and_one_seen_from_the_sun_glows_not(
+) {
+    let Some((device, queue, mut renderer)) = family_frame("a_leaf_that_lets_more_than_half")
+    else {
+        return;
+    };
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    // Material A's red is one less the translucency: 0 lets all of it through, 200 a fifth, 255 none
+    for (red, flags, alpha) in [
+        (0u8, WorldConstants::FOLIAGE, 255u8),
+        (200, WorldConstants::FOLIAGE, 128),
+        (255, WorldConstants::FOLIAGE, 128),
+        (0, 0, 255),
+    ] {
+        let maps = [
+            (slot::colour(0), texel(&device, &queue, [255; 4])),
+            (slot::material_a(0), texel(&device, &queue, [red, 64, 0, 0])),
+        ];
+        let constants = WorldConstants {
+            flags: WorldConstants::default().flags | flags,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Standard, WorldBucket::Opaque);
+        let material = surface(&device, &renderer, family, &maps, constants);
+        let square = coloured_square(&device, [1.0; 4], [1.0; 4], material);
+        let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
+        assert!(targets[3][3].abs_diff(alpha) <= 1, "red {red}: {targets:?}");
+        // The camera above sees the leaf from the sun's side: its light through is all behind it
+        assert_eq!(targets[3][2], 0, "red {red}: {targets:?}");
+    }
+    assert!(accepted(scope), "the device accepted every pass");
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn a_ground_decal_whose_palette_slot_is_empty_takes_a_black_tint_and_one_with_a_palette_its_colour()
 {
     let Some((device, queue, mut renderer)) = family_frame("a_ground_decal_whose_palette_slot")

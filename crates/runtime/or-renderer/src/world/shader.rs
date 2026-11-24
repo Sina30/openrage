@@ -223,6 +223,8 @@ struct Surface {
     smoothness: f32,
     f0: vec3<f32>,
     emissive: vec3<f32>,
+    // How much sun a leaf lets through, nought for any other surface.
+    translucency: f32,
 };
 
 // Every map of the material, each sampled once.
@@ -398,6 +400,9 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
     }
     // ⚠ A tree's material A red is one less its translucency, which the lighting's translucent material stands for: read as a metalness it turns leaves into mirrors.
     (*s).metal = select(clamp(maps.a0.r, 0.0, 1.0), 0.0, (m.flags & FOLIAGE) != 0u);
+    // The lighting reads the translucency in sixteen steps, the high four bits of its byte
+    let stored = u32(255.0 * clamp(1.0 - maps.a0.r, 0.0, 1.0) + 0.5);
+    (*s).translucency = select(0.0, f32(stored >> 4u) / 15.0, (m.flags & FOLIAGE) != 0u);
     (*s).smoothness = 1.0 - clamp(maps.a0.g, 0.0, 1.0);
     return leaning(maps.n0, m.bumpiness.x);
 }
@@ -463,6 +468,7 @@ fn surface_of(in: VsOut, front_facing: bool) -> Surface {
     let family = m.family.x;
     var s: Surface;
     s.emissive = vec3<f32>(0.0);
+    s.translucency = 0.0;
     var lean: vec3<f32>;
     if (family == FOUR_LAYER) {
         lean = four_layer(&s, maps, in);
@@ -611,14 +617,34 @@ fn words(s: Surface, world_pos: vec3<f32>, ambient: vec2<f32>) -> GBufferOut {
     out.specular = vec4<f32>(sqrt(intensity), sqrt(stored / SPECULAR_EXPONENT_MAX), 1.0 - f0 / max(intensity, 1e-6), 1.0);
     // The instance's share of the natural ambient light in red and of the artificial in green, as roots since the lighting squares what it reads there, and in blue the surface's own light as a multiple of its colour, which the lighting pass adds.
     let glow = min(lum(s.emissive) / max(lum(diffuse), 1.0 / 255.0), EMISSIVE_MAX);
-    out.ambient = vec4<f32>(sqrt(ambient), glow / EMISSIVE_MAX, 1.0);
+    // ⚠ This alpha is a flag over a half and the root of the reflection's intensity in twice what is left: the backlit pass tints the sun through a leaf half way to white where the flag is set, a quarter where it is not, and the leaves that let half the sun through or more take the half.
+    let tinted = select(1.0, select(0.5, 1.0, s.translucency > 0.5), (m.flags & FOLIAGE) != 0u);
+    out.ambient = vec4<f32>(sqrt(ambient), glow / EMISSIVE_MAX, tinted);
     return out;
 }
 
+// GTA VI's sun through a leaf that lets `amount` of it through, seen `cos_t` off the sun's travel, past the even share the frame's backlit pass already gives: the forward lobe of a Henyey-Greenstein phase of 0.9 times the amount's upper half, as a multiple of the sun on the leaf's colour.
+fn forward_scattered(amount: f32, cos_t: f32) -> f32 {
+    let s = clamp(amount, 0.0, 1.0);
+    let s2 = clamp(2.0 * s, 0.0, 1.0);
+    let e = exp((0.0914 * s2 * s2 - 0.09618) / max(0.2 * s, 1e-4));
+    let through = 0.25 * e * (e * e + 3.0);
+    let lean = clamp(2.0 * s - 1.0, 0.0, 1.0);
+    let g = 0.9 * lean;
+    let phase = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * cos_t, 1e-4), 1.5);
+    return through * (1.0 - 0.82838 * lean) * max(phase - 1.0, 0.0);
+}
+
 fn gbuffer(in: VsOut, front_facing: bool, cut: f32) -> GBufferOut {
-    let s = surface_of(in, front_facing);
+    var s = surface_of(in, front_facing);
     if (dropped(in, select(s.coverage, cut_coverage(in), cut >= CUTOUT_ALPHA), cut)) {
         discard;
+    }
+    // ponytail: the forward lobe is the surface's own light, so no shadow falls on it; a pass of the viewer's own over the trees' stencil, after the sun's shadow, if leaves in shade show it.
+    if (s.translucency > 0.0) {
+        let view_dir = normalize(camera.camera_pos_ws.xyz - in.world_pos);
+        let lobe = forward_scattered(s.translucency, dot(light.sun_travel.xyz, view_dir));
+        s.emissive = s.emissive + diffuse_of(s) * light.sun_colour.rgb * lobe;
     }
     return words(s, in.world_pos, in.ambient);
 }

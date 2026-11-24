@@ -141,7 +141,7 @@ impl WorldConstants {
     pub const GROUND_BLEND: u32 = 64;
     /// A ground decal's tint multiplies its colour rather than taking its luminance.
     pub const TINT_MULTIPLY: u32 = 128;
-    /// A tree's leaves and bark: no metal, and the lighting's translucent material, which lights the side turned from the sun.
+    /// A tree's leaves and bark: no metal, the lighting's translucent material, which lights the side turned from the sun, and the sun through a leaf by one less its material A's red.
     pub const FOLIAGE: u32 = 256;
     /// With [`Self::INSTANCE_COLOUR`], the vertex's first colour lies over the instance's tint as far as its alpha, which is then no coverage.
     pub const VERTEX_OVER_TINT: u32 = 512;
