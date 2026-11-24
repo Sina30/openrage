@@ -446,7 +446,8 @@ fn constants_of(r: &Records) -> Constants {
             .then(|| [r.float(GROUND_LOW, 0.0), r.float(GROUND_HIGH, 1.0)]),
         tint_multiplies: r.flag(TINT_MULTIPLIES, d.tint_multiplies),
         tint_masked: r.flag(TINT_MASKED, d.tint_masked),
-        foliage: r.words(TREE_WIND).is_some(),
+        // ⚠ Grass writes one less its material A red as its translucency, as a tree does: neither is a metalness.
+        foliage: r.words(TREE_WIND).is_some() || r.words(GRASS_TINT).is_some(),
         region_tint: match r.0.name_hash {
             REGION_TINT => Some(RegionTint::Instance),
             REGION_TINT_BY_VERTEX => Some(RegionTint::OverInstance),

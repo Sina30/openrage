@@ -484,6 +484,9 @@ fn a_tree_is_foliage_by_the_wind_thresholds_its_effect_states_and_a_plain_materi
     let tree = shader(&one_layer(), &[(h("WindMinMaxThreshholds0"), &[0.8, 1.1])]);
     assert!(of(&tree, 0).constants.foliage);
     assert!(!of(&shader(&one_layer(), &[]), 0).constants.foliage);
+    // Grass, told by the tint intensity it states even at 0, is foliage as well
+    let grass = shader(&one_layer(), &[(h("gtintensity"), &[0.0])]);
+    assert!(of(&grass, 0).constants.foliage);
 }
 
 #[test]
