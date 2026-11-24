@@ -1,0 +1,214 @@
+//! A model's material as the renderer shades it: its family, the key of the map in each slot, and its constants.
+
+use or_renderer::world::{slot, WorldConstants, WorldFamily, WORLD_MAPS};
+
+use crate::state::gta6_world::worldview::{CpuMaterial, Family};
+
+/// The renderer's family of `family`; a water mask is never drawn, and is shaded as standard where one is.
+pub(super) fn family_of(family: Family) -> WorldFamily {
+    match family {
+        Family::Standard | Family::WaterMask => WorldFamily::Standard,
+        Family::TwoLayer => WorldFamily::TwoLayer,
+        Family::FourLayer => WorldFamily::FourLayer,
+        Family::Decal => WorldFamily::Decal,
+        Family::Glass => WorldFamily::Glass,
+        Family::Emissive => WorldFamily::Emissive,
+        Family::Grass => WorldFamily::Grass,
+        Family::TerrainLod => WorldFamily::TerrainLod,
+        Family::Other => WorldFamily::Other,
+    }
+}
+
+/// The key of the map each slot of `material` samples.
+pub(super) fn slots_of(material: &CpuMaterial) -> [Option<u64>; WORLD_MAPS] {
+    let mut slots = [None; WORLD_MAPS];
+    let four = material.family == Family::FourLayer;
+    // A four-layer material's fourth layer takes the slots of material B and the emissive map
+    let layers = if four { 4 } else { 2 };
+    for (at, layer) in material.layers.iter().take(layers).enumerate() {
+        slots[slot::colour(at)] = layer.colour;
+        slots[slot::normal(at)] = layer.normal;
+        slots[slot::material_a(at)] = layer.material_a;
+        if !four {
+            slots[slot::MATERIAL_B[at]] = layer.material_b;
+        }
+    }
+    slots[slot::WEIGHTS] = material.lookup;
+    if four {
+        (slots[slot::TINT], slots[slot::SECOND]) = (material.tint, material.tint_normal);
+    } else {
+        (slots[slot::TINT], slots[slot::SECOND]) = (material.palette, material.dirt);
+        slots[slot::EMISSIVE] = material.emissive.map(|emissive| emissive.map);
+    }
+    slots
+}
+
+/// Whether the map in `at` is a layer's colour, which is a mid grey while it is waited for.
+pub(super) fn is_colour(material: &CpuMaterial, at: usize) -> bool {
+    let layers = if material.family == Family::FourLayer { 4 } else { 2 };
+    (0..layers).any(|layer| slot::colour(layer) == at)
+}
+
+/// Whether the map in `at` is read texel by texel, so that it is wanted whole whatever the screen needs of it.
+pub(super) fn read_whole(material: &CpuMaterial, at: usize) -> bool {
+    at == slot::TINT && material.family != Family::FourLayer
+}
+
+/// The constants the renderer reads for `material`.
+pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
+    let c = &material.constants;
+    let flag = |on: bool, bit: u32| if on { bit } else { 0 };
+    let flags = flag(c.vertex_tint, WorldConstants::VERTEX_TINT)
+        | flag(c.mask_is_alpha, WorldConstants::MASK_FROM_ALPHA)
+        | flag(c.inv_control, WorldConstants::INVERT_CONTROL)
+        | flag(c.hard_light, WorldConstants::HARD_LIGHT);
+    let mut constants = WorldConstants {
+        fresnel: c.fresnel,
+        bumpiness: c.bumpiness,
+        height_scale: c.hbb_range_scale,
+        height_bias: c.hbb_range_bias,
+        blend_softness: c.blend_softness,
+        tint_intensity: c.tint_intensity,
+        tint_blend: c.tint_blend_amount,
+        vertex_tint_scale: c.vertex_tint_scale,
+        vertex_tint_amount: c.vertex_tint_amount,
+        control_filter: c.control_filter,
+        opacity: c.decal_blend_opacity,
+        flags,
+        palette_row: c.tint_palette_selector,
+        translucency_as_tint_mask: c.translucency_as_tint_mask,
+        // A one-layer material's fresnel is its first layer's
+        specular_fresnel: c.fresnel[0],
+        layer0_tint: c.palette_tint[0],
+        layer1_tint: c.palette_tint[1],
+        control_softness: c.blend_softness[0],
+        control_offset: c.layer_weight_bias,
+        dirt_intensity: c.dirt_intensity,
+        grass_tint: c.gtintensity,
+        ..WorldConstants::default()
+    };
+    if let Some(emissive) = &material.emissive {
+        let [r, g, b] = emissive.scale;
+        let [pr, pg, pb] = emissive.power;
+        constants.emissive_scale = [r, g, b, 1.0];
+        constants.emissive_power = [pr, pg, pb, 1.0];
+        constants.emissive_multiplier = emissive.multiplier;
+        constants.emissive_night = emissive.night;
+        constants.emissive_view_power = emissive.facing;
+        constants.emissive_diffuse_tint = emissive.diffuse;
+    }
+    constants
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::gta6_world::worldview::{Constants, Emissive, Layer};
+
+    fn layer(base: u64) -> Layer {
+        Layer {
+            colour: Some(base),
+            normal: Some(base + 1),
+            material_a: Some(base + 2),
+            material_b: Some(base + 3),
+        }
+    }
+
+    #[test]
+    fn a_four_layer_material_fills_every_layer_slot_and_its_tint_maps_and_states_no_material_b() {
+        let material = CpuMaterial {
+            family: Family::FourLayer,
+            layers: vec![layer(10), layer(20), layer(30), layer(40)],
+            lookup: Some(1),
+            palette: Some(2),
+            tint: Some(3),
+            tint_normal: Some(4),
+            ..CpuMaterial::default()
+        };
+        let slots = slots_of(&material);
+        for (at, base) in [10, 20, 30, 40].into_iter().enumerate() {
+            assert_eq!(slots[slot::colour(at)], Some(base));
+            assert_eq!(slots[slot::normal(at)], Some(base + 1));
+            assert_eq!(slots[slot::material_a(at)], Some(base + 2));
+        }
+        assert_eq!(slots[slot::WEIGHTS], Some(1));
+        assert_eq!(slots[slot::TINT], Some(3));
+        assert_eq!(slots[slot::SECOND], Some(4));
+        assert!(!read_whole(&material, slot::TINT));
+        assert!(is_colour(&material, slot::colour(3)));
+        assert!(!is_colour(&material, slot::normal(0)));
+        assert_eq!(family_of(material.family), WorldFamily::FourLayer);
+    }
+
+    #[test]
+    fn a_two_layer_material_puts_its_material_b_maps_its_palette_dirt_and_glow_beside_its_layers() {
+        let glow = Emissive {
+            map: 99,
+            multiplier: 5.0,
+            night: -1.0,
+            scale: [1.0, 0.5, 0.25],
+            power: [1.0; 3],
+            facing: 2.0,
+            diffuse: 0.0,
+        };
+        let material = CpuMaterial {
+            family: Family::TwoLayer,
+            layers: vec![layer(10), layer(20)],
+            lookup: Some(1),
+            palette: Some(2),
+            dirt: Some(5),
+            emissive: Some(glow),
+            constants: Constants {
+                palette_tint: [0.25, 0.75, 1.0, 1.0],
+                blend_softness: [0.3, 0.5, 0.5, 0.5],
+                inv_control: true,
+                hard_light: true,
+                ..Constants::default()
+            },
+            ..CpuMaterial::default()
+        };
+        let slots = slots_of(&material);
+        assert_eq!(slots[slot::colour(1)], Some(20));
+        assert_eq!(slot::MATERIAL_B.map(|at| slots[at]), [Some(13), Some(23)]);
+        assert_eq!(slots[slot::EMISSIVE], Some(99));
+        assert_eq!(slots[slot::TINT], Some(2));
+        assert_eq!(slots[slot::SECOND], Some(5));
+        assert_eq!(slots[slot::colour(2)], None);
+        assert!(read_whole(&material, slot::TINT));
+        // Its material B of the first layer sits where a fourth layer's colour would
+        assert!(!is_colour(&material, slot::MATERIAL_B[0]));
+        let constants = constants_of(&material);
+        assert_eq!((constants.layer0_tint, constants.layer1_tint), (0.25, 0.75));
+        assert_eq!(constants.control_softness, 0.3);
+        assert_eq!(constants.emissive_multiplier, 5.0);
+        assert_eq!(constants.emissive_scale, [1.0, 0.5, 0.25, 1.0]);
+        assert_eq!(constants.emissive_view_power, 2.0);
+        let wanted = WorldConstants::MASK_FROM_ALPHA
+            | WorldConstants::INVERT_CONTROL
+            | WorldConstants::HARD_LIGHT;
+        assert_eq!(constants.flags, wanted);
+    }
+
+    #[test]
+    fn a_material_with_no_glow_keeps_the_renderers_default_glow_and_every_family_has_its_namesake() {
+        let constants = constants_of(&CpuMaterial::default());
+        let neutral = WorldConstants::default();
+        assert_eq!(constants.emissive_night, neutral.emissive_night);
+        assert_eq!(constants.emissive_multiplier, neutral.emissive_multiplier);
+        assert_eq!(constants.opacity, [1.0; 4]);
+        let pairs = [
+            (Family::Standard, WorldFamily::Standard),
+            (Family::TwoLayer, WorldFamily::TwoLayer),
+            (Family::FourLayer, WorldFamily::FourLayer),
+            (Family::Decal, WorldFamily::Decal),
+            (Family::Glass, WorldFamily::Glass),
+            (Family::Emissive, WorldFamily::Emissive),
+            (Family::Grass, WorldFamily::Grass),
+            (Family::TerrainLod, WorldFamily::TerrainLod),
+            (Family::Other, WorldFamily::Other),
+        ];
+        for (cpu, gpu) in pairs {
+            assert_eq!(family_of(cpu), gpu);
+        }
+    }
+}

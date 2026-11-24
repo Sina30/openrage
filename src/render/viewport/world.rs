@@ -15,17 +15,20 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3;
+use or_renderer::world::{WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
 use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
 use crate::state::drivers::WeatherState;
 use crate::state::gta6_world::worldview::index::ModelRef;
-use crate::state::gta6_world::worldview::{Bucket, CpuModel, Maps};
+use crate::state::gta6_world::worldview::{Bucket, CpuMaterial, CpuModel};
 
 #[path = "world_budget.rs"]
 mod budget;
 #[path = "world_layout.rs"]
 mod layout;
+#[path = "world_material.rs"]
+mod material;
 #[path = "world_pages.rs"]
 mod pages;
 #[path = "world_textures.rs"]
@@ -70,14 +73,19 @@ enum Slot {
     Missing,
 }
 
-/// What meshes of the same maps and bucket draw with: one bind group, made again when a map of
-/// it comes to the device, is replaced by a larger one, or leaves.
+/// What meshes of the same material and bucket draw with: one bind group, made again when a map
+/// of it comes to the device, is replaced by a larger one, or leaves.
 struct Material {
-    /// The keys of its colour, normal and specular maps.
-    maps: [Option<u64>; 3],
+    /// The key of the map in each slot the renderer binds.
+    maps: [Option<u64>; WORLD_MAPS],
+    /// Which slots hold a layer's colour, and which are read whole whatever the screen needs.
+    colours: [bool; WORLD_MAPS],
+    whole: [bool; WORLD_MAPS],
+    family: WorldFamily,
+    constants: WorldConstants,
     bucket: WorldBucket,
     /// What it draws with, and what each map was when it was made.
-    made: Option<(WorldMaterial, [u64; 3])>,
+    made: Option<(WorldMaterial, [u64; WORLD_MAPS])>,
     /// Counted up each time it is made: a mesh built with an earlier making is built again.
     making: u64,
     /// The frame a mesh that draws last named it in, and for that frame the longest side its
@@ -131,7 +139,7 @@ pub(super) struct WorldGpu {
     pages: Pages,
     textures: Textures,
     materials: Vec<Material>,
-    material_of: HashMap<([Option<u64>; 3], WorldBucket), u32>,
+    material_of: HashMap<(CpuMaterial, Bucket), u32>,
     /// What the device may hold, worked out the first frame.
     budgets: Option<Budgets>,
     frame: u64,
@@ -176,24 +184,29 @@ fn merged(mut wanted: Vec<(f32, u64, u32)>) -> Vec<(f32, u64, u32)> {
 }
 
 impl WorldGpu {
-    /// The material that draws a mesh of these maps in this bucket: one for every mesh that names the same.
+    /// The material that draws a mesh of this material in this bucket: one for every mesh that names the same.
     // ponytail: a material is never forgotten, only what it holds on the device; there are no more than the install has distinct materials.
-    fn material(&mut self, maps: Maps, bucket: Bucket) -> u32 {
-        let key = ([maps.colour, maps.normal, maps.specular], bucket_of(bucket));
-        let materials = &mut self.materials;
-        *self.material_of.entry(key).or_insert_with(|| {
-            materials.push(Material {
-                maps: key.0,
-                bucket: key.1,
-                made: None,
-                making: 0,
-                touched: 0,
-                pixels: 0,
-                priority: 0.0,
-                at: Vec3::ZERO,
-            });
-            materials.len() as u32 - 1
-        })
+    fn material(&mut self, cpu: &CpuMaterial, bucket: Bucket) -> u32 {
+        if let Some(id) = self.material_of.get(&(cpu.clone(), bucket)) {
+            return *id;
+        }
+        let id = self.materials.len() as u32;
+        self.material_of.insert((cpu.clone(), bucket), id);
+        self.materials.push(Material {
+            maps: material::slots_of(cpu),
+            colours: std::array::from_fn(|at| material::is_colour(cpu, at)),
+            whole: std::array::from_fn(|at| material::read_whole(cpu, at)),
+            family: material::family_of(cpu.family),
+            constants: material::constants_of(cpu),
+            bucket: bucket_of(bucket),
+            made: None,
+            making: 0,
+            touched: 0,
+            pixels: 0,
+            priority: 0.0,
+            at: Vec3::ZERO,
+        });
+        id
     }
 
     /// Write every mesh of every level of `model` to the pages; a mesh of nothing, or one larger
@@ -218,7 +231,7 @@ impl WorldGpu {
                 bytes += place.bytes();
                 meshes.push(Mesh {
                     place,
-                    material: self.material(mesh.maps, mesh.bucket),
+                    material: self.material(&mesh.material, mesh.bucket),
                     density: textures::density(&mesh.vertices, &mesh.indices),
                     drawn: None,
                 });
@@ -520,10 +533,15 @@ impl RenderBridge {
         let mut wanted = Vec::new();
         for id in touched {
             let material = &mut world.materials[id as usize];
-            let mut with = [ABSENT; 3];
-            for (stamp, key) in with.iter_mut().zip(material.maps) {
+            let mut with = [ABSENT; WORLD_MAPS];
+            for (at, (stamp, key)) in with.iter_mut().zip(material.maps).enumerate() {
                 let Some(key) = key else {
                     continue;
+                };
+                // ⚠ A palette is read texel by texel: a smaller copy of it moves every column.
+                let pixels = match material.whole[at] {
+                    true => budgets.most_side,
+                    false => material.pixels,
                 };
                 match world.textures.map.get_mut(&key) {
                     Some(Texture::Ready(ready)) => {
@@ -533,28 +551,31 @@ impl RenderBridge {
                         }
                         *stamp = ready.stamp;
                         // Seen larger than it was asked for at, it is asked for again while there is room.
-                        if !ready.top && material.pixels > ready.got && room {
-                            wanted.push((material.priority, key, material.pixels));
+                        if !ready.top && pixels > ready.got && room {
+                            wanted.push((material.priority, key, pixels));
                         }
                     }
                     Some(Texture::Missing) => *stamp = MISSING,
-                    None => wanted.push((material.priority, key, material.pixels)),
+                    None => wanted.push((material.priority, key, pixels)),
                 }
             }
             if (material.made.as_ref()).is_none_or(|(_, made_with)| *made_with != with) {
-                let view = |map: usize| {
-                    let key = material.maps[map]?;
-                    world.textures.of(key).1
+                // A colour map that is not on the device is a mid grey; a slot that names none samples the renderer's own stand-in.
+                let maps = std::array::from_fn(|at| {
+                    let key = material.maps[at]?;
+                    let view = world.textures.of(key).1;
+                    match material.colours[at] {
+                        true => Some(view.unwrap_or(&grey)),
+                        false => view,
+                    }
+                });
+                let surface = WorldSurface {
+                    family: material.family,
+                    bucket: material.bucket,
+                    maps,
+                    constants: material.constants,
                 };
-                // A colour map that is not on the device is a mid grey; a material that names none is white.
-                let colour = (material.maps[0]).map(|_| view(0).unwrap_or(&grey));
-                let made = (self.renderer).world_material(
-                    &self.device,
-                    colour,
-                    view(1),
-                    view(2),
-                    material.bucket,
-                );
+                let made = (self.renderer).world_surface(&self.device, &surface);
                 material.made = Some((made, with));
                 material.making += 1;
             }

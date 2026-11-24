@@ -3,6 +3,7 @@
 use bytemuck::{Pod, Zeroable};
 
 use super::WorldBucket;
+use crate::viewport::MeshVertex;
 
 /// How many maps a material binds.
 pub const WORLD_MAPS: usize = 15;
@@ -171,6 +172,18 @@ pub struct WorldSurface<'a> {
 /// `rgba` as the bits of a vertex's depth bias, which the world's shader reads as the vertex's second colour.
 pub fn colour1(rgba: [u8; 4]) -> f32 {
     f32::from_bits(u32::from_le_bytes(rgba))
+}
+
+/// Give each of `vertices` its first colour and, in the bits of its depth bias, its second, each white where the mesh has none.
+pub fn coloured(vertices: &mut [MeshVertex], first: Option<&[[f32; 4]]>, second: Option<&[[f32; 4]]>) {
+    let at = |colours: Option<&[[f32; 4]]>, index: usize| {
+        (colours.and_then(|colours| colours.get(index)).copied()).unwrap_or([1.0; 4])
+    };
+    for (index, vertex) in vertices.iter_mut().enumerate() {
+        vertex.colour = at(first, index);
+        let bytes = at(second, index).map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+        vertex.depth_bias = colour1(bytes);
+    }
 }
 
 /// The bytes of the uniform a material's constants are read from: the family in front, the whole a multiple of sixteen as a uniform struct is.

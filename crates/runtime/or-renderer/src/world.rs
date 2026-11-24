@@ -18,7 +18,9 @@ mod pipelines;
 mod shader;
 pub(crate) mod shadow;
 
-pub use material::{colour1, slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
+pub use material::{
+    colour1, coloured, slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS,
+};
 use material::{uniform_bytes, STAND_INS};
 use pipelines::{ByBucket, Pipelines};
 pub use shadow::SHADOW_FAR;
