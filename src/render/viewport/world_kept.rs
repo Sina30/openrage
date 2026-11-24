@@ -9,6 +9,9 @@ use super::{bucket_of, material, textures, Lod, Material, Mesh, Slot, WorldGpu};
 use crate::state::gta6_world::worldview::index::ModelRef;
 use crate::state::gta6_world::worldview::{Bucket, CpuMaterial, CpuModel};
 
+/// The most bytes of meshes a frame moves out of a page left with holes.
+const MOVED_A_FRAME: u64 = 16 << 20;
+
 impl WorldGpu {
     /// The material that draws one more mesh of this material in this bucket: one for every mesh on the device that names the same.
     pub(super) fn material(&mut self, cpu: &CpuMaterial, bucket: Bucket) -> u32 {
@@ -142,6 +145,44 @@ impl WorldGpu {
         }
     }
 
+    /// Move meshes out of the emptiest page into the others, a copy on the device of at most [`MOVED_A_FRAME`] bytes, while the pages hold more than the models' budget and a page: a page left with holes holds its whole size for the few meshes in it.
+    pub(super) fn compact(
+        &mut self,
+        (device, queue): (&wgpu::Device, &wgpu::Queue),
+        budgets: &Budgets,
+    ) {
+        let page = budgets.page.0 + budgets.page.1;
+        let Some(emptiest) = self.pages.emptiest(budgets.models_kept + page) else {
+            return;
+        };
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("world-pages-compact"),
+        });
+        let mut moved = 0;
+        'models: for slot in self.models.values_mut() {
+            let Slot::Ready { lods, .. } = slot else {
+                continue;
+            };
+            for mesh in lods.iter_mut().flat_map(|lod| &mut lod.meshes) {
+                if mesh.place.page != emptiest {
+                    continue;
+                }
+                if moved >= MOVED_A_FRAME {
+                    break 'models;
+                }
+                let Some(place) = self.pages.moved(&mut encoder, mesh.place) else {
+                    break 'models;
+                };
+                moved += place.bytes();
+                (mesh.place, mesh.drawn) = (place, None);
+            }
+        }
+        if moved > 0 {
+            queue.submit([encoder.finish()]);
+            self.changes += 1;
+        }
+    }
+
     /// Take `model` off the device for the budgets, and tell the world's thread it left.
     fn let_go(&mut self, model: ModelRef) {
         self.forget(&model);
@@ -176,23 +217,6 @@ impl WorldGpu {
                 .collect();
             for idle in evicted(idle, self.model_bytes - budgets.models_kept) {
                 self.let_go(idle.key);
-            }
-        }
-        // Pages left with holes hold more than the models in them: past the budget and a page, the models that did not draw leave the emptiest page.
-        let page = budgets.page.0 + budgets.page.1;
-        if let Some(emptiest) = self.pages.emptiest(budgets.models_kept + page) {
-            let leaving: Vec<ModelRef> = (self.models.iter())
-                .filter(|(_, slot)| match slot {
-                    Slot::Ready { lods, drawn, .. } => {
-                        let mut meshes = lods.iter().flat_map(|lod| &lod.meshes);
-                        *drawn < frame && meshes.any(|mesh| mesh.place.page == emptiest)
-                    }
-                    Slot::Missing => false,
-                })
-                .map(|(model, _)| *model)
-                .collect();
-            for model in leaving {
-                self.let_go(model);
             }
         }
         let gone: HashSet<u64> = (self.textures.evict(budgets.textures_kept, frame, eye))

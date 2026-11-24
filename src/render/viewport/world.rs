@@ -633,6 +633,7 @@ impl RenderBridge {
         self.renderer.set_world_spheres(&world.layout.spheres);
         world.layout.laid.truncate(laid);
         world.evict(&budgets, frame, eye);
+        world.compact((&self.device, &self.queue), &budgets);
         let layout = &world.layout;
         world.cost = WorldCost {
             laid: true,
