@@ -7,117 +7,33 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use glam::Vec3;
-use or_io::codec::texture::decode_level;
-use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::headerless::{self, Entry, Resource};
-use or_io::gta6::TexturePack;
 use or_job::{Cancel, Progress};
-use or_renderer::{FlyCamera, MeshVertex};
+use or_renderer::FlyCamera;
 
 use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 
 pub(crate) mod index;
+mod model;
 mod pool;
 pub(crate) mod stream;
+mod texture;
 
-use index::{ModelRef, WorldIndex};
+pub use model::{Bucket, CpuLod, CpuMesh, CpuModel, Maps};
+pub use texture::CpuTexture;
+
+use index::{Enabled, ModelRef, WorldIndex};
 use pool::Pool;
 use stream::{Selected, Streaming, World};
+use texture::{OpenPack, Places};
 
-/// The bytes a model's body is read to.
-const BODY_LIMIT: u64 = 512 << 20;
-/// The longest side a texture is drawn at, in pixels: its first level no larger is the one read.
-// ponytail: one size for every texture; the level by the distance it is seen from once the memory allows.
-const MOST_SIDE: u32 = 256;
 /// How high over the middle of the maps the camera starts, in metres.
 const START_HEIGHT: f32 = 150.0;
-
-/// One mesh of a model as a worker read it, before it is on the device.
-pub struct CpuMesh {
-    pub vertices: Vec<MeshVertex>,
-    pub indices: Vec<u32>,
-    /// The key its material's colour map is found by in the texture packs.
-    pub texture: Option<u64>,
-}
-
-/// A texture as a worker decoded it: 8-bit RGBA levels, the largest first, each half the last.
-pub struct CpuTexture {
-    pub width: u32,
-    pub height: u32,
-    pub srgb: bool,
-    pub levels: Vec<Vec<u8>>,
-}
-
-/// The texture packs of the install, and the pack each key is in.
-struct Places {
-    packs: Vec<PathBuf>,
-    keys: HashMap<u64, u32>,
-    /// The format code each key's texture states.
-    formats: HashMap<u64, u16>,
-}
-
-impl Places {
-    /// Whether the texture of `key` states an sRGB format, as a colour map does; `false` for a key no pack holds.
-    fn is_colour(&self, key: u64) -> bool {
-        let srgb =
-            |code: &u16| or_io::codec::texture::DxgiFormat::from_raw((code >> 3).into()).is_srgb();
-        self.formats.get(&key).is_some_and(srgb)
-    }
-}
-
-/// A pack a worker opened, with the place of each key in it; `None` for one that did not open.
-type OpenPack = Option<(TexturePack, HashMap<u64, usize>)>;
-
-/// The texture of the key `key`, from the pack that holds it, at its first level no larger than
-/// [`MOST_SIDE`] and every level under it; `None` where no pack holds it or it does not read.
-fn read_texture(
-    open: &mut HashMap<u32, OpenPack>,
-    places: &Places,
-    key: u64,
-) -> Option<CpuTexture> {
-    let at = *places.keys.get(&key)?;
-    let pack = open.entry(at).or_insert_with(|| {
-        let pack = TexturePack::open(places.packs.get(at as usize)?).ok()?;
-        let entries = (pack.entries.iter().enumerate())
-            .filter(|(_, e)| e.on_disk)
-            .map(|(place, e)| (e.key, place))
-            .collect();
-        Some((pack, entries))
-    });
-    let (pack, entries) = pack.as_ref()?;
-    // ponytail: every row of the texture is read for its small levels; the rows of those levels alone once a pack's read shows.
-    let texture = pack.texture(*entries.get(&key)?).ok()?;
-    let texture = match texture.faces {
-        1 => texture,
-        _ => texture.face(0)?,
-    };
-    let mut level = 0;
-    while (texture.width.max(texture.height) >> level) > MOST_SIDE && level + 1 < texture.levels {
-        level += 1;
-    }
-    let top = decode_level(&texture, level).ok()?;
-    let (width, height, srgb) = (top.width, top.height, top.is_srgb);
-    let mut levels = vec![top.data];
-    for under in level + 1..texture.levels {
-        let Ok(image) = decode_level(&texture, under) else {
-            break;
-        };
-        let k = levels.len() as u32;
-        if (image.width, image.height) != ((width >> k).max(1), (height >> k).max(1)) {
-            break;
-        }
-        levels.push(image.data);
-    }
-    Some(CpuTexture {
-        width,
-        height,
-        srgb,
-        levels,
-    })
-}
+/// The hour of the day the viewer starts at.
+const NOON: f32 = 12.0;
 
 /// How a build of the index ended.
 enum Built {
@@ -148,8 +64,13 @@ pub struct Viewer {
     have: HashSet<ModelRef>,
     /// The selection whose waited-for models the readers were last given.
     wanted_of: u64,
-    models: Option<Pool<ModelRef, Option<Vec<CpuMesh>>>>,
-    textures: Option<Pool<u64, Option<CpuTexture>>>,
+    models: Option<Pool<ModelRef, Option<CpuModel>>>,
+    /// A texture is asked for by its key and the screen size it is needed at.
+    textures: Option<Pool<(u64, u32), Option<CpuTexture>>>,
+    /// The bytes of the models and textures the workers read that were not taken yet.
+    held: Arc<AtomicU64>,
+    /// The hour and what is enabled, as the world's thread was last told them.
+    sent: Option<(f32, Enabled)>,
     build: Option<Build>,
     /// How the last build ended, for the job list to say once.
     ended: Option<(Outcome, String)>,
@@ -158,6 +79,10 @@ pub struct Viewer {
     pub camera: FlyCamera,
     /// The scale every level-of-detail distance is multiplied by.
     pub lod_scale: f32,
+    /// The hour of the day, from 0 to 24: what is placed for some hours alone draws inside them.
+    pub hour: f32,
+    /// Which of the game's modes and script-managed groups stream.
+    pub enabled: Enabled,
     /// How many models wait to be read.
     pub models_waiting: usize,
     /// How many textures wait to be read.
@@ -174,6 +99,8 @@ impl Default for Viewer {
             wanted_of: 0,
             models: None,
             textures: None,
+            held: Arc::default(),
+            sent: None,
             build: None,
             ended: None,
             failed: None,
@@ -187,6 +114,8 @@ impl Default for Viewer {
                 far: 20_000.0,
             },
             lod_scale: 1.0,
+            hour: NOON,
+            enabled: Enabled::default(),
             models_waiting: 0,
             textures_waiting: 0,
         }
@@ -200,70 +129,18 @@ pub fn viewer() -> MutexGuard<'static, Viewer> {
     VIEWER.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-/// The meshes of the model `model` names, read from its archive; `None` where it does not read.
-fn read_model(
-    files: &mut HashMap<u32, File>,
-    index: &WorldIndex,
-    places: Option<&Places>,
-    model: ModelRef,
-) -> Option<Vec<CpuMesh>> {
-    let file = match files.entry(model.archive) {
-        std::collections::hash_map::Entry::Occupied(open) => open.into_mut(),
-        std::collections::hash_map::Entry::Vacant(slot) => {
-            slot.insert(File::open(index.archives.get(model.archive as usize)?).ok()?)
-        }
-    };
-    let (find, bytes) = read_rpf9_body(&*file, model.offset, BODY_LIMIT).ok()?;
-    let Rpf9BodyKind::Zlib(Rpf9ZlibRun {
-        resource: Some(resource),
-        signature: Some(signature),
-        ..
-    }) = find.kind
-    else {
-        return None;
-    };
-    let (virtual_section, physical) = resource.sections(&bytes);
-    let read = headerless::read(signature, virtual_section, Some(physical)).ok()?;
-    let drawable = match (&read, model.entry) {
-        (Resource::Drawable(d), None) => d,
-        (Resource::DrawableWithBound(r), None) => &r.drawable,
-        (Resource::Dictionary(dictionary), Some(code)) => {
-            (dictionary.entries.iter()).find_map(|(c, e)| match e {
-                Ok(Entry::Drawable(d)) if *c == code => Some(&**d),
-                _ => None,
-            })?
-        }
-        _ => return None,
-    };
-    // ponytail: the first level of detail of every model; its own lower levels by distance once the memory shows.
-    // With the packs indexed a key is a colour map or it is not; with none nothing is known of it.
-    let srgb = |key: u64| places.map(|places| places.is_colour(key));
-    let meshes = crate::render::gta6_drawable::meshes_at(drawable, 0, None, None, &srgb);
-    Some(
-        (meshes.into_iter())
-            .filter(|m| !m.vertices.is_empty() && !m.indices.is_empty())
-            .map(|m| CpuMesh {
-                vertices: m.vertices,
-                indices: m.indices,
-                // A normal map is no colour: a material with that alone draws plain.
-                texture: (m.texture_name.as_deref())
-                    .filter(|_| !m.bump)
-                    .and_then(crate::state::gta6_texture_index::key_of),
-            })
-            .collect(),
-    )
-}
-
 impl Viewer {
     /// Show the install at `root`: the index kept of it where one stands, else one built on a worker.
     pub fn open(&mut self, root: &Path) {
         if self.root.as_deref() == Some(root) {
             return;
         }
+        // What is enabled is a choice among one install's groups: another install starts at rest.
         *self = Self {
             root: Some(root.to_path_buf()),
             camera: self.camera.clone(),
             lod_scale: self.lod_scale,
+            hour: self.hour,
             ..Self::default()
         };
         self.start(false);
@@ -282,6 +159,8 @@ impl Viewer {
         (self.index, self.world, self.models, self.failed) = (None, None, None, None);
         self.have.clear();
         self.textures = None;
+        // What the workers held goes with them, and a new world's thread is told everything again.
+        (self.held, self.sent) = (Arc::default(), None);
         // ⚠ Where the packs' index is kept is found here, on this thread.
         let places = crate::state::gta6_texture_index::pack_places(&root);
         let build = Build {
@@ -333,10 +212,16 @@ impl Viewer {
     fn take(&mut self, index: WorldIndex, places: Option<Places>) {
         let places = places.map(Arc::new);
         if let Some(places) = places.clone() {
+            let held = Arc::clone(&self.held);
             self.textures = Some(Pool::new(
                 4,
                 HashMap::<u32, OpenPack>::new,
-                move |open, key| read_texture(open, &places, key),
+                move |open, (key, pixels)| {
+                    let read = texture::read_texture(open, &places, key, pixels);
+                    let bytes = read.as_ref().map_or(0, CpuTexture::bytes);
+                    held.fetch_add(bytes, Ordering::Relaxed);
+                    read
+                },
             ));
         }
         if let Some(middle) = index.middle() {
@@ -345,10 +230,15 @@ impl Viewer {
         let index = Arc::new(index);
         let shared = Arc::clone(&index);
         let workers = std::thread::available_parallelism().map_or(4, usize::from) / 2;
+        let held = Arc::clone(&self.held);
         self.models = Some(Pool::new(
             workers.clamp(2, 12),
             HashMap::<u32, File>::new,
-            move |files, model| read_model(files, &shared, places.as_deref(), model),
+            move |files, model| {
+                let read = model::read_model(files, &shared, places.as_deref(), model);
+                held.fetch_add(read.as_ref().map_or(0, CpuModel::bytes), Ordering::Relaxed);
+                read
+            },
         ));
         let (eye, scale) = (self.camera.position, self.lod_scale);
         self.world = Some(World::new(Arc::clone(&index), eye, scale));
@@ -436,6 +326,17 @@ impl Viewer {
         }
         let told = !models.is_empty();
         world.look(self.camera.position, self.lod_scale);
+        let hour = (self.sent.as_ref()).is_none_or(|(hour, _)| *hour != self.hour);
+        let enabled = (self.sent.as_ref()).is_none_or(|(_, enabled)| *enabled != self.enabled);
+        if hour {
+            world.set_hour(self.hour);
+        }
+        if enabled {
+            world.set_enabled(self.enabled.clone());
+        }
+        if hour || enabled {
+            self.sent = Some((self.hour, self.enabled.clone()));
+        }
         world.tell(models);
         let latest = world.latest();
         if told || self.wanted_of != latest.version {
@@ -452,27 +353,39 @@ impl Viewer {
         Some(latest)
     }
 
-    /// Ask for the textures of `wanted`, each with how far the nearest thing it colours is.
-    pub fn want_textures(&mut self, wanted: Vec<(f32, u64)>) {
+    /// Ask for the textures of `wanted` in place of those asked for before: each with how soon it
+    /// is needed, the lowest first, its key, and the longest side it is seen at in pixels.
+    pub fn want_textures(&mut self, wanted: Vec<(f32, u64, u32)>) {
         self.textures_waiting = wanted.len();
         if let Some(textures) = &self.textures {
-            textures.want(wanted);
+            let asked = wanted.into_iter();
+            textures.want(asked.map(|(soon, key, pixels)| (soon, (key, pixels))).collect());
         }
     }
 
-    /// The next texture that arrived, `None` where no pack holds it or it did not read.
-    pub fn take_texture(&mut self) -> Option<(u64, Option<CpuTexture>)> {
+    /// The next texture that arrived, with the size it was asked for at: `None` where no pack
+    /// holds it or none of it reads, and smaller than asked where nothing larger of it does.
+    pub fn take_texture(&mut self) -> Option<(u64, u32, Option<CpuTexture>)> {
         let mut first = true;
-        (self.textures.as_ref()?)
-            .take(|| std::mem::take(&mut first))
-            .pop()
+        let arrived = (self.textures.as_ref()?).take(|| std::mem::take(&mut first));
+        let ((key, pixels), texture) = arrived.into_iter().next()?;
+        let bytes = texture.as_ref().map_or(0, CpuTexture::bytes);
+        self.held.fetch_sub(bytes, Ordering::Relaxed);
+        Some((key, pixels, texture))
     }
 
-    /// The next model that arrived, its meshes `None` where it did not read.
-    pub fn take_model(&mut self) -> Option<(ModelRef, Option<Vec<CpuMesh>>)> {
+    /// The next model that arrived, `None` where it did not read.
+    pub fn take_model(&mut self) -> Option<(ModelRef, Option<CpuModel>)> {
         let mut first = true;
-        (self.models.as_ref()?)
-            .take(|| std::mem::take(&mut first))
-            .pop()
+        let arrived = (self.models.as_ref()?).take(|| std::mem::take(&mut first));
+        let (model, read) = arrived.into_iter().next()?;
+        let bytes = read.as_ref().map_or(0, CpuModel::bytes);
+        self.held.fetch_sub(bytes, Ordering::Relaxed);
+        Some((model, read))
+    }
+
+    /// The bytes of the models and textures the workers read that were not taken yet.
+    pub fn held_bytes(&self) -> u64 {
+        self.held.load(Ordering::Relaxed)
     }
 }
