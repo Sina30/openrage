@@ -14,6 +14,11 @@ const RAYLEIGH: f64 = 0.0331 / 0.9131;
 const MIE_SCATTERING: f64 = 0.003996 / 0.57735;
 const MIE_ABSORPTION: f64 = 0.000444 / 0.57735;
 const OZONE: f64 = 0.001881 / 0.9434;
+/// The published Earth coefficients per kilometre, red, green and blue: what a cycle that states no colour gets.
+const EARTH_RAYLEIGH: [f64; 3] = [0.005802, 0.013558, 0.0331];
+const EARTH_MIE_SCATTERING: [f64; 3] = [0.003996; 3];
+const EARTH_MIE_ABSORPTION: [f64; 3] = [0.000444; 3];
+const EARTH_OZONE: [f64; 3] = [0.000650, 0.001881, 0.000085];
 /// The steps a ray is integrated in: towards the sun from the camera, along a view, and towards the light from a point of a view.
 const TRANSMITTANCE_STEPS: u32 = 40;
 const VIEW_STEPS: u32 = 24;
@@ -68,10 +73,13 @@ impl Atmosphere {
     /// The atmosphere keyframe `k` states by its `sky_new_*` variables; what it does not state is the published Earth default.
     pub fn of(k: &Keyframe) -> Self {
         let get = |name: &str, default: f32| f64::from(k.get_or(name, default));
-        let rgb = |stem: &str| ["r", "g", "b"].map(|c| get(&format!("{stem}_{c}"), 1.0));
-        let coefficient = |stem: &str, intensity: &str, per_km: f64| {
+        // An unstated colour is Earth's over `per_km`, so that colour times `per_km` is the published value.
+        let coefficient = |stem: &str, intensity: &str, per_km: f64, earth: [f64; 3]| {
             let scale = get(intensity, 1.0) * per_km;
-            rgb(stem).map(|c| c * scale)
+            [0, 1, 2].map(|c| {
+                let name = format!("{stem}_{}", ["r", "g", "b"][c]);
+                k.get(&name).map_or(earth[c] / per_km, f64::from) * scale
+            })
         };
         let ground = get("sky_new_planet_radius", 6360.0);
         Self {
@@ -81,21 +89,25 @@ impl Atmosphere {
                 "sky_new_ray_scattering_col",
                 "sky_new_ray_scattering_intensity",
                 RAYLEIGH,
+                EARTH_RAYLEIGH,
             ),
             mie_scattering: coefficient(
                 "sky_new_mie_scattering_col",
                 "sky_new_mie_scattering_intensity",
                 MIE_SCATTERING,
+                EARTH_MIE_SCATTERING,
             ),
             mie_absorption: coefficient(
                 "sky_new_mie_absorption_col",
                 "sky_new_mie_absorption_intensity",
                 MIE_ABSORPTION,
+                EARTH_MIE_ABSORPTION,
             ),
             ozone: coefficient(
                 "sky_new_ozo_extinction_col",
                 "sky_new_ozo_extinction_intensity",
                 OZONE,
+                EARTH_OZONE,
             ),
             rayleigh_height: get("sky_new_ray_density_scale", 8.0),
             mie_height: get("sky_new_mie_density_scale", 1.2),

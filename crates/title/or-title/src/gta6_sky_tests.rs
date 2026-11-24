@@ -95,7 +95,19 @@ fn an_unstated_atmosphere_is_the_published_earth_one() {
         (air.rayleigh_height, air.mie_height),
         (8.0, f64::from(1.2f32))
     );
-    assert!((air.rayleigh[0] - 0.0331 / 0.9131).abs() < 1e-12);
+    let earth = |got: [f64; 3], want: [f64; 3]| (0..3).all(|c| (got[c] - want[c]).abs() < 1e-9);
+    assert!(
+        earth(air.rayleigh, [0.005802, 0.013558, 0.0331]),
+        "{:?}",
+        air.rayleigh
+    );
+    assert!(earth(air.mie_scattering, [0.003996; 3]));
+    assert!(earth(air.mie_absorption, [0.000444; 3]));
+    assert!(
+        earth(air.ozone, [0.000650, 0.001881, 0.000085]),
+        "{:?}",
+        air.ozone
+    );
     // The ozone's density is a tent between ten and forty kilometres.
     assert!(air.densities(10.0)[2] < 1e-6);
     assert!((air.densities(25.0)[2] - 1.0).abs() < 1e-6);
