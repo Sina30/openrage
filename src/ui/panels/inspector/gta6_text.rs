@@ -8,6 +8,9 @@ use crate::state::gta6_audio_links::{pool_names, Linked};
 
 use super::*;
 
+#[path = "gta6_audio_slots.rs"]
+mod slots;
+
 /// The audio game data row of the capability table: read-only, its items listed by class.
 pub(crate) const AUDIO_DATA_CAPABILITIES: capabilities::FormatCapabilities =
     capabilities::FormatCapabilities {
@@ -214,7 +217,10 @@ fn draw_audio_items(ui: &mut egui::Ui, state: &AppState, doc_id: DocumentId) -> 
     let pool = pool_names();
     let name = |key: u32| {
         let pooled = pool.get(&key).map(String::as_str);
-        hash_text(key, pooled.or_else(|| state.name_index.name_of(key)))
+        match pooled.or_else(|| state.name_index.name_of(key)) {
+            Some(known) => hash_text(key, Some(known)),
+            None => hash_text(key, crate::state::hash_text_name(key).as_deref()),
+        }
     };
     let row_height = ui.spacing().interact_size.y;
     for (class, items) in &doc.groups {
@@ -269,6 +275,14 @@ fn draw_audio_items(ui: &mut egui::Ui, state: &AppState, doc_id: DocumentId) -> 
         match (&item.fields, doc.layouts.get(i).and_then(Option::as_ref)) {
             (AudioFields::Opaque, None) => {
                 ui.label(tr!("Its class's layout is not known."));
+            }
+            (AudioFields::Opaque, Some(ItemLayout::Table(table))) => {
+                let bytes = doc
+                    .data
+                    .data
+                    .get(item.offset as usize..)
+                    .unwrap_or_default();
+                slots::draw(ui, table, bytes, name, row_height * GROUP_ROWS);
             }
             (AudioFields::Opaque, Some(layout)) => shown(ui, format!("{layout:#?}")),
             (fields, _) => shown(ui, format!("{fields:#?}")),

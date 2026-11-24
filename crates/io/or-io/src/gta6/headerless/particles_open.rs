@@ -49,6 +49,8 @@ pub enum BehaviourFields {
         /// GTA V's reference spaces.
         reference_space: i32,
     },
+    /// `ptxu_Colour`'s word at +0x19C, read as its count of colours in use, 0 to 5.
+    Colour { colours_used: u32 },
     /// `ptxu_Age` by its class bit.
     Age,
     /// `ptxd_Sprite` by its class bit.

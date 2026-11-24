@@ -241,7 +241,7 @@ impl Bytes<'_> {
 }
 
 /// The index's order: a key's low byte, then its upper 24 bits.
-fn index_order(key: u32) -> u32 {
+pub(super) fn index_order(key: u32) -> u32 {
     (key & 0xFF) << 24 | key >> 8
 }
 

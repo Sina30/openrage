@@ -198,15 +198,6 @@ fn a_body_the_rules_do_not_give_back_is_refused_by_name() {
         "{err}"
     );
 
-    // The blocks of a conformant body out of their table order.
-    let swapped = conformant_in([4, 2, 3, 1]);
-    let (instance, layout) = open(&swapped).expect("it reads");
-    let err = write(&instance, &layout).expect_err("refused").to_string();
-    assert!(
-        err.contains("not in the order the hash table of its types gives"),
-        "{err}"
-    );
-
     // A slot map sized against the rule.
     let (instance, layout) = open(&hash_maps_and_wide_values(|_, _| {})).expect("it reads");
     assert!(write(&instance, &layout).is_err());

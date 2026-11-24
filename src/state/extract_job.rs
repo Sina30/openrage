@@ -496,6 +496,23 @@ pub fn run_extraction(
     cancel: Cancel,
     progress: Progress,
 ) -> Report {
+    // ⚠ A save of several files, such as a cell and the neighbours whose links it renumbered,
+    // writes none of them unless every one is made: a part written names records the rest lack.
+    let (items, fixes) = match on_clash {
+        OnClash::Save if items.len() > 1 => {
+            let made: Result<Vec<ExtractItem>, String> = (items.into_iter())
+                .map(|i| match i.export_bytes(form, fixes) {
+                    Ok(bytes) => Ok(ExtractItem::bytes(i.rel_path, bytes)),
+                    Err(e) => Err(format!("{}: {e}", i.rel_path)),
+                })
+                .collect();
+            match made {
+                Ok(made) => (made, false),
+                Err(e) => return or_job::run([e], &cancel, &progress, Step::Failed),
+            }
+        }
+        _ => (items, fixes),
+    };
     or_job::run(items, &cancel, &progress, |item| {
         progress.now_on(item.rel_path.clone());
         let mut target = dest.join(&item.rel_path);
@@ -509,6 +526,15 @@ pub fn run_extraction(
         if let Some(parent) = target.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 return Step::Failed(format!("{}: {e}", parent.display()));
+            }
+        }
+        // A scanned body its list gave an end is copied as a range, never held whole.
+        if let (ExtractSource::Scanned { archive, offset }, false) =
+            (&item.source, on_clash == OnClash::Save)
+        {
+            let copy = super::gta6_first_entry::copied;
+            if let Some(step) = copy(archive, *offset, &target, &item.rel_path, &cancel) {
+                return step;
             }
         }
         let write = |bytes: &[u8]| match on_clash {
@@ -1023,6 +1049,7 @@ impl AppState {
             // An edit made while it wrote is not in the file, so it stays unsaved.
             if let Some(doc) = self.document_mut(doc).filter(|d| d.history.at() == at) {
                 doc.mark_saved();
+                super::gta6_physics_edit::bound_reshape::saved_over(doc);
             }
         }
         // ⚠ Where an extraction's, an Export as…'s, a conversion's and a glTF export's writes all end, so Uses reads the install again once one landed under it.
@@ -1285,6 +1312,30 @@ mod tests {
         assert_eq!(
             std::fs::read(dir.path().join("b.txt")).expect("b.txt"),
             b"edited"
+        );
+    }
+
+    #[test]
+    fn a_save_of_several_files_writes_none_where_one_is_not_made() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("no such archive.rpf");
+        let items = vec![
+            ExtractItem::bytes("cell.rsc".into(), b"renumbered".to_vec()),
+            ExtractItem::scanned("0x10.rsc".into(), missing, 0x10),
+        ];
+        let report = run_extraction(
+            items,
+            dir.path().to_path_buf(),
+            BodyForm::Decoded,
+            false,
+            OnClash::Save,
+            Cancel::new(),
+            Progress::new(),
+        );
+        assert_eq!(report.counts.failed, 1, "{:?}", report.failures);
+        assert!(
+            !dir.path().join("cell.rsc").exists(),
+            "the cell is not written alone"
         );
     }
 

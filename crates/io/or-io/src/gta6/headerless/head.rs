@@ -95,7 +95,7 @@ pub fn read_drawable_head(
 
 /// Each buffer object of the virtual section, 8-aligned: where it lies, its kind, and where its
 /// data starts in the physical section.
-fn buffer_objects(v: Bytes) -> Vec<(usize, BufferKind, usize)> {
+pub(super) fn buffer_objects(v: Bytes) -> Vec<(usize, BufferKind, usize)> {
     (0..v.len().saturating_sub(0x4F))
         .step_by(8)
         .filter_map(|at| {

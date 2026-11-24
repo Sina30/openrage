@@ -105,19 +105,20 @@ pub(super) fn texture_named<'p>(
         .find(|key| texture_name(*key).eq_ignore_ascii_case(name))?;
     let heads = heads();
     // Only the head read with this very body: another of the same name may embed other pixels.
-    let (path, embedded) = (heads.iter())
+    let (path, head) = (heads.iter())
         .filter(|k| k.resource == Arc::as_ptr(resource) as usize)
         .filter_map(|k| Some((&k.path, (*k.head).as_ref().ok()?)))
-        .filter(|(_, head)| head.name == drawable.name)
-        .find_map(|(path, head)| {
+        .find(|(_, head)| head.name == drawable.name)?;
+    // What the document holds, a texture in any shape or none, is drawn in place of the body's.
+    use super::gta6_embedded_edit::Held;
+    let pixels = match super::gta6_embedded_edit::edited(path, key) {
+        Some(Held::Texture(texture)) => texture,
+        Some(Held::Removed) => return None,
+        None => {
             let found = head.textures.iter().flatten().find(|t| t.key == key)?;
-            Some((path, found))
-        })?;
-    let mut pixels = embedded.texture.texture.as_ref().ok()?.clone();
-    // A replacement the document holds is drawn in place of the pixels the body holds.
-    if let Some(edited) = super::gta6_embedded_edit::replaced(path, key) {
-        pixels.pixels = edited;
-    }
+            found.texture.texture.as_ref().ok()?.clone()
+        }
+    };
     let texture = super::ttpf_document::grc(name.to_string(), pixels).ok()?;
     Some(Texture::Owned(Cow::Owned(texture)))
 }

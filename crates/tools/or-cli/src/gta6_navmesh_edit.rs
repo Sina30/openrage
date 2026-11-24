@@ -1,22 +1,23 @@
 //! `openrage-cli navmesh disable|delete` over a scanned or loose GTA VI cell: one polygon proper
 //! cut off or deleted as the editor does it, the cell written as a loose resource that
-//! `rpf scan-open` reads at offset 0.
+//! `rpf scan-open` reads at offset 0, and each `--neighbour` body whose special links it renumbered
+//! written beside it as `<offset>.rsc`.
 
 use std::fs::File;
 use std::io::Cursor;
+use std::path::Path;
 use std::process::ExitCode;
 
 use or_io::container::rpf::{
     read_rpf9_body, write_rpf9_resource, Rpf9BodyKind, Rpf9Role, Rpf9Sections,
 };
 use or_io::gta6::headerless::{
-    cut_edges, delete_polygon, links_into, polygon_cut, read_navmesh, Border, NavMesh, NOWHERE,
+    cut_edges, delete_polygon, deletion, disable_polygon, disabling, links_into, polygon_cut,
+    read_navmesh, relinked, write_links, Border, NavMesh, NavRebuild, NOWHERE,
 };
 
 const USAGE: &str = "navmesh disable|delete <archive.rpf|file> <offset> <polygon> <out> \
                      [--neighbour <offset>]... [--limit <bytes>]";
-
-const BORDERS: [Border; 4] = [Border::East, Border::West, Border::North, Border::South];
 
 pub(crate) fn run(verb: &str, args: &[String]) -> ExitCode {
     let (limit, neighbours, path, offset, polygon, out) = match parse(args) {
@@ -28,27 +29,67 @@ pub(crate) fn run(verb: &str, args: &[String]) -> ExitCode {
             "the output is the input {path}: name another file"
         ));
     }
-    match edit_body(verb, &path, offset, polygon, &neighbours, limit) {
-        Ok((saved, lines)) => match std::fs::write(&out, &saved) {
-            Ok(()) => {
-                for line in lines {
-                    println!("{line}");
-                }
-                println!("wrote {out} ({} bytes)", saved.len());
-                println!("This checks the cell's bytes. It does not test that GTA VI loads them.");
-                ExitCode::SUCCESS
-            }
-            Err(e) => {
-                eprintln!("Error: write {out}: {e}");
-                ExitCode::FAILURE
-            }
-        },
+    let edited = edit_body(verb, &path, offset, polygon, &neighbours, limit);
+    let (saved, lines, beside) = match edited {
+        Ok(edited) => edited,
         Err(why) => {
             eprintln!("Error: {path} at {offset:#X}: {why}");
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut files = vec![(out.clone(), saved)];
+    for (at, bytes) in beside {
+        let to = Path::new(&out).with_file_name(format!("{at:#X}.rsc"));
+        let to = to.to_string_lossy().into_owned();
+        let same = super::navmesh_edit::same_file;
+        if same(&path, &to) || same(&out, &to) {
+            eprintln!(
+                "Error: the neighbouring body at {at:#X} would be written over {to}: name another output"
+            );
+            return ExitCode::FAILURE;
+        }
+        files.push((to, bytes));
+    }
+    for line in lines {
+        println!("{line}");
+    }
+    if let Err(why) = write_all(&files) {
+        eprintln!("Error: {why}");
+        return ExitCode::FAILURE;
+    }
+    for (to, bytes) in &files {
+        println!("wrote {to} ({} bytes)", bytes.len());
+    }
+    println!("This checks the cells' bytes. It does not test that GTA VI loads them.");
+    ExitCode::SUCCESS
+}
+
+/// Each of `files` written, every one first beside its place, so a write that fails changes none:
+/// a cell renumbered alone names polygons its neighbours' links do not.
+fn write_all(files: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let part = |to: &str| format!("{to}.part");
+    for (i, (to, bytes)) in files.iter().enumerate() {
+        if let Err(e) = std::fs::write(part(to), bytes) {
+            for (written, _) in &files[..i] {
+                let _ = std::fs::remove_file(part(written));
+            }
+            return Err(format!("write {to}: {e}; no file was changed"));
         }
     }
+    for (i, (to, _)) in files.iter().enumerate() {
+        if let Err(e) = std::fs::rename(part(to), to) {
+            let done: Vec<&str> = files[..i].iter().map(|(to, _)| to.as_str()).collect();
+            return Err(format!(
+                "write {to}: {e}; [{}] hold the edit, and the rest are left as .part files",
+                done.join(", ")
+            ));
+        }
+    }
+    Ok(())
 }
+
+/// The cell written, what the edit did, and each neighbouring body it changed by its offset.
+type Edited = (Vec<u8>, Vec<String>, Vec<(u64, Vec<u8>)>);
 
 type Parsed = (u64, Vec<u64>, String, u64, u64, String);
 
@@ -94,7 +135,8 @@ fn listed(items: impl IntoIterator<Item = impl ToString>) -> String {
     items.join(", ")
 }
 
-/// The loose resource the edit makes of the cell at `offset`, read back, and what it did.
+/// The loose resource the edit makes of the cell at `offset`, read back, what it did, and each
+/// neighbouring body whose special links it renumbered, as a loose resource.
 fn edit_body(
     verb: &str,
     path: &str,
@@ -102,61 +144,104 @@ fn edit_body(
     polygon: u64,
     neighbours: &[u64],
     limit: u64,
-) -> Result<(Vec<u8>, Vec<String>), String> {
+) -> Result<Edited, String> {
     let file = File::open(path).map_err(|e| format!("open({path}): {e}"))?;
     let (mut sections, cell) = cell_at(&file, offset, limit)?;
     let polygon = usize::try_from(polygon).map_err(|_| format!("no polygon {polygon}"))?;
-    let mut near = Vec::new();
+    let (mut near, mut stored) = (Vec::new(), Vec::new());
     for &at in neighbours {
-        let (_, body) = cell_at(&file, at, limit).map_err(|e| format!("--neighbour: {e}"))?;
-        let across = BORDERS
-            .iter()
-            .any(|b| b.across(cell.cell) == Some(body.cell));
-        if !across {
+        let (s, body) = cell_at(&file, at, limit).map_err(|e| format!("--neighbour: {e}"))?;
+        if !across(&cell).any(|c| c == body.cell) {
             return Err(format!(
-                "--neighbour {at:#X} is cell {}, which is not across a border of cell {}",
+                "--neighbour {at:#X} is cell {}, which is not across a border or at a corner of cell {}",
                 body.cell, cell.cell
             ));
         }
         near.push(body);
+        stored.push((at, s));
     }
-    let lines = match verb {
+    let (mut lines, made) = match verb {
         "disable" => disable(&mut sections, &cell, polygon, &near)?,
         _ => delete(&mut sections, &cell, polygon, &near)?,
     };
-    let saved = write_rpf9_resource(&sections).map_err(|e| e.to_string())?;
-    // The file is written only once it reads back as the cell the edit made.
+    let saved = loose(&sections)?;
+    let mut beside = Vec::new();
+    if let Some(made) = made {
+        for ((at, mut s), body) in stored.into_iter().zip(&near) {
+            let renumbered = relinked(body, &cell, &made).map_err(|e| e.to_string())?;
+            let Some(links) = renumbered else { continue };
+            write_links(&mut s, links).map_err(|e| format!("--neighbour {at:#X}: {e}"))?;
+            let said = format!(
+                "special links of the neighbouring cell {} renumbered",
+                body.cell
+            );
+            lines.push(said);
+            beside.push((at, loose(&s)?));
+        }
+    }
+    Ok((saved, lines, beside))
+}
+
+/// `s` as a loose resource, once it reads back as a cell.
+fn loose(s: &Rpf9Sections) -> Result<Vec<u8>, String> {
+    let saved = write_rpf9_resource(s).map_err(|e| e.to_string())?;
     let (find, bytes) = read_rpf9_body(Cursor::new(&saved), 0, u64::MAX)
         .map_err(|e| format!("the written resource does not read back: {e}"))?;
     let back = Rpf9Sections::of(&find, &bytes).ok_or("the written resource does not read back")?;
     read_navmesh(&back.virtual_section)
         .map_err(|e| format!("the written cell does not read back: {e}"))?;
-    Ok((saved, lines))
+    Ok(saved)
 }
 
+/// What an edit said, and the cell it made again where it removed a record.
+type Said = (Vec<String>, Option<NavRebuild>);
+
 /// Polygon proper `polygon` cut off as the editor cuts it: every edge into or out of it that names a
-/// polygon of this cell written as leading nowhere.
+/// polygon of this cell written as leading nowhere, and the side records naming it chained again.
 fn disable(
     sections: &mut Rpf9Sections,
     cell: &NavMesh,
     polygon: usize,
     near: &[NavMesh],
-) -> Result<Vec<String>, String> {
+) -> Result<Said, String> {
     let cut = polygon_cut(cell, polygon).map_err(|e| e.to_string())?;
-    let edges: Vec<usize> = (cut.edges.iter().copied())
-        .filter(|&j| cell.edges.get(j).is_some_and(|e| e.mesh == cell.cell))
-        .collect();
-    cut_edges(&mut sections.virtual_section, &edges).map_err(|e| e.to_string())?;
-    let mut lines = vec![match edges.len() {
+    let others: Vec<&NavMesh> = near.iter().collect();
+    // A body of no cell has no side record to chain again.
+    let made = (cell.cell != 0)
+        .then(|| disabling(cell, polygon, &others))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let reaching = |m: &NavMesh| m.edges.iter().filter(|e| e.mesh == m.cell).count();
+    // A side record that drops a corner moves the arrays after it.
+    let rechained = made.filter(|m| m.mesh.indices.len() != cell.indices.len());
+    let mut removed = None;
+    let cuts = if let Some(made) = rechained {
+        let removes = made.records.len() < cell.polygons.len();
+        if removes {
+            let given: Vec<u32> = near.iter().map(|b| b.cell).collect();
+            let missing: Vec<u32> = across(cell).filter(|c| !given.contains(c)).collect();
+            if !missing.is_empty() {
+                return Err(format!(
+                    "polygon {polygon} is not disabled while the bodies of the neighbouring cells {} are not given with --neighbour <offset>: a side record it empties goes, and their special links may number the records after it",
+                    listed(&missing)
+                ));
+            }
+        }
+        disable_polygon(sections, polygon, &others).map_err(|e| e.to_string())?;
+        let cuts = reaching(cell).saturating_sub(reaching(&made.mesh));
+        removed = removes.then_some(made);
+        cuts
+    } else {
+        let edges: Vec<usize> = (cut.edges.iter().copied())
+            .filter(|&j| cell.edges.get(j).is_some_and(|e| e.mesh == cell.cell))
+            .collect();
+        cut_edges(&mut sections.virtual_section, &edges).map_err(|e| e.to_string())?;
+        edges.len()
+    };
+    let mut lines = vec![match cuts {
         0 => format!("polygon {polygon} has no edge into or out of it left to cut"),
         n => format!("polygon {polygon} disabled: {n} edges now lead nowhere"),
     }];
-    if !cut.side_records.is_empty() {
-        lines.push(format!(
-            "side records {} still name it at their corner 1, which every shipped side record leads somewhere from, so it still joins the next cell across that border",
-            listed(&cut.side_records)
-        ));
-    }
     if !cut.links.is_empty() {
         lines.push(format!(
             "special links {} of this cell still end in it",
@@ -182,22 +267,27 @@ fn disable(
             listed(&unread)
         ));
     }
-    Ok(lines)
+    Ok((lines, removed))
 }
 
-/// The cells across `cell`'s borders.
-fn across(cell: &NavMesh) -> impl Iterator<Item = u32> + '_ {
-    BORDERS.into_iter().filter_map(|b| b.across(cell.cell))
+/// The cells across `cell`'s borders and at its corners; none for a body of no cell, which no other
+/// body links into.
+fn across(cell: &NavMesh) -> impl Iterator<Item = u32> {
+    let cells = match cell.cell {
+        0 => Vec::new(),
+        c => Border::around(c),
+    };
+    cells.into_iter()
 }
 
-/// Polygon proper `polygon` deleted as the editor deletes it, once every cell across a border is
-/// given, since their special links number this cell's polygons.
+/// Polygon proper `polygon` deleted as the editor deletes it, once every cell across a border or at
+/// a corner is given, since their special links number this cell's polygons.
 fn delete(
     sections: &mut Rpf9Sections,
     cell: &NavMesh,
     polygon: usize,
     near: &[NavMesh],
-) -> Result<Vec<String>, String> {
+) -> Result<Said, String> {
     let given: Vec<u32> = near.iter().map(|b| b.cell).collect();
     let missing: Vec<u32> = across(cell).filter(|c| !given.contains(c)).collect();
     if !missing.is_empty() {
@@ -211,17 +301,25 @@ fn delete(
         for mesh in [l.from_mesh, l.to_mesh] {
             if mesh != cell.cell && mesh != NOWHERE && !all.contains(&mesh) {
                 return Err(format!(
-                    "polygon {polygon} is not deleted: special link {i} ends in cell {mesh}, which is not across a border of this one"
+                    "polygon {polygon} is not deleted: special link {i} ends in cell {mesh}, which is not across a border or at a corner of this one"
                 ));
             }
         }
     }
     let others: Vec<&NavMesh> = near.iter().collect();
+    let made = deletion(cell, polygon, &others).map_err(|e| e.to_string())?;
     let after = delete_polygon(sections, polygon, &others).map_err(|e| e.to_string())?;
-    Ok(vec![format!(
+    let mut lines = vec![format!(
         "polygon {polygon} deleted: {} polygons remain",
         after.polygons.len()
-    )])
+    )];
+    let gone = (cell.special_links.len()).saturating_sub(after.special_links.len());
+    if gone > 0 {
+        lines.push(format!(
+            "{gone} special links of this cell ended in a record that went, and were deleted"
+        ));
+    }
+    Ok((lines, Some(made)))
 }
 
 #[cfg(test)]
@@ -232,6 +330,23 @@ mod tests {
 
     /// The cell's grid place, which the built cell states at 0xC8.
     const CELL: u32 = 256 + 512 * 256;
+
+    #[test]
+    fn a_neighbour_that_cannot_be_written_leaves_the_cell_unwritten() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let at = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
+        let files = [
+            (at("cell.rsc"), b"cell".to_vec()),
+            (at("no such folder/0x10.rsc"), b"neighbour".to_vec()),
+        ];
+        let why = write_all(&files).expect_err("the neighbour's folder is missing");
+        assert!(why.contains("no file was changed"), "{why}");
+        let left: Vec<_> = std::fs::read_dir(dir.path()).expect("listed").collect();
+        assert!(left.is_empty(), "{left:?}");
+        let files = [(at("cell.rsc"), b"cell".to_vec())];
+        write_all(&files).expect("written");
+        assert_eq!(std::fs::read(at("cell.rsc")).expect("read"), b"cell");
+    }
 
     fn put(v: &mut [u8], at: usize, bytes: &[u8]) {
         v[at..at + bytes.len()].copy_from_slice(bytes);
@@ -322,7 +437,9 @@ mod tests {
     fn a_disabled_scanned_cell_saves_its_edge_into_the_polygon_cut_and_its_flags_kept() {
         let dir = tempfile::tempdir().expect("a scratch directory");
         let path = loose(dir.path(), CELL);
-        let (saved, lines) = edit_body("disable", &path, 0, 0, &[], u64::MAX).expect("disabled");
+        let (saved, lines, beside) =
+            edit_body("disable", &path, 0, 0, &[], u64::MAX).expect("disabled");
+        assert!(beside.is_empty(), "no neighbour given");
         assert_eq!(lines[0], "polygon 0 disabled: 1 edges now lead nowhere");
         assert!(
             lines
@@ -343,7 +460,7 @@ mod tests {
             }
         );
         assert_eq!(cell.polygons[0].flags, 0x80, "the water bit as read");
-        let (_, again) = edit_body("disable", &path, 0, 0, &[], u64::MAX).expect("said");
+        let (_, again, _) = edit_body("disable", &path, 0, 0, &[], u64::MAX).expect("said");
         assert!(
             again[0].contains("polygon 0 disabled"),
             "the input is untouched"
@@ -356,7 +473,48 @@ mod tests {
         let path = loose(dir.path(), CELL);
         let why = edit_body("delete", &path, 0, 0, &[], u64::MAX).expect_err("refused");
         let cells = [CELL + 1, CELL - 1, CELL + 512, CELL - 512].map(|c| c.to_string());
-        assert!(why.contains(&cells.join(", ")), "{why}");
+        let corners = [CELL + 513, CELL - 511, CELL + 511, CELL - 513].map(|c| c.to_string());
+        let named = format!("{}, {}", cells.join(", "), corners.join(", "));
+        assert!(why.contains(&named), "{why}");
+    }
+
+    #[test]
+    fn a_body_at_a_corner_of_the_cell_is_taken_as_a_neighbour() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let corner = CELL + 512 + 1;
+        let read = |p: String| std::fs::read(p).expect("read");
+        // A read refuses a file that starts with a resource and holds more, so the cell and the
+        // corner body sit at 0x1000-aligned offsets past a leading slot, as they do in an archive.
+        let mut bytes = vec![0u8; 0x1000];
+        let main = bytes.len() as u64;
+        bytes.extend(read(loose(dir.path(), CELL)));
+        bytes.resize(bytes.len().next_multiple_of(0x1000), 0);
+        let at = bytes.len() as u64;
+        bytes.extend(read(loose(dir.path(), corner)));
+        let path = dir.path().join("both.rsc");
+        std::fs::write(&path, &bytes).expect("saved");
+        let path = path.to_string_lossy().into_owned();
+        let (_, lines, _) =
+            edit_body("disable", &path, main, 0, &[at], u64::MAX).expect("disabled");
+        let unread = (lines.iter())
+            .find(|l| l.contains("not given with --neighbour"))
+            .expect("the seven others are named");
+        assert!(!unread.contains(&corner.to_string()), "{unread}");
+        assert!(unread.contains(&(CELL - 513).to_string()), "{unread}");
+    }
+
+    #[test]
+    fn a_body_of_no_cell_asks_for_no_neighbouring_cell() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path = loose(dir.path(), 0);
+        // Its one polygon going would empty it: refused for that, not for a neighbour.
+        let why = edit_body("delete", &path, 0, 0, &[], u64::MAX).expect_err("refused");
+        assert!(why.contains("a cell of no polygon"), "{why}");
+        let (_, lines, _) = edit_body("disable", &path, 0, 0, &[], u64::MAX).expect("disabled");
+        assert!(
+            !lines.iter().any(|l| l.contains("--neighbour")),
+            "{lines:?}"
+        );
     }
 
     #[test]

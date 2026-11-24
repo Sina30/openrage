@@ -24,7 +24,11 @@ fn draw_matcher(ui: &mut egui::Ui, id: (DocumentId, usize), matcher: &Matcher) {
         row(ui, tr!("Clips, by key"), &matcher.clips.len().to_string());
         row(ui, tr!("Entries"), &matcher.entries.len().to_string());
         row(ui, tr!("Frames"), &database.frames.to_string());
-        row(ui, tr!("Bones"), &database.skeleton.bones.len().to_string());
+        let bones: Vec<&str> = (database.skeleton.bones.iter())
+            .map(|b| b.name.as_str())
+            .collect();
+        let bones = format!("{} ({})", bones.len(), bones.join(", "));
+        row(ui, tr!("Bones"), &bones);
         row(ui, tr!("Features"), &database.features.len().to_string());
         let class = match database.class {
             MatcherClass::Vectors { .. } => "1",
@@ -33,6 +37,41 @@ fn draw_matcher(ui: &mut egui::Ui, id: (DocumentId, usize), matcher: &Matcher) {
         row(ui, tr!("Database class"), class);
         let weights: Vec<String> = database.weights.iter().map(|w| format!("{w:.4}")).collect();
         row(ui, tr!("Dimension weights"), &weights.join(" "));
+        row(ui, tr!("Version-1 GUID"), &hex(&matcher.guid));
+        let bytes = [
+            ("0x48", matcher.object_at_48.as_slice()),
+            ("0xB0", matcher.clip_bytes.as_slice()),
+            ("0x110", std::slice::from_ref(&matcher.byte_at_110)),
+        ];
+        for (at, bytes) in bytes {
+            row(ui, &tr!("Matcher bytes at {at}", at = at), &hex(bytes));
+        }
+        let words = [
+            ("0x170", &matcher.keys_at_170[..]),
+            ("0x190", &matcher.words_at_190[..]),
+        ];
+        for (at, words) in words {
+            row(
+                ui,
+                &tr!("Matcher words at {at}", at = at),
+                &words_text(words),
+            );
+        }
+        let at_30 = hex(&database.object_at_30);
+        row(ui, &tr!("Database bytes at {at}", at = "0x30"), &at_30);
+        let words = [
+            ("0x68", &database.hashes_at_68[..]),
+            ("0x78", &database.words_at_78[..]),
+        ];
+        for (at, words) in words {
+            row(
+                ui,
+                &tr!("Database words at {at}", at = at),
+                &words_text(words),
+            );
+        }
+        let at_c0 = database.word_at_c0.to_string();
+        row(ui, &tr!("Database words at {at}", at = "0xC0"), &at_c0);
     });
     for clip in &matcher.clips {
         let dictionary = clip.dictionary.map_or_else(
@@ -65,17 +104,18 @@ fn draw_matcher(ui: &mut egui::Ui, id: (DocumentId, usize), matcher: &Matcher) {
             format!("{}  {}  {}  {start}..{end}", e.clip, e.start, e.rate)
         });
     });
-    let (vectors, order) = match &database.class {
-        MatcherClass::Vectors { vectors, .. } => (vectors, None),
+    let (vectors, order, rotations) = match &database.class {
+        MatcherClass::Vectors { vectors, rotations } => (vectors, None, Some(rotations)),
         MatcherClass::Levels {
             stored,
             dimension_order,
             ..
-        } => (stored, Some(dimension_order)),
+        } => (stored, Some(dimension_order), None),
     };
     let frames = egui::CollapsingHeader::new(tr!("Frames")).id_salt((id, "frames"));
     frames.show(ui, |ui| {
         ui.label(tr!("Each frame's vector of 16-bit floats, as stored"));
+        ui.label(tr!("Before each frame's vector: its word at 0x90 and, in class 1, its rotation and its record's floats 4 to 11"));
         if let Some(order) = order {
             ui.label(tr!(
                 "By an inferred reading, stored dimension k holds the feature dimension at place k of this order: {order}",
@@ -83,7 +123,12 @@ fn draw_matcher(ui: &mut egui::Ui, id: (DocumentId, usize), matcher: &Matcher) {
             ));
         }
         scrolled(ui, (id, "frame_lines"), vectors.len(), |f| {
-            format!("{f}: {}", halves_text(&vectors[f]))
+            let word = database.frame_words.get(f).copied().unwrap_or_default();
+            let record = match (rotations.and_then(|r| r.get(f)), database.record_floats.get(f)) {
+                (Some(q), Some(rest)) => format!(" {q:?} {rest:?}"),
+                _ => String::new(),
+            };
+            format!("{f}: {word:#X}{record} | {}", halves_text(&vectors[f]))
         });
     });
     if let MatcherClass::Levels { pairs, levels, .. } = &database.class {
@@ -95,6 +140,16 @@ fn draw_matcher(ui: &mut egui::Ui, id: (DocumentId, usize), matcher: &Matcher) {
         egui::RichText::new(tr!("Not read: what a frame's halves mean, where a clip's alias word comes from, the roles of the database's hash at 0x68 and of its frame words, what picks the word a kind-5 feature's hash takes, and which way a class-3 database's dimension order runs."))
         .color(theme::TEXT_SECONDARY),
     );
+}
+
+fn hex(bytes: &[u8]) -> String {
+    let shown: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
+    shown.join(" ")
+}
+
+fn words_text(words: &[u32]) -> String {
+    let shown: Vec<String> = words.iter().map(|w| format!("{w:#010X}")).collect();
+    shown.join(" ")
 }
 
 /// Level `l`: for each node and lane, the least and greatest of each stored dimension.

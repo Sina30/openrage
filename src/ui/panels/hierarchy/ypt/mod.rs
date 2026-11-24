@@ -375,9 +375,6 @@ fn ypt_draw_event_emitter<T: ParticleTarget>(
     );
     let snapshot_emitter_name = event_em.emitter_rule_name.clone();
     let snapshot_particle_name = event_em.particle_rule_name.clone();
-    if in_place(state, doc_id) {
-        return;
-    }
     header_resp.context_menu(|ui| {
         add_menu_for_event_emitter(
             ui,
@@ -640,6 +637,7 @@ fn ypt_section_particle_rules<T: ParticleTarget>(
                             if r.clicked() {
                                 state.selection.select(doc_id, b_sel);
                             }
+                            r.context_menu(|ui| add_menu_for_behaviour(ui, asset, idx, b_idx, ops));
                         }
                     },
                 );

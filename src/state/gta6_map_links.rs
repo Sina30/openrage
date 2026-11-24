@@ -75,8 +75,15 @@ pub(super) fn keep(path: &Path, virtual_section: &[u8], physical: &[u8]) {
     KNOWN.fetch_add(1, Ordering::Relaxed);
 }
 
+/// The interior of name word `word` that the first of `held_by`, bodies open or archives searched,
+/// lays out.
+pub(crate) fn interior_in(held_by: &[&Path], word: u64) -> Option<Arc<Interior>> {
+    let kept = interiors();
+    (held_by.iter()).find_map(|p| kept.get(&(p.to_path_buf(), word)).cloned())
+}
+
 /// Keep the interiors a map types body of `held_by`, a body open or an archive searched, links to.
-pub(super) fn keep_interiors(held_by: &Path, found: &[Interior]) {
+pub(crate) fn keep_interiors(held_by: &Path, found: &[Interior]) {
     let mut kept = interiors();
     for interior in found {
         kept.insert(

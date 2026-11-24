@@ -17,12 +17,15 @@ pub mod hash;
 pub mod headerless;
 #[cfg(feature = "meta")]
 pub mod map;
+#[cfg(feature = "meta")]
+pub mod mission_other;
 pub mod mission_tables;
 pub mod move_network;
 pub mod names;
 pub mod other_bodies;
 pub mod save;
 pub mod script_bodies;
+pub mod slice_sources;
 pub mod text;
 pub mod text_language;
 pub mod texture_names;

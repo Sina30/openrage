@@ -43,7 +43,7 @@ const CHUNK_LIMIT: u64 = 64 << 20;
 /// next stream, which is the same block.
 pub(super) const STREAM_CAP: u64 = 32 << 20;
 /// The caps a block's streams were measured to stop at: 8 MiB in two nested archives, 32 MiB elsewhere.
-const STREAM_CAPS: [u64; 2] = [8 << 20, STREAM_CAP];
+pub(super) const STREAM_CAPS: [u64; 2] = [8 << 20, STREAM_CAP];
 /// Compressed bytes a zlib head takes without an error before its failure counts as partway.
 const VALIDATED_INPUT: u64 = 256;
 const TEXT_PROBE: usize = 4096;

@@ -304,7 +304,8 @@ fn tally_of(path: &Path, scan: &Rpf9ScanDocument, held: &mut usize) -> ArchiveTa
         }
         let view = match found.view(find) {
             Ok(view) => Some(view),
-            Err(_) => opens_as_bytes(find).then_some(View::Bytes),
+            Err(_) => (opens_as_bytes(find) && super::gta6_first_entry::note(path, &found, find))
+                .then_some(View::Bytes),
         };
         hits.push(Hit {
             offset: find.offset,

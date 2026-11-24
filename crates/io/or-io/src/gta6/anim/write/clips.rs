@@ -30,7 +30,8 @@ pub(super) struct EntryAt {
 
 /// The window `start .. end` of the entry `at` names, its clip at `clip_at`, written into `out`
 /// and `edited`: the rate the window and the group's duration give, and a three-point warp list
-/// as the window gives it.
+/// as the window gives it, at `external_rate` frames a second where another body holds its
+/// animation; a warp list of any other count of points is kept as read.
 pub(super) fn entry_window(
     s: &Section,
     out: &mut [u8],
@@ -38,6 +39,7 @@ pub(super) fn entry_window(
     clip_at: usize,
     at: EntryAt,
     [start, end]: [f32; 2],
+    external_rate: Option<f32>,
 ) -> Result<(), AnimError> {
     if s.u32("clip", clip_at + 0x20)? != 2 {
         return Err(unwritten(
@@ -69,22 +71,23 @@ pub(super) fn entry_window(
     }
     .ok_or_else(unresolved)?;
     let points = s.array("warp point list", entry_at + 0x10, WARP_POINT)?;
-    let fps = animation.and_then(|a| frame_rate(&*edited, a));
+    let fps = match animation {
+        Some(a) => frame_rate(&*edited, a),
+        None => external_rate
+            .map(|r| f64::from(r).round())
+            .filter(|f| *f > 0.0),
+    };
+    // The rule of a list of other than 3 points is unstated, so such a list is kept as read.
     let warp = match points.len() {
-        0 => Vec::new(),
         3 => {
             let fps = fps.ok_or_else(|| {
-                unwritten("its animation is in another body or has one frame, so the frame rate its warp list follows from is not known")
+                unwritten("its animation is in another body no open scan holds, or has one frame, so the frame rate its warp list follows from is not known")
             })?;
             let (d, w) = (f64::from(duration), f64::from(window));
             let middle = [(d * fps).floor() / fps, d * (w - 1.0 / fps) / w];
             vec![[0.0, 0.0], middle.map(|v| v as f32), [duration, duration]]
         }
-        n => {
-            return Err(unwritten(format!(
-                "its warp list of {n} points follows no known rule, so its window is not changed"
-            )))
-        }
+        _ => Vec::new(),
     };
     for (point, [x, y]) in points.iter().zip(&warp) {
         put(out, *point, &x.to_le_bytes());

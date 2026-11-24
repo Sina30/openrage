@@ -28,6 +28,7 @@ fn naming(keys: &[u64]) -> AnimResource {
             time_warps: Vec::new(),
             weight_lists: Vec::new(),
             parameters: Vec::new(),
+            parameter_items: Vec::new(),
             groups: Vec::new(),
             parameter_objects: Vec::new(),
             properties: Vec::new(),

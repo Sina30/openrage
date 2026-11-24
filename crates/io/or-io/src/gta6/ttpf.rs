@@ -175,8 +175,7 @@ pub enum TtpfError {
     TooLarge(u64),
     #[error(
         "texture {index} cannot hold {mips} mips: from 1 to {most}, the levels its chain's \
-         measured tail slots place, since no texture of its element size holds a tail level \
-         past them and where one lies is not known"
+         measured tail slots place; where a tail level past them lies is not measured"
     )]
     MipsNotPlaced {
         index: usize,
@@ -197,6 +196,17 @@ pub enum TtpfError {
          OpenRage has no encoder for it in this build"
     )]
     ReshapeFormat { index: usize, format: String },
+    #[error(
+        "texture {index} is an array in 4 KiB tiles, or of no measured shape: another size, \
+         format or mip count is planned for a 2D texture, a cube, an array in 64 KiB tiles and a \
+         volume of one level"
+    )]
+    ReshapeShape { index: usize },
+    #[error(
+        "texture {index} holds {slices} slice(s), and a reshape takes one image for each, all of \
+         one size"
+    )]
+    SliceImages { index: usize, slices: usize },
     #[error(
         "texture {index} would need a row whose size no row-size code states, or a mip over \
          4 MiB that is not whole 4 MiB rows"

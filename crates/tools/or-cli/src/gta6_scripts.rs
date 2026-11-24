@@ -7,7 +7,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use or_io::container::rpf::{Rpf9BodyKind, Rpf9Scan};
 use or_io::gta6::headerless::read_object_trees;
-use or_io::gta6::script_bodies::{opaque_bodies, Placement};
+use or_io::gta6::script_bodies::{opaque_bodies, NotOpaque, Placement};
 
 /// Why `script` lists and disassembles no GTA VI program.
 pub(crate) const NO_PROGRAM: &str = "a GTA VI archive: its script programs are opaque \
@@ -74,7 +74,7 @@ pub(crate) fn print_span(file: &fs::File, offset: u64, limit: u64) -> Result<(),
         .seek(SeekFrom::Start(offset))
         .and_then(|_| reader.read_exact(&mut span))
         .map_err(|e| format!("read at {offset:#X}: {e}"))?;
-    let found = opaque_bodies(&span, offset, names_len).map_err(|e| e.to_string())?;
+    let found = opaque_bodies(&span, offset, names_len).map_err(|e| refusal(&e, offset, end))?;
     println!(
         "  opaque        {} bodies from {offset:#X} to {end:#X}, the next row: not read",
         found.bodies.len()
@@ -109,4 +109,38 @@ pub(crate) fn print_span(file: &fs::File, offset: u64, limit: u64) -> Result<(),
         println!("  names         at {at:#X}, as long as the header before states: encrypted");
     }
     Ok(())
+}
+
+/// `e`, a refusal of the bytes from the first entry at `offset` to the next row at `end`, saying
+/// so where it names a later body of them.
+fn refusal(e: &NotOpaque, offset: u64, end: u64) -> String {
+    match e.at == offset {
+        true => e.to_string(),
+        false => format!(
+            "{e}; {:#X} is a later body of the bytes from the first entry at {offset:#X} to the \
+             next row at {end:#X}, which are not read",
+            e.at
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refusal_of_a_later_body_names_the_first_entry_it_was_asked_of() {
+        let at = |at| NotOpaque {
+            rule: "O2",
+            at,
+            why: "zlib shrinks its first piece below 0.98 of its length",
+        };
+        let own = at(0x1000);
+        assert_eq!(refusal(&own, 0x1000, 0x9000), own.to_string());
+        let later = refusal(&at(0x5000), 0x1000, 0x9000);
+        assert!(later.starts_with(&at(0x5000).to_string()), "{later}");
+        for offset in ["0x5000", "0x1000", "0x9000"] {
+            assert!(later.contains(offset), "{offset}: {later}");
+        }
+    }
 }

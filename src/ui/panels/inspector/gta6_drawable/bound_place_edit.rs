@@ -9,7 +9,7 @@ use super::*;
 use crate::state::gta6_physics_edit::BoundEdit;
 
 /// Three numbers in a row after `label`, dragged at `speed`; whether one was edited.
-fn triple(ui: &mut egui::Ui, label: &str, values: &mut [f32; 3], speed: f64) -> bool {
+pub(super) fn triple(ui: &mut egui::Ui, label: &str, values: &mut [f32; 3], speed: f64) -> bool {
     let mut edited = false;
     ui.horizontal(|ui| {
         ui.label(label);

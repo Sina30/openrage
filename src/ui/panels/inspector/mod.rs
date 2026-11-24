@@ -34,6 +34,7 @@ pub(crate) use gta6_anim::{
 };
 mod gta6_dialogue;
 mod gta6_drawable;
+mod gta6_meta_ids;
 mod gta6_move;
 mod gta6_particles;
 pub(crate) mod gta6_text;

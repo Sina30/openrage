@@ -79,6 +79,8 @@ pub struct FragmentChild {
     pub bound: Option<Result<ChildBound>>,
     /// Its type and include entry, the composite's for a child it lists.
     pub flags: [u64; 2],
+    /// The pointer word at +0x30 to its bound, which a group change finds its record by.
+    pub bound_word: u64,
     /// Where it lies in the drawable's frame, rows as a composite's matrix: its bone's bind world
     /// times its own transform.
     pub matrix: [[f32; 4]; 4],
@@ -96,7 +98,7 @@ pub struct BoneBound {
 
 pub(super) type M3 = [[f32; 3]; 3];
 
-fn rotation([x, y, z, w]: [f32; 4]) -> M3 {
+pub(super) fn rotation([x, y, z, w]: [f32; 4]) -> M3 {
     [
         [
             1.0 - 2.0 * (y * y + z * z),
@@ -116,7 +118,7 @@ fn rotation([x, y, z, w]: [f32; 4]) -> M3 {
     ]
 }
 
-fn mul(a: &M3, b: &M3) -> M3 {
+pub(super) fn mul(a: &M3, b: &M3) -> M3 {
     std::array::from_fn(|i| std::array::from_fn(|j| (0..3).map(|k| a[i][k] * b[k][j]).sum()))
 }
 
@@ -298,6 +300,7 @@ pub(super) fn fragment_at(
                 composite: listed.then_some(index),
                 bound,
                 flags,
+                bound_word: u64_at(r, 0x30),
                 matrix,
             });
         }

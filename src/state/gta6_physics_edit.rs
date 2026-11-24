@@ -8,9 +8,8 @@ use std::sync::Arc;
 use or_io::gta5::TNavMeshPoly;
 use or_io::gta6::headerless::write_bound_vertices;
 use or_io::gta6::headerless::{
-    bound_placement_holds, material_key, write_bound, write_drawable_bound, write_fragment,
-    write_fragment_bound, write_polygon_flags, Bound, BoundGeometry, ChildBound, Fragment,
-    Resource,
+    bound_placement_holds, material_key, write_bound, write_drawable_bound, write_fragment_level,
+    write_polygon_flags, Bound, BoundGeometry, ChildBound, Fragment, Resource,
 };
 
 use super::document::Document;
@@ -57,7 +56,7 @@ pub(crate) enum FragmentEdit {
 }
 
 /// The bound a body is, or the one a drawable or a fragment embeds.
-fn bound_mut(payload: &mut DocPayload) -> Option<&mut Bound> {
+pub(super) fn bound_mut(payload: &mut DocPayload) -> Option<&mut Bound> {
     let DocPayload::Gta6Drawable(resource) = payload else {
         return None;
     };
@@ -79,7 +78,7 @@ fn shape_mut(payload: &mut DocPayload, child: usize) -> Option<&mut ChildBound> 
     .ok()
 }
 
-fn geometry_mut(payload: &mut DocPayload, child: usize) -> Option<&mut BoundGeometry> {
+pub(super) fn geometry_mut(payload: &mut DocPayload, child: usize) -> Option<&mut BoundGeometry> {
     match shape_mut(payload, child)? {
         ChildBound::Geometry(g) => Some(g),
         _ => None,
@@ -513,6 +512,10 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
     }
     // ⚠ The worker holds the body until the save ends, so an edit made meanwhile is refused.
     let resource = Arc::clone(resource);
+    let reshaped = match bound_reshape::saved(document) {
+        Ok(reshaped) => reshaped,
+        Err(why) => return Some(Err(why)),
+    };
     Some(save.map(|save| match save {
         EditedSave::Body {
             archive,
@@ -521,6 +524,7 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
         } => {
             let edit: Arc<EditSections> = Arc::new(move |role, sections| {
                 edit(role, sections)?;
+                bound_reshape::write_saved(sections, &resource, &reshaped)?;
                 let (v, p) = (&mut sections.virtual_section, &sections.physical);
                 let written = match &*resource {
                     Resource::Bound(b) => {
@@ -529,11 +533,7 @@ pub(super) fn edited_save(document: &Document) -> Option<Result<EditedSave, Stri
                     Resource::Drawable(d) => {
                         (d.bound.as_ref()).map_or(Ok(()), |b| write_drawable_bound(v, p, b))
                     }
-                    Resource::DrawableWithBound(r) => {
-                        write_fragment(v, p, &r.fragment).and_then(|()| {
-                            (r.bound.as_ref()).map_or(Ok(()), |b| write_fragment_bound(v, p, b))
-                        })
-                    }
+                    Resource::DrawableWithBound(r) => write_fragment_level(v, p, r),
                     _ => Ok(()),
                 };
                 written.map_err(|e| e.to_string())
@@ -579,6 +579,9 @@ pub(super) fn edited_cell(document: &Document) -> Option<Result<EditedSave, Stri
         edit,
     }))
 }
+
+#[path = "gta6_bound_reshape.rs"]
+pub(crate) mod bound_reshape;
 
 #[cfg(test)]
 #[path = "gta6_physics_edit_tests.rs"]

@@ -5,8 +5,8 @@ use std::fs;
 use std::io::{Cursor, Read, Seek};
 
 use or_io::container::rpf::{
-    read_rpf9_body, rpf9_block_streams, write_rpf9_resource, Rpf9BodyKind, Rpf9Resource, Rpf9Scan,
-    Rpf9ScanFind, Rpf9Sections, Rpf9ZlibRun,
+    read_rpf9_body, rpf9_block_streams, write_rpf9_resource, write_rpf9_resource_capped,
+    Rpf9BodyKind, Rpf9Resource, Rpf9Scan, Rpf9ScanFind, Rpf9Sections, Rpf9ZlibRun,
 };
 
 /// A block whose bytes a stream cap may cut into several streams: one of more than 8 MiB.
@@ -108,13 +108,19 @@ fn relayout(file: &fs::File, find: &Rpf9ScanFind, limit: u64, tally: &mut Tally)
         .map_err(|e| e.to_string())
         .and_then(|(read, bytes)| {
             let sections = Rpf9Sections::of(&read, &bytes).ok_or("no resource".to_string())?;
-            let written = write_rpf9_resource(&sections).map_err(|e| e.to_string())?;
+            // The cap a block's streams stop at is per nested archive: the stored streams show it.
+            let stored = resource(&read).map_or(Ok(Vec::new()), |r| partitions(|| file, &r));
+            let written = match stored.as_deref().ok().and_then(cap_of) {
+                Some(cap) => write_rpf9_resource_capped(&sections, cap),
+                None => write_rpf9_resource(&sections),
+            };
+            let written = written.map_err(|e| e.to_string())?;
             let (again, back) =
                 read_rpf9_body(Cursor::new(&written), 0, limit).map_err(|e| e.to_string())?;
             let back = Rpf9Sections::of(&again, &back).ok_or("no resource".to_string())?;
-            Ok((read, bytes, sections, written, again, back))
+            Ok((read, bytes, sections, written, again, back, stored))
         });
-    let (read, bytes, sections, written, again, back) = match derived {
+    let (read, bytes, sections, written, again, back, stored_streams) = match derived {
         Ok(d) => d,
         Err(e) => {
             tally.refused += 1;
@@ -137,7 +143,7 @@ fn relayout(file: &fs::File, find: &Rpf9ScanFind, limit: u64, tally: &mut Tally)
     tally.blocks += u64::from(same_blocks);
     tally.map += u64::from(same_map);
     let streams = match (stored, derived) {
-        (Some(s), Some(d)) if same_blocks => streams_line(file, &s, &written, &d, tally),
+        (Some(_), Some(d)) if same_blocks => streams_line(stored_streams, &written, &d, tally),
         _ => String::new(),
     };
     let show = |r: Option<Rpf9Resource>| {
@@ -174,16 +180,21 @@ fn partitions<R: Read + Seek>(
         .collect()
 }
 
-/// How the streams of each block of more than 8 MiB compare, stored in `file` and as the writer
-/// cut them into `written`; nothing where no block is that long.
+/// The cap the stored streams of a block were cut at: the first of a block of several streams.
+fn cap_of(partitions: &[Vec<u64>]) -> Option<u64> {
+    (partitions.iter())
+        .find(|streams| streams.len() > 1)
+        .and_then(|streams| streams.first().copied())
+}
+
+/// How the streams of each block of more than 8 MiB compare, `stored` as read from the file and
+/// as the writer cut them into `written`; nothing where no block is that long.
 fn streams_line(
-    file: &fs::File,
-    stored: &Rpf9Resource,
+    stored: Result<Vec<Vec<u64>>, String>,
     written: &[u8],
     derived: &Rpf9Resource,
     tally: &mut Tally,
 ) -> String {
-    let stored = partitions(|| file, stored);
     let derived = partitions(|| Cursor::new(written), derived);
     match (stored, derived) {
         (Ok(stored), _) if stored.is_empty() => String::new(),
@@ -197,5 +208,51 @@ fn streams_line(
             }
         }
         (Err(e), _) | (_, Err(e)) => format!(", streams past 8 MiB not read: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use or_io::container::rpf::Rpf9Form;
+
+    use super::*;
+
+    /// A virtual section of 0x200 bytes with its block map at 0x40, and a physical one of a head
+    /// block of more than 8 MiB and a tail.
+    fn sections() -> Rpf9Sections {
+        let mut v: Vec<u8> = (0..0x200).map(|i| (i % 251) as u8 | 0x80).collect();
+        v[..8].fill(0);
+        v[8..16].copy_from_slice(&0x5000_0040u64.to_le_bytes());
+        v[0x40..0x70].fill(0);
+        let physical = (0..(8usize << 20) + 0x3_0050)
+            .map(|i| (i * 7 % 253) as u8 | 1)
+            .collect();
+        Rpf9Sections {
+            form: Rpf9Form::BlockMapped,
+            virtual_section: v,
+            physical,
+        }
+    }
+
+    #[test]
+    fn a_block_cut_at_8_mib_is_written_again_with_the_cut_it_is_stored_with() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path = dir.path().join("cut.rsc");
+        let stored = write_rpf9_resource_capped(&sections(), 8 << 20).expect("written");
+        fs::write(&path, &stored).expect("saved");
+        let file = fs::File::open(&path).expect("opened");
+        let (find, _) = read_rpf9_body(&file, 0, u64::MAX).expect("read");
+        let mut tally = Tally::default();
+        let line = relayout(&file, &find, u64::MAX, &mut tally);
+        let cut = [8u64 << 20, 0x3_0000];
+        let same = format!("streams past 8 MiB the same [{cut:?}]");
+        assert!(line.contains(&same), "{line}");
+        assert_eq!((tally.partitioned, tally.streams, tally.refused), (1, 1, 0));
+        // At the default cap the same block is one stream, which the check tells apart.
+        let whole = write_rpf9_resource(&sections()).expect("written");
+        let (again, _) = read_rpf9_body(Cursor::new(&whole), 0, u64::MAX).expect("read");
+        let one = resource(&again).expect("a resource");
+        let derived = partitions(|| Cursor::new(&whole), &one);
+        assert_eq!(derived, Ok(vec![vec![(8u64 << 20) + 0x3_0000]]));
     }
 }

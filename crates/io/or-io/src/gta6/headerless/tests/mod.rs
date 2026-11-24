@@ -20,10 +20,13 @@ mod surfaces;
 mod write;
 mod write_bone_names;
 mod write_bound_placement;
+mod write_dictionary_entries;
 mod write_embedded;
+mod write_embedded_repack;
 mod write_filter_tracks;
 mod write_filters;
 mod write_geometry;
+mod write_geometry_cut;
 mod write_material;
 mod write_skeleton;
 

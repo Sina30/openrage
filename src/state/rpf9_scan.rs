@@ -435,7 +435,15 @@ pub(super) fn read_body(path: &Path, archive: &Path, offset: u64) -> Result<DocP
         Err(Rpf9ScanError::ExtentNotKnown { .. }) if offset > 0 => {
             return nested(archive, &file, offset)
         }
-        Err(e) => return Err(e.to_string()),
+        // A first entry whose end is not stated ends where its list's next row starts.
+        Err(e) => match super::gta6_first_entry::opened(archive, &file, offset, BODY_LIMIT, &e) {
+            Some(opened) => {
+                let (find, hex) = opened?;
+                origins().insert(path.to_path_buf(), (find, false));
+                return Ok(DocPayload::Hex(hex));
+            }
+            None => return Err(e.to_string()),
+        },
         Ok(read) => read,
     };
     origins().insert(path.to_path_buf(), (find, path == archive));
@@ -742,9 +750,10 @@ impl super::AppState {
             let Some(Row::Body(find)) = found.rows.get(row).cloned() else {
                 return;
             };
+            let ended = super::gta6_first_entry::note(&scan.path, &found, &find);
             let view = match found.view(&find) {
                 // Its tab says why no reader fits it, so its row raises no toast.
-                Err(_) if opens_as_bytes(&find) => Ok(View::Bytes),
+                Err(_) if opens_as_bytes(&find) && ended => Ok(View::Bytes),
                 view => view,
             };
             (find, view)
@@ -781,15 +790,19 @@ pub(super) fn extracted_body(archive: &Path, offset: u64) -> Result<Vec<u8>, Str
     let file = File::open(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
     extract_rpf9_body(&file, offset, BODY_LIMIT)
         .map(|(_, bytes)| bytes)
-        .map_err(|e| e.to_string())
+        .or_else(|e| {
+            super::gta6_first_entry::bytes(archive, &file, offset, BODY_LIMIT, &e)
+                .unwrap_or_else(|| Err(e.to_string()))
+        })
 }
 
-/// Whether a read gives a body an end: an archive's header, its names and a first entry whose end is not stated have none.
+/// Whether a read gives a body an end: an archive's header and its names have none, and a first
+/// entry whose end is not stated ends where its list's next row starts.
 fn extracts(find: &Rpf9ScanFind) -> bool {
     !matches!(
         find.kind,
-        Rpf9BodyKind::Archive(_) | Rpf9BodyKind::Names { .. } | Rpf9BodyKind::FirstEntry { .. }
-    ) || super::gta6_first_entry::ends(find)
+        Rpf9BodyKind::Archive(_) | Rpf9BodyKind::Names { .. }
+    )
 }
 
 /// Whether a body no reader fits opens as its bytes: a read gives it an end, and it is no effect container, whose row reads its effects.
@@ -812,9 +825,14 @@ impl super::AppState {
         let scan = Arc::clone(scan);
         let items: Vec<ExtractItem> = {
             let found = scan.found();
+            // A nested archive ends with its names row; the names themselves have no end.
+            let ends = |find: &Rpf9ScanFind| {
+                !matches!(find.kind, Rpf9BodyKind::Names { .. })
+                    && super::gta6_first_entry::note(&scan.path, &found, find)
+            };
             (rows.iter())
                 .filter_map(|row| match found.rows.get(*row) {
-                    Some(Row::Body(find)) if extracts(find) => Some(ExtractItem::scanned(
+                    Some(Row::Body(find)) if ends(find) => Some(ExtractItem::scanned(
                         find.file_name(),
                         scan.path.clone(),
                         find.offset,
@@ -824,7 +842,7 @@ impl super::AppState {
                 .collect()
         };
         if items.is_empty() {
-            self.show_warning_toast(tr!("Nothing to extract: an archive's header, its encrypted names and a first entry have no end a read knows."));
+            self.show_warning_toast(tr!("Nothing to extract: an archive whose names are not placed, its encrypted names and a first entry no row follows have no end a read knows."));
             return false;
         }
         match self.gate_permits(Some(&dest)) {

@@ -1130,6 +1130,7 @@ fn behaviour(v: &Bytes, at: usize, next: usize) -> Result<Behaviour> {
     let fields = match class {
         Some("ptxu_AnimateTexture") => parts::animate_texture(v, at, next)?,
         Some("ptxu_ZCull") => bits::zcull(v, at, next)?,
+        Some("ptxu_Colour") => colour_word::colour(v, at, next)?,
         _ => BehaviourFields::None,
     };
     Ok(Behaviour {
@@ -1153,6 +1154,25 @@ pub use parts::{
 mod writer;
 pub use writer::write_particle_effects;
 
+#[path = "particles_remove.rs"]
+mod remover;
+pub use remover::{remove_from_particle_effects, ParticleRemovals};
+
+#[path = "particles_keys.rs"]
+mod keys;
+pub use keys::{add_particle_keys, ParticleKeysError};
+
+#[path = "particles_copy.rs"]
+mod copier;
+pub use copier::duplicate_particle_effect;
+
+#[path = "particles_dup.rs"]
+mod dup;
+pub use dup::{
+    copy_particle_behaviour, duplicate_particle_emitter, duplicate_particle_event,
+    duplicate_particle_rule,
+};
+
 #[path = "particles_gpu.rs"]
 mod gpu;
 pub use gpu::{read_particle_gpu_buffers, read_particle_gpu_tables, GpuBuffer, GpuTables};
@@ -1160,6 +1180,16 @@ pub use gpu::{read_particle_gpu_buffers, read_particle_gpu_tables, GpuBuffer, Gp
 #[path = "particles_bits.rs"]
 mod bits;
 pub use bits::{class_of_bit, ClassNamedBy};
+
+#[path = "particles_colour.rs"]
+mod colour_word;
+
+#[path = "particles_tables.rs"]
+mod tables;
+pub use tables::{
+    bake_particle_tables, read_particle_curves, write_particle_curves, ParticleCurve,
+    ParticleCurves,
+};
 
 #[cfg(test)]
 #[path = "particles_tests.rs"]

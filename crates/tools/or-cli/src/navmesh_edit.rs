@@ -101,7 +101,8 @@ fn print_usage() {
     eprintln!("                    [--neighbour <offset>]... [--limit <bytes>]");
     eprintln!("A scanned or loose GTA VI cell, as the editor edits it, written as a loose");
     eprintln!("resource that `rpf scan-open <out> 0` reads. A deletion needs the body of every");
-    eprintln!("cell across its borders from the same archive, each named by --neighbour.");
+    eprintln!("cell across its borders and at its corners from the same archive, each named by");
+    eprintln!("--neighbour.");
 }
 
 #[cfg(test)]

@@ -10,7 +10,9 @@ use byteorder::{ByteOrder, LE};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
-use super::rpf9_scan::{Rpf9BodyKind, Rpf9ScanFind, Rpf9ZlibRun, RPF9_SLOT, STREAM_CAP};
+use super::rpf9_scan::{
+    Rpf9BodyKind, Rpf9ScanFind, Rpf9ZlibRun, RPF9_SLOT, STREAM_CAP, STREAM_CAPS,
+};
 use super::version::RSC8_MAGIC;
 
 /// A section is cut into a head of whole pieces and a tail of the rest.
@@ -83,6 +85,10 @@ pub enum Rpf9WriteError {
     PhysicalInRsc8 { len: u64 },
     #[error("an RSC8 config byte is 0 or 1 in every measured head, not {0}")]
     Config(u8),
+    #[error(
+        "a block's streams stop at 8 MiB or 32 MiB in every measured archive, not at {0} bytes"
+    )]
+    StreamCap(u64),
     #[error("deflating a block: {0}")]
     Deflate(#[from] std::io::Error),
 }
@@ -90,6 +96,18 @@ pub enum Rpf9WriteError {
 /// `sections` as a loose file: each section padded with zeros to 16 bytes, and for a block-mapped
 /// resource the block map's counts and slots written from the sections' lengths.
 pub fn write_rpf9_resource(sections: &Rpf9Sections) -> Result<Vec<u8>, Rpf9WriteError> {
+    write_rpf9_resource_capped(sections, STREAM_CAP)
+}
+
+/// As [`write_rpf9_resource`], a block's streams cut at `cap`, one of the two caps a read takes.
+// Which cap an archive's resources use is per nested archive and not known from the sections.
+pub fn write_rpf9_resource_capped(
+    sections: &Rpf9Sections,
+    cap: u64,
+) -> Result<Vec<u8>, Rpf9WriteError> {
+    if !STREAM_CAPS.contains(&cap) {
+        return Err(Rpf9WriteError::StreamCap(cap));
+    }
     let mut v = sections.virtual_section.clone();
     let mut p = sections.physical.clone();
     for (section, bytes) in [("virtual", &mut v), ("physical", &mut p)] {
@@ -103,7 +121,7 @@ pub fn write_rpf9_resource(sections: &Rpf9Sections) -> Result<Vec<u8>, Rpf9Write
     }
     match sections.form {
         Rpf9Form::StoredRsc8 { config } => stored_rsc8(v, &p, config),
-        Rpf9Form::BlockMapped => block_mapped(v, &p),
+        Rpf9Form::BlockMapped => block_mapped(v, &p, cap as usize),
     }
 }
 
@@ -133,7 +151,7 @@ pub(super) fn cuts(len: usize) -> Vec<usize> {
     [head, len % PIECE].into_iter().filter(|n| *n > 0).collect()
 }
 
-fn block_mapped(mut v: Vec<u8>, p: &[u8]) -> Result<Vec<u8>, Rpf9WriteError> {
+fn block_mapped(mut v: Vec<u8>, p: &[u8], cap: usize) -> Result<Vec<u8>, Rpf9WriteError> {
     let word = |at: usize| v.get(at..at + 8).map(LE::read_u64);
     let (Some(0), Some(pointer)) = (word(0), word(8)) else {
         return Err(Rpf9WriteError::NoBlockMap);
@@ -171,7 +189,7 @@ fn block_mapped(mut v: Vec<u8>, p: &[u8]) -> Result<Vec<u8>, Rpf9WriteError> {
     }
     // ⚠ A read never goes on in a one-block virtual section's next stream when physical blocks
     // follow, since that stream may be the physical head.
-    if virtual_blocks.len() == 1 && !p.is_empty() && v.len() > STREAM_CAP as usize {
+    if virtual_blocks.len() == 1 && !p.is_empty() && v.len() > cap {
         return Err(Rpf9WriteError::Ambiguous {
             len: v.len() as u64,
         });
@@ -183,7 +201,7 @@ fn block_mapped(mut v: Vec<u8>, p: &[u8]) -> Result<Vec<u8>, Rpf9WriteError> {
         let mut from = 0;
         for block in blocks {
             // Every stream of a block but its last holds the cap, so a read goes on past it.
-            for stream in section[from..from + block].chunks(STREAM_CAP as usize) {
+            for stream in section[from..from + block].chunks(cap) {
                 let mut z = ZlibEncoder::new(Vec::new(), Compression::best());
                 z.write_all(stream)?;
                 out.extend(z.finish()?);
@@ -305,6 +323,43 @@ mod tests {
         assert_eq!(blocks, [0x200, cap as u64 + 0x3_0000, 0x50]);
         assert_eq!(again.physical, sections.physical);
         assert_eq!(write_rpf9_resource(&again).expect("again"), written);
+    }
+
+    #[test]
+    fn a_block_is_cut_into_streams_at_the_cap_it_is_written_with() {
+        use super::super::rpf9_scan::rpf9_block_streams;
+        let small: u64 = 8 << 20;
+        let head = small as usize + 3 * 0x1_0000;
+        let sections = mapped(virtual_section(0x200, 0x40), physical(head + 0x50));
+        let streams = |file: &[u8]| -> Vec<Vec<u64>> {
+            let (_, resource) = read(file);
+            (resource.expect("a resource").blocks.iter().flatten())
+                .map(|b| rpf9_block_streams(Cursor::new(file), b).expect("walked"))
+                .collect()
+        };
+        let cut = write_rpf9_resource_capped(&sections, small).expect("written");
+        let (again, _) = read(&cut);
+        assert_eq!(again.physical, sections.physical);
+        assert_eq!(
+            streams(&cut),
+            [vec![0x200], vec![small, 0x3_0000], vec![0x50]]
+        );
+        assert_eq!(
+            write_rpf9_resource_capped(&again, small).expect("again"),
+            cut
+        );
+        // The default cap writes the same block as one stream.
+        let whole = write_rpf9_resource(&sections).expect("written");
+        assert_eq!(streams(&whole)[1], [head as u64]);
+        let lone = virtual_section(small as usize + 0x1_0000, 0x40);
+        assert!(matches!(
+            write_rpf9_resource_capped(&mapped(lone, physical(0x10)), small),
+            Err(Rpf9WriteError::Ambiguous { .. })
+        ));
+        assert!(matches!(
+            write_rpf9_resource_capped(&sections, 1 << 20),
+            Err(Rpf9WriteError::StreamCap(0x10_0000))
+        ));
     }
 
     #[test]

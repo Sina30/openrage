@@ -81,14 +81,14 @@ pub(super) fn add_menu_for_effect(
     effect_idx: usize,
     ops: &mut Vec<YptDeferredOp>,
 ) {
-    if !in_place(state, doc_id) && ui.button("Duplicate").clicked() {
+    if ui.button(tr!("Duplicate")).clicked() {
         ops.push(YptDeferredOp::DuplicateEffect(effect_idx));
         ui.close_kind(egui::UiKind::Menu);
     }
     delete_item(ui, state, doc_id, ypt_effect_id(effect_idx), ops);
 }
 
-/// Whether the list `doc` holds saves in place, so nothing is added to or removed from it.
+/// Whether the list `doc` holds saves in place, so no rule is made in it from nothing.
 pub(super) fn in_place(state: &AppState, doc: DocumentId) -> bool {
     crate::state::gta6_particles::written_in_place(state, doc)
 }
@@ -122,6 +122,10 @@ pub(super) fn add_menu_for_event_emitter<T: ParticleTarget>(
     current_particle_name: &str,
     ops: &mut Vec<YptDeferredOp>,
 ) {
+    if ui.button(tr!("Duplicate")).clicked() {
+        ops.push(YptDeferredOp::DuplicateEvent(effect_idx, emitter_idx));
+        ui.close_kind(egui::UiKind::Menu);
+    }
     ui.menu_button("Bind emitter rule…", |ui| {
         for rule in or_particle::list::emitter_rules(list) {
             let active = rule.name == current_emitter_name;
@@ -175,6 +179,10 @@ pub(super) fn add_menu_for_lib_emitter_rule(
     refs: usize,
     ops: &mut Vec<YptDeferredOp>,
 ) {
+    if ui.button(tr!("Duplicate")).clicked() {
+        ops.push(YptDeferredOp::DuplicateEmitterRule(idx));
+        ui.close_kind(egui::UiKind::Menu);
+    }
     if ui.button("Find usages").clicked() {
         ops.push(YptDeferredOp::ToastUsages(format!(
             "Emitter rule '{}' used by {} event emitter slot{}",
@@ -196,6 +204,10 @@ pub(super) fn add_menu_for_lib_particle_rule(
     refs: usize,
     ops: &mut Vec<YptDeferredOp>,
 ) {
+    if ui.button(tr!("Duplicate")).clicked() {
+        ops.push(YptDeferredOp::DuplicateParticleRule(idx));
+        ui.close_kind(egui::UiKind::Menu);
+    }
     if ui.button("Find usages").clicked() {
         ops.push(YptDeferredOp::ToastUsages(format!(
             "Particle rule '{}' used by {} event emitter slot{}",
@@ -206,4 +218,52 @@ pub(super) fn add_menu_for_lib_particle_rule(
         ui.close_kind(egui::UiKind::Menu);
     }
     delete_item(ui, state, doc_id, ypt_particle_lib_id(idx), ops);
+}
+
+/// A behaviour row's menu: a copy of it given to a rule that lists none of its class.
+// A draw behaviour follows its rule's draw type and every rule lists an age, so neither is offered.
+pub(super) fn add_menu_for_behaviour<T: ParticleTarget>(
+    ui: &mut egui::Ui,
+    list: &or_io::gta5::PtxFxList<T>,
+    rule_idx: usize,
+    b_idx: usize,
+    ops: &mut Vec<YptDeferredOp>,
+) {
+    use or_particle::Behaviour as B;
+    let Some(rule) = or_particle::list::particle_rules(list).nth(rule_idx) else {
+        return;
+    };
+    let Some(held) = or_particle::list::behaviours(rule).into_iter().nth(b_idx) else {
+        return;
+    };
+    if matches!(
+        held,
+        B::DrawSprite(_) | B::DrawTrail(_) | B::DrawModel(_) | B::Age(_)
+    ) {
+        return;
+    }
+    let class = std::mem::discriminant(&held);
+    ui.menu_button(tr!("Copy to rule…"), |ui| {
+        let mut offered = false;
+        for (into, other) in or_particle::list::particle_rules(list).enumerate() {
+            let behaviours = or_particle::list::behaviours(other);
+            if into == rule_idx
+                || behaviours
+                    .iter()
+                    .any(|b| std::mem::discriminant(b) == class)
+            {
+                continue;
+            }
+            offered = true;
+            if ui.button(other.name.as_str()).clicked() {
+                ops.push(YptDeferredOp::CopyBehaviour(rule_idx, b_idx, into));
+                ui.close_kind(egui::UiKind::Menu);
+            }
+        }
+        if !offered {
+            ui.add(detail_label(tr!(
+                "(every other rule lists one of its class)"
+            )));
+        }
+    });
 }

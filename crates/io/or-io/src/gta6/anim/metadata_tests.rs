@@ -190,6 +190,16 @@ fn a_bit_set_data_or_object_that_breaks_its_layout_is_refused() {
 }
 
 #[test]
+fn a_vector_attribute_of_infinity_and_zeros_is_read_as_it_is_stored() {
+    let mut b = body();
+    b.attribute(LONGS + 0x20 * 7, 0xB7, 6);
+    b.u32(LONGS + 0x20 * 7 + 0x10, 0x7F80_0000);
+    let tags = read_tags(&b).expect("reads");
+    let value = &tags[0].attributes[9].value;
+    assert_eq!(value, &AttributeValue::Vector3([f32::INFINITY, 0.0, 0.0]));
+}
+
+#[test]
 fn a_tag_whose_phases_are_not_finite_is_refused() {
     let mut b = body();
     b.u32(TAG_AT + 0x48, 0x7FC0_0000);

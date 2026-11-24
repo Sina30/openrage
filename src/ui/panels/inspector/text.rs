@@ -153,4 +153,5 @@ pub(super) fn draw_meta(
     if meta.keeps_a_checksum() {
         ui.label(tr!("The CHKS checksum is kept as it was read and is not recomputed, so the game may refuse the saved file."));
     }
+    super::gta6_meta_ids::draw(ui, doc_id, meta);
 }

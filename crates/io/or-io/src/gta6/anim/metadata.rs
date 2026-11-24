@@ -251,7 +251,7 @@ pub(super) fn tags(
 }
 
 /// The elements of the relative array at `at`, each `stride` bytes, all inside `region`.
-fn relative(
+pub(super) fn relative(
     s: &Section,
     region: Region,
     at: usize,
@@ -435,16 +435,12 @@ fn long_attribute(
     if s.u64("attribute", at + 8)? != 0 {
         return Err(bad(at, "a 32-byte attribute's word at +8 is not zero"));
     }
+    // A component that is not finite is shown as it is, as a 12-byte float is: a vector of
+    // +infinity and zeros is stored as such.
     let floats = || -> Result<[f32; 4], AnimError> {
         let mut v = [0f32; 4];
         for (i, x) in v.iter_mut().enumerate() {
             *x = s.f32("attribute", at + 0x10 + 4 * i)?;
-        }
-        if !v.iter().all(|x| x.is_finite()) {
-            return Err(bad(
-                at,
-                format!("an attribute of type {kind} holds a value that is not finite"),
-            ));
         }
         Ok(v)
     };

@@ -3,7 +3,8 @@
 //! rule.
 //!
 //! ⚠ An element's `parentIndex` indexes the map its selector picks from the map's 0x58 list, never
-//! its own map: its entities, then its prop lists, then its grass lists. Those maps are other
+//! its own map (but for an entity with selector −1, whose `parentIndex` names an earlier entity of
+//! its own map): its entities, then its prop lists, then its grass lists. Those maps are other
 //! bodies, which [`child_count_changed`], [`parent_index_removed`] and [`parent_index_inserted`]
 //! edit one at a time.
 
@@ -12,19 +13,19 @@ use std::collections::HashSet;
 use crate::container::rpf::Rpf9Sections;
 use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::rbm::gta6::read_model;
-use crate::meta::binary::rbm::gta6_grow::{
-    append_to_block, insert_element, remove_element, Gta6GrowError,
-};
+use crate::meta::binary::rbm::gta6_grow::{append_to_block, insert_element, Gta6GrowError};
 use crate::meta::binary::rbm::schema::RbmModel;
 
 use super::links::{self, Links, LodLink};
 use super::{
-    read, u64_at, MapBody, MapData, MapError, ARRAY, C_ENTITY_DEF, ENTITY_SIZE, ORPHAN_HD,
-    PROP_LIST_SIZE,
+    read, u64_at, Aabb, Entity, MapBody, MapData, MapError, ARRAY, C_ENTITY_DEF, ENTITY_SIZE,
+    ORPHAN_HD, PROP_LIST_SIZE,
 };
 
 /// `CMapData`'s `entities`, an `AtArray64` of pointers to entity records.
 const ENTITIES: usize = 0xD0;
+/// `CMapData`'s `entitiesExtentsMin`, with `entitiesExtentsMax` 16 bytes after it.
+const ENTITIES_EXTENTS: usize = 0xB0;
 /// `CEntityDef`'s `extensions`, an `AtArray64` a copy does not share with its source.
 const EXTENSIONS: u32 = 0x28;
 /// `CMapData`'s `instancedData.PropInstanceList`, an `AtArray64` of prop list records in place.
@@ -80,9 +81,22 @@ pub enum MapGrowError {
     NoParentMap(u32),
     #[error("the edited map does not read back as written: {0}")]
     ReadBack(String),
+    #[error("entity {index} holds {children} children, and {found} are found in its map and the bodies given: a child elsewhere would be left naming it")]
+    ChildrenNotFound {
+        index: usize,
+        children: u32,
+        found: u32,
+    },
+    #[error("entity {index} of the map {map:#010X} is an HD child whose fields no shipped ORPHANHD holds, so whether it may lose its parent is not known")]
+    OrphanForm { map: u32, index: usize },
+    #[error("the map {map:#010X} would be left selecting no parent map while {held}, which no shipped map does, so what the game needs of it is not known")]
+    SelectsNothing { map: u32, held: &'static str },
 }
 
 type Result<T> = std::result::Result<T, MapGrowError>;
+
+#[path = "map_grow_orphans.rs"]
+mod orphans;
 
 /// Adds a copy of entity `from` as the map's last entity; returns its index.
 // Its extensions are empty and its `id` one no entity of the map holds. An orphan copy names no
@@ -158,32 +172,53 @@ pub fn add_entity(sections: &mut Rpf9Sections, from: usize, orphan: bool) -> Res
     Ok(count)
 }
 
-/// Removes entity `index`, which is no element's parent.
+/// Removes entity `index`, whose children are all in its own map; they go parentless.
 // Its record stays in its block as bytes nothing names. The extents are kept, a box that still
 // holds every entity left.
 pub fn remove_entity(sections: &mut Rpf9Sections, index: usize) -> Result<()> {
-    let mut s = sections.clone();
-    let (model, map) = map_data(&s)?;
-    let count = map.entities.len();
-    let e = (map.entities.get(index)).ok_or(MapGrowError::NoEntity { index, count })?;
-    if e.num_children > 0 {
-        return Err(MapGrowError::Children {
-            index,
-            children: e.num_children,
+    orphans::remove_own(sections, index, None)
+}
+
+/// The union of the entities' boxes `placed` gives and the lists' `BatchAABB`s: `entitiesExtents`.
+// `None` where `placed` places no box of an entity.
+pub fn entities_union(map: &MapData, placed: impl Fn(&Entity) -> Option<Aabb>) -> Option<Aabb> {
+    let lists = (map.prop_lists.iter().chain(&map.grass_lists)).map(|l| Some(l.batch_aabb));
+    let mut held: Option<Aabb> = None;
+    for b in map.entities.iter().map(placed).chain(lists) {
+        let b = b?;
+        held = Some(match held {
+            None => b,
+            Some(h) => Aabb {
+                min: std::array::from_fn(|a| h.min[a].min(b.min[a])),
+                max: std::array::from_fn(|a| h.max[a].max(b.max[a])),
+            },
         });
     }
-    remove_element(&mut s, model.root_block_id, ENTITIES, index)?;
+    held
+}
+
+/// Writes `extents` as the map's `entitiesExtents`, each corner's fourth lane kept as read.
+pub fn set_entities_extents(sections: &mut Rpf9Sections, extents: Aabb) -> Result<()> {
+    let mut s = sections.clone();
+    let (model, map) = map_data(&s)?;
+    for (at, corner) in [
+        (ENTITIES_EXTENTS, extents.min),
+        (ENTITIES_EXTENTS + 0x10, extents.max),
+    ] {
+        let bytes: Vec<u8> = corner.iter().flat_map(|f| f.to_le_bytes()).collect();
+        put_in(&mut s, &model, model.root_block_id, at, &bytes)?;
+    }
     let mut expected = map;
-    expected.entities.remove(index);
+    expected.entities_extents = extents;
     check(&s, &expected)?;
     *sections = s;
     Ok(())
 }
 
 /// [`remove_entity`] with the maps of `others` it renumbers; returns which of them changed.
-// The parent map's `numChildren` and the later `parentIndex` of each map that names `map`.
-// `others` holds every map body that names `map` as a parent, and its own parent map; a refusal
-// changes none of them.
+// The parent map's `numChildren`, each child made parentless, and the later `parentIndex` of each
+// map that names `map`. `others` holds every map body that names `map` as a parent, and its own
+// parent map; a refusal changes none of them.
 pub fn remove_entity_across(
     map: &mut Rpf9Sections,
     others: &mut [Rpf9Sections],
@@ -191,9 +226,12 @@ pub fn remove_entity_across(
 ) -> Result<Vec<usize>> {
     let name = map_data(map)?.1.name;
     let parent = lod_parent(map, index)?;
+    let elsewhere = orphans::children_across(others, name, index)?;
     let mut m = map.clone();
-    remove_entity(&mut m, index)?;
-    let work = across(others, parent, -1, |s| parent_index_removed(s, name, index))?;
+    orphans::remove_own(&mut m, index, Some(elsewhere))?;
+    let work = across(others, parent, -1, |s| {
+        Ok(orphans::orphan_selected(s, name, index)? + parent_index_removed(s, name, index)?)
+    })?;
     *map = m;
     Ok(commit(others, work))
 }
@@ -477,7 +515,7 @@ mod tests {
         (name, size, records)
     }
 
-    fn put(buf: &mut [u8], at: usize, bytes: &[u8]) {
+    pub(super) fn put(buf: &mut [u8], at: usize, bytes: &[u8]) {
         buf[at..at + bytes.len()].copy_from_slice(bytes);
     }
 
@@ -487,7 +525,7 @@ mod tests {
         }
     }
 
-    fn entity(seed: u32, level: u8, parent: i16) -> Vec<u8> {
+    pub(super) fn entity(seed: u32, level: u8, parent: i16) -> Vec<u8> {
         let mut r = vec![0u8; ENTITY_SIZE as usize];
         put(&mut r, 0x08, &(u64::from(seed) << 32 | 0xA1).to_le_bytes());
         floats(&mut r, 0x10, &[0.0, 0.0, 0.6, 0.8]);
@@ -505,7 +543,7 @@ mod tests {
     }
 
     /// A LOD entity with no parent and `children` children.
-    fn lod_entity(seed: u32, children: u32) -> Vec<u8> {
+    pub(super) fn lod_entity(seed: u32, children: u32) -> Vec<u8> {
         let mut r = entity(seed, 1, -1);
         put(&mut r, NUM_CHILDREN, &children.to_le_bytes());
         r
@@ -520,7 +558,12 @@ mod tests {
 
     /// The map `name` whose parent maps are `parents`, of `entities` in one record block, the
     /// first one's extensions holding one pointer.
-    fn map_of(name: u32, parent: u32, parents: &[u32], entities: &[Vec<u8>]) -> Rpf9Sections {
+    pub(super) fn map_of(
+        name: u32,
+        parent: u32,
+        parents: &[u32],
+        entities: &[Vec<u8>],
+    ) -> Rpf9Sections {
         let mut root = vec![0u8; MAP_DATA_SIZE];
         put(&mut root, 0x08, &name.to_le_bytes());
         put(&mut root, 0x10, &0x2222_0000_0000_0002u64.to_le_bytes());
@@ -583,16 +626,16 @@ mod tests {
         )
     }
 
-    fn links_of(s: &Rpf9Sections) -> links::MapLinks {
+    pub(super) fn links_of(s: &Rpf9Sections) -> links::MapLinks {
         map_links(s).expect("a map's links").1
     }
 
-    fn map(s: &Rpf9Sections) -> MapData {
+    pub(super) fn map(s: &Rpf9Sections) -> MapData {
         map_data(s).expect("a map").1
     }
 
     /// What a read of the loose file `s` writes returns.
-    fn loose(s: &Rpf9Sections) -> Rpf9Sections {
+    pub(super) fn loose(s: &Rpf9Sections) -> Rpf9Sections {
         let file = write_rpf9_resource(s).expect("written");
         let (find, bytes) = read_rpf9_body(Cursor::new(&file), 0, u64::MAX).expect("it reads");
         Rpf9Sections::of(&find, &bytes).expect("a resource")
@@ -645,6 +688,30 @@ mod tests {
         assert_eq!(map(&s), expected);
         // The pointers go back to the 16 bytes they had; the copy's record stays in its block.
         assert_eq!(s.virtual_section.len(), grown - 16);
+        assert_eq!(map(&loose(&s)), expected);
+    }
+
+    #[test]
+    fn a_removal_s_extents_are_the_union_of_the_boxes_left_and_read_back() {
+        let mut s = map_body(0x7777_0001);
+        remove_entity(&mut s, 0).expect("removed");
+        // A box 1 m either side of each origin; a box not known leaves no union.
+        let placed = |e: &Entity| {
+            Some(Aabb {
+                min: e.position.map(|x| x - 1.0),
+                max: e.position.map(|x| x + 1.0),
+            })
+        };
+        let m = map(&s);
+        assert_eq!(entities_union(&m, |_| None), None);
+        let union = entities_union(&m, placed).expect("every box placed");
+        let p = m.entities[0].position;
+        assert_eq!(union.min, p.map(|x| x - 1.0));
+        assert_eq!(union.max, p.map(|x| x + 1.0));
+        set_entities_extents(&mut s, union).expect("written");
+        let mut expected = m.clone();
+        expected.entities_extents = union;
+        assert_eq!(map(&s), expected);
         assert_eq!(map(&loose(&s)), expected);
     }
 

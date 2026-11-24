@@ -6,6 +6,8 @@ use std::process::ExitCode;
 
 use or_io::gta6::mission_tables::{state_key, Body, Run};
 
+mod other;
+
 const USAGE: &str = "usage: gta6-mission <inflated_body_file> [--name STATE]...";
 
 pub fn run(args: &[String]) -> ExitCode {
@@ -70,9 +72,12 @@ fn lines(bytes: &[u8], names: &HashMap<u32, &str>) -> Result<Vec<String>, String
             match body.run(bytes, &tables, r) {
                 None => {}
                 Some(Run::Table(to)) => out.push(format!("    records of table {to}")),
-                Some(Run::Other { element }) => out.push(format!(
-                    "    elements of {element:#X} bytes that are not placed in the world"
-                )),
+                Some(Run::Other { element }) => {
+                    out.push(format!(
+                        "    elements of {element:#X} bytes that are not placed in the world"
+                    ));
+                    out.extend(other::lines(bytes, &body, r));
+                }
                 Some(Run::Placed(elements)) => {
                     for (at, e) in elements {
                         let [x, y, z] = e.position;

@@ -541,6 +541,44 @@ fn a_slot_whose_count_is_not_its_capacity_is_refused_by_name() {
     refused(&b.0, "count other than its capacity");
 }
 
+#[test]
+fn the_words_no_role_is_known_for_are_read_as_stored() {
+    let built = build();
+    let read_back = read(&built.bytes).expect("reads");
+    let matcher = &read_back.matchers[0];
+    assert_eq!(matcher.clip_bytes, [0, 1]);
+    assert_eq!(matcher.byte_at_110, 7);
+    assert!(
+        matcher.object_at_48.is_empty(),
+        "a null pointer holds nothing"
+    );
+    assert!(matcher.database.object_at_30.is_empty());
+    assert_eq!(matcher.database.words_at_78, [0; 4]);
+    assert_eq!(
+        matcher.database.record_floats,
+        vec![[0.0; 8]; FRAMES as usize]
+    );
+
+    let mut b = B(built.bytes);
+    let object: Vec<u8> = (1..=64).collect();
+    let at = b.alloc(object.len());
+    b.put(at, &object);
+    b.ptr(built.matcher + 0x48, at);
+    b.ptr(built.database + 0x30, at);
+    let stated = [0xFFFF_FFFF, 0x1234_5678, 0x0030_0040, 0xF6];
+    b.put(built.database + 0x78, &words(&stated));
+    let records = pointer(&b.0, built.database + 0xA8);
+    let tail: [f32; 8] = std::array::from_fn(|k| k as f32 + 0.5);
+    b.put(records + 48 + 16, &floats(&tail));
+    let read_back = read(&b.0).expect("reads");
+    let matcher = &read_back.matchers[0];
+    assert_eq!(matcher.object_at_48, object[..40]);
+    assert_eq!(matcher.database.object_at_30, object[..0x30]);
+    assert_eq!(matcher.database.words_at_78, stated);
+    assert_eq!(matcher.database.record_floats[0], [0.0; 8]);
+    assert_eq!(matcher.database.record_floats[1], tail);
+}
+
 /// The offset the virtual pointer at `at` holds.
 fn pointer(bytes: &[u8], at: usize) -> usize {
     let word = u64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));

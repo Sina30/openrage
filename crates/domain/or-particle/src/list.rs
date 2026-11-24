@@ -312,6 +312,32 @@ pub fn duplicate_effect<T: DrawableTarget + Clone>(
     insert(&mut list.effect_rule_dict, rule, name)
 }
 
+/// A copy of the emitter rule named `from`, named `name`.
+pub fn duplicate_emitter_rule<T: DrawableTarget>(
+    list: &mut PtxFxList<T>,
+    from: &str,
+    name: &str,
+) -> bool {
+    let Some(mut rule) = emitter_rule(list, from).cloned() else {
+        return false;
+    };
+    rule.name = name.to_string();
+    insert(&mut list.emitter_rule_dict, rule, name)
+}
+
+/// A copy of the particle rule named `from`, named `name`.
+pub fn duplicate_particle_rule<T: DrawableTarget + Clone>(
+    list: &mut PtxFxList<T>,
+    from: &str,
+    name: &str,
+) -> bool {
+    let Some(mut rule) = particle_rule(list, from).cloned() else {
+        return false;
+    };
+    rule.name = name.to_string();
+    insert(&mut list.particle_rule_dict, rule, name)
+}
+
 /// A new emitter rule named `name`; `false` where one of that name exists.
 pub fn add_emitter_rule<T: DrawableTarget>(list: &mut PtxFxList<T>, name: &str) -> bool {
     let rule = PtxEmitterRule {

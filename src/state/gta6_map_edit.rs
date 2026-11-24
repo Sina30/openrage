@@ -4,12 +4,16 @@
 //!
 //! ⚠ An entity takes an archetype of its class family that its map names or that an open or found
 //! map types body holds: a map's string table holds no entry of the archetype words' namespace, so
-//! the writer adds no text for a new word. An interior keeps its own, whose exit portals and entity
-//! sets it states.
+//! the writer adds no text for a new word. An interior takes another only where its rooms and
+//! portals were read: its exit portals are the new layout's portals that touch room 0, and its
+//! default entity sets keep only the names the new layout declares.
 
+use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use glam::{Quat, Vec3};
+use or_io::gta6::map::links::Interior;
 use or_io::gta6::map::{ArchetypeClass, Entity, MapData};
 use or_io::hash::literal_string_hash as lit;
 use or_io::meta::binary::hash_index::default_hash_index;
@@ -29,10 +33,41 @@ const SCALE_Z: u32 = lit(b"scaleZ");
 const ARCHETYPE_NAME: u32 = lit(b"archetypeName");
 /// The archetype's 64-bit name word an entity names it by.
 const ARCHETYPE_WORD: u32 = 0xC8A7_B90A;
+const NUM_EXIT_PORTALS: u32 = lit(b"numExitPortals");
+const DEFAULT_ENTITY_SETS: u32 = lit(b"defaultEntitySets");
+
+/// `n` as the kind of number `stored` holds.
+fn number_like(stored: Option<&Value>, n: u64) -> Value {
+    match stored {
+        Some(Value::Int(_)) => Value::Int(n as i64),
+        _ => Value::UInt(n),
+    }
+}
 
 /// A member's name as the tree reader names it.
 fn name(hash: u32) -> String {
     default_hash_index().name_or_literal(hash)
+}
+
+/// Member `member` of entity `index` in the map's tree.
+fn member_of(tree: &MetaInstance, index: usize, member: u32) -> Option<&Value> {
+    let Some(Value::Array(items)) = tree.get(&name(ENTITIES)) else {
+        return None;
+    };
+    match items.get(index)? {
+        Value::Struct(inst) | Value::Pointer(Some(inst)) => inst.get(&name(member)),
+        _ => None,
+    }
+}
+
+/// The name hash a `defaultEntitySets` element holds.
+fn set_name(v: &Value) -> Option<u32> {
+    match v {
+        Value::Hash(h) => Some(h.hash),
+        Value::UInt(n) => Some(*n as u32),
+        Value::Int(n) => Some(*n as u32),
+        _ => None,
+    }
 }
 
 /// The values a placement stores: a `CEntityDef` keeps the conjugate of the quaternion that turns
@@ -173,9 +208,23 @@ impl AppState {
         self.set_scanned_entity(index, &values, &root, label)
     }
 
+    /// The layout of the interior archetype of word `word` that an open body or the shown map's
+    /// archive holds, where its rooms and portals were read.
+    fn known_interior(&self, word: u64) -> Option<Arc<Interior>> {
+        let mut held: Vec<&Path> = (self.documents.iter())
+            .filter_map(|d| d.path.as_deref())
+            .collect();
+        let shown = self.scanned_map();
+        if let Some((archive, _)) = shown.and_then(|s| super::rpf9_scan::scanned_body(&s.path)) {
+            held.push(archive);
+        }
+        super::gta6_map::links::interior_in(&held, word)
+    }
+
     /// The archetypes entity `index` of the scanned map shown may take, as (word, name).
-    // An interior its own; any other entity those its map's entities name and every base or time
-    // archetype an open or found map types body holds.
+    // An interior its own and every interior archetype whose layout was read; any other entity
+    // those its map's entities name and every base or time archetype an open or found map types
+    // body holds.
     pub(crate) fn retype_choices(&self, index: usize) -> Vec<(u64, u32)> {
         let Some(e) =
             (self.scanned_map().and_then(|s| s.data())).and_then(|m| m.entities.get(index))
@@ -183,7 +232,16 @@ impl AppState {
             return Vec::new();
         };
         if e.interior {
-            return vec![(e.archetype_word, e.archetype_name)];
+            let mut kinds = vec![(e.archetype_word, e.archetype_name)];
+            self.each_known_archetype(|a| {
+                let laid_out = || self.known_interior(a.name_word).is_some();
+                if a.class == ArchetypeClass::Interior && laid_out() {
+                    kinds.push((a.name_word, a.name));
+                }
+            });
+            kinds.sort_unstable();
+            kinds.dedup();
+            return kinds;
         }
         let named = (self.scanned_map().and_then(|s| s.data()).into_iter())
             .flat_map(|m| m.entities.iter())
@@ -214,7 +272,13 @@ impl AppState {
         let e = (m.entities.get(index))
             .ok_or_else(|| tr!("The map holds no entity {index}.", index = index))?
             .clone();
+        let interior_only = || {
+            tr!("An interior takes only its own archetype or another interior archetype whose rooms and portals were read.").to_string()
+        };
         if !self.retype_choices(index).contains(&(word, name)) {
+            if e.interior {
+                return Err(interior_only());
+            }
             return Err(tr!("An entity takes only an archetype of its class that its map names or that an open or found map types body holds, and an interior keeps its own.").to_string());
         }
         let mut archetype = None;
@@ -235,10 +299,32 @@ impl AppState {
         .map_or_else(Vec::new, |held| {
             super::gta6_map_extents::grown(held, &e, archetype.as_ref(), pose)
         });
-        let values = [
+        let mut values = vec![
             (ARCHETYPE_NAME, Value::Hash(HashedString::from_hash(name))),
             (ARCHETYPE_WORD, Value::UInt(word)),
         ];
+        if e.interior && word != e.archetype_word {
+            let layout = self.known_interior(word).ok_or_else(interior_only)?;
+            // The exit portals are those that touch room 0, the limbo room.
+            let exits = (layout.portals.iter())
+                .filter(|p| p.room_from == 0 || p.room_to == 0)
+                .count() as u64;
+            let declared: HashSet<u32> = layout.entity_sets.iter().map(|s| s.name).collect();
+            let tree = self.scanned_tree();
+            let stored = tree.and_then(|t| member_of(t, index, NUM_EXIT_PORTALS));
+            values.push((NUM_EXIT_PORTALS, number_like(stored, exits)));
+            if let Some(Value::Array(sets)) =
+                tree.and_then(|t| member_of(t, index, DEFAULT_ENTITY_SETS))
+            {
+                let kept: Vec<Value> = (sets.iter())
+                    .filter(|v| set_name(v).is_none_or(|n| declared.contains(&n)))
+                    .cloned()
+                    .collect();
+                if kept.len() != sets.len() {
+                    values.push((DEFAULT_ENTITY_SETS, Value::Array(kept)));
+                }
+            }
+        }
         let label = tr!("Retyped entity {index}", index = index);
         self.set_scanned_entity(index, &values, &root, label)
     }
@@ -253,7 +339,7 @@ impl AppState {
 
     /// Set the members `values` of entity `index` and `root` of the map in the scanned map's tree,
     /// one step of Undo; nothing where each already holds its value, and nothing at all where one
-    /// is not found.
+    /// is not found. A value is never a structure; an array only replaces an array.
     fn set_scanned_entity(
         &mut self,
         index: usize,
@@ -288,13 +374,16 @@ impl AppState {
             )
             .collect();
         // Every member is found, and holds a value of its own and no structure, before any is set.
-        for (path, member, _) in &set {
-            let scalar = match value_at(tree, path) {
-                Some(Value::Struct(_) | Value::Pointer(_) | Value::Array(_) | Value::Map(_)) => {
-                    false
-                }
-                Some(_) => true,
-                None => false,
+        for (path, member, value) in &set {
+            let scalar = match (value_at(tree, path), value) {
+                // A list of names is set whole.
+                (Some(Value::Array(_)), Value::Array(_)) => true,
+                (
+                    Some(Value::Struct(_) | Value::Pointer(_) | Value::Array(_) | Value::Map(_)),
+                    _,
+                ) => false,
+                (Some(_), _) => true,
+                (None, _) => false,
             };
             if !scalar {
                 return Err(tr!(
@@ -568,6 +657,88 @@ mod tests {
         assert_eq!(state.undo().as_deref(), Some("Retyped entity 0"));
         state.refresh_scanned_map();
         assert_eq!(shown(&state).streaming_extents, read.streaming_extents);
+    }
+
+    #[test]
+    fn an_interior_retyped_takes_the_new_layout_s_exit_portals_and_keeps_the_sets_it_declares() {
+        use or_io::gta6::map::links::{EntitySet, Portal};
+        let _serial = crate::ui::theme::serial();
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path: PathBuf = dir.path().join("0x60.rbm");
+        let types_path: PathBuf = dir.path().join("0x70.rbm");
+        let entities = vec![entity(true, 0x55, 0xCCCC_0003)];
+        super::super::gta6_map::keep_read(&path, MapBody::Data(map(entities.clone())));
+        let types = MapTypes {
+            name: 9,
+            archetypes: vec![archetype(ArchetypeClass::Interior, 0x66, 0xEEEE_0005)],
+        };
+        super::super::gta6_map::keep_read(&types_path, MapBody::Types(types));
+        let portal = |room_from, room_to| Portal {
+            room_from,
+            room_to,
+            flags: 0,
+            corners: [[0.0; 3]; 4],
+            attached_objects: Vec::new(),
+        };
+        let layout = Interior {
+            archetype: 0,
+            name: 0xEEEE_0005,
+            name_word: 0x66,
+            entities: Vec::new(),
+            rooms: Vec::new(),
+            // Two of the three touch room 0.
+            portals: vec![portal(0, 1), portal(1, 2), portal(2, 0)],
+            entity_sets: vec![EntitySet {
+                name: 0x51,
+                entities: Vec::new(),
+            }],
+            time_cycle_modifiers: Vec::new(),
+        };
+        super::super::gta6_map::links::keep_interiors(&types_path, &[layout]);
+        let mut root = MetaInstance::new("CMapData");
+        let mut inst = MetaInstance::new("CMloInstanceDef");
+        for (member, v) in [
+            (POSITION, Value::Vec3(entities[0].position)),
+            (ROTATION, Value::Vec4(entities[0].rotation)),
+            (
+                ARCHETYPE_NAME,
+                Value::Hash(HashedString::from_hash(0xCCCC_0003)),
+            ),
+            (ARCHETYPE_WORD, Value::UInt(0x55)),
+            (NUM_EXIT_PORTALS, Value::UInt(7)),
+        ] {
+            inst.set(name(member), v);
+        }
+        let sets = [0x51, 0x52].map(|h| Value::Hash(HashedString::from_hash(h)));
+        inst.set(name(DEFAULT_ENTITY_SETS), Value::Array(sets.to_vec()));
+        let items = vec![Value::Pointer(Some(Box::new(inst)))];
+        root.set(name(ENTITIES), Value::Array(items));
+        let mut meta = MetaDocument::empty();
+        meta.parsed.as_mut().expect("a tree").instance = root;
+        let mut state = AppState::new();
+        let types_doc = DocPayload::Meta(MetaDocument::empty());
+        let _ = state.insert_document(types_path, types_doc, None, None);
+        let doc = state.insert_document(path, DocPayload::Meta(meta), None, None);
+        state.active_document = Some(doc);
+        state.refresh_scanned_map();
+
+        let choices = state.retype_choices(0);
+        assert_eq!(choices, vec![(0x55, 0xCCCC_0003), (0x66, 0xEEEE_0005)]);
+        state
+            .retype_scanned_entity(0, 0x66, 0xEEEE_0005)
+            .expect("an interior whose layout was read");
+        let member = |state: &AppState, m: u32| {
+            (state.scanned_tree()).and_then(|t| member_of(t, 0, m).cloned())
+        };
+        assert_eq!(member(&state, NUM_EXIT_PORTALS), Some(Value::UInt(2)));
+        let kept = vec![Value::Hash(HashedString::from_hash(0x51))];
+        assert_eq!(
+            member(&state, DEFAULT_ENTITY_SETS),
+            Some(Value::Array(kept))
+        );
+        assert_eq!(member(&state, ARCHETYPE_WORD), Some(Value::UInt(0x66)));
+        assert_eq!(state.undo().as_deref(), Some("Retyped entity 0"));
+        assert_eq!(member(&state, NUM_EXIT_PORTALS), Some(Value::UInt(7)));
     }
 
     #[test]

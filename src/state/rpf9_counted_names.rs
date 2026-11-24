@@ -6,7 +6,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use or_io::container::rpf::{Rpf9BodyKind, Rpf9NamesByCount, Rpf9ScanFind};
+use or_io::container::rpf::{rpf9_names_by_count_at, Rpf9BodyKind, Rpf9NamesByCount, Rpf9ScanFind};
 use or_job::{Cancel, Progress};
 
 use super::rpf9_scan::{Ended, Found, Row, MAX_ROWS};
@@ -56,15 +56,40 @@ pub(super) fn counted_scan(
                 tracing::warn!(%error, path = %path.display(), "no names were placed by count");
             }
         }
+        // Opened by its path, no list gave it names: they are placed by counting its entries.
+        if start > 0 && matches!(ended, Ended::Failed(_)) && !cancel.is_set() {
+            if let Some(names) = by_count(path, start) {
+                return Ok(end_at(found, start, names, ended));
+            }
+        }
         return Ok(ended);
     };
     let to = names.offset.min(len);
     let ended = super::rpf9_scan::scan(path, start, to, found, cancel, progress)?;
+    Ok(end_at(found, start, names, ended))
+}
+
+/// The names of the archive nested at `start` of the file at `path`, placed by counting the
+/// entries its header states; `None` where no count places them.
+// ponytail: a second scan of the archive's entries with no stop, run only after a scan failed.
+fn by_count(path: &Path, start: u64) -> Option<Rpf9ScanFind> {
+    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()));
+    let placed =
+        file.and_then(|file| rpf9_names_by_count_at(&file, start).map_err(|e| e.to_string()));
+    placed.unwrap_or_else(|error| {
+        tracing::warn!(%error, path = %path.display(), "no names were placed by count");
+        None
+    })
+}
+
+/// `ended`, the scan into `found` of the archive nested at `start`, ended at `names`, its names,
+/// where it went past them.
+fn end_at(found: &Mutex<Found>, start: u64, names: Rpf9ScanFind, ended: Ended) -> Ended {
     let mut found = lock(found);
     // The scan goes on past the names to a header or the file's end, where it fails.
     match ended {
         Ended::Failed(_) if found.reached >= names.offset => {}
-        ended => return Ok(ended),
+        ended => return ended,
     }
     let before = |row: &Row| match row {
         Row::Body(find) => find.offset < names.offset,
@@ -76,7 +101,7 @@ pub(super) fn counted_scan(
     let end = names.offset + names.span;
     found.ends.insert(start, end);
     found.reached = end;
-    Ok(Ended::Whole)
+    Ended::Whole
 }
 
 fn bodies(rows: &[Row]) -> usize {
@@ -140,9 +165,9 @@ mod tests {
         rows.iter().map(offset).collect()
     }
 
-    #[test]
-    fn names_placed_by_count_are_listed_and_end_the_nested_archive_opened_from_the_list() {
-        // A nested archive of one entry whose names stand before a top-level body, no header.
+    /// A nested archive of one entry whose names stand before a top-level body, no header, and
+    /// where its names start.
+    fn counted_archive() -> (Vec<u8>, u64) {
         // Two entries' index takes 32 bytes after parts A to C's 0x190.
         let mut bytes = rpf9_head(2, 0x1B0);
         bytes.resize(NESTED as usize, 0);
@@ -151,8 +176,43 @@ mod tests {
         bytes.resize(bytes.len().next_multiple_of(16), 0);
         let names_at = bytes.len() as u64;
         bytes.extend([0x33; 0x40]);
-        let top_level = bytes.len() as u64;
         bytes.extend(zlib(&xml("CMapData")));
+        (bytes, names_at)
+    }
+
+    #[test]
+    fn a_nested_archive_opened_by_its_path_ends_at_the_names_placed_by_count() {
+        use super::super::rpf9_scan::{body_path, View};
+        use or_io::container::rpf::Rpf9Scan;
+
+        let (bytes, names_at) = counted_archive();
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path = written(dir.path(), &bytes);
+        let file = File::open(&path).expect("open");
+        let streamed = (Rpf9Scan::new(&file, 0..u64::MAX).expect("a scan"))
+            .map(|find| find.expect("a find"))
+            .any(|find| matches!(find.kind, Rpf9BodyKind::Names { .. }));
+        assert!(!streamed, "the stream scan places no names here");
+
+        // A fresh state: no list of the parent was opened, so no names were kept for it.
+        let mut state = AppState::new();
+        let nested = scanned(&mut state, body_path(&path, NESTED, View::Archive));
+        let Some(DocPayload::Rpf9(scan)) = state.document(nested).map(|d| &d.payload) else {
+            panic!("not a GTA VI archive document");
+        };
+        assert_eq!(scan.start, NESTED);
+        let found = scan.found();
+        assert_eq!(found.ended, Some(Ended::Whole), "{:?}", found.ended);
+        assert_eq!(found.reached, names_at + 0x40);
+        assert_eq!(offsets(&found.rows), [NESTED, NESTED + 0x1B0, names_at]);
+        assert_eq!(found.bodies, 2);
+        assert_eq!(found.ends.get(&NESTED), Some(&(names_at + 0x40)));
+    }
+
+    #[test]
+    fn names_placed_by_count_are_listed_and_end_the_nested_archive_opened_from_the_list() {
+        let (bytes, names_at) = counted_archive();
+        let top_level = names_at + 0x40;
         let dir = tempfile::tempdir().expect("a scratch directory");
         let path = written(dir.path(), &bytes);
         let mut state = AppState::new();

@@ -9,6 +9,7 @@ mod entity;
 mod list;
 mod plan;
 mod scanned;
+mod scanned_author;
 mod scanned_pose;
 mod scene;
 mod world;

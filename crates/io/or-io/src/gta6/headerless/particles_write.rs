@@ -1,12 +1,18 @@
 //! A particle effects list's values written back over its virtual section in place: rule scalars,
-//! flags and keyframed values of their own key count. Nothing moves, so a key count, a rule, an
-//! event or a behaviour added or removed is refused.
+//! flags, keyframed values that keep or lose keys, and an event's rules, with the reference counts
+//! that follow. Nothing moves, so a rule, an event or a behaviour added is refused; a key added
+//! goes through `add_particle_keys` first, and a rule, an event or a behaviour removed through
+//! `remove_from_particle_effects`.
 
 use super::*;
+
+/// The word that addresses virtual offset 0.
+const VIRTUAL: u64 = 0x5000_0000;
 
 /// `edited` written in place over the section it was read from, or refused, writing nothing.
 pub fn write_particle_effects(virtual_section: &mut [u8], edited: &ParticleEffects) -> Result<()> {
     let stored = read_particle_effects(virtual_section, None)?;
+    let edited = &derived(&stored, edited);
     let patches = sections(virtual_section, None, |v, _| plan(v, &stored, edited))?;
     let mut out = virtual_section.to_vec();
     for (at, bytes) in patches {
@@ -47,7 +53,9 @@ fn plan(v: Bytes, stored: &ParticleEffects, edited: &ParticleEffects) -> Result<
     let mut p = Plan { v, out: vec![] };
     for (s, e) in stored.effects.iter().zip(&edited.effects) {
         p.effect(s, e)?;
+        p.relink(s, e, stored)?;
     }
+    p.reference_counts(stored, edited)?;
     for (s, e) in stored.emitters.iter().zip(&edited.emitters) {
         p.emitter(s, e)?;
     }
@@ -64,11 +72,13 @@ fn plan(v: Bytes, stored: &ParticleEffects, edited: &ParticleEffects) -> Result<
             p.kfp(at, sk, ek)?;
         }
     }
+    let counts = super::colour_word::patches(&stored.behaviours, &edited.behaviours);
+    p.out.extend(counts);
     Ok(p.out)
 }
 
 /// Where a behaviour's keyframed values are, found as the reader finds them.
-fn kfp_places(v: &Bytes, b: &Behaviour) -> Result<Vec<usize>> {
+pub(super) fn kfp_places(v: &Bytes, b: &Behaviour) -> Result<Vec<usize>> {
     let Some(class) = b.class else {
         return Ok(Vec::new());
     };
@@ -91,6 +101,54 @@ fn kfp_places(v: &Bytes, b: &Behaviour) -> Result<Vec<usize>> {
     Ok(places)
 }
 
+/// `edited` with each key's step reciprocal, `time.y`, derived again where the key before it is
+/// not the one it followed in `stored`: 0 for the first key and for a step of 0.
+pub(super) fn derived(stored: &ParticleEffects, edited: &ParticleEffects) -> ParticleEffects {
+    let mut out = edited.clone();
+    for (s, e) in stored.effects.iter().zip(&mut out.effects) {
+        for (sk, ek) in s.kfps.iter().zip(&mut e.kfps) {
+            steps(sk, ek);
+        }
+    }
+    for (s, e) in stored.emitters.iter().zip(&mut out.emitters) {
+        for (sk, ek) in s.kfps.iter().zip(&mut e.kfps) {
+            steps(sk, ek);
+        }
+        for (sd, ed) in s.domains.iter().zip(&mut e.domains) {
+            if let (Some(sd), Some(ed)) = (sd, ed) {
+                for (sk, ek) in sd.kfps.iter().zip(&mut ed.kfps) {
+                    steps(sk, ek);
+                }
+            }
+        }
+    }
+    for (s, e) in stored.behaviours.iter().zip(&mut out.behaviours) {
+        for (sk, ek) in s.kfps.iter().zip(&mut e.kfps) {
+            steps(sk, ek);
+        }
+    }
+    out
+}
+
+// ⚠ A stored reciprocal is not computed from the stored times: one computed matches it bit for
+// bit in under half of the keys, so it is kept wherever its two keys are as stored.
+fn steps(stored: &Kfp, edited: &mut Kfp) {
+    let held: Vec<[u32; 3]> = (stored.entries.windows(2))
+        .map(|w| [w[0].time[0], w[1].time[0], w[1].time[1]].map(f32::to_bits))
+        .collect();
+    let mut before: Option<f32> = None;
+    for e in &mut edited.entries {
+        let t = e.time[0];
+        e.time[1] = match before {
+            None => 0.0,
+            Some(b) if held.contains(&[b, t, e.time[1]].map(f32::to_bits)) => e.time[1],
+            Some(b) if t == b => 0.0,
+            Some(b) => 1.0 / (t - b),
+        };
+        before = Some(t);
+    }
+}
+
 impl Plan<'_> {
     fn put(&mut self, at: usize, bytes: &[u8]) -> Result<()> {
         self.v.get("value written", at, bytes.len())?;
@@ -108,12 +166,20 @@ impl Plan<'_> {
         self.words(at, &words)
     }
 
-    /// The keys of the keyframed value at `at`, which keeps its key count.
+    /// The keys of the keyframed value at `at`, whose array is written shorter where it stands
+    /// when keys were removed, with no pointer once none is left.
     fn kfp(&mut self, at: usize, stored: &Kfp, edited: &Kfp) -> Result<()> {
         need(
-            edited.entries.len() == stored.entries.len(),
-            "a keyframed value's key count changed, which would move the sections",
+            edited.entries.len() <= stored.entries.len(),
+            "a key was added to a keyframed value, which add_particle_keys writes past the section's end first",
         )?;
+        if edited.entries.len() < stored.entries.len() {
+            let n = (edited.entries.len() as u16).to_le_bytes();
+            if edited.entries.is_empty() {
+                self.put(at + 8, &[0; 8])?;
+            }
+            self.put(at + 0x10, &[n, n].concat())?;
+        }
         if edited.entries.is_empty() {
             return Ok(());
         }
@@ -150,6 +216,62 @@ impl Plan<'_> {
                 (ev.playback_rate_scalar, ev.zoom_scalar);
             self.floats(place + 0x68, &[rate_min, rate_max, zoom_min, zoom_max])?;
             self.words(place + 0x78, &ev.colour_tint)?;
+        }
+        Ok(())
+    }
+
+    /// Each event of `e` that names another rule than the one it named in `s` pointed at that
+    /// rule and at its name.
+    fn relink(&mut self, s: &EffectRule, e: &EffectRule, stored: &ParticleEffects) -> Result<()> {
+        let (to, _, _) = array(&self.v, "effect rule", s.at as usize + 0x38, false)?;
+        for (i, (was, ev)) in s.events.iter().zip(&e.events).enumerate() {
+            let place = self.v.to("event", to + 8 * i)?;
+            if was.emitter != ev.emitter {
+                let Some(rule) = stored.emitters.get(ev.emitter) else {
+                    return refuse("an event names an emitter rule the list does not hold");
+                };
+                let at = rule.at as usize;
+                self.link(place + 0x50, place + 0x40, at, at + 0x20)?;
+            }
+            if was.particle != ev.particle {
+                let Some(rule) = stored.particles.get(ev.particle) else {
+                    return refuse("an event names a particle rule the list does not hold");
+                };
+                let at = rule.at as usize;
+                self.link(place + 0x58, place + 0x48, at, at + 0x178)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The pointer at `at` aimed at the rule at `rule`, and the pointer at `name` given the word
+    /// at `held`, the rule's pointer to its name.
+    fn link(&mut self, at: usize, name: usize, rule: usize, held: usize) -> Result<()> {
+        let word = self.v.u64("rule name", held)?;
+        self.put(at, &(VIRTUAL + rule as u64).to_le_bytes())?;
+        self.put(name, &word.to_le_bytes())
+    }
+
+    /// Each emitter and particle rule's reference count: 1 and the events of `edited` naming it.
+    fn reference_counts(
+        &mut self,
+        stored: &ParticleEffects,
+        edited: &ParticleEffects,
+    ) -> Result<()> {
+        let mut emitters = vec![1u32; stored.emitters.len()];
+        let mut particles = vec![1u32; stored.particles.len()];
+        for ev in edited.effects.iter().flat_map(|e| &e.events) {
+            if let Some(n) = emitters.get_mut(ev.emitter) {
+                *n += 1;
+            }
+            if let Some(n) = particles.get_mut(ev.particle) {
+                *n += 1;
+            }
+        }
+        let counts = (stored.emitters.iter().map(|r| r.at).zip(emitters))
+            .chain(stored.particles.iter().map(|r| r.at).zip(particles));
+        for (at, n) in counts {
+            self.words(at as usize + 0x10, &[n])?;
         }
         Ok(())
     }

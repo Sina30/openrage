@@ -65,7 +65,7 @@ pub(super) enum Values {
 }
 
 /// `payload`'s dictionary, while no other holder of the body reads it.
-fn dictionary_mut(payload: &mut DocPayload) -> Option<&mut Dictionary> {
+pub(super) fn dictionary_mut(payload: &mut DocPayload) -> Option<&mut Dictionary> {
     let DocPayload::Gta6Drawable(resource) = payload else {
         return None;
     };

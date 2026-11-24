@@ -22,7 +22,7 @@ pub struct RbfLayout {
     /// value are 8 bytes.
     pub wide_values: bool,
     /// Each struct's shape by its name, in stream order, which a body with [`Self::wide_values`]
-    /// writes back: its structs of one name state different shapes.
+    /// or [`Self::conflicts`] writes back: its structs of one name state different shapes.
     pub occurrences: BTreeMap<String, Vec<RbfStructShape>>,
 }
 

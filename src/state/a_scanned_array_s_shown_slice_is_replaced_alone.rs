@@ -78,7 +78,8 @@ fn volume(state: &mut AppState, dir: &std::path::Path, mips: u8) -> DocumentId {
 }
 
 #[test]
-fn a_scanned_one_level_volume_s_shown_plane_is_replaced_alone_and_one_of_two_levels_is_not() {
+fn a_scanned_volume_s_shown_plane_is_replaced_and_a_smaller_level_s_plane_in_every_slice_showing_it(
+) {
     let dir = tempfile::tempdir().expect("a scratch directory");
     let mut state = AppState::new();
     let blue = RgbaImage {
@@ -99,12 +100,34 @@ fn a_scanned_one_level_volume_s_shown_plane_is_replaced_alone_and_one_of_two_lev
     assert_ne!(after[16..], before[16..], "plane 2 is replaced");
     assert_eq!(after[..16], before[..16], "planes 0 and 1 are left alone");
 
+    // Two levels: each slice a block of level 0, then the one plane of level 1 every slice shows.
     let doc = volume(&mut state, dir.path(), 2);
     let before = stored(&state, doc, "zq_volume");
+    show_scanned_slice(state.document(doc).expect("open"), "zq_volume", 1);
     let choice = FormatChoice::Automatic;
-    let why =
-        (state.import_texture_over(doc, Source::Document, "zq_volume", &blue, choice, &options))
-            .expect_err("a volume's slab holds part of every level");
-    assert!(why.contains("volume"), "{why}");
+    (state.import_texture_over(doc, Source::Document, "zq_volume", &blue, choice, &options))
+        .expect("a volume of two levels takes an image of its size");
+    let after = stored(&state, doc, "zq_volume");
+    assert_eq!(after.len(), before.len());
+    assert_ne!(
+        after[16..24],
+        before[16..24],
+        "plane 1 of level 0 is replaced"
+    );
+    assert_eq!(after[..8], before[..8], "plane 0 of level 0 is left alone");
+    assert_eq!(
+        after[32..40],
+        before[32..40],
+        "plane 2 of level 0 is left alone"
+    );
+    for slice in [0, 2] {
+        let at = 16 * slice + 8;
+        assert_eq!(
+            after[at..at + 8],
+            after[24..32],
+            "slice {slice} shows level 1 anew"
+        );
+    }
+    assert_eq!(state.undo().as_deref(), Some("Replace zq_volume"));
     assert_eq!(stored(&state, doc, "zq_volume"), before);
 }

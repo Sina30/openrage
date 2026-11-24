@@ -98,6 +98,7 @@ pub(crate) fn print_info(name: &str, bytes: &[u8], mode: ErrorMode) -> Result<()
     print_document(name, format_label(bytes), bytes.len(), &document);
     if let (instance, Some(layout), _) = &document {
         print_gta6_save(layout, instance, bytes);
+        super::gta6_meta_names::print_text_names(layout, instance);
     }
     Ok(())
 }
@@ -149,7 +150,10 @@ fn save_verdict(written: or_io::meta::Result<Vec<u8>>, stored: &[u8]) -> String 
         Ok(bytes) if bytes == stored => "writes back byte-identical".to_string(),
         Ok(bytes) => {
             let at = (0..bytes.len().max(stored.len())).find(|&i| bytes.get(i) != stored.get(i));
-            format!("writes back other bytes, from {:#X}", at.unwrap_or(0))
+            format!(
+                "writes back its canonical form, other bytes from {:#X}",
+                at.unwrap_or(0)
+            )
         }
         Err(e) => format!("refused: {e}"),
     }

@@ -304,13 +304,20 @@ pub(super) fn as_ynv(
         return None;
     }
     let m = read_navmesh(resource.sections(bytes).0).ok()?;
+    let mesh = cell_view(&m)?;
+    super::gta6_navmesh::remember(path, m);
+    Some(mesh)
+}
+
+/// A cell as the model the `.ynv` view draws; `None` where it does not fit.
+pub(super) fn cell_view(m: &or_io::gta6::headerless::NavMesh) -> Option<CNavMesh> {
     let vertices = (m.vertices.iter()).map(|q| CNavMeshCompressedVertex {
         data: *q,
         ..Default::default()
     });
     // ⚠ GTA V's edge names a polygon in fifteen bits: one past them leads nowhere in the view.
-    let edges = (0..m.edges.len()).map(|i| super::gta6_navmesh_edit::view_edge(&m, i));
-    let mut runs = super::gta6_navmesh::link_runs(&m);
+    let edges = (0..m.edges.len()).map(|i| super::gta6_navmesh_edit::view_edge(m, i));
+    let mut runs = super::gta6_navmesh::link_runs(m);
     let mut polygons = Vec::with_capacity(m.polygons.len());
     for (p, run) in m.polygons.iter().zip(&mut runs) {
         let mut polygon = TNavMeshPoly {
@@ -356,7 +363,6 @@ pub(super) fn as_ynv(
         special_links_indices: runs.concat(),
         ..Default::default()
     };
-    super::gta6_navmesh::remember(path, m);
     Some(mesh)
 }
 

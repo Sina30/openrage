@@ -2,9 +2,11 @@ mod bytes;
 mod ctx;
 mod derived;
 mod header;
+mod map;
 mod picker;
 mod presets;
 mod reference;
+mod text_names;
 mod widgets;
 
 use crate::state::{gta_install_root_from_prefs, reference_names, AppState, Change, DocPayload};
@@ -54,6 +56,12 @@ fn empty(ui: &mut egui::Ui) {
 fn draw_visual_view(ui: &mut egui::Ui, state: &mut AppState, doc_id: crate::state::DocumentId) {
     let library = crate::state::meta_schema();
     let name_index = state.name_index.snapshot();
+    let text_names = match state.document(doc_id).map(|d| &d.payload) {
+        Some(DocPayload::Meta(meta)) => {
+            crate::state::meta_names_from_the_text(meta.layout.as_ref())
+        }
+        _ => false,
+    };
     let places_an_interior = match state.document(doc_id).map(|d| &d.payload) {
         Some(DocPayload::Meta(meta)) => meta
             .parsed
@@ -86,6 +94,7 @@ fn draw_visual_view(ui: &mut egui::Ui, state: &mut AppState, doc_id: crate::stat
         path: Vec::new(),
         records: std::rc::Rc::new(presets::RecordUi::of(state, doc_id)),
         edits: Default::default(),
+        text_names,
     };
 
     let Some(doc) = state.document_mut(doc_id) else {

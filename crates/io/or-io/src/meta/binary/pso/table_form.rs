@@ -156,9 +156,44 @@ fn decode_with(model: &RbmModel, names: &DataNames) -> Result<(MetaInstance, Unn
         unnamed: Unnamed::default(),
         open: HashSet::new(),
         budget: bytes.saturating_mul(VALUES_PER_BYTE),
+        key_enum: None,
     };
     let instance = decoder.read_struct(class, &block.data, 0)?;
     Ok((instance, decoder.unnamed))
+}
+
+/// The type table and blocks of a table-form document's bytes.
+#[cfg(feature = "gta6")]
+pub(crate) fn model_of(bytes: &[u8]) -> Result<RbmModel> {
+    model(&super::sections::split_sections(bytes)?)
+}
+
+/// The structure `class` at `at` of block `block` (from 0) and everything below it, read as the
+/// document's tree reads it; a hash value is named only by the tree's hash index.
+#[cfg(feature = "gta6")]
+pub(crate) fn read_struct_at(
+    model: &RbmModel,
+    block: usize,
+    at: usize,
+    class: u32,
+) -> Result<MetaInstance> {
+    let Some(data) = model.data_blocks.get(block).map(|b| b.data.as_slice()) else {
+        return Err(malformed(format!(
+            "no block {block} of {}",
+            model.data_blocks.len()
+        )));
+    };
+    let names = DataNames::default();
+    let bytes: usize = model.data_blocks.iter().map(|b| b.data.len()).sum();
+    let mut decoder = Decoder {
+        model,
+        names: &names,
+        unnamed: Unnamed::default(),
+        open: HashSet::new(),
+        budget: bytes.saturating_mul(VALUES_PER_BYTE),
+        key_enum: None,
+    };
+    decoder.read_struct(class_of(model, class)?, data, at)
 }
 
 /// A GTA VI enum value record, `{i64 value, u32 name hash, u32}`.
@@ -434,6 +469,9 @@ enum Open<'m> {
         starts: Vec<usize>,
         next: usize,
         pairs: Vec<(Value, Value)>,
+        /// The enum a hash map's key is named in: its owner's key member's, as one pair structure
+        /// serves maps whose keys are of different enums.
+        key_enum: Option<u32>,
     },
 }
 
@@ -482,14 +520,21 @@ impl Starts {
     }
 }
 
-/// The pair structures `pair` at `starts` of `data`, opened as a map.
-fn open_pairs<'m>(pair: &'m RbmClass, data: &'m [u8], starts: Vec<usize>) -> Step<'m> {
+/// The pair structures `pair` at `starts` of `data`, opened as a map whose keys are named in
+/// `key_enum` where one is given.
+fn open_pairs<'m>(
+    pair: &'m RbmClass,
+    data: &'m [u8],
+    starts: Vec<usize>,
+    key_enum: Option<u32>,
+) -> Step<'m> {
     Step::Open(Open::Pairs {
         pair,
         data,
         pairs: Vec::with_capacity(starts.len()),
         starts,
         next: 0,
+        key_enum,
     })
 }
 
@@ -521,6 +566,8 @@ struct Decoder<'m> {
     open: HashSet<(usize, u32)>,
     /// What is left of [`VALUES_PER_BYTE`] times the blocks' bytes.
     budget: usize,
+    /// The enum the next enum value read is named in, set for a hash map's key.
+    key_enum: Option<u32>,
 }
 
 impl<'m> Decoder<'m> {
@@ -701,6 +748,7 @@ impl<'m> Decoder<'m> {
                 data,
                 starts,
                 next,
+                key_enum,
                 ..
             } => {
                 let Some(&at) = starts.get(*next) else {
@@ -708,6 +756,8 @@ impl<'m> Decoder<'m> {
                 };
                 *next += 1;
                 let (pair, data) = (*pair, *data);
+                // The pair's key, its first named member, is the next enum value read.
+                self.key_enum = *key_enum;
                 self.open_struct(pair, data, at, Wrap::Struct)?
             }
         };
@@ -1065,7 +1115,7 @@ impl<'m> Decoder<'m> {
         let size = pair.data_size as usize;
         table(&block.data, at, size, count, name)?;
         let starts: Vec<usize> = (0..count).map(|i| at + size * i).collect();
-        Ok(open_pairs(pair, &block.data, starts))
+        Ok(open_pairs(pair, &block.data, starts, None))
     }
 
     /// A hash map's 16-byte header is `{u32 slots, u32 count, u64 pointer}`.
@@ -1103,7 +1153,11 @@ impl<'m> Decoder<'m> {
         let size = pair.data_size as usize;
         let unit = unit.data_size as usize;
         let starts = full_slots(&block.data, at, unit, slots, count, grouped, size, name)?;
-        Ok(open_pairs(pair, &block.data, starts))
+        use PsoType::{Enum16, Enum32, Enum8};
+        let key_enum = (owner.entry(entry.map_key_index()))
+            .filter(|key| matches!(key.data_type, Enum8 | Enum16 | Enum32))
+            .map(|key| key.referent_hash());
+        Ok(open_pairs(pair, &block.data, starts, key_enum))
     }
 
     /// A hash set's header is a hash map's; its table holds keys of member `u12 & 0xFFFF`
@@ -1378,17 +1432,14 @@ impl<'m> Decoder<'m> {
         })
     }
 
-    fn enum_value(&self, entry: &RbmClassEntry, value: i32) -> Value {
-        let variant = match self
-            .model
-            .enum_for(entry.referent_hash())
-            .and_then(|e| variant_name(e, value))
-        {
+    fn enum_value(&mut self, entry: &RbmClassEntry, value: i32) -> Value {
+        let ty = self.key_enum.take().unwrap_or(entry.referent_hash());
+        let variant = match self.model.enum_for(ty).and_then(|e| variant_name(e, value)) {
             Some(name_hash) => enum_text::variant_text(name_hash),
             None => enum_text::value_text(value),
         };
         Value::Enum {
-            type_name: default_hash_index().name_or_literal(entry.referent_hash()),
+            type_name: default_hash_index().name_or_literal(ty),
             variant,
         }
     }

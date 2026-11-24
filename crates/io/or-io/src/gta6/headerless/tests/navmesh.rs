@@ -176,8 +176,8 @@ fn a_record_without_the_side_bits_is_a_polygon_proper_and_refused_with_two_corne
 fn wide_cell(proper: usize, id: u16, holder: usize, leaf: &[u16]) -> Vec<u8> {
     let mut img = Image::default();
     let root = img.alloc(0xF0);
-    let map = img.alloc(16);
-    img.bytes[map + 8] = 1;
+    // Room for both blocks a section past 64 KiB is cut into, as a written body's map holds.
+    let map = img.alloc(0x20);
     img.ptr(root + 0x08, map);
     img.u32(root + 0x10, 9);
     img.u32(root + 0x14, 0x0001_0015);
@@ -241,6 +241,10 @@ fn wide_cell(proper: usize, id: u16, holder: usize, leaf: &[u16]) -> Vec<u8> {
         root + 0xCC,
         (6 * 6 + 14 * first as usize + 44 * (proper + 1)) as u32,
     );
+    // A section is stored in 16-byte steps, its whole 64 KiB pieces one block, the rest another.
+    let len = img.bytes.len().next_multiple_of(16);
+    img.bytes.resize(len, 0);
+    img.bytes[map + 8] = u8::from(len >= 0x1_0000) + u8::from(len % 0x1_0000 != 0);
     img.bytes
 }
 
@@ -509,6 +513,21 @@ fn a_polygon_s_flags_write_in_place_but_for_the_bits_kept_and_another_count_is_r
         write_polygon_flags(&mut bytes, &[0], 0),
         Err(HeaderlessError::NotInPlace(_))
     ));
+}
+
+#[test]
+fn a_cell_s_links_end_across_its_four_borders_and_at_its_four_corners_inside_the_grid() {
+    let c = 10 + 512 * 20;
+    let (e, w, n, s) = (c + 1, c - 1, c + 512, c - 512);
+    let corners = [e + 512, e - 512, w + 512, w - 512];
+    assert_eq!(Border::around(c), [[e, w, n, s], corners].concat());
+    assert_eq!(Border::around(0), [1, 512, 513], "the grid's first cell");
+    let last = 511 + 512 * 511;
+    assert_eq!(
+        Border::around(last),
+        [last - 1, last - 512, last - 513],
+        "the grid's last cell"
+    );
 }
 
 #[path = "write_navmesh.rs"]

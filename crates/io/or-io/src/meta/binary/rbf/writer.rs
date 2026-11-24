@@ -96,7 +96,11 @@ impl RbfWriter<'_> {
 
     fn resolve_shape(&mut self, inst: &MetaInstance) -> RbfStructShape {
         let mut shape = self.layout.shape_for(&inst.type_name);
-        if self.layout.wide_values {
+        // A body whose structs of one name state different shapes writes each struct the shape
+        // read at its place among that name's, a struct past them the tag's; one tag's shape for
+        // all would lose the others. No shipped GTA V file states two shapes for a tag
+        // (`rbf_shapes_are_consistent_per_tag`), so GTA V saves write as before.
+        if self.layout.wide_values || !self.layout.conflicts.is_empty() {
             let k = self.seen.entry(inst.type_name.clone()).or_default();
             if let Some(own) =
                 (self.layout.occurrences.get(&inst.type_name)).and_then(|s| s.get(*k))
@@ -425,6 +429,36 @@ mod tests {
         let (root, layout) =
             reader::parse_full(default_library(), &bytes, &mut diags).expect("reads");
         assert_eq!(write(Some(&layout), &root).expect("writes"), bytes);
+    }
+
+    #[test]
+    fn a_body_without_the_marker_whose_structs_of_one_name_differ_writes_back_byte_identical() {
+        let mut b = b"RBF0".to_vec();
+        let name = |b: &mut Vec<u8>, index: u8, ty: u8, text: &str| {
+            b.extend([index, ty]);
+            b.extend((text.len() as i16).to_le_bytes());
+            b.extend(text.as_bytes());
+        };
+        name(&mut b, 0, TYPE_STRUCT, "CRoot");
+        b.extend([0, 0, 0, 0, 2, 0]);
+        name(&mut b, 1, TYPE_STRUCT, "CItem");
+        b.extend([0, 0, 0, 0, 1, 0]);
+        name(&mut b, 2, TYPE_UINT32, "count");
+        b.extend(7u32.to_le_bytes());
+        b.extend([CLOSE_MARKER, CLOSE_MARKER]);
+        // The second states two attributes where the first states one.
+        b.extend([1, TYPE_STRUCT, 0, 0, 0, 0, 2, 0]);
+        for value in [8u32, 9] {
+            b.extend([2, TYPE_UINT32]);
+            b.extend(value.to_le_bytes());
+        }
+        b.extend([CLOSE_MARKER, CLOSE_MARKER, CLOSE_MARKER, CLOSE_MARKER]);
+        let mut diags = Diagnostics::lenient();
+        let (root, layout) = reader::parse_full(default_library(), &b, &mut diags).expect("reads");
+        assert!(!layout.wide_values);
+        assert_eq!(layout.conflicts, vec!["CItem".to_string()]);
+        let written = write(Some(&layout), &root).expect("writes");
+        assert_eq!(written, b);
     }
 
     #[test]

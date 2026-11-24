@@ -11,6 +11,7 @@ mod camera_cuts;
 mod columns;
 mod databases;
 mod expressions;
+mod expressions_layout;
 mod matcher;
 mod metadata;
 mod motion;
@@ -28,17 +29,24 @@ pub use expressions::{
     read_expressions, write_expression_ids, ExpressionGroup, ExpressionTracks, Expressions,
     EXPRESSIONS_SIGNATURE,
 };
+pub use expressions_layout::{
+    add_expression_track, lay_out_expressions, offered_facial_outputs, remove_expression_track,
+    write_edited_expressions,
+};
 pub use matcher::{
     Matcher, MatcherClass, MatcherClip, MatcherDatabase, MatcherEntry, MatcherFeature, MatcherLevel,
 };
 pub use metadata::{known_name, Attribute, AttributeValue, Record};
 pub use motion::{
-    Database, Grid, Motion, MotionGroup, Parameter, PhaseCurve, TimeWarp, Typed, Weight,
+    ArrayHead, Database, Grid, Motion, MotionGroup, Parameter, ParameterItem, ParameterObject,
+    PhaseCurve, TimeWarp, Typed, Weight,
 };
 pub use signature::dof_signature;
 pub use write::{edit, reencode, rename_clip, AnimEdit};
 
-use crate::codec::anim::channel::{reconstruct_component, ChannelFormat, FORMAT_COUNT};
+use crate::codec::anim::channel::{
+    reconstruct_component, ChannelFormat, DecodedChannel, FORMAT_COUNT,
+};
 use crate::codec::anim::{AnimationSource, BlockSource, ChannelWalk, DofSamples};
 use crate::decl::{Aligned, Image, Raw, View};
 use crate::gta5::CrBlockStream;
@@ -138,6 +146,8 @@ pub enum AnimError {
     External { clip: String, key: u32 },
     #[error("animation {animation:?} is not owned by the animation set whose map holds it")]
     Owner { animation: String },
+    #[error("the root states 0 at 0x6C as a lone animation set does, but the objects its map holds are not owned by it, so they are no animations and the root is no animation set; its word at 0x70 is {word:#010X}, a kind no reader here knows")]
+    NotAnimationSet { word: u32 },
     #[error("animation {animation:?}: {why}")]
     Blocks { animation: String, why: String },
     #[error("block {block} of animation {animation:?}: its channel directory of 11 sections does not hold to the measured layout: {why}")]
@@ -385,6 +395,14 @@ struct Delta {
     values: Vec<f32>,
 }
 
+/// One DOF's channels of block `index`, split into those before and after the post pass.
+struct Walked<'a> {
+    index: usize,
+    walk: ChannelWalk<'a>,
+    pre: Vec<DecodedChannel>,
+    post: Vec<DecodedChannel>,
+}
+
 impl Animation {
     /// Frames a second, `(frames - 1) / duration`; `None` for a single frame or no duration.
     pub fn rate(&self) -> Option<f32> {
@@ -399,6 +417,29 @@ impl Animation {
     /// DOF `dof`'s value at `time` seconds: sections 0 to 5, then 10, then 7 and 8 of its block.
     // A section-10 value between two frames is their linear blend, as GTA V's formats blend.
     pub fn sample(&self, dof: usize, time: f32) -> Result<DofSamples, AnimError> {
+        self.sample_walked(dof, time, &mut None)
+    }
+
+    /// [`Animation::sample`] at each of `times`, a block's channels walked once for the times in it.
+    // ⚠ A walk copies its block's constants, so a walk per sample makes a block's frames quadratic.
+    pub fn sample_each(
+        &self,
+        dof: usize,
+        times: impl IntoIterator<Item = f32>,
+    ) -> Result<Vec<DofSamples>, AnimError> {
+        let mut walked = None;
+        (times.into_iter())
+            .map(|time| self.sample_walked(dof, time, &mut walked))
+            .collect()
+    }
+
+    /// [`Animation::sample`], with `walked` reused while `time` lies in the block it walked.
+    fn sample_walked<'a>(
+        &'a self,
+        dof: usize,
+        time: f32,
+        walked: &mut Option<Walked<'a>>,
+    ) -> Result<DofSamples, AnimError> {
         if dof >= self.dofs.len() {
             return Err(AnimError::NoDof {
                 animation: self.name.clone(),
@@ -421,13 +462,30 @@ impl Animation {
             animation: self.name.clone(),
             source,
         };
-        let walk = ChannelWalk::new(&block.stream).map_err(decode)?;
-        let (post, pre): (Vec<_>, Vec<_>) = walk
-            .channels_for_dof(dof as u32)
-            .map_err(decode)?
-            .into_iter()
-            .partition(|c| c.format.is_post_pass());
-        let mut samples = walk.evaluate_channels(&pre, tq, tr, 1).map_err(decode)?;
+        if walked.as_ref().is_none_or(|w| w.index != index) {
+            let walk = ChannelWalk::new(&block.stream).map_err(decode)?;
+            let (post, pre): (Vec<_>, Vec<_>) = walk
+                .channels_for_dof(dof as u32)
+                .map_err(decode)?
+                .into_iter()
+                .partition(|c| c.format.is_post_pass());
+            *walked = Some(Walked {
+                index,
+                walk,
+                pre,
+                post,
+            });
+        }
+        let Some(Walked {
+            walk, pre, post, ..
+        }) = walked.as_ref()
+        else {
+            return Err(AnimError::Blocks {
+                animation: self.name.clone(),
+                why: format!("block {index} was not walked"),
+            });
+        };
+        let mut samples = walk.evaluate_channels(pre, tq, tr, 1).map_err(decode)?;
         for delta in block.deltas.iter().filter(|d| d.dof as usize == dof) {
             let value = |f: usize| delta.values[f.min(delta.values.len() - 1)];
             let index = usize::from(delta.component).min(3);
@@ -572,7 +630,15 @@ impl Section<'_> {
         match root {
             RootKind::ClipDictionary => self.dictionary(&mut resource)?,
             RootKind::MotionDictionary => self.motion_dictionary(&mut resource)?,
-            RootKind::AnimationSet => resource.sets.push(self.set(0, 0, &mut HashMap::new())?),
+            RootKind::AnimationSet => {
+                // A root whose map objects its owner word does not name is another kind of root.
+                let set = self.set(0, 0, &mut HashMap::new());
+                let set = set.map_err(|e| match (e, self.u32("root", SET_LEN)) {
+                    (AnimError::Owner { .. }, Ok(word)) => AnimError::NotAnimationSet { word },
+                    (e, _) => e,
+                })?;
+                resource.sets.push(set);
+            }
         }
         Ok(resource)
     }

@@ -10,6 +10,8 @@ pub mod oodle;
 mod reader;
 pub mod rpf9;
 #[cfg(feature = "gta6")]
+mod rpf9_first_entry;
+#[cfg(feature = "gta6")]
 pub mod rpf9_grow;
 #[cfg(feature = "gta6")]
 pub mod rpf9_scan;
@@ -47,6 +49,8 @@ pub use rpf9::RPF9_MAGIC;
 #[cfg(feature = "gta6")]
 pub use rpf9::{Rpf9Header, RPF9_HEADER_SIZE};
 #[cfg(feature = "gta6")]
+pub use rpf9_first_entry::rpf9_first_entry_end;
+#[cfg(feature = "gta6")]
 pub use rpf9_grow::{grow_section, Rpf9GrowError, Rpf9Section};
 #[cfg(feature = "gta6")]
 pub use rpf9_scan::EMPTY_ARCHIVE_PLACEHOLDER;
@@ -59,6 +63,8 @@ pub use rpf9_scan::{
 };
 #[cfg(feature = "gta6")]
 pub use rpf9_scan::{rpf9_block_streams, rpf9_names_by_count_at, Rpf9NamesByCount};
+#[cfg(feature = "gta6")]
+pub use rpf9_write::write_rpf9_resource_capped;
 #[cfg(feature = "gta6")]
 pub use rpf9_write::{write_rpf9_resource, Rpf9Form, Rpf9Sections, Rpf9WriteError};
 pub use version::RpfVersion;

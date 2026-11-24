@@ -192,12 +192,8 @@ fn draw_value(
         FieldType::Array { elem, kind } => {
             draw_array(ui, ctx, field, elem, kind.clone(), value, dirty)
         }
-        FieldType::Map { .. } => {
-            ui.label(
-                egui::RichText::new("(map editing not yet supported)")
-                    .small()
-                    .color(theme::TEXT_DIM),
-            );
+        FieldType::Map { key, value: of } => {
+            super::map::draw_map(ui, ctx, field, (&**key, &**of), value, dirty)
         }
         FieldType::Pad(_) => {
             ui.label(
@@ -358,6 +354,7 @@ fn draw_string(
             .on_hover_text("Jenkins-1 hash (RAGE atHashString)");
         }
     }
+    super::text_names::draw(ui, ctx, value);
 
     if let Some(category) = super::picker::picker_category(field.hint) {
         if ui

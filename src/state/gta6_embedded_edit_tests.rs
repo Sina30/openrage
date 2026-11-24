@@ -161,12 +161,53 @@ fn an_embedded_texture_is_replaced_drawn_undone_and_saved_into_its_own_tiles() {
     assert_eq!(embedded_pixels(&saved), new);
     assert_eq!(saved.virtual_section, sections.virtual_section);
 
-    // An image of another size is refused and the document is as it was.
+    // An image of another size is taken in its own size, and the save packs the physical section
+    // anew around it.
     let small = dir.path().join("small.png");
     save_png(&small, &RgbaImage::new(64, 64)).expect("the image is written");
-    let refused = state.replace_embedded_texture(doc, &name, &small, auto, &options);
-    assert!(refused.expect("it embeds that texture").is_err());
-    assert_eq!(replaced(&path, key), Some(new));
+    let edit = state.replace_embedded_texture(doc, &name, &small, auto, &options);
+    edit.expect("it embeds that texture")
+        .expect("replaced in another size");
+    let smaller = replaced(&path, key).expect("the pixels the document holds");
+    // 16 × 16 blocks of 8 bytes, then 8 × 8: the two levels the texture held.
+    assert_eq!(smaller.len(), (16 * 16 + 8 * 8) * 8);
+    let saved = |state: &mut AppState| {
+        assert!(state.save_active_document());
+        finished(state);
+        let bytes = std::fs::read(&path).expect("the saved file");
+        let (find, read) = read_rpf9_body(Cursor::new(bytes), 0, u64::MAX).expect("it reads");
+        Rpf9Sections::of(&find, &read).expect("a resource")
+    };
+    let resaved = saved(&mut state);
+    assert_eq!(embedded_pixels(&resaved), smaller);
+    let head = read_drawable_head(&resaved.virtual_section, Some(&resaved.physical), false)
+        .expect("the head reads");
+    let [Ok(t)] = head.textures.as_slice() else {
+        panic!("one texture, not {:?}", head.textures);
+    };
+    assert_eq!(
+        (t.texture.width, t.texture.height, t.texture.mip_levels),
+        (64, 64, 2)
+    );
+
+    // Unembedded, it is drawn no more, and the save leaves the body embedding nothing.
+    let edit = state.unembed_gta6_texture(doc, &name);
+    edit.expect("a GTA VI drawable").expect("unembedded");
+    assert!(!embeds(&state, doc, &name));
+    let payload = &state.document(doc).expect("open").payload;
+    assert!(super::super::gta6_head::texture_named(payload, None, &name).is_none());
+    let unembedded = saved(&mut state);
+    let head = read_drawable_head(
+        &unembedded.virtual_section,
+        Some(&unembedded.physical),
+        false,
+    )
+    .expect("the head reads");
+    assert!(head.textures.is_empty(), "{:?}", head.textures);
+    // Undone, the document holds the smaller texture again.
+    state.active_document = Some(doc);
+    assert!(state.undo().is_some());
+    assert_eq!(replaced(&path, key), Some(smaller));
 
     // The body opened anew, as after a close that did not save, holds none of them.
     super::super::rpf9_scan::read_body(&path, &path, 0).expect("it opens again");

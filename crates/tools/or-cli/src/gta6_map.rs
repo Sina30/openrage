@@ -40,6 +40,27 @@ fn is_map(root: u32) -> bool {
     [map::C_MAP_DATA, map::C_MAP_TYPES].contains(&root)
 }
 
+/// The inflated bytes a census keeps of each body the scan finds, to judge its root by.
+const HEAD: usize = 1 << 16;
+
+/// Whether a resource whose virtual section starts with `head` may hold a map's root: `false`
+/// only where `head` holds the root's class entry and it names no map class.
+// ⚠ Reading every resource again to look at its root costs twice the scan over an archive.
+fn may_be_map(head: &[u8]) -> bool {
+    if let Some(root) = map::root_type(head) {
+        return is_map(root);
+    }
+    let word = |at: usize| {
+        let bytes: [u8; 8] = head.get(at..at + 8)?.try_into().ok()?;
+        Some(u64::from_le_bytes(bytes))
+    };
+    let (Some(root), Some(table), true) = (word(0x20), word(0x38), head.len() >= 0x4E) else {
+        return true;
+    };
+    let root = root & 0xFFFF_FFFF;
+    table >> 28 == 5 && root != 0 && (table & 0x0FFF_FFFF) + 16 * root > head.len() as u64
+}
+
 fn point(p: [f32; 3]) -> String {
     format!("({:.2}, {:.2}, {:.2})", p[0], p[1], p[2])
 }
@@ -534,9 +555,10 @@ pub(crate) fn cmd_scan_maps(args: &[String]) -> Result<(), String> {
     let cancelled = super::jobs::on_interrupt();
     let mut tally = Tally::default();
     let mut group = Group::default();
-    for find in Rpf9Scan::new(&file, from.unwrap_or(0)..to.unwrap_or(u64::MAX))
+    let mut scan = Rpf9Scan::new(&file, from.unwrap_or(0)..to.unwrap_or(u64::MAX))
         .map_err(|e| e.to_string())?
-    {
+        .keeping(HEAD);
+    while let Some(find) = scan.next() {
         if cancelled.is_set() {
             return Err("cancelled".to_string());
         }
@@ -549,7 +571,7 @@ pub(crate) fn cmd_scan_maps(args: &[String]) -> Result<(), String> {
                 ..
             })
         );
-        if starts && find.stored_len.is_some() {
+        if starts && find.stored_len.is_some() && may_be_map(scan.kept(&find)) {
             let line = census_line(&file, find.offset, limit, &mut tally, asked, &mut group);
             if let Some(line) = line {
                 println!("{line}");
@@ -724,6 +746,27 @@ mod tests {
             ),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_census_reads_again_only_a_body_whose_head_does_not_rule_out_a_map_root() {
+        // Root 1 of a class table of one entry at 0x80, whose class word is `class`.
+        let head = |class: u32, table: u64| {
+            let mut h = vec![0u8; 0x100];
+            h[0x20..0x24].copy_from_slice(&1u32.to_le_bytes());
+            h[0x38..0x40].copy_from_slice(&table.to_le_bytes());
+            h[0x4C..0x4E].copy_from_slice(&1u16.to_le_bytes());
+            h[0x80..0x84].copy_from_slice(&class.to_le_bytes());
+            h
+        };
+        assert!(may_be_map(&head(map::C_MAP_DATA, 0x5000_0080)));
+        assert!(may_be_map(&head(map::C_MAP_TYPES, 0x5000_0080)));
+        assert!(!may_be_map(&head(map::C_MAP_DATA ^ 1, 0x5000_0080)));
+        assert!(!may_be_map(&head(map::C_MAP_DATA, 0x6000_0080)));
+        // A table past the kept bytes, and a head too short to say, are read whole.
+        assert!(may_be_map(&head(0, 0x5000_1000)));
+        assert!(may_be_map(&head(map::C_MAP_DATA, 0x5000_0080)[..0x40]));
+        assert!(may_be_map(&[]));
     }
 
     #[test]

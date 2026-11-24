@@ -43,7 +43,7 @@ const MISSED: &str =
 
 /// A GTA VI P-form document's bytes with `instance` laid out anew, refused when the rules do not
 /// give back the document `layout` was read from.
-pub(super) fn write(layout: &PsoLayout, instance: &MetaInstance) -> Result<Vec<u8>> {
+pub(crate) fn write(layout: &PsoLayout, instance: &MetaInstance) -> Result<Vec<u8>> {
     let stored = stored_bytes(layout);
     let library = SchemaLibrary::default();
     let (original, _) = super::reader::parse_full(&library, &stored, &mut Diagnostics::lenient())?;
@@ -103,6 +103,7 @@ fn lay_out(layout: &PsoLayout, instance: &MetaInstance) -> Result<PsoLayout> {
         schema: &layout.schema,
         by_name,
         pairs: stored_pairs(layout),
+        groups: group::Groups::stored(layout),
         blocks: Vec::new(),
         open: HashMap::new(),
         pointers: Vec::new(),
@@ -202,6 +203,7 @@ struct Placer<'a> {
     schema: &'a PsoSchemaSection,
     by_name: HashMap<String, &'a PsoStructInfo>,
     pairs: HashMap<(u32, u32), u32>,
+    groups: group::Groups,
     /// `(type, bytes)` in the order the walk first reaches a region of each type.
     blocks: Vec<(u32, Vec<u8>)>,
     open: HashMap<u32, usize>,
@@ -317,10 +319,9 @@ impl<'a> Placer<'a> {
                 };
                 match entry.subtype() {
                     GTA6_PAIR_MAP => self.pair_map(owner, entry, block, at, pairs, depth),
+                    // An emptied group map is written null, as the table form stores one.
                     GTA6_GROUP_MAP if pairs.is_empty() => Ok(()),
-                    GTA6_GROUP_MAP => Err(refused(
-                        "a group map that holds pairs, whose values' layout is not measured",
-                    )),
+                    GTA6_GROUP_MAP => self.group_map(owner, entry, block, at, pairs, depth),
                     other => Err(refused(format!(
                         "map subtype {other}, whose layout is not measured"
                     ))),
@@ -485,6 +486,7 @@ impl<'a> Placer<'a> {
         let Placer {
             mut blocks,
             pointers,
+            groups,
             ..
         } = self;
         let order = block_order(&blocks)?;
@@ -498,6 +500,7 @@ impl<'a> Placer<'a> {
                 .ok_or_else(|| refused(format!("a pointer past block {b} at {at:#X}")))?;
             slot.copy_from_slice(&packed(id[target], offset));
         }
+        groups.overwrite(&mut blocks)?;
         let too_large = || refused("the document is larger than a block offset states");
         let mut psin = b"PSIN\0\0\0\0".to_vec();
         psin.extend_from_slice(&[PAD; 8]);
@@ -530,6 +533,9 @@ impl<'a> Placer<'a> {
         })
     }
 }
+
+#[path = "pform_layout_group.rs"]
+mod group;
 
 #[cfg(test)]
 mod tests {
@@ -660,6 +666,16 @@ mod tests {
             let (again, layout) = open(&written);
             assert_eq!(again, edited, "{list:?} {text}");
             assert_eq!(write(&again, &layout), written, "{list:?} {text}");
+        }
+    }
+
+    #[test]
+    fn a_gta6_p_form_converges_through_xml_to_the_layout_the_rules_give() {
+        for (list, text) in [(&[7u32, 9][..], "hi"), (&[], "a new text")] {
+            let bytes = document(list, text);
+            let converged = crate::meta::canonical::converge(&SchemaLibrary::default(), &bytes)
+                .unwrap_or_else(|e| panic!("{list:?} {text}: {e}"));
+            assert_eq!(converged.bytes, bytes, "{list:?} {text}");
         }
     }
 

@@ -108,6 +108,16 @@ pub(super) fn rule_words(v: &Bytes, at: usize, draw_type: u8) -> Result<u32> {
     Ok(bits)
 }
 
+/// The class word `bits` and its three masks, each by its offset in a rule.
+pub(super) fn class_words(bits: u32) -> [(usize, u32); 4] {
+    [
+        (0x180, bits),
+        (0x198, bits & !UPDATE_DROP),
+        (0x1A0, bits & FINALIZE),
+        (0x1A8, bits & LAST),
+    ]
+}
+
 /// Each behaviour given its bit: the k-th set bit of a rule's class word is the k-th behaviour it
 /// lists. Refused where the word sets another count of bits, a named class is not at its bit, two
 /// rules give one behaviour two bits, or a third spawner starts an effect with no `ptxu_ZCull`.

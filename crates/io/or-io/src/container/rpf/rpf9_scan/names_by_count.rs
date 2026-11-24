@@ -142,11 +142,28 @@ impl Rpf9NamesByCount {
         Ok(Some(names_find(start, end - start, row.offset)))
     }
 
-    /// Whether the count applies to the header at `i`: none of the `entries` finds after it is
-    /// a first entry or an unknown zlib body whose end is not stated.
+    /// Whether the count applies to the header at `i`: none of its first `entries` entries, walked
+    /// as [`Self::nth_entry`] walks them, is a first entry or an unknown zlib body whose end is not
+    /// stated, and every inner archive among them has its names.
     fn counts(&self, i: usize, entries: u32) -> bool {
-        let mut window = self.rows.iter().skip(i + 1).take(entries as usize);
-        !window.any(|r| matches!(r.kind, Kind::Entry { unbounded: true }))
+        let (mut count, mut j) = (0, i + 1);
+        while j < self.rows.len() && count < entries {
+            match self.rows[j].kind {
+                Kind::Entry { unbounded: true } => return false,
+                Kind::Entry { .. } => count += 1,
+                Kind::Archive { .. } => {
+                    count += 1;
+                    let Some(names) = self.names_index(self.rows[j].offset) else {
+                        return false;
+                    };
+                    j = names + 1;
+                    continue;
+                }
+                Kind::Names { .. } | Kind::InContainer => {}
+            }
+            j += 1;
+        }
+        true
     }
 
     /// The index of the names of the archive whose header is at `archive`.
@@ -392,4 +409,66 @@ pub fn rpf9_names_by_count_at<R: Read + Seek>(
     }
     let placed = count.place(&mut source)?;
     Ok(placed.into_iter().find(own))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(offset: u64, kind: Kind) -> Row {
+        Row {
+            offset,
+            end: Some(offset + RPF9_SLOT),
+            kind,
+        }
+    }
+
+    const BOUNDED: Kind = Kind::Entry { unbounded: false };
+    const UNBOUNDED: Kind = Kind::Entry { unbounded: true };
+
+    fn archive(entries: u32) -> Kind {
+        Kind::Archive {
+            entries,
+            names: 0x40,
+        }
+    }
+
+    #[test]
+    fn the_count_tests_the_rows_of_the_entries_it_counts_and_not_the_first_rows() {
+        // Two chunks of an audio container stand before the header's two entries.
+        let count = Rpf9NamesByCount {
+            rows: vec![
+                row(0x1000, archive(2)),
+                row(0x1100, Kind::InContainer),
+                row(0x1110, Kind::InContainer),
+                row(0x1200, BOUNDED),
+                row(0x1300, UNBOUNDED),
+            ],
+            names: HashMap::new(),
+        };
+        assert!(!count.counts(0, 2), "the second entry's end is not stated");
+        assert!(count.counts(0, 1), "the first entry's end is stated");
+    }
+
+    #[test]
+    fn an_inner_archive_counts_one_entry_and_its_own_rows_are_not_the_outer_one_s() {
+        let rows = vec![
+            row(0x1000, archive(2)),
+            row(0x2000, archive(1)),
+            row(0x2100, UNBOUNDED),
+            row(0x2200, Kind::Names { archive: 0x2000 }),
+            row(0x2300, BOUNDED),
+        ];
+        let named = Rpf9NamesByCount {
+            rows: rows.clone(),
+            names: HashMap::from([(0x2000, 0x2200)]),
+        };
+        assert!(named.counts(0, 2));
+        assert_eq!(named.nth_entry(0, 2), Some((4, 5)));
+        let unnamed = Rpf9NamesByCount {
+            rows,
+            names: HashMap::new(),
+        };
+        assert!(!unnamed.counts(0, 2), "an inner archive with no names");
+    }
 }

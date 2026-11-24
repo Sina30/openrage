@@ -863,6 +863,9 @@ pub mod lanes;
 #[path = "map_world.rs"]
 pub mod world;
 
+#[path = "map_author.rs"]
+pub mod author;
+
 #[cfg(test)]
 #[path = "map_tests.rs"]
 mod tests;

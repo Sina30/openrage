@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use or_io::container::rpf::{Rpf9Family, Rpf9Scan, Rpf9ScanFind};
+use or_io::container::rpf::{Rpf9Family, Rpf9NamesByCount, Rpf9Scan, Rpf9ScanFind};
 use or_job::{Cancel, Step};
 
 use crate::project::Failure::{self, Run, Usage};
@@ -160,26 +160,41 @@ fn tally_archive(
         Ok(scan) => scan,
         Err(e) => return (tally, kept, Err(e.to_string())),
     };
+    let mut by_count = Rpf9NamesByCount::default();
     for find in scan {
         if cancel.is_set() {
             return (tally, kept, Err("cancelled".to_string()));
         }
         match find {
-            Ok(find) if admits(&find) => {
-                let row = scan_row(&find);
-                if keep {
-                    let offsets = kept.entry(row.clone()).or_default();
-                    if offsets.len() < MOST_KEPT {
-                        offsets.push(find.offset);
-                    }
+            Ok(find) => {
+                by_count.push(&find);
+                if admits(&find) {
+                    count(&mut tally, &mut kept, &find, keep);
                 }
-                *tally.entry(row).or_default() += 1;
             }
-            Ok(_) => {}
             Err(e) => return (tally, kept, Err(e.to_string())),
         }
     }
+    // The names placed by counting their header's entries, as `rpf scan` lists them.
+    match by_count.place(&file) {
+        Ok(placed) => (placed.iter())
+            .filter(|names| admits(names))
+            .for_each(|names| count(&mut tally, &mut kept, names, keep)),
+        Err(e) => return (tally, kept, Err(e.to_string())),
+    }
     (tally, kept, Ok(()))
+}
+
+/// Count `find` under its row, and keep its offset where `keep`.
+fn count(tally: &mut Tally, kept: &mut Kept, find: &Rpf9ScanFind, keep: bool) {
+    let row = scan_row(find);
+    if keep {
+        let offsets = kept.entry(row.clone()).or_default();
+        if offsets.len() < MOST_KEPT {
+            offsets.push(find.offset);
+        }
+    }
+    *tally.entry(row).or_default() += 1;
 }
 
 fn print_tally(tally: &Tally) {
@@ -226,18 +241,17 @@ mod tests {
     /// Where the table of [`archive_with_a_body`]'s head ends, and so where its body starts.
     const BODY_AT: u32 = 0x1A0;
 
-    /// An RPF9 head of layout 4 that holds every measured rule, its table to [`BODY_AT`], then
-    /// `text` as a zlib stream of one stored deflate block under the `78 DA` head a scan finds.
-    fn archive_with_a_body(text: &[u8]) -> Vec<u8> {
-        let mut bytes = vec![0x5Au8; BODY_AT as usize];
+    /// An RPF9 head of layout 4 of `entries` entries and 0x40 bytes of names that holds every
+    /// measured rule, and its table, `toc_end` bytes in all.
+    fn head(entries: u32, toc_end: u32) -> Vec<u8> {
+        let mut bytes = vec![0x5Au8; toc_end as usize];
         let mut head = vec![0u8; RPF9_HEADER_SIZE];
-        let (entries, names) = (1u32, 0x40u32);
-        let index = BODY_AT - (entries * 9).next_multiple_of(16);
+        let index = toc_end - (entries * 9).next_multiple_of(16);
         for (at, word) in [
             (0x00, RPF9_MAGIC),
-            (0x04, BODY_AT),
+            (0x04, toc_end),
             (0x08, index),
-            (0x0C, names),
+            (0x0C, 0x40),
             (0x1C, 0x150),
             (0x24, entries),
             (0x30, 0x10),
@@ -253,8 +267,13 @@ mod tests {
         head[0x2D] = 0x0F;
         head[0x2E] = 0x09;
         bytes[..RPF9_HEADER_SIZE].copy_from_slice(&head);
+        bytes
+    }
+
+    /// `text` as a zlib stream of one stored deflate block under the `78 DA` head a scan finds.
+    fn zlib(text: &[u8]) -> Vec<u8> {
         let len = text.len() as u16;
-        bytes.extend([0x78, 0xDA, 0x01]);
+        let mut bytes = vec![0x78, 0xDA, 0x01];
         bytes.extend(len.to_le_bytes());
         bytes.extend((!len).to_le_bytes());
         bytes.extend_from_slice(text);
@@ -263,6 +282,13 @@ mod tests {
             (a, (b + a) % 65_521)
         });
         bytes.extend(((b << 16) | a).to_be_bytes());
+        bytes
+    }
+
+    /// An archive of one entry, its table to [`BODY_AT`], then `text` as a zlib stream.
+    fn archive_with_a_body(text: &[u8]) -> Vec<u8> {
+        let mut bytes = head(1, BODY_AT);
+        bytes.extend(zlib(text));
         bytes
     }
 
@@ -373,6 +399,75 @@ mod tests {
             crate::rpf::run(&words(&["scan-install", file.as_str()])),
             ExitCode::from(2)
         );
+    }
+
+    #[test]
+    fn names_placed_by_count_are_tallied_and_listed_as_rpf_scan_lists_them() {
+        // A nested archive of one entry whose names stand before a top-level body, no header.
+        let nested = 0x1000u64;
+        let mut bytes = head(2, 0x1B0);
+        bytes.resize(nested as usize, 0);
+        bytes.extend(head(1, 0x1B0));
+        bytes.extend(zlib(b"<?xml version=\"1.0\"?>\n<CMapTypes/>\n"));
+        bytes.resize(bytes.len().next_multiple_of(16), 0);
+        let names_at = bytes.len() as u64;
+        bytes.extend([0x33; 0x40]);
+        bytes.extend(zlib(b"<?xml version=\"1.0\"?>\n<CMapData/>\n"));
+        let dir = tempfile::tempdir().expect("a folder");
+        let path = dir.path().join("data.rpf");
+        fs::write(&path, &bytes).expect("written");
+
+        let file = fs::File::open(&path).expect("open");
+        let names = or_io::container::rpf::rpf9_names_by_count_at(&file, nested)
+            .expect("a count")
+            .expect("names placed by count");
+        assert_eq!(names.offset, names_at);
+        let streamed = (Rpf9Scan::new(&file, 0..u64::MAX).expect("a scan"))
+            .map(|find| find.expect("a find"))
+            .any(|find| find.kind == names.kind);
+        assert!(!streamed, "the stream scan places no names here");
+
+        let every = |_: &Rpf9ScanFind| true;
+        let (tally, kept, ended) = tally_archive(&path, &Cancel::new(), &every, true);
+        assert_eq!(ended, Ok(()));
+        let row = scan_row(&names);
+        assert_eq!(tally.get(&row), Some(&1), "{tally:?}");
+        assert_eq!(kept[&row], [names_at]);
+        let only = |find: &Rpf9ScanFind| find.offset != names_at;
+        let (without, _, _) = tally_archive(&path, &Cancel::new(), &only, false);
+        assert_eq!(
+            without.get(&row),
+            None,
+            "admits is asked of a placed find too"
+        );
+
+        let archive = path.to_string_lossy().into_owned();
+        let archive = archive.as_str();
+        for args in [
+            vec!["list", archive, "--json"],
+            vec!["list", archive, "--kind", "archives"],
+        ] {
+            assert_eq!(
+                crate::rpf::run(&words(&args)),
+                ExitCode::SUCCESS,
+                "{args:?}"
+            );
+        }
+        let json = crate::rpf::listed_rpf9(archive, None, true).unwrap_or_default();
+        let document: serde_json::Value = serde_json::from_str(&json[0]).expect("one document");
+        let bodies = document["bodies"].as_array().expect("bodies");
+        let offsets: Vec<u64> = bodies.iter().filter_map(|b| b["offset"].as_u64()).collect();
+        let placed = offsets
+            .iter()
+            .position(|o| *o == names_at)
+            .expect("the placed names");
+        assert!(offsets.windows(2).all(|w| w[0] <= w[1]), "{offsets:?}");
+        assert_eq!(bodies[placed]["nested_in"], serde_json::json!(nested));
+        let family = Some(Rpf9Family::of(&names));
+        let lines = crate::rpf::listed_rpf9(archive, family, false).unwrap_or_default();
+        let line = crate::rpf::scan_line(&names);
+        let line = format!("{line}; placed by counting its header's entries");
+        assert!(lines.contains(&line), "{lines:?}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! `rpf scan-texture`: a scanned or loose GTA VI texture dictionary's texture replaced from an
 //! image, re-encoded, resized or added, as `texture import` and `texture reencode` edit a `.ytd`,
-//! or a drawable's or fragment's embedded texture replaced in its own shape, written as a loose
-//! resource that `rpf scan-open` reads at offset 0.
+//! or a drawable's or fragment's embedded texture replaced, embedded or unembedded, written as a
+//! loose resource that `rpf scan-open` reads at offset 0.
 
 use std::fs;
 use std::io::Cursor;
@@ -15,9 +15,9 @@ use or_io::container::rpf::{
 use or_io::gta6::headerless::{read_dictionary, write_dictionary_textures, Entry, HeldTexture};
 
 const USAGE: &str = "usage: rpf scan-texture <archive.rpf|file> <offset> <texture> <out> \
-                     [--image <file>] [--add] [--slice <n>] [--format <format>] [--mips <n>] \
-                     [--filter box|lanczos3] [--quality fast|normal|high] [--srgb|--linear] \
-                     [--allow-npot] [--limit <bytes>]";
+                     [--image <file>] [--add] [--remove] [--slice <n>] [--format <format>] \
+                     [--mips <n>] [--filter box|lanczos3] [--quality fast|normal|high] \
+                     [--srgb|--linear] [--allow-npot] [--limit <bytes>]";
 
 /// A texture of the dictionary as its save writes it, the slices it holds, whether it is a
 /// volume, and its pixels as read, which a re-encode decodes.
@@ -41,7 +41,10 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
     let (image, args) = super::rpf::split_value(&args, "--image")?;
     let (slice, args) = super::rpf::split_value(&args, "--slice")?;
     let add = args.iter().any(|a| a == "--add");
-    let args: Vec<String> = args.into_iter().filter(|a| a != "--add").collect();
+    let remove = args.iter().any(|a| a == "--remove");
+    let args: Vec<String> = (args.into_iter())
+        .filter(|a| a != "--add" && a != "--remove")
+        .collect();
     let (encode, words) = super::texture::parse_flags(&args)?;
     let [path, offset, name, out] = words.as_slice() else {
         return Err(USAGE.to_string());
@@ -79,12 +82,16 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
         Some(Rpf9Role::DrawableWithBound) => Some(true),
         _ => None,
     };
+    use super::gta6_embedded_texture::Change;
+    let change = match (ask.add, remove) {
+        (true, true) => return Err("--add and --remove ask for opposite edits: give one".into()),
+        (true, false) => Change::Add,
+        (false, true) => Change::Remove,
+        (false, false) => Change::Replace,
+    };
     let (saved, said) = match fragment {
-        Some(_) if ask.add => {
-            return Err(
-                "a drawable's embedded texture is replaced in its own shape: --add needs a physical re-pack, which is not written"
-                    .into(),
-            )
+        None if remove => {
+            return Err("--remove takes a drawable's or a fragment's embedded texture".into())
         }
         Some(_) if ask.slice != 0 => {
             return Err(format!(
@@ -98,6 +105,7 @@ pub(crate) fn cmd_scan_texture(args: &[String]) -> Result<(), String> {
             name,
             ask.image.as_ref(),
             &ask.encode,
+            change,
         )?,
         None => edit(&sections, name, &ask)?,
     };
@@ -159,6 +167,28 @@ fn encoded(
 /// A side of an image as a texture's 16-bit side.
 fn side(pixels: u32) -> Result<u16, String> {
     u16::try_from(pixels).map_err(|_| format!("a side of {pixels} does not fit a texture"))
+}
+
+/// Each level m of slice `slice` of the volume `t` copied into every other slice that shows the
+/// same plane of it, since a save writes one plane for them all.
+// Slice s shows plane `(s >> m).min(planes - 1)` of level m, which holds `slices >> m` planes.
+fn shared_planes(t: &mut HeldTexture, slice: usize, slices: usize, each: usize) {
+    let (width, height) = (u32::from(t.width), u32::from(t.height));
+    let mut offset = 0;
+    for m in 0..u32::from(t.mips.max(1)) {
+        let side = |pixels: u32| pixels.checked_shr(m).unwrap_or(0).max(1);
+        let len = t.format.mip_size(side(width), side(height)) as usize;
+        if offset + len > each {
+            break;
+        }
+        let planes = slices.checked_shr(m).unwrap_or(0).max(1);
+        let plane = |s: usize| s.checked_shr(m).unwrap_or(0).min(planes - 1);
+        let from = slice * each + offset;
+        for s in (0..slices).filter(|&s| s != slice && plane(s) == plane(slice)) {
+            t.pixels.copy_within(from..from + len, s * each + offset);
+        }
+        offset += len;
+    }
 }
 
 /// The dictionary `sections` hold with the texture `name` edited as `ask` says, as a loose
@@ -298,6 +328,9 @@ fn edited(h: &mut Held, ask: &Ask) -> Result<String, String> {
             ));
         }
         t.pixels[slice * each..(slice + 1) * each].copy_from_slice(&pixels);
+        if h.volume {
+            shared_planes(t, slice, h.slices, each);
+        }
         return Ok(match h.slices {
             1 => format!("{} replaced in its own size, format and mips", t.name),
             n => format!(
@@ -306,16 +339,34 @@ fn edited(h: &mut Held, ask: &Ask) -> Result<String, String> {
             ),
         });
     }
-    if h.slices > 1 || h.volume {
+    if h.volume {
         return Err(format!(
-            "{} holds several slices, so it keeps its size, format and mips: only a 2D texture of one slice takes others",
+            "{} is a volume, so it keeps its size, format and mips: its levels lie across its z-slabs",
             t.name
         ));
     }
     // A reshape keeps the texture's own colour space.
     let options = ask.encode.build_options(t.srgb);
     let format = format.unwrap_or(t.format);
-    let (pixels, mips) = encoded(format, image, &options)?;
+    // A cube's or an array's every slice takes the new shape: the one --slice names from the
+    // image, each other from its own top mip resampled to the image's size.
+    let owned;
+    let sources = match (&h.read, h.slices) {
+        (_, 1) => std::slice::from_ref(image),
+        (Some(read), _) => {
+            let given = ask.image.as_ref();
+            owned = (read.slice_sources(given, ask.slice, options.filter))
+                .map_err(|e| e.to_string())?;
+            owned.as_slice()
+        }
+        (None, _) => return Err(format!("{} does not read, so it is not re-encoded", t.name)),
+    };
+    let (mut pixels, mut mips) = (Vec::new(), 0);
+    for source in sources {
+        let (each, count) = encoded(format, source, &options)?;
+        pixels.extend(each);
+        mips = count;
+    }
     (t.width, t.height) = (side(image.width)?, side(image.height)?);
     (t.format, t.mips, t.pixels) = (format, mips, pixels);
     Ok(format!(
@@ -426,5 +477,76 @@ mod tests {
         assert!(why.contains("Held: zq_paint"), "{why}");
         let why = edit(&sections, "zq_paint", &ask(None, false, &[])).expect_err("refused");
         assert!(why.contains("--format or --mips"), "{why}");
+    }
+
+    #[test]
+    fn an_array_resized_from_one_image_takes_it_in_its_slice_and_resamples_the_other() {
+        let slice = |seed: usize| -> Vec<Vec<u8>> {
+            vec![(0..4 * 4 * 8)
+                .map(|i: usize| (i * 7 + seed) as u8)
+                .collect()]
+        };
+        let (first, second) = (slice(1), slice(90));
+        let slices = [first.as_slice(), second.as_slice()];
+        let array =
+            ModelTexture::tiled_slices("zq_array", 16, 16, 1, 71, &slices).expect("it tiles");
+        let model = DictionaryModel {
+            textures: vec![array],
+            capacity: 1,
+        };
+        let sections = write_dictionary(&model).expect("planned");
+        let mut resized = ask(Some(image(32, [255, 0, 0, 255])), false, &["--mips", "2"]);
+        resized.slice = 1;
+        let (saved, said) = edit(&sections, "zq_array", &resized).expect("resized");
+        assert!(said.contains("-> 32x32"), "{said}");
+        let (find, bytes) = read_rpf9_body(Cursor::new(&saved), 0, u64::MAX).expect("it reads");
+        let back = Rpf9Sections::of(&find, &bytes).expect("a resource");
+        let held = textures(&back).expect("textures");
+        let read = held[0].read.as_ref().expect("the array reads");
+        assert_eq!(
+            (read.width, read.height, read.faces, read.levels),
+            (32, 32, 2, 2)
+        );
+        let shown = read.face(1).expect("slice 1");
+        let shown = decode_level(&shown, 0).expect("decodes");
+        assert!(shown.data.chunks(4).all(|pixel| pixel == [255, 0, 0, 255]));
+
+        let mut past = ask(Some(image(32, [0, 0, 255, 255])), false, &[]);
+        past.slice = 2;
+        let why = edit(&sections, "zq_array", &past).expect_err("refused");
+        assert!(why.contains("no slice 2"), "{why}");
+    }
+
+    #[test]
+    fn a_volume_slice_s_levels_are_copied_to_each_slice_that_shows_the_same_plane() {
+        // 2x2 RGBA8 of two levels over four slices: each slice holds 16 bytes of level 0 and 4
+        // of level 1, whose two planes slices 0 and 1, and 2 and 3, show.
+        let each = 20;
+        let mut t = HeldTexture {
+            name: "zq_volume".into(),
+            width: 2,
+            height: 2,
+            format: GrcTextureFormat::A8B8G8R8,
+            srgb: false,
+            mips: 2,
+            pixels: (0..4 * each).map(|i| i as u8).collect(),
+        };
+        let was = t.pixels.clone();
+        shared_planes(&mut t, 1, 4, each);
+        assert_eq!(
+            t.pixels[16..20],
+            was[each + 16..each + 20],
+            "slice 0 shows its level 1"
+        );
+        assert_eq!(
+            t.pixels[..16],
+            was[..16],
+            "level 0 has a plane for each slice"
+        );
+        assert_eq!(
+            t.pixels[2 * each..],
+            was[2 * each..],
+            "slices 2 and 3 show another plane"
+        );
     }
 }

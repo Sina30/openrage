@@ -58,20 +58,31 @@ impl HeldTexture {
             name: self.name.clone(),
         };
         let (width, height) = (u32::from(self.width), u32::from(self.height));
-        let (mut levels, mut from) = (Vec::new(), 0usize);
-        for level in 0..u32::from(self.mips.max(1)) {
-            let side = |pixels: u32| pixels.checked_shr(level).unwrap_or(0).max(1);
-            let len = self.format.mip_size(side(width), side(height)) as usize;
-            let end = from.checked_add(len).ok_or_else(unread)?;
-            levels.push(self.pixels.get(from..end).ok_or_else(unread)?.to_vec());
-            from = end;
+        // An array's or a cube's pixels are its slices' levels, slice after slice.
+        let depth = was.map_or(1, |was| usize::from(was.depth.max(1)));
+        let (mut slices, mut from) = (Vec::with_capacity(depth), 0usize);
+        for _ in 0..depth {
+            let mut levels = Vec::new();
+            for level in 0..u32::from(self.mips.max(1)) {
+                let side = |pixels: u32| pixels.checked_shr(level).unwrap_or(0).max(1);
+                let len = self.format.mip_size(side(width), side(height)) as usize;
+                let end = from.checked_add(len).ok_or_else(unread)?;
+                levels.push(self.pixels.get(from..end).ok_or_else(unread)?.to_vec());
+                from = end;
+            }
+            slices.push(levels);
         }
+        let levels = slices.first().map_or(&[][..], Vec::as_slice);
         let (width, height) = (self.width, self.height);
         let tiled = match was {
-            Some(was) => was.reshaped(width, height, format, &levels),
+            Some(was) if depth > 1 => {
+                let slices: Vec<&[Vec<u8>]> = slices.iter().map(Vec::as_slice).collect();
+                was.reshaped_slices(width, height, format, &slices)
+            }
+            Some(was) => was.reshaped(width, height, format, levels),
             None => {
                 let name = self.name.to_ascii_lowercase();
-                ModelTexture::tiled(&name, width, height, format, &levels)
+                ModelTexture::tiled(&name, width, height, format, levels)
             }
         };
         Ok(tiled?)

@@ -521,8 +521,21 @@ fn list_and_extract_read_a_gta_vi_archive_as_scan_and_scan_extract_do() {
     let written = files(&dir.path().join("extracted"));
     assert_eq!(written, files(&dir.path().join("scanned")));
     let mut names: Vec<&String> = listed.iter().map(|(_, _, file)| file).collect();
+    // The nested archive whose names end it, from its header to their end.
+    let nested = format!("{NESTED:#X}.rpf");
+    names.push(&nested);
     names.sort();
     assert_eq!(written.keys().collect::<Vec<_>>(), names);
+    assert_eq!(
+        written[&nested],
+        bytes[NESTED as usize..nested_end(&listed)]
+    );
+}
+
+/// Where the nested archive of [`listed_archive`] ends: with the names after its one document.
+fn nested_end(listed: &[(u64, &str, String)]) -> usize {
+    let document = listed[5].0 as usize;
+    (document + zlib(CHANGE_SET).len()).next_multiple_of(16) + 0x40
 }
 
 #[test]
@@ -554,9 +567,23 @@ fn a_gta_vi_archive_lists_as_json_and_by_family() {
             (offset, text("kind"), text("file").to_string())
         })
         .collect();
-    assert_eq!(found, listed);
+    // The nested archive whose names end it is given the file `rpf extract` writes of it.
+    let mut written = listed.clone();
+    let at = written.partition_point(|(offset, _, _)| *offset < NESTED);
+    written.insert(at, (NESTED, "archives", format!("{NESTED:#X}.rpf")));
+    assert_eq!(found, written);
     assert!(rows.iter().all(|b| b["kind"] == "archives"), "{rows:?}");
-    assert!(rows.iter().any(|b| b["offset"] == NESTED), "{rows:?}");
+    assert!(rows.iter().any(|b| b["offset"] == 0), "{rows:?}");
+    // The nested header with no names is the one `rpf extract` counts as left out; a names row,
+    // which ends an archive that is extracted, is not a header left out.
+    let unplaced = (rows.iter())
+        .filter(|b| b["offset"] != 0 && b["found_as"] == "archive")
+        .count();
+    assert_eq!(unplaced, 1, "{rows:?}");
+    let out = dir.path().join("out").display().to_string();
+    let (said, ok) = run(&["rpf", "extract", &archive, &out, "--dry-run"]);
+    let left_out = format!("{unplaced} nested archive(s) left out");
+    assert!(ok && said.contains(&left_out), "{said}");
 
     let document_at = listed[2].0;
     assert_eq!(body(document_at)["found_as"], "zlib xml");
@@ -601,7 +628,22 @@ fn extract_writes_a_gta_vi_body_inflated_as_scan_body_does_and_the_bodies_of_a_f
     let (said, ok) = run(&["rpf", "extract", &archive, &path("out"), "--as", "inflated"]);
     assert!(ok && said.contains("form          inflated"), "{said}");
     let written = files(&dir.path().join("out"));
-    assert_eq!(written.len(), listed.len());
+    assert_eq!(
+        written.len(),
+        listed.len() + 1,
+        "the bodies and the nested archive"
+    );
+    let (said, ok) = run(&[
+        "rpf",
+        "scan-body",
+        &archive,
+        &format!("{NESTED:#X}"),
+        &path("nested"),
+    ]);
+    assert!(ok, "{said}");
+    let nested = std::fs::read(path("nested")).expect("the nested archive");
+    assert_eq!(nested, bytes[NESTED as usize..nested_end(&listed)]);
+    assert_eq!(written.get(&format!("{NESTED:#X}.rpf")), Some(&nested));
     for (offset, _, file) in &listed {
         let (said, ok) = run(&[
             "rpf",

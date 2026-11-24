@@ -26,7 +26,7 @@ use super::rpf9_scan::{body_path, Ended, RowKind, View};
 use super::AppState;
 
 /// The version of what this file keeps: a change to it takes another.
-const VERSION: u64 = 2;
+const VERSION: u64 = 3;
 /// The most a kept harvest inflates to.
 const MOST_BYTES: usize = 1 << 28;
 /// The most one body read for the harvest inflates to.
@@ -76,7 +76,9 @@ fn body(file: &File, offset: u64) -> Option<Resource> {
         return None;
     };
     let (virtual_section, physical) = resource.sections(&bytes);
-    or_io::gta6::headerless::read(signature, virtual_section, Some(physical)).ok()
+    let read = or_io::gta6::headerless::read(signature, virtual_section, Some(physical)).ok()?;
+    super::gta6_key_words::learn(signature, virtual_section, &read);
+    Some(read)
 }
 
 /// The keys of the textures that read in `resource` where it is a dictionary; into `names`, each
@@ -299,7 +301,10 @@ impl AppState {
             return;
         };
         let built = Arc::clone(&harvest.built);
-        std::thread::spawn(move || serve(&read_kept(&file), &built));
+        std::thread::spawn(move || {
+            super::gta6_key_words::read_kept();
+            serve(&read_kept(&file), &built)
+        });
     }
 
     /// Read, as a job, the dictionaries and drawables of each archive under `root` that the
@@ -337,6 +342,9 @@ impl AppState {
             kept.extend(harvested);
             if let Some(Err(error)) = changed.then(|| keep(&file, &kept)) {
                 tracing::warn!(%error, "the harvest of the install's archives was not kept");
+            }
+            if changed {
+                super::gta6_key_words::keep();
             }
             let named = serve(&kept, &built);
             match stopped {

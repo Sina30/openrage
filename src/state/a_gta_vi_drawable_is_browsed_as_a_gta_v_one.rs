@@ -425,6 +425,7 @@ fn collision_draws_each_fragment_child_at_its_bone_and_the_model_draws_its_surfa
         composite,
         bound,
         flags: [0; 2],
+        bound_word: 0,
         matrix: placed(at),
     };
     let own = ChildBound::Sphere {

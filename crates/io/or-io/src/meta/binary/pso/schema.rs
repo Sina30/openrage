@@ -7,6 +7,9 @@ use crate::meta::error::{MetaError, Result};
 
 use super::sections::read_section_header;
 
+/// The engine's canonical `parMemberType` numbering, which a P-form member's type byte already is:
+/// a float is `0x07` and a string `0x0B` (a hashed string carries subtype `0x07`), where the L-form
+/// table (`PsoType`) instead marks the same two engine types `0x21` and `0x4A`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PsoDataType {
     Bool,
@@ -373,6 +376,69 @@ impl PsoStructInfo {
     }
 }
 
+/// Why a parsed `parStructure` fails the engine's layout invariants.
+#[derive(Debug, thiserror::Error)]
+pub enum StructLayoutError {
+    #[error("parStructure {structure:#010X}: member {member:#010X} at offset {offset:#X} does not fit inside the structure's {size:#X} bytes")]
+    MemberPastEnd {
+        structure: u32,
+        member: u32,
+        offset: u32,
+        size: u32,
+    },
+    #[error("parStructure {structure:#010X}: member {member:#010X} at offset {offset:#X} precedes the member before it at {prev:#X}, where members ascend by offset")]
+    MembersOutOfOrder {
+        structure: u32,
+        member: u32,
+        offset: u32,
+        prev: u32,
+    },
+}
+
+impl From<StructLayoutError> for MetaError {
+    fn from(error: StructLayoutError) -> Self {
+        MetaError::Other(error.to_string())
+    }
+}
+
+/// Checks a parsed `parStructure` against the engine's layout invariants: each member starts inside
+/// the declared `size`, a fixed-size member ends inside it, and members ascend by offset. The array
+/// element descriptors (name hash [`ARRAY_INFO_NAME_HASH`]) are not members, and are skipped as the
+/// readers skip them. `members` are `(name hash, offset, engine type)`.
+pub(crate) fn validate_struct_layout(
+    structure: u32,
+    size: u32,
+    members: impl IntoIterator<Item = (u32, u32, PsoDataType)>,
+) -> std::result::Result<(), StructLayoutError> {
+    let mut prev: Option<u32> = None;
+    for (member, offset, data_type) in members {
+        if member == ARRAY_INFO_NAME_HASH {
+            continue;
+        }
+        let end = data_type
+            .fixed_size()
+            .map_or(offset, |bytes| offset.saturating_add(bytes as u32));
+        if offset >= size || end > size {
+            return Err(StructLayoutError::MemberPastEnd {
+                structure,
+                member,
+                offset,
+                size,
+            });
+        }
+        if let Some(prev) = prev.filter(|&p| offset < p) {
+            return Err(StructLayoutError::MembersOutOfOrder {
+                structure,
+                member,
+                offset,
+                prev,
+            });
+        }
+        prev = Some(offset);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PsoEnumEntry {
     pub name_hash: u32,
@@ -452,6 +518,13 @@ impl PsoSchemaSection {
             match schema_type {
                 SCHEMA_TYPE_STRUCTURE => {
                     let info = parse_struct_info(*name_hash, &mut cursor)?;
+                    validate_struct_layout(
+                        info.name_hash,
+                        info.data_size,
+                        info.entries
+                            .iter()
+                            .map(|e| (e.name_hash, e.offset(), e.data_type)),
+                    )?;
                     out.struct_index.insert(*name_hash, out.items.len());
                     out.items.push(PsoSchemaItem::Struct(info));
                 }
@@ -653,6 +726,69 @@ mod tests {
         e.set_subtype(7);
         assert_eq!(e.offset(), 0x3_1234);
         assert_eq!(e.subtype(), 7);
+    }
+
+    #[test]
+    fn the_two_on_disk_forms_name_one_engine_member_type() {
+        use crate::meta::binary::rbm::schema::PsoType;
+        // The engine's canonical parMemberType: FLOAT is 0x07, STRING is 0x0B, a hashed string
+        // carries subtype 0x07. A P-form member's type byte already is this numbering.
+        assert_eq!(PsoDataType::from_byte(0x07), PsoDataType::Float);
+        assert_eq!(PsoDataType::Float.to_byte(), 0x07);
+        assert_eq!(PsoDataType::from_byte(0x0B), PsoDataType::String);
+        assert_eq!(PsoDataType::String.to_byte(), 0x0B);
+        assert_eq!(string_subtype::HASH, 0x07);
+        // The L-form table marks the same two engine types with its own distinct codes.
+        assert_eq!(PsoType::from_byte(0x21), PsoType::Float);
+        assert_eq!(PsoType::from_byte(0x4A), PsoType::StringHash);
+    }
+
+    /// One struct of `members`, `(name hash, type, offset)`, with a declared `size`, written as a
+    /// `PSCH` section the parser reads back.
+    fn one_struct(size: u32, members: &[(u32, PsoDataType, u32)]) -> Vec<u8> {
+        let mut section = PsoSchemaSection::default();
+        section.insert_struct(PsoStructInfo {
+            name_hash: 0x16F5_3758,
+            flags: 0,
+            data_size: size,
+            major_version: 0,
+            pad: 0,
+            entries: members
+                .iter()
+                .map(|&(name, ty, off)| PsoStructEntry::new(name, ty, off, 0, 0))
+                .collect(),
+        });
+        section.write()
+    }
+
+    #[test]
+    fn a_well_formed_struct_validates_and_a_corrupt_layout_is_refused() {
+        let good = [
+            (0x1111_1111, PsoDataType::Float, 0x00),
+            (0x2222_2222, PsoDataType::Float, 0x04),
+            (0x3333_3333, PsoDataType::UInt, 0x08),
+        ];
+        PsoSchemaSection::parse(&one_struct(0x20, &good)).expect("a well-formed struct reads");
+
+        // A member offset past the declared size.
+        let past = [(0x1111_1111, PsoDataType::Float, 0x40)];
+        let err = PsoSchemaSection::parse(&one_struct(0x20, &past))
+            .expect_err("a member past the end is refused")
+            .to_string();
+        assert!(err.contains("does not fit"), "{err}");
+
+        // A declared size too small for the last member to fit.
+        assert!(PsoSchemaSection::parse(&one_struct(0x08, &good)).is_err());
+
+        // Members that do not ascend by offset.
+        let unordered = [
+            (0x1111_1111, PsoDataType::Float, 0x10),
+            (0x2222_2222, PsoDataType::Float, 0x08),
+        ];
+        let err = PsoSchemaSection::parse(&one_struct(0x20, &unordered))
+            .expect_err("members out of order are refused")
+            .to_string();
+        assert!(err.contains("precedes"), "{err}");
     }
 
     #[test]

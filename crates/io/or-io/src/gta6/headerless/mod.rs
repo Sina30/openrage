@@ -23,17 +23,26 @@ mod surfaces;
 mod texture;
 mod write;
 mod write_bone_names;
+mod write_bound_grow;
+mod write_bound_reshape;
+mod write_bound_runs;
 mod write_bound_vertex;
 mod write_bvh;
 mod write_dictionary;
+mod write_dictionary_entries;
 mod write_dictionary_textures;
 mod write_embedded;
+mod write_embedded_repack;
 mod write_filter_tracks;
 mod write_filters;
+mod write_fragment_child;
 mod write_geometry;
 mod write_material;
 mod write_navmesh;
 mod write_navmesh_delete;
+mod write_navmesh_links;
+mod write_navmesh_side;
+mod write_palette;
 mod write_physics;
 mod write_skeleton;
 mod write_volume;
@@ -62,13 +71,24 @@ pub use navmesh::{
     WATER,
 };
 pub use octree::{read_octree, NavOctree};
+pub use particles::duplicate_particle_effect;
+pub use particles::{add_particle_keys, ParticleKeysError};
+pub use particles::{
+    bake_particle_tables, read_particle_curves, write_particle_curves, ParticleCurve,
+    ParticleCurves,
+};
 pub use particles::{class_of_bit, read_particle_gpu_tables, ClassNamedBy, GpuTables};
+pub use particles::{
+    copy_particle_behaviour, duplicate_particle_emitter, duplicate_particle_event,
+    duplicate_particle_rule,
+};
 pub use particles::{
     read_particle_effects, write_particle_effects, Behaviour, Domain, DrawableRef, EffectRule,
     EmitterRule, Event, Evolution, EvolutionList, EvolvedProp, Kfp, KfpEntry, ParticleEffects,
     ParticleRule, SpawnedScalars, Spawner, BEHAVIOUR_KFPS, DOMAIN_KFPS, EFFECT_KFPS, EMITTER_KFPS,
 };
 pub use particles::{read_particle_gpu_buffers, GpuBuffer};
+pub use particles::{remove_from_particle_effects, ParticleRemovals};
 pub use particles::{
     BehaviourFields, DiffuseMode, EvolvedKeyframe, LightingMode, ProjectionMode, ShaderSwitch,
     Shading, COLOUR_RGBA_KFPS,
@@ -87,22 +107,43 @@ pub use surfaces::Surface;
 pub use texture::DictionaryTexture;
 pub use write::{write_shaders, write_texture};
 pub use write_bone_names::{bone_name_holds, rename_bones, BoneNameError};
+pub use write_bound_grow::{
+    add_bound_primitive, add_bound_vertex, copy_bound_child, delete_bound_child,
+    delete_bound_primitive, delete_bound_vertex, fit_composite_box, reshape_bound_body,
+    retyped_bound_child, write_retyped, BoundGrowError, BoundHolder, BoundReshape,
+};
+pub use write_bound_reshape::{edge_byte, rewire_triangle};
 pub use write_bound_vertex::{vertex_move_holds, write_bound_vertices};
 pub use write_dictionary::{
     read_dictionary_model, write_dictionary, DictionaryModel, DictionaryWriteError, ModelTexture,
 };
+pub use write_dictionary_entries::{copy_dictionary_entry, entry_key, remove_dictionary_entry};
 pub use write_dictionary_textures::{write_dictionary_textures, HeldTexture, TexturePlanError};
 pub use write_embedded::write_embedded_texture;
+pub use write_embedded_repack::{
+    embed_texture, key_word, reshape_embedded_texture, unembed_texture, EmbedError,
+};
 pub use write_filter_tracks::{write_filter_tracks, write_record_bones, ElementsError};
 pub use write_filters::{write_filter_weights, write_record_values};
+pub use write_fragment_child::{
+    fragment_child_local_in, fragment_child_place, place_fragment_child, regroup_fragment_child,
+    write_fragment_level,
+};
 pub use write_geometry::{
     write_geometry, GeometryAt, GeometryEdit, GeometryWriteError, GeometryWritten,
 };
+pub use write_geometry::{write_geometry_cut, GeometryCut};
+pub use write_material::stated_words;
 pub use write_material::{
     shader_layout_holds, write_materials, write_materials_with, MaterialLayoutError,
 };
 pub use write_navmesh::{cut_edges, links_into, polygon_cut, PolygonCut};
-pub use write_navmesh_delete::{delete_polygon, polygon_deleted, NavDeleteError};
+pub use write_navmesh_delete::{
+    delete_polygon, deletion, disable_polygon, disabling, polygon_deleted, NavDeleteError,
+    NavRebuild,
+};
+pub use write_navmesh_links::{relinked, with_links, write_links};
+pub use write_palette::{write_palette, PaletteAdd};
 pub use write_physics::{
     bound_placement_holds, write_bound, write_drawable_bound, write_fragment, write_fragment_bound,
     write_polygon_flags,

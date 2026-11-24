@@ -175,19 +175,42 @@ impl ModelTexture {
         format: u8,
         levels: &[Vec<u8>],
     ) -> Written<Self> {
+        Self::tiled_slices(name, width, height, 1, format, &[levels])
+    }
+
+    /// A 2D texture, an array (`dimension` 1) or cubes (`dimension` 2) of `slices`, each its levels top first as linear elements of DXGI `format`, each tiled into its chain and the chains laid slice after slice.
+    pub fn tiled_slices(
+        name: &str,
+        width: u16,
+        height: u16,
+        dimension: u8,
+        format: u8,
+        slices: &[&[Vec<u8>]],
+    ) -> Written<Self> {
         let refuse = |why| DictionaryWriteError::Pixels {
             name: name.to_string(),
             why,
         };
+        let levels = slices.first().copied().unwrap_or_default();
         let mip_levels = (u8::try_from(levels.len()).ok())
             .filter(|&m| m > 0)
             .ok_or_else(|| refuse("it holds no level, or more than a record states"))?;
+        if slices.iter().any(|slice| slice.len() != levels.len()) {
+            return Err(refuse("its slices hold different numbers of levels"));
+        }
+        if dimension == 3 {
+            return Err(refuse(
+                "a volume's levels lie across its z-slabs, which are not tiled slice by slice",
+            ));
+        }
+        let depth = (u16::try_from(slices.len()).ok())
+            .ok_or_else(|| refuse("it holds more slices than a record states"))?;
         let mut texture = Self {
             name: name.to_string(),
             width,
             height,
-            depth: 1,
-            dimension: 1,
+            depth,
+            dimension,
             format,
             mip_levels,
             flags: FLAGS,
@@ -209,7 +232,9 @@ impl ModelTexture {
         }
         let tile = Tile::of(tiled, false);
         let lone = levels.len() <= 1;
-        let mut placed = chain(width.into(), height.into(), tiled, &tile, lone, len)
+        // Each slice is one chain, `unit` bytes after the one before it.
+        let unit = len / u64::from(depth.max(1));
+        let mut placed = chain(width.into(), height.into(), tiled, &tile, lone, unit)
             .ok_or_else(|| refuse("its levels are no chain of 4 KiB tiles"))?;
         placed.truncate(levels.len());
         if placed.len() != levels.len() {
@@ -219,11 +244,14 @@ impl ModelTexture {
             return Err(refuse("a 2-byte texture's tail slots were not measured"));
         }
         let mut payload = vec![0u8; len as usize];
-        for (level, elements) in placed.iter().zip(levels) {
-            if elements.len() != level.width * level.height * element
-                || !place(&mut payload, level, elements, &tile, element)
-            {
-                return Err(refuse("a level is not the size of its place in the chain"));
+        let chains = payload.chunks_exact_mut((unit as usize).max(1));
+        for (memory, each) in chains.zip(slices) {
+            for (level, elements) in placed.iter().zip(each.iter()) {
+                if elements.len() != level.width * level.height * element
+                    || !place(memory, level, elements, &tile, element)
+                {
+                    return Err(refuse("a level is not the size of its place in the chain"));
+                }
             }
         }
         texture.payload = payload;
@@ -250,6 +278,34 @@ impl ModelTexture {
             byte_43: self.byte_43,
             byte_45: self.byte_45,
             ..Self::tiled(&self.name, width, height, format, levels)?
+        })
+    }
+
+    /// The array or cubes given another size, format or levels, each of its `slices` tiled anew; its flags and unknown bytes carried.
+    pub fn reshaped_slices(
+        &self,
+        width: u16,
+        height: u16,
+        format: u8,
+        slices: &[&[Vec<u8>]],
+    ) -> Written<Self> {
+        let refuse = |why| DictionaryWriteError::Pixels {
+            name: self.name.clone(),
+            why,
+        };
+        if self.dimension == 3 {
+            return Err(refuse(
+                "a volume's levels lie across its z-slabs, so its payload is carried",
+            ));
+        }
+        if slices.len() != usize::from(self.depth) {
+            return Err(refuse("a new shape keeps the texture's count of slices"));
+        }
+        Ok(Self {
+            flags: self.flags,
+            byte_43: self.byte_43,
+            byte_45: self.byte_45,
+            ..Self::tiled_slices(&self.name, width, height, self.dimension, format, slices)?
         })
     }
 
@@ -360,7 +416,13 @@ impl ModelTexture {
     }
 
     /// Its 0x70-byte record at `at`, its name at `name`, its payload at `pixels` of the physical section.
-    fn record(&self, element: usize, at: usize, name: usize, pixels: usize) -> [u8; RECORD] {
+    pub(super) fn record(
+        &self,
+        element: usize,
+        at: usize,
+        name: usize,
+        pixels: usize,
+    ) -> [u8; RECORD] {
         let mut r = [0u8; RECORD];
         let count = (self.payload.len() / element) as u32;
         put(&mut r, 0x08, &count.to_le_bytes());

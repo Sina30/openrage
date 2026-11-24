@@ -21,6 +21,8 @@ pub struct EditorCtx {
     pub records: Rc<RecordUi>,
     /// What the form changed this frame, oldest first, as undo holds it.
     pub edits: Rc<RefCell<Vec<MetaEdit>>>,
+    /// Whether a hash value no table names shows the vocabulary's name: a GTA VI form's only.
+    pub text_names: bool,
 }
 
 impl EditorCtx {
@@ -67,6 +69,7 @@ impl EditorCtx {
             path: Vec::new(),
             records: Rc::new(RecordUi::default()),
             edits: Rc::default(),
+            text_names: false,
         }
     }
 }

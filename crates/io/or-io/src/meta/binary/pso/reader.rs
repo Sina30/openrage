@@ -486,7 +486,7 @@ impl PsoDecoder<'_, '_> {
         offset: usize,
     ) -> Result<Value> {
         if self.gta6 {
-            return self.decode_gta6_map(entry, offset);
+            return self.decode_gta6_map(owner, entry, offset);
         }
         let key_desc = owner.entry(entry.key_index()).copied();
         let value_desc = owner.entry(entry.value_index()).copied();
@@ -549,18 +549,29 @@ impl PsoDecoder<'_, '_> {
     }
 
     /// A GTA VI map: a pair map's 24 bytes are the table form's binary map, big-endian, over pairs
-    /// of its block's structure; a group map is read only when empty.
-    fn decode_gta6_map(&mut self, entry: &PsoStructEntry, offset: usize) -> Result<Value> {
+    /// of its block's structure; a group map is read by its groups only with GTA VI support.
+    fn decode_gta6_map(
+        &mut self,
+        owner: &PsoStructInfo,
+        entry: &PsoStructEntry,
+        offset: usize,
+    ) -> Result<Value> {
         match entry.subtype() {
             GTA6_PAIR_MAP => {}
             GTA6_GROUP_MAP => {
-                let (groups, count) = (self.read_u32(offset)?, self.read_u32(offset + 4)?);
-                if groups == 0 && count == 0 && self.read_pointer(offset + 8)?.is_null() {
-                    return Ok(Value::Map(Vec::new()));
-                }
-                return Err(MetaError::Other(format!(
-                    "pso: a GTA VI group map of {count} pairs, whose values' layout is not measured"
-                )));
+                #[cfg(feature = "gta6")]
+                return self.decode_group_map(owner, entry, offset);
+                #[cfg(not(feature = "gta6"))]
+                let _ = owner;
+                #[cfg(not(feature = "gta6"))]
+                return match (self.read_u32(offset)?, self.read_u32(offset + 4)?) {
+                    (0, 0) if self.read_pointer(offset + 8)?.is_null() => {
+                        Ok(Value::Map(Vec::new()))
+                    }
+                    (_, count) => Err(MetaError::Other(format!(
+                        "pso: a GTA VI group map of {count} pairs, whose values' layout is not measured"
+                    ))),
+                };
             }
             other => {
                 return Err(MetaError::Other(format!(
@@ -815,6 +826,10 @@ fn variant_name(info: &PsoEnumInfo, value: i32) -> Option<u32> {
         .map(|e| e.name_hash)
 }
 
+#[cfg(feature = "gta6")]
+#[path = "pform_group_read.rs"]
+mod group_read;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1013,12 +1028,22 @@ mod tests {
     }
 
     #[test]
-    fn a_gta6_p_form_has_no_canonical_form_to_be_laid_out_again_into() {
+    fn a_gta6_p_form_the_rules_do_not_give_back_has_no_canonical_form() {
         let err =
             crate::meta::canonical::converge(&SchemaLibrary::default(), &PForm::default().bytes())
-                .expect_err("refused")
-                .to_string();
-        assert!(err.contains("GTA VI's layout rules are not known"), "{err}");
+                .expect_err("refused");
+        // Its pads are zero where the rules write 0x70.
+        #[cfg(feature = "gta6")]
+        assert!(
+            matches!(err, crate::meta::canonical::NotCanonical::FirstCycle(_)),
+            "{err}"
+        );
+        #[cfg(not(feature = "gta6"))]
+        assert!(
+            err.to_string()
+                .contains("GTA VI's layout rules are not known"),
+            "{err}"
+        );
     }
 
     #[test]

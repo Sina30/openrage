@@ -5,9 +5,9 @@
 //! zeroed record of its class; then the tree is written into the grown blocks, a member an added
 //! element leaves unset taking what its zero bytes read as.
 //!
-//! ⚠ An array grows only where the block that holds it is a record of the structure that declares
-//! it, and its elements are structures or values whose size their type gives; a region that
-//! changes size anywhere else is refused by the in-place writer as before.
+//! ⚠ An array grows here only where the block that holds it is a record of the structure that
+//! declares it, and its elements are structures or values whose size their type gives; a tree
+//! this cannot place is laid out anew, both sections packed again.
 
 use crate::container::rpf::{Rpf9Form, Rpf9Sections};
 use crate::meta::binary::hash_index::default_hash_index;
@@ -57,7 +57,30 @@ fn grow(e: Gta6GrowError) -> MetaError {
 }
 
 /// A headerless resource's sections with `instance` written in, its arrays resized to it first.
+// An unchanged tree is laid out anew only where that gives back the stored bytes.
 pub fn write_grown(layout: &RbmLayout, instance: &MetaInstance) -> Result<(Vec<u8>, Vec<u8>)> {
+    // A table that gains or loses a pair is rebuilt and the regions after it move.
+    if super::gta6_pairs::pairs_changed(layout, instance)? {
+        return super::gta6_relayout::write(layout, instance);
+    }
+    let refused = match grown_in_place(layout, instance) {
+        Ok(written) => return Ok(written),
+        Err(e) => e,
+    };
+    let anew = super::gta6_relayout::write(layout, instance)
+        .map_err(|e| MetaError::Other(format!("{refused}; laid out anew: {e}")))?;
+    if *instance == table_form::decode(&layout.model)? {
+        let split = layout.virtual_page_size.min(layout.decompressed.len());
+        let (v, p) = layout.decompressed.split_at(split);
+        if anew.0 != v || anew.1 != p {
+            return Err(refused);
+        }
+    }
+    Ok(anew)
+}
+
+/// [`write_grown`] by the resource rule alone, each array grown or shrunk where it lies.
+fn grown_in_place(layout: &RbmLayout, instance: &MetaInstance) -> Result<(Vec<u8>, Vec<u8>)> {
     let model = &layout.model;
     let stored = table_form::decode(model)?;
     let root = model.root_block_id;
@@ -504,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn an_added_pointer_names_a_zeroed_record_beside_its_class_and_a_null_one_is_refused() {
+    fn an_added_pointer_names_a_zeroed_record_beside_its_class_and_a_null_one_is_laid_out_anew() {
         let s = pointed();
         let (mut tree, layout) = opened(&s);
         let first = items(&mut tree, FIRST);
@@ -525,12 +548,18 @@ mod tests {
             pointers(&[(10, 0.25), (7, 1.5), (-20, 0.5)])
         );
 
+        // A null element names no record for the grower to lay out, so the body is laid out anew.
         let (mut tree, layout) = opened(&s);
         items(&mut tree, FIRST).push(Value::Pointer(None));
-        let err = write_grown(&layout, &tree)
-            .expect_err("refused")
-            .to_string();
-        assert!(err.contains("names no structure"), "{err}");
+        let (v, p) = write_grown(&layout, &tree).expect("laid out anew");
+        let (mut again, _) = opened(&Rpf9Sections {
+            form: Rpf9Form::BlockMapped,
+            virtual_section: v,
+            physical: p,
+        });
+        let mut want = pointers(&[(10, 0.25), (-20, 0.5)]);
+        want.push(Value::Pointer(None));
+        assert_eq!(*items(&mut again, FIRST), want);
         // Taking one out shrinks the array and leaves the other's record as it was.
         let (mut tree, layout) = opened(&s);
         items(&mut tree, FIRST).remove(0);
@@ -541,5 +570,35 @@ mod tests {
             physical: p,
         });
         assert_eq!(*items(&mut again, FIRST), pointers(&[(-20, 0.5)]));
+    }
+
+    #[test]
+    fn xml_typed_without_an_arrays_last_element_keeps_the_first_ones_record() {
+        let s = pointed();
+        let (tree, layout) = opened(&s);
+        let xml = crate::meta::write_meta(&tree).expect("exported");
+        // The second of the array's two pointers, cut from its line to its closing tag.
+        let second = (xml.match_indices("<Item ").nth(1))
+            .map(|(at, _)| at)
+            .expect("two items");
+        let line = xml[..second].rfind('\n').map_or(0, |n| n + 1);
+        let close = "</Item>\n";
+        let end = second + xml[second..].find(close).expect("closed") + close.len();
+        let typed = format!("{}{}", &xml[..line], &xml[end..]);
+        let library = crate::meta::schema::SchemaLibrary::default();
+        let doc = crate::meta::MetaDocument::parse(&library, typed.into_bytes()).expect("parsed");
+        let (v, p) = write_grown(&layout, &doc.instance).expect("shrunk");
+        // The element kept is matched by its values to the first stored one, whose record it keeps.
+        let model = super::super::gta6::read_model(&v, &p).expect("it reads");
+        assert_eq!(model.data_blocks[1].data, pointer(3, 0).to_le_bytes());
+        let (mut again, _) = opened(&Rpf9Sections {
+            form: Rpf9Form::BlockMapped,
+            virtual_section: v,
+            physical: p,
+        });
+        assert_eq!(
+            *items(&mut again, FIRST),
+            [Value::Pointer(Some(Box::new(pair(10, 0.25))))]
+        );
     }
 }

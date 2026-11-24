@@ -28,6 +28,10 @@ fn cells() -> MutexGuard<'static, BTreeMap<PathBuf, Arc<NavMesh>>> {
 /// Keep `mesh`, the cell the body at `path` opened to, with none of an earlier session's deletions.
 pub(super) fn remember(path: &Path, mesh: NavMesh) {
     super::gta6_navmesh_delete::forget(path);
+    // A body whose links an edit of another cell renumbered keeps them while that edit holds.
+    if super::gta6_navmesh_delete::links::renumbered_by(path).is_some() {
+        return;
+    }
     cells().insert(path.to_path_buf(), Arc::new(mesh));
 }
 
@@ -256,20 +260,58 @@ fn chosen() -> MutexGuard<'static, BTreeSet<PathBuf>> {
 /// Each border of the cell opened at `path`, the cell across it, and that cell's open body a
 /// search of the scan chose: only a read of every body of the archive knows which is the second.
 pub(crate) fn neighbours(path: &Path, m: &NavMesh) -> Vec<(Border, u32, Option<Arc<NavMesh>>)> {
+    // A body of no cell has no border, and no other body's special link ends in it.
+    if m.cell == 0 {
+        return Vec::new();
+    }
     let archive = body_at(path).map(|(archive, _)| archive);
-    let open = cells();
-    let chosen = chosen();
+    let (open, chosen) = (cells(), chosen());
     BORDERS
         .into_iter()
         .filter_map(|border| {
             let across = border.across(m.cell)?;
-            let body = (open.iter())
-                .find(|(p, n)| {
-                    n.cell == across && chosen.contains(*p) && body_at(p).map(|(a, _)| a) == archive
-                })
-                .map(|(_, n)| Arc::clone(n));
+            let body = chosen_body(&open, &chosen, archive, across).map(|(_, n)| n);
             Some((border, across, body))
         })
+        .collect()
+}
+
+/// The open body of `cell` among `open` that a search of the scan of `archive` chose.
+fn chosen_body(
+    open: &BTreeMap<PathBuf, Arc<NavMesh>>,
+    chosen: &BTreeSet<PathBuf>,
+    archive: Option<&Path>,
+    cell: u32,
+) -> Option<(PathBuf, Arc<NavMesh>)> {
+    (open.iter())
+        .find(|(p, n)| {
+            n.cell == cell && chosen.contains(*p) && body_at(p).map(|(a, _)| a) == archive
+        })
+        .map(|(p, n)| (p.clone(), Arc::clone(n)))
+}
+
+/// Each cell across `m`'s borders or at its corners, where a link of either may end in the other,
+/// and that cell's open body a search of the scan chose.
+pub(crate) fn linked_cells(path: &Path, m: &NavMesh) -> Vec<(u32, Option<Arc<NavMesh>>)> {
+    if m.cell == 0 {
+        return Vec::new();
+    }
+    let archive = body_at(path).map(|(archive, _)| archive);
+    let (open, chosen) = (cells(), chosen());
+    (Border::around(m.cell).into_iter())
+        .map(|c| (c, chosen_body(&open, &chosen, archive, c).map(|(_, n)| n)))
+        .collect()
+}
+
+/// The path and the open body of each cell of [`linked_cells`] that has one.
+pub(super) fn neighbour_paths(path: &Path, m: &NavMesh) -> Vec<(PathBuf, Arc<NavMesh>)> {
+    if m.cell == 0 {
+        return Vec::new();
+    }
+    let archive = body_at(path).map(|(archive, _)| archive);
+    let (open, chosen) = (cells(), chosen());
+    (Border::around(m.cell).into_iter())
+        .filter_map(|c| chosen_body(&open, &chosen, archive, c))
         .collect()
 }
 
@@ -372,7 +414,7 @@ const BODY_LIMIT: u64 = 1 << 30;
 
 impl AppState {
     /// Look through the scan of the archive the cell `doc` came from for the cells across its
-    /// borders, on a worker; each found opens once the search ends.
+    /// borders and at its corners, on a worker; each found opens once the search ends.
     pub(crate) fn find_neighbour_cells(&mut self, doc: DocumentId) {
         let Some(path) = self.document(doc).and_then(|d| d.path.clone()) else {
             return;
@@ -398,7 +440,7 @@ impl AppState {
             self.show_info_toast(tr!("The scan of the archive this cell came from is not open, or has found no navigation cell: open the archive to search it."));
             return;
         }
-        let wanted: Vec<u32> = BORDERS.iter().filter_map(|b| b.across(m.cell)).collect();
+        let wanted = Border::around(m.cell);
         let found = Search {
             cancel: Cancel::new(),
             progress: Progress::new(),
@@ -727,5 +769,30 @@ mod tests {
         );
         assert!(!disabled[0], "its edge into itself is open");
         assert_eq!(disabled_polygons(&CNavMesh::default(), &big), None);
+    }
+
+    #[test]
+    fn a_body_chosen_at_a_corner_is_one_an_edit_renumbers_though_no_border_names_it() {
+        let m = cell();
+        let here = PathBuf::from("a_body_chosen_at_a_corner/0x1010.rsc");
+        let corner = PathBuf::from("a_body_chosen_at_a_corner/0x2010.rsc");
+        let mut at_corner = cell();
+        at_corner.cell = m.cell + 512 + 1;
+        remember(&corner, at_corner);
+        chosen().insert(corner.clone());
+        let linked = linked_cells(&here, &m);
+        assert_eq!(linked.len(), 8, "four borders and four corners");
+        let open: Vec<u32> = (linked.iter())
+            .filter(|(_, body)| body.is_some())
+            .map(|(c, _)| *c)
+            .collect();
+        assert_eq!(open, [m.cell + 512 + 1]);
+        let paths: Vec<PathBuf> = (neighbour_paths(&here, &m).into_iter())
+            .map(|(p, _)| p)
+            .collect();
+        assert_eq!(paths, [corner]);
+        assert!(neighbours(&here, &m)
+            .iter()
+            .all(|(_, _, body)| body.is_none()));
     }
 }

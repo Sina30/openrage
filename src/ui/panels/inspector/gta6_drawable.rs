@@ -2,7 +2,10 @@ use super::*;
 
 mod bone_edit;
 mod bound_place_edit;
+mod bound_reshape_edit;
+mod collision_edit;
 mod filter_edit;
+mod filter_entries;
 mod head;
 mod material_edit;
 mod material_layout;
@@ -23,7 +26,7 @@ pub(super) fn draw_gta6_cell(
     selection: Option<u64>,
 ) -> bool {
     use crate::state::gta6_navmesh::{
-        cell_lines, cell_rows, join_lines, neighbours, polygon_lines, scanned_cell,
+        cell_lines, cell_rows, join_lines, linked_cells, neighbours, polygon_lines, scanned_cell,
     };
     let Some(path) = state.document(doc_id).and_then(|d| d.path.clone()) else {
         return false;
@@ -61,7 +64,8 @@ pub(super) fn draw_gta6_cell(
     for line in joins.iter() {
         ui.add(egui::Label::new(line.as_str()).extend());
     }
-    if near.iter().any(|(_, _, n)| n.is_none())
+    // A deletion also asks for the cells at the corners, which no join line names.
+    if linked_cells(&path, &cell).iter().any(|(_, n)| n.is_none())
         && ui
             .button(tr!("Find the neighbouring cells in the scan"))
             .clicked()
@@ -242,6 +246,8 @@ pub(super) fn draw_gta6_drawable(
     material_edit::draw(ui, state, doc_id, selection);
     material_layout::draw(ui, state, doc_id, selection);
     physics_edit::draw(ui, state, doc_id, selection);
+    collision_edit::draw(ui, state, doc_id, selection);
+    bound_reshape_edit::draw(ui, state, doc_id, selection);
     vertex_edit::draw(ui, state, doc_id, selection);
     filter_edit::draw(ui, state, doc_id);
 }

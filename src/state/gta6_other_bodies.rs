@@ -9,6 +9,7 @@ use or_io::gta6::move_network::{
     MoveTransition, StopReason,
 };
 use or_io::gta6::other_bodies::{Gta6HeightGrid, Gta6HeightMap, OtherBody, SpanGrid};
+use or_io::mrf::{Operation, Operator};
 
 use super::document::DocPayload;
 use super::rpf9_scan::View;
@@ -147,6 +148,9 @@ fn move_lines(outline: &MoveOutline) -> Vec<String> {
         walk,
         String::new(),
     ];
+    if let Some(name) = text_name(head.name_hash) {
+        lines.insert(1, tr!("Network name: {name}", name = name));
+    }
     outline_lines(outline, &mut lines);
     lines
 }
@@ -247,10 +251,20 @@ fn transition_lines(
             size = t.size,
         );
         lines.push(format!("{indent}{line}"));
+        lines.push(format!("{indent}  {}", transition_words(t)));
         for c in &t.conditions {
             lines.push(format!("{indent}  {}", condition_line(c)));
         }
     }
+}
+
+/// A transition's fixed words as stored, of which only its size, flags and target are read.
+fn transition_words(t: &MoveTransition) -> String {
+    let words: Vec<String> = t.words.iter().map(|w| format!("{w:08X}")).collect();
+    tr!(
+        "words from +0x00 to +0x48 as stored: {words}",
+        words = words.join(" ")
+    )
 }
 
 /// A machine entry's state, size and flag.
@@ -263,11 +277,14 @@ fn entry_line(outline: &MoveOutline, entry: &MachineEntry) -> String {
     )
 }
 
-/// A condition as GTA V's network view writes one, its hashes as `hash_` and a flag half of 1 named.
+/// A condition as GTA V's network view writes one, its hashes as `named` names them and a flag
+/// half of 1 named.
 fn condition_line(c: &MoveCondition) -> String {
-    let hash = |w: u32| format!("hash_{w:08X}");
+    condition_line_with(c, named)
+}
+
+fn condition_line_with(c: &MoveCondition, hash: impl Fn(u32) -> String) -> String {
     let float = f32::from_bits;
-    let words: Vec<String> = c.words.iter().map(|w| hash(*w)).collect();
     let test = match (c.kind, c.words.as_slice()) {
         (0, [s, upper, lower, _]) => tr!(
             "{signal} in [{lower}, {upper}]",
@@ -293,7 +310,9 @@ fn condition_line(c: &MoveCondition) -> String {
         (9, [t]) => tr!("time in state > {seconds} s", seconds = float(*t)),
         (10, [t]) => tr!("time in state < {seconds} s", seconds = float(*t)),
         (12, [s, value]) => format!("{} == {}", hash(*s), *value != 0),
-        _ => words.join(", "),
+        _ => (c.words.iter().map(|w| hash(*w)))
+            .collect::<Vec<_>>()
+            .join(", "),
     };
     let kind = match condition_name(c.kind) {
         Some(name) => format!("{} ({name})", c.kind),
@@ -305,7 +324,7 @@ fn condition_line(c: &MoveCondition) -> String {
     }
 }
 
-/// The hashes a state binds to one child, inputs from groups A and B.
+/// The records a state binds to one child, inputs from groups A and B, and its operations.
 fn binding_line(binding: &Binding) -> String {
     let inputs: Vec<[u32; 4]> = (binding.inputs_a.iter())
         .chain(&binding.inputs_b)
@@ -317,32 +336,103 @@ fn binding_line(binding: &Binding) -> String {
         inputs = hashes(&inputs),
         outputs = hashes(&binding.outputs),
         events = hashes(&binding.events),
-        operations = binding.operations.len(),
+        operations = operations_line(&binding.operations),
     )
 }
 
-/// Each record's first word as a hash, or a dash for none.
+/// Each record's first word as `named` names a hash and its further words as stored, or a dash.
 fn hashes<const N: usize>(records: &[[u32; N]]) -> String {
+    hashes_with(records, named)
+}
+
+fn hashes_with<const N: usize>(records: &[[u32; N]], hash: impl Fn(u32) -> String) -> String {
     if records.is_empty() {
         return "-".to_string();
     }
     (records.iter())
-        .map(|r| format!("hash_{:08X}", r[0]))
+        .map(|r| {
+            let rest: Vec<String> = r[1..].iter().map(|w| format!("{w:08X}")).collect();
+            format!("{} [{}]", hash(r[0]), rest.join(" "))
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
+/// Each operation in brackets, its words as stored and a curve as read, or a dash for none.
+fn operations_line(operations: &[Operation]) -> String {
+    if operations.is_empty() {
+        return "-".to_string();
+    }
+    (operations.iter())
+        .map(|op| format!("[{}]", operation_line(op)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// An operation's size, its three other halves and its operators; no half's role is known.
+fn operation_line(op: &Operation) -> String {
+    let operators: Vec<String> = op.operators.iter().map(operator_line).collect();
+    tr!(
+        "{size} bytes, halves at +0x00, +0x02 and +0x06 {first} {second} {fourth}, operators {operators}",
+        size = op.size,
+        first = format!("{:04X}", op.node_index),
+        second = format!("{:04X}", op.type_index),
+        fourth = format!("{:04X}", op.index),
+        operators = operators.join(", "),
+    )
+}
+
+/// An operator's type and packet words, then a curve's range and keys as read.
+fn operator_line(o: &Operator) -> String {
+    let words = format!("{:08X} {:08X}", o.operator_type, o.packet);
+    let Some(curve) = &o.fcurve else {
+        return words;
+    };
+    let keys: Vec<String> = (curve.keyframes.iter())
+        .map(|k| {
+            let [c0, c1] = k.constants;
+            format!("({:08X} {} {c0} {c1})", k.keyframe_type, k.key)
+        })
+        .collect();
+    tr!(
+        "{words}, a curve over [{minimum}, {maximum}] with keys {keys}",
+        words = words,
+        minimum = curve.minimum,
+        maximum = curve.maximum,
+        keys = keys.join(" "),
+    )
+}
+
 /// A node's kind and id, for a node read or reached; its offset for any other.
 fn node_label(outline: &MoveOutline, at: usize) -> String {
+    node_label_with(outline, at, named)
+}
+
+fn node_label_with(outline: &MoveOutline, at: usize, hash: impl Fn(u32) -> String) -> String {
     let (kind, id) = match (outline.node(at), outline.stop(at)) {
         (Some(node), _) => (node.kind, node.id),
         (None, Some(stop)) => (stop.kind, stop.id),
         (None, None) => return tr!("the node at {at}", at = format!("{at:#X}")),
     };
     match kind_name(kind) {
-        Some(name) => format!("{name} hash_{id:08X}"),
-        None => format!("{} hash_{id:08X}", tr!("type {kind}", kind = kind)),
+        Some(name) => format!("{name} {}", hash(id)),
+        None => format!("{} {}", tr!("type {kind}", kind = kind), hash(id)),
     }
+}
+
+/// A 32-bit hash by the one name the harvested text holds for it, which may be a collision and
+/// is marked so, else as `hash_`.
+fn named(hash: u32) -> String {
+    text_name(hash).unwrap_or_else(|| format!("hash_{hash:08X}"))
+}
+
+/// The name the harvested text holds for `hash`, marked as from the text.
+fn text_name(hash: u32) -> Option<String> {
+    super::gta6_names::name32(hash).map(|name| from_the_text(&name))
+}
+
+fn from_the_text(name: &str) -> String {
+    tr!("{name} (from the text)", name = name)
 }
 
 fn why(reason: StopReason) -> &'static str {
@@ -422,6 +512,136 @@ mod tests {
             line(14, 0, &[0xAB, 0xCD]),
             "14: hash_000000AB, hash_000000CD"
         );
+    }
+
+    #[test]
+    fn an_id_and_a_signal_the_text_names_are_shown_by_that_name_marked_as_from_the_text() {
+        let text = |w: u32| match w {
+            7 => from_the_text("direction"),
+            w => format!("hash_{w:08X}"),
+        };
+        let line = |kind: u16, words: &[u32]| {
+            let words = words.to_vec();
+            condition_line_with(
+                &MoveCondition {
+                    kind,
+                    flag: 0,
+                    words,
+                },
+                text,
+            )
+        };
+        assert_eq!(
+            line(6, &[7, 0.25f32.to_bits()]),
+            "6 (GreaterThanEqual): direction (from the text) >= 0.25"
+        );
+        assert_eq!(
+            line(14, &[0xCD, 7]),
+            "14: hash_000000CD, direction (from the text)"
+        );
+        let outline = MoveOutline::open(&network(2, 0)).expect("opens");
+        assert_eq!(
+            node_label_with(&outline, outline.root, text),
+            "Tail direction (from the text)"
+        );
+        assert_eq!(
+            node_label_with(&outline, outline.root, |w| format!("hash_{w:08X}")),
+            "Tail hash_00000007"
+        );
+    }
+
+    #[test]
+    fn a_binding_names_its_hashes_and_a_transition_shows_its_stored_words() {
+        let text = |w: u32| match w {
+            7 => from_the_text("speed"),
+            w => format!("hash_{w:08X}"),
+        };
+        assert_eq!(
+            hashes_with(&[[7u32, 1, 2, 3], [9, 0, 0, 0]], text),
+            "speed (from the text) [00000001 00000002 00000003], hash_00000009 [00000000 00000000 00000000]"
+        );
+        assert_eq!(
+            hashes_with(&[[7u32, 1]], text),
+            "speed (from the text) [00000001]"
+        );
+        let none: [[u32; 2]; 0] = [];
+        assert_eq!(hashes_with(&none, text), "-");
+
+        let mut words = [0u32; 19];
+        words[4] = 0x4C;
+        words[18] = 0xFFFF_FFB8;
+        let transition = MoveTransition {
+            at: 0x48,
+            size: 0x4C,
+            target: 0,
+            words,
+            conditions: Vec::new(),
+        };
+        let shown: Vec<String> = words.iter().map(|w| format!("{w:08X}")).collect();
+        assert_eq!(
+            transition_words(&transition),
+            format!("words from +0x00 to +0x48 as stored: {}", shown.join(" "))
+        );
+        assert!(shown[4] == "0000004C" && shown[18] == "FFFFFFB8");
+    }
+
+    #[test]
+    fn a_binding_shows_its_further_words_and_its_operations_as_stored() {
+        let curve = or_io::mrf::FCurve {
+            minimum: -1.0,
+            maximum: 1.0,
+            keyframes_offset: 4,
+            keyframes: vec![or_io::mrf::Keyframe {
+                keyframe_type: 2,
+                key: 0.5,
+                constants: [1.0, 0.25],
+            }],
+        };
+        let operators = vec![
+            Operator {
+                operator_type: Operator::FCURVE,
+                packet: 4,
+                fcurve: Some(curve),
+            },
+            Operator {
+                operator_type: Operator::END,
+                packet: 0,
+                fcurve: None,
+            },
+        ];
+        let operation = Operation {
+            node_index: 1,
+            type_index: 0x2A,
+            size: 0x30,
+            index: 3,
+            operators,
+        };
+        let binding = Binding {
+            child: 2,
+            inputs_a: vec![[7, 1, 0, 0]],
+            inputs_b: Vec::new(),
+            outputs: Vec::new(),
+            events: vec![[7, 1]],
+            operations: vec![operation],
+        };
+        let line = binding_line(&binding);
+        assert!(
+            line.contains("inputs hash_00000007 [00000001 00000000 00000000], outputs -"),
+            "{line}"
+        );
+        assert!(line.contains("events hash_00000007 [00000001]"), "{line}");
+        let op = format!(
+            "[{} bytes, halves at +0x00, +0x02 and +0x06 0001 002A 0003, operators \
+             00000005 00000004, a curve over [-1, 1] with keys (00000002 0.5 1 0.25), \
+             00000000 00000000]",
+            0x30
+        );
+        assert!(line.ends_with(&format!("with operations {op}")), "{line}");
+        let none = Binding {
+            operations: Vec::new(),
+            ..binding
+        };
+        assert!(binding_line(&none).ends_with("with operations -"));
     }
 
     #[test]

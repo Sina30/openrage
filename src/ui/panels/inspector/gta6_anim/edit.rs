@@ -213,6 +213,7 @@ fn draw_entry(
             entry: pick.entry,
             start,
             end,
+            frame_rate: None,
         };
         state.edit_gta6_entry(doc_id, edit);
     }
