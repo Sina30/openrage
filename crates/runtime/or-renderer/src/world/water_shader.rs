@@ -49,6 +49,13 @@ struct Water {
 
 // A depth of the frame at or past this is the sky, or no depth at all.
 const SKY: f32 = 50000.0;
+// The sun's glint, as GTA V's water has it (assumed: GTA VI's water program was not read): its strength and the power of its falloff.
+const GLINT: f32 = 1.0;
+const GLINT_FALLOFF: f32 = 1118.0;
+// How many steps a reflected ray takes across the frame, how many halve the last, and how each step grows.
+const TRACE_STEPS: i32 = 32;
+const REFINE_STEPS: i32 = 5;
+const TRACE_GROWTH: f32 = 1.35;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -75,6 +82,58 @@ fn paraboloid(d: vec3<f32>) -> vec2<f32> {
         return vec2<f32>(0.75 + 0.25 * s.x, 0.5 - 0.5 * s.y);
     }
     return vec2<f32>(0.25 - 0.25 * s.x, 0.5 - 0.5 * s.y);
+}
+
+// Where a point lies on the frame, and how far along the view; `w` at or below nought behind the eye.
+fn on_frame(p: vec3<f32>) -> vec3<f32> {
+    let clip = camera.view_proj * vec4<f32>(p, 1.0);
+    let ndc = clip.xy / max(clip.w, 1e-4);
+    return vec3<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5, clip.w);
+}
+
+// Whether a point on the frame lies behind what the frame drew there, and by how far.
+fn behind_drawn(at: vec3<f32>) -> f32 {
+    let scene = textureSampleLevel(behind_depth, clamped, at.xy, 0.0).r;
+    if (scene <= 0.0 || scene >= SKY) {
+        return -1.0;
+    }
+    return at.z - scene;
+}
+
+// The lit frame where a ray from `start` along `r` first passes behind what the frame drew, and in `a` how far it is to be trusted: nought where it leaves the frame or meets nothing.
+fn traced(start: vec3<f32>, r: vec3<f32>) -> vec4<f32> {
+    var before = 0.0;
+    var t = 0.5;
+    for (var i = 0; i < TRACE_STEPS; i++) {
+        let at = on_frame(start + r * t);
+        if (at.z <= 0.0 || any(at.xy < vec2<f32>(0.0)) || any(at.xy > vec2<f32>(1.0))) {
+            return vec4<f32>(0.0);
+        }
+        let past = behind_drawn(at);
+        if (past > 0.0) {
+            // A ray that has gone far behind a surface went past its edge, not into it.
+            if (past > 2.0 * (t - before) + 1.0) {
+                return vec4<f32>(0.0);
+            }
+            var lo = before;
+            var hi = t;
+            for (var k = 0; k < REFINE_STEPS; k++) {
+                let mid = 0.5 * (lo + hi);
+                if (behind_drawn(on_frame(start + r * mid)) > 0.0) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            let hit = on_frame(start + r * hi);
+            let edge = min(min(hit.x, 1.0 - hit.x), min(hit.y, 1.0 - hit.y));
+            let trust = smoothstep(0.0, 0.08, edge) * smoothstep(0.0, 0.15, r.z + 0.15);
+            return vec4<f32>(textureSampleLevel(behind, clamped, hit.xy, 0.0).rgb, trust);
+        }
+        before = t;
+        t = t * TRACE_GROWTH + 0.5;
+    }
+    return vec4<f32>(0.0);
 }
 
 // The day's fog along `ray`, from the eye to a point: its colour, and in `a` how much of the point it hides.
@@ -137,11 +196,18 @@ fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
     let through = exp(-extinction * path);
     let cosine = saturate(dot(n, v));
     let fresnel = textureSampleLevel(fresnel_row, clamped, vec2<f32>(cosine, 0.5), 0.0).r;
-    let r = reflect(-v, n);
-    let reflected = textureSampleLevel(sky, clamped, paraboloid(r), 0.0).rgb * water.albedo.w;
+    var r = reflect(-v, n);
+    // A ray a wave turns down into the water still leaves upward.
+    r.z = abs(r.z);
+    // What the water mirrors: the lit frame where the reflected ray meets something it drew, else the sky.
+    let sky_seen = textureSampleLevel(sky, clamped, paraboloid(r), 0.0).rgb;
+    let world_seen = traced(in.world, r);
+    let reflected = mix(sky_seen, world_seen.rgb, world_seen.a) * water.albedo.w;
+    let towards_sun = -light.sun_travel.xyz;
+    let glint = light.sun_colour.rgb * GLINT * pow(saturate(dot(n, normalize(towards_sun + v))), GLINT_FALLOFF);
     // What shows of what lies behind, and the light the water gives of its own: what it scatters and what it reflects.
     let passed = (1.0 - fresnel) * through;
-    let own = (1.0 - fresnel) * (1.0 - through) * albedo * water.light.rgb + fresnel * reflected;
+    let own = (1.0 - fresnel) * (1.0 - through) * albedo * water.light.rgb + fresnel * reflected + glint;
     // ⚠ What lies behind was fogged as the frame was lit: the fog covers only the water's own share.
     let fog = fog_of(-to_eye);
     let colour = under * passed + mix(own, fog.rgb * (1.0 - passed), fog.a);
