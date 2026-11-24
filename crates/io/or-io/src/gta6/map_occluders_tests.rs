@@ -172,7 +172,7 @@ fn every_truncated_block_is_an_error_and_never_a_panic() {
         for len in 0..whole.data_blocks[b].data.len() {
             let mut m = whole.clone();
             m.data_blocks[b].data.truncate(len);
-            let _ = read(&m);
+            assert!(read(&m).is_err(), "block {b} cut to {len} bytes still read");
         }
     }
 }
