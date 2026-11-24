@@ -51,6 +51,7 @@ fn child(seed: u32, rotation: [f32; 4]) -> InteriorChild {
         scale_z: 2.5,
         lod_dist: 10.0 * seed as f32,
         flags: 0x18_0000 | seed,
+        lod_level: 5,
     }
 }
 
@@ -315,7 +316,7 @@ fn what_breaks_a_measured_rule_is_refused_with_the_rule() {
 }
 
 #[test]
-fn every_truncated_block_is_an_error_and_never_a_panic() {
+fn no_truncated_block_panics() {
     for built in [types_model as fn() -> RbmModel, map_model] {
         let whole = built();
         for b in 0..whole.data_blocks.len() {

@@ -4,8 +4,8 @@
 //! that places an interior.
 //!
 //! ⚠ An interior's entities stand in the interior's own space and none takes a level-of-detail
-//! parent, so an [`InteriorChild`] holds no level: the level rules a map's entity is held to do not
-//! hold inside an interior.
+//! parent: the level rules a map's entity is held to do not hold inside an interior, and an
+//! [`InteriorChild`]'s level only names the distance scale it takes.
 
 use super::lights::{check_table, Layouts};
 use super::links::{self, EntitySetLocation, Links, Portal, Room, TimeCycleModifier};
@@ -70,6 +70,8 @@ pub struct InteriorChild {
     /// −1 where the archetype's applies.
     pub lod_dist: f32,
     pub flags: u32,
+    /// Its `lodLevel`, unchecked: as [`super::Entity::lod_level`] holds it.
+    pub lod_level: u8,
 }
 
 /// A room of an interior: what the link reader reads of it, and its time cycle.
@@ -282,6 +284,8 @@ fn children(blocks: &Blocks, bytes: &[u8], at: usize, what: &str) -> Result<Vec<
                 scale_z: f32_at(e, 0x58, &what)?,
                 lod_dist: f32_at(e, 0x60, &what)?,
                 flags: u32_at(e, 0x48)?,
+                // `pointed` hands over the first ENTITY_READ bytes, past 0x7E.
+                lod_level: e[0x7E],
             })
         })
         .collect()
