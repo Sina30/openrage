@@ -383,6 +383,7 @@ fn surface_of(in: VsOut, front_facing: bool) -> Surface {
     var lean: vec3<f32>;
     if (family == FOUR_LAYER) {
         lean = four_layer(&s, maps, in);
+        s.albedo = s.albedo * in.tint;
     } else {
         let tint = palette(in.colour);
         if (family == TWO_LAYER) {
@@ -544,12 +545,13 @@ fn fs_gbuffer_decal(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBu
 fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     let s = surface_of(in, front_facing);
     if (m.family.x == EMISSIVE_FAMILY) {
-        let colour = textureSample(layer0_colour, map_smp, in.uv) * in.colour;
-        let alpha = colour.a * m.opacity.x;
-        if (dropped(in, max(alpha, max3(colour.rgb)), BLEND_ALPHA)) {
+        // The vertex's first colour is a palette column, not a multiplier: only its alpha covers
+        let texel = textureSample(layer0_colour, map_smp, in.uv);
+        let alpha = texel.a * in.colour.a * m.opacity.x;
+        if (dropped(in, max(alpha, max3(texel.rgb)), BLEND_ALPHA)) {
             discard;
         }
-        return vec4<f32>(colour.rgb * emissive_strength() * m.opacity.x, alpha);
+        return vec4<f32>(texel.rgb * emissive_strength() * m.opacity.x, alpha);
     }
     if (dropped(in, s.coverage, BLEND_ALPHA)) {
         discard;
