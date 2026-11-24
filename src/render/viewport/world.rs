@@ -710,6 +710,8 @@ impl RenderBridge {
         let laid = world.layout.laid.len();
         world.water.draw(&mut world.layout.laid, &mut draws);
         (self.renderer).set_world(&self.device, &self.queue, &world.layout.laid, draws);
+        // The water's instances after the layout's have no sphere, and cast into every cascade.
+        self.renderer.set_world_spheres(&world.layout.spheres);
         world.layout.laid.truncate(laid);
         world.evict(&budgets, frame, eye);
         let layout = &world.layout;

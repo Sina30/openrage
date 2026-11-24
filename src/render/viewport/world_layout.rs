@@ -77,6 +77,8 @@ pub(super) struct Layout {
     /// selection; infinitely far for a slot that only casts shadows into the view.
     pub nearest: Vec<(f32, u32)>,
     pub laid: Vec<WorldInstance>,
+    /// The sphere about each instance of `laid`, `[x, y, z, radius]`, which the shadow's cascades are cast by.
+    pub spheres: Vec<[f32; 4]>,
     /// The chunks in view the last cull left out as the occluders hide them.
     pub hidden: usize,
     /// The occluders as last drawn: a chunk they hide is not laid out.
@@ -189,6 +191,8 @@ impl Layout {
                 tint: [1.0; 4],
             },
         );
+        self.spheres.clear();
+        self.spheres.resize(total as usize, [0.0; 4]);
         for seen in &self.seen {
             let instance = &instances[seen.at as usize];
             let end = &mut self.ends[seen.slot as usize];
@@ -201,6 +205,8 @@ impl Layout {
                     instance.fade,
                 ],
             };
+            // As wide as the cull takes it.
+            self.spheres[*end as usize] = instance.centre.extend(instance.radius.max(0.01)).into();
             *end += 1;
         }
     }

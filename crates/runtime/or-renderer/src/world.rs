@@ -1,5 +1,6 @@
 //! The world a viewport draws: meshes on the device, each drawn once for every instance that places it, in the bucket of its material.
 
+use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -189,11 +190,11 @@ pub struct WorldDraw {
 /// What the world's draws of a frame ask of the device, for a measurement to read.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorldCalls {
-    /// Draws, and the calls they go out in, to the frame and to each cascade of the shadow.
+    /// Draws, and the calls they go out in, to the frame and to the four cascades of the shadow together.
     pub draws: usize,
     pub calls: usize,
     pub cast_calls: usize,
-    /// Triangles drawn, each instance's counted, to the frame and to each cascade of the shadow.
+    /// Triangles drawn, each instance's counted, to the frame and to the four cascades of the shadow together.
     pub triangles: u64,
     pub cast_triangles: u64,
 }
@@ -235,6 +236,12 @@ pub(crate) struct World {
     /// GTA VI's water, drawn over a copy of the lit frame before what blends.
     pub(crate) water: water::WaterPass,
     calls: WorldCalls,
+    /// The frame's instances as given, the sphere about each where the caller gave them, and how many sets of them came.
+    given: Vec<WorldInstance>,
+    spheres: Vec<[f32; 4]>,
+    set: u64,
+    /// What each cascade of the shadow casts of the frame.
+    casting: RefCell<shadow::Casting>,
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
 }
@@ -425,6 +432,10 @@ impl World {
             cards: cards::Cards::new(device, queue, camera_bgl, colour_format),
             water: water::WaterPass::new(device, queue, camera_bgl, &light_layout),
             calls: WorldCalls::default(),
+            given: Vec::new(),
+            spheres: Vec::new(),
+            set: 0,
+            casting: RefCell::default(),
             exposure: 1.0,
             materials,
             sampler,
@@ -499,19 +510,14 @@ impl World {
             u64::from(draw.mesh.index_count / 3)
                 * u64::from(draw.instances.end - draw.instances.start)
         };
-        let casting = draws.iter().filter(|d| d.mesh.material.bucket.casts());
         self.calls = WorldCalls {
             draws: draws.len(),
             calls: match self.multi {
                 true => self.batches.len(),
                 false => draws.len(),
             },
-            cast_calls: match self.multi {
-                true => self.cast_batches.len(),
-                false => casting.clone().count(),
-            },
             triangles: draws.iter().map(triangles).sum(),
-            cast_triangles: casting.map(triangles).sum(),
+            ..WorldCalls::default()
         };
         if !draws.is_empty() {
             fill(
@@ -545,18 +551,26 @@ impl World {
             );
         }
         self.draws = draws;
+        // Each cascade casts what of these reaches its tile, once the frame's cascades are known
+        self.given.clear();
+        self.given.extend_from_slice(instances);
+        self.spheres.clear();
+        self.set += 1;
+        let casting = self.casting.get_mut();
+        casting.room(device, instances.len(), self.draws.len());
     }
 
     fn draws_anything(&self) -> bool {
         !self.draws.is_empty()
     }
 
-    /// Issue `batches` into `pass`, each with the pipeline `pipelines` holds for its bucket: a bucket it holds none for is left out, and a buffer or a material that is bound already is not bound again.
+    /// Issue `batches` into `pass`, each with the pipeline `pipelines` holds for its bucket: a bucket it holds none for is left out, and a buffer or a material that is bound already is not bound again. With `cast`, each draw's instances are those that cascade casts.
     fn record(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         batches: &[Range<u32>],
         pipelines: &ByBucket,
+        cast: Option<(&shadow::Casting, usize)>,
     ) {
         let mut set: Option<(&wgpu::RenderPipeline, &WorldMesh)> = None;
         for batch in batches {
@@ -581,19 +595,28 @@ impl World {
                 pass.set_bind_group(1, &**maps, &[]);
             }
             set = Some((pipeline, mesh));
-            match &self.indirect {
+            // A cascade's arguments follow those of the cascades before it, a draw's for each draw of the frame
+            let (arguments, first) = match cast {
+                Some((casting, cascade)) => (&casting.indirect, cascade * self.draws.len()),
+                None => (&self.indirect, 0),
+            };
+            match arguments.as_ref().filter(|_| self.multi) {
                 Some(arguments) => pass.multi_draw_indexed_indirect(
                     arguments,
-                    wgpu::BufferAddress::from(batch.start) * ARGS,
+                    (first as wgpu::BufferAddress + wgpu::BufferAddress::from(batch.start)) * ARGS,
                     batch.end - batch.start,
                 ),
                 None => {
-                    for draw in run {
+                    for (draw, at) in run.iter().zip(batch.start as usize..) {
                         let mesh = &draw.mesh;
+                        let instances = match cast {
+                            Some((casting, cascade)) => casting.ranges[cascade][at].clone(),
+                            None => draw.instances.clone(),
+                        };
                         pass.draw_indexed(
                             mesh.first_index..mesh.first_index + mesh.index_count,
                             mesh.base_vertex,
-                            draw.instances.clone(),
+                            instances,
                         );
                     }
                 }
@@ -614,7 +637,7 @@ impl World {
         pass.set_bind_group(0, camera, &[]);
         pass.set_bind_group(2, &self.light_group, &[]);
         pass.set_vertex_buffer(1, instances.slice(..));
-        self.record(pass, &self.batches, pipelines);
+        self.record(pass, &self.batches, pipelines, None);
     }
 
     /// Draw every bucket of the world lit as the plain modes light a surface, into a pass over the viewport's colour and depth.
@@ -670,20 +693,29 @@ impl World {
             return None;
         }
         let cascades = Cascades::about(engine, camera, aspect)?;
-        for (view, (buffer, _)) in cascades.views().iter().zip(&self.cascades) {
+        let views = cascades.views();
+        for (view, (buffer, _)) in views.iter().zip(&self.cascades) {
             let mut uniform = [0.0f32; CAMERA_FLOATS];
             uniform[..16].copy_from_slice(&view.to_cols_array());
             queue.write_buffer(buffer, 0, bytemuck::cast_slice(&uniform));
         }
+        let frame = shadow::Frame {
+            draws: &self.draws,
+            instances: &self.given,
+            spheres: &self.spheres,
+            batches: &self.cast_batches,
+            multi: self.multi,
+        };
+        (self.casting.borrow_mut()).cast(queue, &views, self.set, &frame);
         Some(cascades)
     }
 
-    /// Cast the world into the map of the sun's shadow, each cascade into its tile: `pass` is the one the game's map is cast in, and [`Self::cascades`] wrote the views this frame.
+    /// Cast the world into the map of the sun's shadow, each cascade into its tile, of its instances those that reach it: `pass` is the one the game's map is cast in, and [`Self::cascades`] wrote the views and the lists this frame.
     pub(crate) fn draw_shadow(&self, pass: &mut wgpu::RenderPass<'_>) {
-        match self.instances.as_ref().filter(|_| self.draws_anything()) {
-            Some(instances) => pass.set_vertex_buffer(1, instances.slice(..)),
-            None if self.cards.draws_anything() => {}
-            None => return,
+        let casting = self.casting.borrow();
+        let instances = (casting.instances.as_ref()).filter(|_| self.draws_anything());
+        if instances.is_none() && !self.cards.draws_anything() {
+            return;
         }
         for (tile, (_, view)) in self.cascades.iter().enumerate() {
             // The tiles are one above the other, the nearest cascade at the top
@@ -691,7 +723,11 @@ impl World {
             pass.set_viewport(0.0, top as f32, TILE as f32, TILE as f32, 0.0, 1.0);
             pass.set_scissor_rect(0, top, TILE, TILE);
             pass.set_bind_group(0, view, &[]);
-            self.record(pass, &self.cast_batches, &self.pipelines.cast);
+            if let Some(instances) = instances {
+                pass.set_vertex_buffer(1, instances.slice(..));
+                let batches = &casting.batches[tile];
+                self.record(pass, batches, &self.pipelines.cast, Some((&*casting, tile)));
+            }
             self.cards.draw_shadow(pass);
         }
     }
@@ -750,9 +786,22 @@ impl ViewportRenderer {
         self.world.count
     }
 
-    /// What the world's draws of the last frame set ask of the device.
+    /// What the world's draws of the last frame set ask of the device, the shadow's as last cast.
     pub fn world_calls(&self) -> WorldCalls {
-        self.world.calls
+        let world = &self.world;
+        let (cast_calls, cast_triangles) = world.casting.borrow().cost(&world.draws, world.multi);
+        WorldCalls {
+            cast_calls,
+            cast_triangles,
+            ..world.calls
+        }
+    }
+
+    /// The sphere about each instance the last [`Self::set_world`] gave, `[x, y, z, radius]`, so that a cascade of the shadow casts only those that reach its tile; one with none is cast into every cascade.
+    pub fn set_world_spheres(&mut self, spheres: &[[f32; 4]]) {
+        self.world.spheres.clear();
+        self.world.spheres.extend_from_slice(spheres);
+        self.world.set += 1;
     }
 
     /// Whether there is a world to draw.
