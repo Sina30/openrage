@@ -245,8 +245,5 @@ fn a_table_that_breaks_its_layout_is_refused() {
     );
     let mut cut = whole.clone();
     cut.bytes.truncate(0x40);
-    assert!(matches!(
-        Table::of(&cut),
-        Err(TableError::IndexPastEnd(_))
-    ));
+    assert!(matches!(Table::of(&cut), Err(TableError::IndexPastEnd(_))));
 }

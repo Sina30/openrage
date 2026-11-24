@@ -81,7 +81,12 @@ fn a_set_not_found_whose_file_the_table_lists_under_a_cipher_is_ciphered() {
     let table = Table::of_entries(vec![
         entry("changesets/ccs_closed.meta", KIND_FILE, 0x100, true),
         entry("changesets/ccs_town.meta", KIND_FILE, 0x200, false),
-        entry("changesets/ccs_read_all_the_same.meta", KIND_FILE, 0x300, true),
+        entry(
+            "changesets/ccs_read_all_the_same.meta",
+            KIND_FILE,
+            0x300,
+            true,
+        ),
     ]);
     let documents = vec![
         device_setup("core"),
