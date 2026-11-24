@@ -107,14 +107,19 @@ pub(super) fn model_of(
         };
         let read = crate::render::gta6_drawable::meshes_at(drawable, level, None, None, &|_| None);
         // ⚠ One mesh comes back for each geometry whose positions read, in the models' order.
-        let shaders = (models.iter())
+        let geometries = (models.iter())
             .flat_map(|model| model.geometries.iter().flatten())
-            .filter(|geometry| geometry.positions.is_ok())
-            .map(|geometry| geometry.shader);
-        let meshes: Vec<CpuMesh> = (read.into_iter().zip(shaders))
+            .filter(|geometry| geometry.positions.is_ok());
+        let meshes: Vec<CpuMesh> = (read.into_iter().zip(geometries))
             .filter(|(mesh, _)| !mesh.vertices.is_empty() && !mesh.indices.is_empty())
-            .filter_map(|(mesh, shader)| {
-                let (material, bucket) = materials.get(usize::from(shader))?.as_ref()?;
+            .filter_map(|(mut mesh, geometry)| {
+                let (material, bucket) = materials.get(usize::from(geometry.shader))?.as_ref()?;
+                // The first colour is channel 24 and the second 25: the palette column, the layer weights, the tint and the glow
+                let colour = |channel: u8| {
+                    let mut colours = geometry.vertices.colours.iter();
+                    colours.find(|(c, _)| *c == channel).map(|(_, values)| values.as_slice())
+                };
+                or_renderer::world::coloured(&mut mesh.vertices, colour(24), colour(25));
                 Some(CpuMesh {
                     vertices: mesh.vertices,
                     indices: mesh.indices,
