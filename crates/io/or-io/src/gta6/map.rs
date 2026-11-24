@@ -872,6 +872,12 @@ pub mod author;
 #[path = "map_stream.rs"]
 pub mod stream;
 
+#[path = "map_interior.rs"]
+pub mod interior;
+
+#[path = "map_occluders.rs"]
+pub mod occluders;
+
 #[cfg(test)]
 #[path = "map_tests.rs"]
 mod tests;
