@@ -30,7 +30,9 @@ pub(crate) mod stream;
 mod texture;
 pub(crate) mod water;
 
-pub use model::{Bucket, Constants, CpuMaterial, CpuModel, Emissive, Family, Layer};
+pub use model::{Bucket, CpuMaterial, CpuModel, Family};
+#[cfg(test)]
+pub use model::{Constants, Emissive, Layer};
 pub use texture::CpuTexture;
 
 use index::{Enabled, ModelRef, WorldIndex};
