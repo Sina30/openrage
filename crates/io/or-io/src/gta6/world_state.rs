@@ -219,9 +219,11 @@ impl Condition {
                 false => hour_i <= *end || *start <= hour_i,
             },
             // The half hour stands for the whole one; which way round goes by the hours alone.
+            // ⚠ The hours and minutes are a body's own numbers, which no clock bounds.
             Self::TimeWithMinutes { start, end } => {
-                let (now, from, to) =
-                    (hour_i * 60 + 30, start.0 * 60 + start.1, end.0 * 60 + end.1);
+                let minutes = |(h, m): (i32, i32)| i64::from(h) * 60 + i64::from(m);
+                let now = i64::from(hour) * 60 + 30;
+                let (from, to) = (minutes(*start), minutes(*end));
                 match start.0 < end.0 {
                     true => from <= now && now <= to,
                     false => now <= to || from <= now,

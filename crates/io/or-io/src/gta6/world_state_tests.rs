@@ -344,6 +344,18 @@ fn a_time_of_day_whose_start_is_not_earlier_wraps_and_chance_holds_only_when_sur
 }
 
 #[test]
+fn a_time_with_minutes_of_hours_past_any_clock_is_judged_and_never_overflows() {
+    // A body's own numbers: an hour no clock has, read as it stands.
+    let time = |start, end| Condition::TimeWithMinutes { start, end };
+    assert_eq!(time((i32::MAX, i32::MAX), (1, 0)).holds(3), Some(false));
+    assert_eq!(
+        time((i32::MIN, i32::MIN), (i32::MAX, 59)).holds(3),
+        Some(true)
+    );
+    assert_eq!(time((22, 30), (2, 0)).holds(1), Some(true));
+}
+
+#[test]
 fn a_rule_on_another_selector_follows_that_selector_s_pick() {
     let config = |key, on: u64| Config {
         key,
