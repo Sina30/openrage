@@ -4,6 +4,8 @@ use or_io::gta6::headerless::{
 
 use super::*;
 
+const DIFFUSE: u32 = or_io::gta6::hash::name_hash32(b"DiffuseTex");
+
 /// A triangle drawn with shader `shader`; its positions refused where `read` is false.
 fn geometry(shader: u16, read: bool) -> Geometry {
     Geometry {
@@ -134,9 +136,9 @@ fn a_level_none_of_whose_geometries_read_is_left_out_and_a_model_with_none_keeps
 #[test]
 fn a_mesh_takes_the_maps_and_the_bucket_of_its_own_shader_past_a_geometry_that_was_refused() {
     let shaders = vec![
-        shader(&[(COLOUR[0], Some(0xA))], &[]),
-        shader(&[(COLOUR[0], Some(0xB))], &[]),
-        shader(&[(COLOUR[0], Some(0xC))], &[]),
+        shader(&[(DIFFUSE, Some(0xA))], &[]),
+        shader(&[(DIFFUSE, Some(0xB))], &[]),
+        shader(&[(DIFFUSE, Some(0xC))], &[]),
     ];
     let levels = [
         level(vec![
@@ -150,71 +152,12 @@ fn a_mesh_takes_the_maps_and_the_bucket_of_its_own_shader_past_a_geometry_that_w
     ];
     let model = model_of(&drawable(shaders, levels, [FAR; 4]), &[0, 2, 3], &|_| None);
     let drawn: Vec<(Option<u64>, Bucket)> = (model.lods[0].meshes.iter())
-        .map(|mesh| (mesh.maps.colour, mesh.bucket))
+        .map(|mesh| (mesh.material.layers[0].colour, mesh.bucket))
         .collect();
     assert_eq!(
         drawn,
         [(Some(0xA), Bucket::Opaque), (Some(0xC), Bucket::Cutout)]
     );
-}
-
-#[test]
-fn each_map_comes_from_its_own_record_and_a_layered_material_gives_its_first_layer() {
-    let (colour, normal, specular, other) = (0xC0105_u64, 0xB0B_u64, 0x5EC_u64, 0x07E_u64);
-    // Every key in a pack, `colour` and `other` as sRGB.
-    let packed = |key: u64| Some(key == colour || key == other);
-    let unknown = 0x1234_5678;
-    let plain = shader(
-        &[
-            (unknown, Some(other)),
-            (SPECULAR, Some(specular)),
-            (NORMAL[0], Some(normal)),
-            (COLOUR[0], Some(colour)),
-        ],
-        &[],
-    );
-    let all = Maps {
-        colour: Some(colour),
-        normal: Some(normal),
-        specular: Some(specular),
-    };
-    assert_eq!(maps_of(&plain, &packed), all);
-    for layers in [1, 2] {
-        let layered = shader(
-            &[
-                (unknown, Some(other)),
-                (NORMAL[layers], Some(normal)),
-                (COLOUR[layers], Some(colour)),
-            ],
-            &[],
-        );
-        let first = Maps {
-            specular: None,
-            ..all
-        };
-        assert_eq!(maps_of(&layered, &packed), first, "{layers}");
-    }
-    // A colour record whose slot is unbound gives way to the first key a pack states as sRGB.
-    let unbound = shader(&[(COLOUR[0], None), (unknown, Some(other))], &[]);
-    assert_eq!(maps_of(&unbound, &packed).colour, Some(other));
-}
-
-#[test]
-fn a_material_with_a_normal_map_alone_gets_no_colour_and_no_normal_map_stands_in_for_one() {
-    let (normal, specular, data) = (0xB0B_u64, 0x5EC_u64, 0xDA7A_u64);
-    let bumped = shader(
-        &[(NORMAL[0], Some(normal)), (SPECULAR, Some(specular))],
-        &[],
-    );
-    // Its keys in a pack that states them linear: nothing is a colour.
-    let maps = maps_of(&bumped, &|_| Some(false));
-    assert_eq!((maps.colour, maps.normal), (None, Some(normal)));
-    // With no pack indexed nothing is known of a key: the maps its records name are still no colour.
-    assert_eq!(maps_of(&bumped, &|_| None).colour, None);
-    // A key no record names and no pack is known to hold is the one asked for as the colour.
-    let more = shader(&[(NORMAL[0], Some(normal)), (0x1234_5678, Some(data))], &[]);
-    assert_eq!(maps_of(&more, &|_| None).colour, Some(data));
-    assert_eq!(maps_of(&more, &|_| Some(false)).colour, None);
 }
 
 #[test]
@@ -224,25 +167,25 @@ fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws
     assert_eq!(of(1), Some(Bucket::Blend));
     assert_eq!(of(2), Some(Bucket::Decal));
     assert_eq!(of(3), Some(Bucket::Cutout));
-    assert_eq!(of(6), Some(Bucket::Blend));
-    assert_eq!((of(4), of(5)), (None, None));
+    assert_eq!((of(4), of(5), of(6)), (None, None, None));
     for byte in 0..8 {
         assert_eq!(of(0x80 | byte), of(byte), "{byte}");
     }
 
     let glow = |strength: f32| shader(&[], &[(GLOW, strength)]);
     let levels = || {
-        let geometries = (0..5).map(|shader| geometry(shader, true)).collect();
+        let geometries = (0..6).map(|shader| geometry(shader, true)).collect();
         [level(geometries), None, None, None]
     };
-    let shaders = vec![glow(5.0), glow(0.0), glow(5.0), glow(5.0), plain()];
+    let water = shader(&[(DIFFUSE, Some(0xA))], &[]);
+    let shaders = vec![glow(5.0), glow(0.0), glow(5.0), glow(5.0), plain(), water];
     let model = model_of(
         &drawable(shaders, levels(), [FAR; 4]),
-        &[0x80, 0, 3, 1, 4],
+        &[0x80, 0, 3, 1, 4, 6],
         &|_| None,
     );
     let buckets: Vec<Bucket> = model.lods[0].meshes.iter().map(|m| m.bucket).collect();
-    // A glow makes an opaque material emissive and leaves a cutout or blended one as it is; the mask is gone.
+    // A glow makes an opaque material emissive and leaves a cutout or blended one as it is; the masks are gone.
     assert_eq!(
         buckets,
         [
@@ -252,9 +195,17 @@ fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws
             Bucket::Blend
         ]
     );
+    // Each mesh carries its own shader's material, classed by its byte.
+    let families: Vec<Family> = (model.lods[0].meshes.iter())
+        .map(|m| m.material.family)
+        .collect();
+    assert_eq!(
+        families,
+        [Family::Other, Family::Other, Family::Other, Family::Glass]
+    );
     // Shaders past the bytes read are opaque.
     let model = model_of(
-        &drawable(vec![plain(); 5], levels(), [FAR; 4]),
+        &drawable(vec![plain(); 6], levels(), [FAR; 4]),
         &[],
         &|_| None,
     );
@@ -262,5 +213,5 @@ fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws
         .meshes
         .iter()
         .all(|m| m.bucket == Bucket::Opaque));
-    assert_eq!(model.lods[0].meshes.len(), 5);
+    assert_eq!(model.lods[0].meshes.len(), 6);
 }

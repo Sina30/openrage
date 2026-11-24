@@ -1,30 +1,23 @@
-//! A model as a worker read it: every level of detail its body holds, each mesh with the maps and
-//! the bucket its material states.
+//! A model as a worker read it: every level of detail its body holds, each mesh with the material
+//! and the bucket its shader states.
 
 use std::collections::HashMap;
 use std::fs::File;
 
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::hash::name_hash32;
 use or_io::gta6::headerless::{self, Drawable, Entry, ParameterValue, Resource, Shader};
 use or_renderer::MeshVertex;
 
 use super::index::{ModelRef, WorldIndex};
 use super::texture::Places;
 
+#[path = "material.rs"]
+mod material;
+pub use material::{Constants, CpuMaterial, Emissive, Family, Layer};
+use material::{material_of, GLOW};
+
 /// The bytes a model's body is read to.
 const BODY_LIMIT: u64 = 512 << 20;
-
-/// The hashes a material's record states for its colour map: a plain material's, then the first
-/// layer's of a two-layer and of a four-layer one.
-const COLOUR: [u32; 3] = [name_hash32(b"DiffuseTex"), 0x3463_94EA, 0xCE7B_968E];
-/// The same for its normal map.
-const NORMAL: [u32; 3] = [name_hash32(b"BumpTex"), 0x84C6_9350, 0x27DB_D2BE];
-/// The hash a plain material's record states for its specular map.
-// ponytail: a layered material states no map of this name, so it draws matte; its own material maps once their channels are measured.
-const SPECULAR: u32 = name_hash32(b"SpecularTex");
-/// The hash of the constant a material that glows scales its glow by.
-const GLOW: u32 = name_hash32(b"EmissiveMultiplier");
 
 /// A model on the CPU: its levels of detail, from the highest down.
 pub struct CpuModel {
@@ -41,21 +34,12 @@ pub struct CpuLod {
 pub struct CpuMesh {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
-    pub maps: Maps,
+    pub material: CpuMaterial,
     pub bucket: Bucket,
 }
 
-/// The keys a material's maps are found by in the texture packs.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Maps {
-    /// `None` too for a material that states a normal map alone: a normal map is no colour.
-    pub colour: Option<u64>,
-    pub normal: Option<u64>,
-    pub specular: Option<u64>,
-}
-
 /// How a mesh is drawn, as its material states it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Bucket {
     #[default]
     Opaque,
@@ -72,12 +56,11 @@ impl Bucket {
         // ⚠ The high bit marks a material drawn in batches: it is no part of the bucket.
         match byte & 0x7F {
             0 if glows => Some(Self::Emissive),
-            // 6 is a water surface.
-            1 | 6 => Some(Self::Blend),
+            1 => Some(Self::Blend),
             2 => Some(Self::Decal),
             3 => Some(Self::Cutout),
-            // Masks that keep water out of a hull.
-            4 | 5 => None,
+            // Masks that keep water out of a hull, and a surface that marks water for the game's own pass.
+            4..=6 => None,
             _ => Some(Self::Opaque),
         }
     }
@@ -103,52 +86,18 @@ fn glows(shader: &Shader) -> bool {
     })
 }
 
-/// The maps `shader` states: each from its own record, and for the colour of a material with no
-/// such record the first key `srgb` holds, else the first it knows nothing of.
-///
-/// ⚠ A key a pack states as linear is a data or normal map: drawn as a colour it tints the whole
-/// mesh green and blue.
-fn maps_of(shader: &Shader, srgb: &dyn Fn(u64) -> Option<bool>) -> Maps {
-    let key = |slot: u8| {
-        shader
-            .texture_keys
-            .get(usize::from(slot))
-            .copied()
-            .flatten()
-    };
-    let record = |hash: u32| {
-        (shader.parameters.iter()).find_map(|p| match p.value {
-            ParameterValue::Texture { slot } if p.hash == hash => key(slot),
-            _ => None,
-        })
-    };
-    let normal = NORMAL.into_iter().find_map(record);
-    let specular = record(SPECULAR);
-    let others = || {
-        let keys = shader.texture_keys.iter().flatten().copied();
-        keys.filter(move |k| Some(*k) != normal && Some(*k) != specular)
-    };
-    let colour = (COLOUR.into_iter().find_map(record))
-        .or_else(|| others().find(|k| srgb(*k) == Some(true)))
-        .or_else(|| others().find(|k| srgb(*k).is_none()));
-    Maps {
-        colour,
-        normal,
-        specular,
-    }
-}
-
 /// `drawable` as a model: each level that holds a mesh, with the distance its body states, each
-/// mesh's bucket from its shader's byte of `buckets`.
+/// mesh's bucket and family from its shader's byte of `buckets`; a water mask's mesh is dropped.
 pub(super) fn model_of(
     drawable: &Drawable,
     buckets: &[u8],
     srgb: &dyn Fn(u64) -> Option<bool>,
 ) -> CpuModel {
-    let materials: Vec<Option<(Maps, Bucket)>> = (drawable.shaders.iter().enumerate())
+    let materials: Vec<Option<(CpuMaterial, Bucket)>> = (drawable.shaders.iter().enumerate())
         .map(|(at, shader)| {
             let byte = buckets.get(at).copied().unwrap_or(0);
-            Bucket::of(byte, glows(shader)).map(|bucket| (maps_of(shader, srgb), bucket))
+            let bucket = Bucket::of(byte, glows(shader))?;
+            Some((material_of(shader, byte, srgb), bucket))
         })
         .collect();
     let mut lods = Vec::new();
@@ -165,12 +114,12 @@ pub(super) fn model_of(
         let meshes: Vec<CpuMesh> = (read.into_iter().zip(shaders))
             .filter(|(mesh, _)| !mesh.vertices.is_empty() && !mesh.indices.is_empty())
             .filter_map(|(mesh, shader)| {
-                let (maps, bucket) = (*materials.get(usize::from(shader))?)?;
+                let (material, bucket) = materials.get(usize::from(shader))?.as_ref()?;
                 Some(CpuMesh {
                     vertices: mesh.vertices,
                     indices: mesh.indices,
-                    maps,
-                    bucket,
+                    material: material.clone(),
+                    bucket: *bucket,
                 })
             })
             .collect();
