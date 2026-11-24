@@ -47,6 +47,16 @@ fn story() -> Selector {
     }
 }
 
+/// `selector` of the mode bit `mode` in a layer the level loads.
+fn at_start(mode: u8, selector: Selector) -> Placed {
+    Placed {
+        mode,
+        layer: (7, 0),
+        at_start: true,
+        selector,
+    }
+}
+
 #[test]
 fn a_group_is_on_in_the_hours_the_selectors_of_the_modes_on_pick_it() {
     let words = [
@@ -56,7 +66,7 @@ fn a_group_is_on_in_the_hours_the_selectors_of_the_modes_on_pick_it() {
         (100, OPEN),
         (400, 0xD4),
     ];
-    let rows = switches(&words, &[(1, door()), (2, story())]);
+    let rows = switches(&words, &[at_start(1, door()), at_start(2, story())]);
     let ids: Vec<u32> = rows.iter().map(|r| r.id).collect();
     assert_eq!(ids, [100, 200, 300, 400], "one row a group");
     let day = 0x003F_FFC0u32 & !(1 << 6);
@@ -76,17 +86,42 @@ fn a_group_is_on_in_the_hours_the_selectors_of_the_modes_on_pick_it() {
 }
 
 #[test]
-fn only_the_layers_the_level_loads_switch_at_rest() {
+fn only_the_layers_the_level_loads_start_loaded() {
     let body = |layer| WorldState {
         layer,
         selectors: vec![door()],
     };
-    // 1 the level loads, 2 a script loads, 3 no manifest names.
+    let states = || vec![body(1), body(2), body(3)];
+    // 1 the level loads, 2 something else loads when it asks, 3 no manifest names.
     let layers = [(1, true), (2, false)];
-    let kept: Vec<u32> = (loaded_at_rest(vec![body(1), body(2), body(3)], &layers).iter())
-        .map(|s| s.layer)
+    let start: Vec<(u32, bool)> = (placed(states(), Some(&layers), 1, 9))
+        .map(|p| (p.layer.1, p.at_start))
         .collect();
-    assert_eq!(kept, [1, 3]);
+    assert_eq!(start, [(1, true), (2, false), (3, true)]);
+    assert!(placed(states(), None, 1, 9).all(|p| p.at_start && p.layer.0 == 9));
+}
+
+#[test]
+fn a_layer_a_picked_configuration_loads_switches_too() {
+    // The door's day configuration loads layer 5, whose story selector turns the open door off.
+    let mut opener = door();
+    opener.configs[0].layers = vec![(7, 5)];
+    let later = |at_start| Placed {
+        mode: 1,
+        layer: (7, 5),
+        at_start,
+        selector: story(),
+    };
+    let on = |placed: &[Placed], hour| words_at(&placed.iter().collect::<Vec<_>>(), hour);
+    let chained = [at_start(1, opener.clone()), later(false)];
+    assert_eq!(on(&chained, 12), HashSet::from([STORY_ONLY]));
+    // By night the door's other configuration loads nothing, so the layer stays out.
+    assert_eq!(on(&chained, 23), HashSet::from([CLOSED]));
+    // A layer no configuration loads stays out at every hour.
+    assert_eq!(
+        on(&[at_start(1, door()), later(false)], 12),
+        HashSet::from([OPEN])
+    );
 }
 
 #[test]
@@ -128,7 +163,7 @@ fn the_index_says_which_groups_are_on_at_an_hour_and_keeps_their_words() {
     let maps = vec![managed(1, 100), managed(2, 200), managed(3, 300)];
     let mut index = index_with(Vec::new(), &[], maps, Vec::new());
     let words = [(100, OPEN), (200, CLOSED), (300, STORY_ONLY)];
-    index.switches = switches(&words, &[(1, door()), (2, story())]);
+    index.switches = switches(&words, &[at_start(1, door()), at_start(2, story())]);
     let index = index.finish();
     assert_eq!(index.groups()[0].word, OPEN);
     assert_eq!(index.default_on_in(12.0, 1), [100]);

@@ -1,18 +1,19 @@
 //! What each mode's world-state data switches on at rest: the selectors of the game-shape archives
-//! its packs register, found by a scan of each archive's span, and from them the hours each group
-//! is on under each set of modes.
+//! its packs register, found by a scan of each archive's span with the layer manifest beside
+//! them, and from them the hours each group is on under each set of modes.
 //!
 //! ⚠ With no key snapshot no table names a game-shape archive, so no group is on at rest.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use or_io::container::rpf::{
-    self, Gta6Mount, GtaViKeys, Rpf9BodyKind, Rpf9Content, Rpf9Scan, Rpf9ZlibRun,
+use or_io::container::rpf::{Rpf9BodyKind, Rpf9Content, Rpf9Scan, Rpf9ZlibRun};
+use or_io::gta6::world_state::{
+    layers_loaded, picks, words_of, Selector, WorldState, WorldStateError, LAYER_MANIFEST,
 };
-use or_io::gta6::hash::name_hash64;
-use or_io::gta6::world_state::{layers_loaded, words_on, Selector, WorldState, WorldStateError};
+use or_io::hash::string_hash;
 use or_job::Cancel;
 use or_title::gta6_mount;
 
@@ -22,14 +23,23 @@ use super::GroupRow;
 /// The inflated bytes kept of a body: more than a world-state body was measured to hold.
 const KEEP: usize = 32 << 20;
 
-/// Every selector of the game-shape archives the packs register, in layers the level loads, with the bit of its pack's mode; `None` once `cancel` is set.
+/// A selector of a game-shape layer: its pack's mode bit, the layer it sits in, and whether the level loads that layer itself.
+#[derive(Debug, Clone)]
+pub(super) struct Placed {
+    pub mode: u8,
+    /// The hash of the archive's name and of the layer's, as a layer change names them.
+    pub layer: (u32, u32),
+    pub at_start: bool,
+    pub selector: Selector,
+}
+
+/// Every selector of the game-shape archives the packs register, with its layer; `None` once `cancel` is set.
 pub(super) fn selectors(
     mounted: &Mount,
     every: &[PathBuf],
     cancel: &Cancel,
-) -> Option<Vec<(u8, Selector)>> {
+) -> Option<Vec<Placed>> {
     let listed = mounted.listed(every, every);
-    let keys = super::mount::keys();
     let mut found = Vec::new();
     for (mode, archive, entry, registered) in
         gta6_mount::game_shapes(&mounted.registry.packs, &listed)
@@ -37,21 +47,16 @@ pub(super) fn selectors(
         let Some(path) = every.get(archive as usize) else {
             continue;
         };
-        // With no manifest every layer counts, as before one was read.
-        let layers = (keys.as_ref())
-            .map(|keys| layers(path, entry.offset, &registered, keys))
-            .unwrap_or_else(|| Err("no key snapshot".into()))
-            .inspect_err(|error| {
-                tracing::warn!(path = %path.display(), %error, "a game-shape layer manifest was not read")
-            })
-            .unwrap_or_default();
+        let stem = registered.rsplit('/').next().unwrap_or(&registered);
+        let name = string_hash(stem.as_bytes());
         let span = (entry.offset, entry.offset.saturating_add(entry.stored));
         match bodies(path, span, cancel) {
-            Ok(Some(states)) => found.extend(
-                (loaded_at_rest(states, &layers).into_iter())
-                    .flat_map(|state| state.selectors)
-                    .map(|selector| (mode.bit(), selector)),
-            ),
+            Ok(Some((states, layers))) => {
+                if layers.is_none() {
+                    tracing::warn!(path = %path.display(), "a game-shape archive's scan found no layer manifest: every layer counts as loaded");
+                }
+                found.extend(placed(states, layers.as_deref(), mode.bit(), name))
+            }
             Ok(None) => return None,
             Err(error) => {
                 tracing::warn!(path = %path.display(), %error, "a game-shape archive was not read")
@@ -61,41 +66,14 @@ pub(super) fn selectors(
     Some(found)
 }
 
-/// The layers of the game-shape archive registered at `registered`, whose header is at `at` in the file at `path`: the hash of each one's name and whether the level loads it.
-fn layers(
-    path: &Path,
-    at: u64,
-    registered: &str,
-    keys: &GtaViKeys,
-) -> Result<Vec<(u32, bool)>, String> {
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
-    let archive = rpf::open_at(&mut file, at, keys).map_err(|e| e.to_string())?;
-    // The manifest is the archive's `<its name>/layermanifest`.
-    let stem = registered.rsplit('/').next().unwrap_or(registered);
-    let word = name_hash64(
-        format!("{stem}/layermanifest")
-            .to_ascii_lowercase()
-            .as_bytes(),
-    );
-    let mount = Gta6Mount { base: at, archive };
-    let entry = (mount.archive.entries.iter())
-        .find(|e| e.name64 == word)
-        .ok_or("the archive lists no layer manifest")?;
-    let bytes = mount
-        .read_entry(&mut file, entry)
-        .map_err(|e| e.to_string())?;
-    layers_loaded(&bytes).map_err(|e| e.to_string())
-}
+/// What a scan of a game-shape archive finds: its world-state bodies, and its layer manifest's layers when it finds one.
+type Found = (Vec<WorldState>, Option<Vec<(u32, bool)>>);
 
-/// The world-state bodies a scan of `from..to` of the archive at `path` finds; `None` once `cancel` is set.
-fn bodies(
-    path: &Path,
-    (from, to): (u64, u64),
-    cancel: &Cancel,
-) -> io::Result<Option<Vec<WorldState>>> {
+/// The world-state bodies and the layer manifest a scan of `from..to` of the archive at `path` finds; `None` once `cancel` is set.
+fn bodies(path: &Path, (from, to): (u64, u64), cancel: &Cancel) -> io::Result<Option<Found>> {
     let file = File::open(path)?;
     let mut scan = (Rpf9Scan::new(&file, from..to).map_err(io::Error::other)?).keeping(KEEP);
-    let mut found = Vec::new();
+    let (mut found, mut manifest) = (Vec::new(), None);
     while let Some(find) = scan.next() {
         if cancel.is_set() {
             return Ok(None);
@@ -117,22 +95,64 @@ fn bodies(
         };
         match WorldState::open(scan.kept(&find)) {
             Ok(state) => found.push(state),
+            // The manifest is a body of the same archive, of its own root.
+            Err(WorldStateError::NotWorldState(LAYER_MANIFEST)) => {
+                match layers_loaded(scan.kept(&find)) {
+                    Ok(layers) => manifest = Some(layers),
+                    Err(error) => {
+                        tracing::warn!(offset = find.offset, %error, "a layer manifest was not read")
+                    }
+                }
+            }
             Err(WorldStateError::NotWorldState(_)) => {}
             Err(error) => {
                 tracing::debug!(offset = find.offset, %error, "a world-state body was not read")
             }
         }
     }
-    Ok(Some(found))
-}
-/// The bodies of `states` whose layer the level loads: all but those a manifest of `layers` states a script or a system loads.
-fn loaded_at_rest(mut states: Vec<WorldState>, layers: &[(u32, bool)]) -> Vec<WorldState> {
-    states.retain(|s| !layers.contains(&(s.layer, false)));
-    states
+    Ok(Some((found, manifest)))
 }
 
-/// Each group of `words` (its id and word, as its maps state them) with the hours it is on under each set of modes, by `selectors` with their modes' bits.
-pub(super) fn switches(words: &[(u32, u64)], selectors: &[(u8, Selector)]) -> Vec<GroupRow> {
+/// The selectors of `states` with their layers in the archive named `archive`: a layer `layers` states the level loads, or one it does not name, loads at the start.
+fn placed(
+    states: Vec<WorldState>,
+    layers: Option<&[(u32, bool)]>,
+    mode: u8,
+    archive: u32,
+) -> impl Iterator<Item = Placed> + '_ {
+    states.into_iter().flat_map(move |state| {
+        let at_start = layers.is_none_or(|l| !l.contains(&(state.layer, false)));
+        (state.selectors.into_iter()).map(move |selector| Placed {
+            mode,
+            layer: (archive, state.layer),
+            at_start,
+            selector,
+        })
+    })
+}
+
+/// The group words on at the whole hour `hour` under the selectors of `placed`: those of the layers the level loads, then of every layer a picked configuration loads, until none is added.
+pub(super) fn words_at(placed: &[&Placed], hour: u32) -> HashSet<u64> {
+    let mut loaded: HashSet<(u32, u32)> = (placed.iter())
+        .filter(|p| p.at_start)
+        .map(|p| p.layer)
+        .collect();
+    loop {
+        let active: Vec<&Selector> = (placed.iter())
+            .filter(|p| loaded.contains(&p.layer))
+            .map(|p| &p.selector)
+            .collect();
+        let configs: Vec<_> = picks(&active, hour).into_iter().flatten().collect();
+        let before = loaded.len();
+        loaded.extend(configs.iter().flat_map(|c| c.layers.iter().copied()));
+        if loaded.len() == before {
+            return words_of(configs);
+        }
+    }
+}
+
+/// Each group of `words` (its id and word, as its maps state them) with the hours it is on under each set of modes, by the selectors of `placed`.
+pub(super) fn switches(words: &[(u32, u64)], placed: &[Placed]) -> Vec<GroupRow> {
     let mut rows: Vec<GroupRow> = (words.iter())
         .map(|&(id, word)| GroupRow {
             word,
@@ -144,12 +164,9 @@ pub(super) fn switches(words: &[(u32, u64)], selectors: &[(u8, Selector)]) -> Ve
     rows.sort_unstable_by_key(|r| (r.id, r.word));
     rows.dedup_by_key(|r| r.id);
     for modes in 0..8u8 {
-        let of_modes: Vec<&Selector> = (selectors.iter())
-            .filter(|(mode, _)| mode & modes != 0)
-            .map(|(_, selector)| selector)
-            .collect();
+        let of_modes: Vec<&Placed> = placed.iter().filter(|p| p.mode & modes != 0).collect();
         for hour in 0..24 {
-            let on = words_on(of_modes.iter().copied(), hour);
+            let on = words_at(&of_modes, hour);
             for row in rows.iter_mut().filter(|r| on.contains(&r.word)) {
                 row.hours[usize::from(modes)] |= 1 << hour;
             }
