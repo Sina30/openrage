@@ -1339,42 +1339,6 @@ fn a_leaf_that_lets_more_than_half_the_sun_through_sets_the_backlit_flag_and_one
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
-fn a_ground_decal_whose_palette_slot_is_empty_takes_a_black_tint_and_one_with_a_palette_its_colour()
-{
-    let Some((device, queue, mut renderer)) = family_frame("a_ground_decal_whose_palette_slot")
-    else {
-        return;
-    };
-    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    for (unbound, wanted) in [(false, 255u8), (true, 0)] {
-        let maps = [(slot::colour(0), texel(&device, &queue, [255; 4]))];
-        let flags = WorldConstants::GROUND_BLEND
-            | if unbound {
-                WorldConstants::UNBOUND_PALETTE
-            } else {
-                0
-            };
-        let constants = WorldConstants {
-            flags: WorldConstants::default().flags | flags,
-            tint_intensity: [1.0; 4],
-            tint_blend: [1.0; 4],
-            ..WorldConstants::default()
-        };
-        let family = (WorldFamily::Decal, WorldBucket::Opaque);
-        let material = surface(&device, &renderer, family, &maps, constants);
-        let square = coloured_square(&device, [1.0; 4], [1.0; 4], material);
-        let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
-        let grey = [wanted, wanted, wanted, 255];
-        assert!(near(targets[0], grey, 2), "unbound {unbound}: {targets:?}");
-    }
-    assert!(accepted(scope), "the device accepted every pass");
-}
-
-#[cfg_attr(
-    not(feature = "gpu-tests"),
-    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
-)]
-#[test]
 fn a_ground_decal_whose_tint_is_masked_takes_it_only_as_far_as_its_material_a_alpha() {
     let Some((device, queue, mut renderer)) = family_frame("a_ground_decal_whose_tint_is_masked")
     else {
@@ -1389,10 +1353,9 @@ fn a_ground_decal_whose_tint_is_masked_takes_it_only_as_far_as_its_material_a_al
                 slot::material_a(0),
                 texel(&device, &queue, [0, 255, 128, alpha]),
             ),
+            (slot::TINT, texel(&device, &queue, [0, 0, 0, 255])),
         ];
-        let flags = WorldConstants::GROUND_BLEND
-            | WorldConstants::UNBOUND_PALETTE
-            | WorldConstants::TINT_MASKED;
+        let flags = WorldConstants::GROUND_BLEND | WorldConstants::TINT_MASKED;
         let constants = WorldConstants {
             flags: WorldConstants::default().flags | flags,
             tint_intensity: [1.0; 4],
@@ -1401,7 +1364,8 @@ fn a_ground_decal_whose_tint_is_masked_takes_it_only_as_far_as_its_material_a_al
         };
         let family = (WorldFamily::Decal, WorldBucket::Opaque);
         let material = surface(&device, &renderer, family, &maps, constants);
-        let square = coloured_square(&device, [1.0; 4], [1.0; 4], material);
+        // The first colour's third byte of nought picks the palette's first column
+        let square = coloured_square(&device, [1.0, 1.0, 0.0, 1.0], [1.0; 4], material);
         let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
         let grey = [wanted, wanted, wanted, 255];
         assert!(near(targets[0], grey, 2), "alpha {alpha}: {targets:?}");

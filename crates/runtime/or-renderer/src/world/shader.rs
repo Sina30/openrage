@@ -92,8 +92,7 @@ const GROUND_BLEND: u32 = 64u;
 const TINT_MULTIPLY: u32 = 128u;
 const FOLIAGE: u32 = 256u;
 const VERTEX_OVER_TINT: u32 = 512u;
-const UNBOUND_PALETTE: u32 = 1024u;
-const TINT_MASKED: u32 = 2048u;
+const TINT_MASKED: u32 = 1024u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
@@ -378,9 +377,8 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
         let own = 1.0 + in.colour1.r * (in.tint - 1.0);
         colour = colour * (1.0 + m.grass_tint * (own - 1.0));
     } else if ((m.flags & GROUND_BLEND) != 0u) {
-        // The palette's colour at the luminance of the decal's own, or times it, as far as its tint blend says; a palette record with no image reads nought, as an unbound image does
-        let t = select(tint, vec3<f32>(0.0), (m.flags & UNBOUND_PALETTE) != 0u);
-        let tinted = select(m.tint_intensity.x * t * lum(colour), clamp(colour * t * m.tint_intensity.x, vec3<f32>(0.0), vec3<f32>(1.0)), (m.flags & TINT_MULTIPLY) != 0u);
+        // The palette's colour at the luminance of the decal's own, or times it, as far as its tint blend and, where its effect says, its material A's alpha say
+        let tinted = select(m.tint_intensity.x * tint * lum(colour), clamp(colour * tint * m.tint_intensity.x, vec3<f32>(0.0), vec3<f32>(1.0)), (m.flags & TINT_MULTIPLY) != 0u);
         colour = mix(colour, tinted, m.tint_blend.x * select(1.0, maps.a0.a, (m.flags & TINT_MASKED) != 0u));
     } else if (family != TERRAIN_LOD) {
         let mask = 1.0 - m.translucency_as_tint_mask * (1.0 - maps.c3.a);

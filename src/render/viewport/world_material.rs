@@ -111,7 +111,6 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
     if let Some([low, high]) = c.ground_heights {
         constants.flags |= WorldConstants::GROUND_BLEND
             | flag(c.tint_multiplies, WorldConstants::TINT_MULTIPLY)
-            | flag(c.palette_unbound, WorldConstants::UNBOUND_PALETTE)
             | flag(c.tint_masked, WorldConstants::TINT_MASKED);
         constants.height_scale[0] = 1.0 / (high - low).max(1e-4);
         constants.height_bias[0] = low;
@@ -240,24 +239,9 @@ mod tests {
             | WorldConstants::TINT_MULTIPLY
             | WorldConstants::TINT_MASKED;
         assert_eq!(constants.flags & both, both);
-        assert_eq!(constants.flags & WorldConstants::UNBOUND_PALETTE, 0);
         // Any other material blends no ground
         let plain = constants_of(&CpuMaterial::default());
         assert_eq!(plain.flags & both, 0);
-        // An empty palette slot reaches the shader only as a ground decal's
-        let unbound = |ground_heights| {
-            let material = CpuMaterial {
-                constants: Constants {
-                    ground_heights,
-                    palette_unbound: true,
-                    ..Constants::default()
-                },
-                ..CpuMaterial::default()
-            };
-            constants_of(&material).flags & WorldConstants::UNBOUND_PALETTE != 0
-        };
-        assert!(unbound(Some([0.0, 1.0])));
-        assert!(!unbound(None));
     }
 
     #[test]

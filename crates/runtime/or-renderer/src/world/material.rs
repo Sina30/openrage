@@ -145,10 +145,8 @@ impl WorldConstants {
     pub const FOLIAGE: u32 = 256;
     /// With [`Self::INSTANCE_COLOUR`], the vertex's first colour lies over the instance's tint as far as its alpha, which is then no coverage.
     pub const VERTEX_OVER_TINT: u32 = 512;
-    /// With [`Self::GROUND_BLEND`], the material states a palette with no image in its slot, which reads nought.
-    pub const UNBOUND_PALETTE: u32 = 1024;
     /// With [`Self::GROUND_BLEND`], the tint blend is masked by material A's alpha.
-    pub const TINT_MASKED: u32 = 2048;
+    pub const TINT_MASKED: u32 = 1024;
 }
 
 impl Default for WorldConstants {
