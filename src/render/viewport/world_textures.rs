@@ -229,9 +229,27 @@ pub(super) struct Textures {
     pub bytes: u64,
     stamps: u64,
     grey: Option<wgpu::TextureView>,
+    /// The size each key is waited for at.
+    asked: HashMap<u64, u32>,
 }
 
 impl Textures {
+    /// Hold each ask of `wanted`, one a key, to the size its key is waited for at already, and
+    /// remember what is waited for now.
+    ///
+    /// ⚠ The readers answer each size of a key apart: an ask that grew with every step of a
+    /// camera nearing a wall would have the texture read once a step.
+    pub(super) fn hold(&mut self, wanted: &mut [(f32, u64, u32)]) {
+        for (_, key, pixels) in wanted.iter_mut() {
+            if let Some(waited) = self.asked.get(key) {
+                *pixels = *waited;
+            }
+        }
+        self.asked = (wanted.iter())
+            .map(|(_, key, pixels)| (*key, *pixels))
+            .collect();
+    }
+
     /// Take the answer to an ask for `key` at `pixels`, read as `read`, on a device that reads
     /// block compression where `bc` and makes no side longer than `most_side`; the bytes it put
     /// on the device.
@@ -244,6 +262,9 @@ impl Textures {
         (bc, most_side): (bool, u32),
         (frame, eye): (u64, Vec3),
     ) -> u64 {
+        if self.asked.get(&key) == Some(&pixels) {
+            self.asked.remove(&key);
+        }
         let (mut used, mut at) = (frame, eye);
         if let Some(Texture::Ready(held)) = self.map.get(&key) {
             // A late answer to a smaller ask leaves the larger one in place.
@@ -352,6 +373,23 @@ mod tests {
         // A level smaller than a block is one block.
         assert_eq!(level_bytes(F::Bc3RgbaUnorm, (2, 1)), Some(16));
         assert_eq!(level_bytes(F::Bc5RgUnorm, (5, 5)), Some(64));
+    }
+
+    #[test]
+    fn a_key_waited_for_is_asked_for_at_the_size_it_waits_at() {
+        let mut textures = Textures::default();
+        let mut wanted = [(5.0, 7, 128), (9.0, 8, 256)];
+        textures.hold(&mut wanted);
+        assert_eq!(wanted, [(5.0, 7, 128), (9.0, 8, 256)]);
+        // The camera came nearer before either was answered: both keep their size.
+        let mut wanted = [(2.0, 7, 512), (9.0, 8, 256)];
+        textures.hold(&mut wanted);
+        assert_eq!(wanted, [(2.0, 7, 128), (9.0, 8, 256)]);
+        // A key no longer wanted is no longer waited for: asked for again, it takes its new size.
+        textures.hold(&mut []);
+        let mut wanted = [(2.0, 7, 512)];
+        textures.hold(&mut wanted);
+        assert_eq!(wanted, [(2.0, 7, 512)]);
     }
 
     #[test]
