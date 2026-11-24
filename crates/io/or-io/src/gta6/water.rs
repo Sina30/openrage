@@ -14,6 +14,8 @@ use crate::meta::error::MetaError;
 pub mod fog;
 #[path = "water_height.rs"]
 pub mod height;
+#[path = "water_waves.rs"]
+pub mod waves;
 
 pub const WATER_DATA: u32 = lit(b"WaterData");
 pub const WATER_QUAD: u32 = lit(b"WaterQuad");

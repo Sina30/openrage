@@ -41,6 +41,7 @@ impl Water {
             renderer.set_world_water(device, None);
             return self.built.take().is_some();
         };
+        renderer.set_world_waves(water.waves(eye.x, eye.y));
         let fog = water.fog.as_deref();
         let held = fog.map(|f| f as *const _ as usize);
         if self.media != held {

@@ -24,12 +24,14 @@ struct Water {
     albedo: vec4<f32>,
     // In `w` the depth over which a shore fades in, in metres.
     light: vec4<f32>,
-    // One over the frame's width and height; in `z` whether there are ripples, in `w` their scale a metre.
+    // One over the frame's width and height.
     screen: vec4<f32>,
     // The medium's grid: its west and north edges in metres and one over its extent; nought in `z` where there is none.
     grid: vec4<f32>,
     fog: array<vec4<f32>, 5>,
     fog_colour: array<vec4<f32>, 4>,
+    // Each wave's number a metre along x and y, its height and its phase.
+    waves: array<vec4<f32>, 12>,
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(1) @binding(0) var<uniform> water: Water;
@@ -39,9 +41,7 @@ struct Water {
 @group(1) @binding(3) var sky: texture_2d<f32>;
 // For the cosine of the angle a ray meets the surface at, how much it reflects, in red.
 @group(1) @binding(4) var fresnel_row: texture_2d<f32>;
-@group(1) @binding(5) var ripples: texture_2d<f32>;
 @group(1) @binding(6) var clamped: sampler;
-@group(1) @binding(7) var repeated: sampler;
 // The medium by place: how much of each channel a metre takes out, and how much it scatters.
 @group(1) @binding(8) var medium_extinction: texture_2d<f32>;
 @group(1) @binding(9) var medium_scattering: texture_2d<f32>;
@@ -55,6 +55,8 @@ const GLINT_FALLOFF: f32 = 1118.0;
 // How many steps a reflected ray takes across the frame, how many halve the last, and how each step grows.
 const TRACE_STEPS: i32 = 32;
 const REFINE_STEPS: i32 = 5;
+// How many pixels a wave must span before it is drawn in full; shorter ones fade out rather than shimmer.
+const WAVE_PIXELS: f32 = 6.0;
 const TRACE_GROWTH: f32 = 1.35;
 
 struct VsOut {
@@ -167,13 +169,19 @@ fn fs_water(in: VsOut) -> @location(0) vec4<f32> {
     let to_eye = camera.camera_pos_ws.xyz - in.world;
     let dist = max(length(to_eye), 1e-3);
     let v = to_eye / dist;
-    var n = vec3<f32>(0.0, 0.0, 1.0);
-    if (water.screen.z > 0.5) {
-        let at = in.world.xy * water.screen.w;
-        let a = textureSample(ripples, repeated, at).xy * 2.0 - 1.0;
-        let b = textureSample(ripples, repeated, at * 0.37 + vec2<f32>(0.21, 0.67)).xy * 2.0 - 1.0;
-        n = normalize(vec3<f32>((a + b) * 0.5, 1.0));
+    // The surface's slope, summed over its waves: each a sine along its number, faded where the frame cannot show it.
+    let footprint = max(length(fwidth(in.world.xy)), 1e-4);
+    var slope = vec2<f32>(0.0);
+    for (var i = 0; i < 12; i++) {
+        let w = water.waves[i];
+        let number = length(w.xy);
+        if (number <= 0.0) {
+            continue;
+        }
+        let seen = smoothstep(1.0, 2.0, 6.2831853 / (number * footprint * WAVE_PIXELS * 0.5));
+        slope += w.xy * (w.z * cos(dot(w.xy, in.world.xy) + w.w) * seen);
     }
+    let n = normalize(vec3<f32>(-slope, 1.0));
     // How far the ray runs in the water: to what is opaque behind it, or where the frame drew nothing there, down to the ground the height map gives.
     // ⚠ Read between the texels of the half-size depth: the nearest one is a pixel off every other row, which over flat ground at a glance is metres.
     let scene = textureSampleLevel(behind_depth, clamped, in.clip.xy * water.screen.xy, 0.0).r;

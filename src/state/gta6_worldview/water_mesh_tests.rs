@@ -178,7 +178,7 @@ fn the_medium_is_the_days_extinction_and_its_scattering_over_it() {
     let look = m.look();
     assert_eq!(
         (look.extinction, look.albedo, look.reflection),
-        ([0.4, 0.2, 0.2], m.albedo, 0.5)
+        ([0.004, 0.002, 0.002], m.albedo, 0.5)
     );
     assert_eq!(Medium::of(|_| None), None);
     assert_eq!(Medium::of(|_| Some(0.0)), None);

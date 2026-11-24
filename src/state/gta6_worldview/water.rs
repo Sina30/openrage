@@ -21,10 +21,13 @@ mod fog;
 mod ground;
 #[path = "water_mesh.rs"]
 mod mesh;
+#[path = "water_waves.rs"]
+mod waves;
 
 pub use fog::{fog, WaterFog};
 pub use ground::ground;
 pub use mesh::{mesh, tint, Medium};
+pub use waves::presets;
 
 /// The archive of an install the water document is in, and the document's path in it.
 const ARCHIVE: &str = "levels.rpf";
@@ -85,6 +88,7 @@ impl super::Viewer {
             ground::reading(&HELD, &root.join(ARCHIVE))
                 || ground::ground_reading(root)
                 || fog::fog_reading(root)
+                || waves::presets_reading(root)
         })
     }
 }
@@ -98,6 +102,7 @@ pub struct Seen {
     pub quads: Arc<WaterData>,
     pub ground: Option<Arc<WaterGround>>,
     pub fog: Option<Arc<WaterFog>>,
+    pub presets: Option<Arc<or_io::gta6::water::waves::OceanPresets>>,
     day: Option<Arc<DayTables>>,
     hour: f32,
     /// The name of the day's cycle the weather stands for.
@@ -110,6 +115,18 @@ impl Seen {
     pub fn medium(&self) -> Option<Medium> {
         let moment = (self.day.as_ref()?).moment(self.hour, self.weather, self.y)?;
         Medium::of(|name| moment.own.get(name))
+    }
+
+    /// The waves of the surface about `x`, `y` at the hour and weather it was seen in: the preset set up nearest, at the day's Beaufort number.
+    pub fn waves(&self, x: f32, y: f32) -> [[f32; 4]; or_renderer::world::water::WAVES] {
+        let moment = (self.day.as_ref()).and_then(|d| d.moment(self.hour, self.weather, self.y));
+        let beaufort = moment.and_then(|m| m.own.get("water_ocean_beaufort_scale"));
+        let preset = self.presets.as_ref().and_then(|p| p.nearest(x, y));
+        waves::waves(
+            preset,
+            beaufort.unwrap_or(0.0),
+            f64::from(self.hour) * 3600.0,
+        )
     }
 
     /// What a mesh built of this water is built of.
@@ -131,6 +148,7 @@ pub fn seen(root: &Path, hour: f32, weather: WeatherState, y: f32) -> Option<See
         quads: water(root)?,
         ground: ground(root),
         fog: fog(root),
+        presets: presets(root),
         day: super::sky::tables(root),
         hour,
         weather: super::sky::weather_name(weather),
