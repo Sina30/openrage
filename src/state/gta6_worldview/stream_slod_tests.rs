@@ -149,3 +149,27 @@ fn a_card_list_of_ids_no_list_settles_holds_its_box_alone() {
     let half = Vec3::new(100.0, 200.0, 50.0).length() / 2.0;
     assert!((cards.radius - half).abs() < 1e-4, "{}", cards.radius);
 }
+
+#[test]
+fn a_far_stand_in_yields_to_a_model_drawn_where_it_stands_and_to_nothing_else() {
+    let cards = CardList::of(&far(), &index());
+    // The first and third instances stand at the box's least corner, the second at its far east side
+    let first = Vec3::new(10.0, 20.0, 30.0);
+    let second = Vec3::new(110.0, 20.0, 30.0 + 7.0 / 65535.0 * 50.0);
+    assert_eq!(cards.handed_off(&Standing::of([first])), [0, 2]);
+    // A model a few centimetres off, as a box quantises a place, is still its tree
+    let off = Vec3::new(0.05, -0.04, 0.3);
+    assert_eq!(
+        cards.handed_off(&Standing::of([first + off, second - off])),
+        [0, 1, 2]
+    );
+    // Nothing drawn, or something a metre away, keeps every card
+    assert!(cards.handed_off(&Standing::of([])).is_empty());
+    assert!(cards
+        .handed_off(&Standing::of([first + Vec3::X, second + Vec3::Y * 2.0]))
+        .is_empty());
+    // A place across a cell's edge is found from the cell beside it
+    let edge = Vec3::new(16.0, 24.0, 0.0);
+    assert!(Standing::of([edge - Vec3::new(0.01, 0.0, 0.0)])
+        .stands_at(edge + Vec3::new(0.05, 0.0, 0.0)));
+}

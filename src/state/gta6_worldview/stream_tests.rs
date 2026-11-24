@@ -342,14 +342,19 @@ fn a_list_of_far_stand_ins_fades_out_whole_as_the_list_under_it_fades_in() {
         // Beside the lamps, which draw whole, and 567 m from the far list's centre, inside its distance.
         streamer.select(&View::at(Vec3::ZERO, 1.0), &|_| Some(true))
     };
-    // A far list that states no child draws on beside them, every card kept.
+    let id_of = |selected: &Selected| {
+        let [cards] = &selected.cards[..] else {
+            panic!("one list of cards, not {}", selected.cards.len());
+        };
+        u16::from_le_bytes([cards.records[0][14], cards.records[0][15]])
+    };
+    // Its instance stands where the tree 10 m along x draws: it yields to the tree.
+    assert_eq!(id_of(&select(&map)), super::slod::HIDDEN);
+    // A metre off, a far list that states no child draws on beside them, every card kept.
+    map.grass[1].instances[0] = blade(11, 0, 7);
     let alone = select(&map);
     assert!(count(&alone, 0x2000) > 0, "the lamps draw");
-    let [cards] = &alone.cards[..] else {
-        panic!("one list of cards, not {}", alone.cards.len());
-    };
-    let id = u16::from_le_bytes([cards.records[0][14], cards.records[0][15]]);
-    assert_ne!(id, super::slod::HIDDEN);
+    assert_ne!(id_of(&alone), super::slod::HIDDEN);
     // One that states the lamps as its child gives way to them whole.
     map.grass[1].num_children = 1;
     let given_way = select(&map);

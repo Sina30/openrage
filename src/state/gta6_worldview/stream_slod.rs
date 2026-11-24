@@ -71,13 +71,13 @@ impl CardList {
     }
 
     /// The same seen with distances scaled by `scale`, `fade` opaque, less the instances `hidden`
-    /// names: those a prop drawn near the camera stands in for.
-    pub fn seen(&self, scale: f32, fade: f32, hidden: &[u16]) -> Self {
+    /// names: those whose tree is drawn as a model.
+    pub fn seen(&self, scale: f32, fade: f32, hidden: &[u32]) -> Self {
         let mut records = Arc::clone(&self.records);
         if !hidden.is_empty() {
             let mut less = records.to_vec();
             for at in hidden {
-                if let Some(record) = less.get_mut(usize::from(*at)) {
+                if let Some(record) = less.get_mut(*at as usize) {
                     record[14..16].copy_from_slice(&HIDDEN.to_le_bytes());
                 }
             }
@@ -89,6 +89,85 @@ impl CardList {
             records,
             ..self.clone()
         }
+    }
+
+    /// The places of its instances that a model drawn stands at, by `standing`: a tree drawn as a
+    /// model yields its card, and one not drawn keeps it.
+    pub fn handed_off(&self, standing: &Standing) -> Vec<u32> {
+        if standing.cells.is_empty() || !standing.reaches(self) {
+            return Vec::new();
+        }
+        let (min, size) = (Vec3::from(self.min), Vec3::from(self.size));
+        let place = |r: &[u8; 16]| {
+            let q = |at: usize| f32::from(u16::from_le_bytes([r[at], r[at + 1]])) / 65535.0;
+            min + Vec3::new(q(0), q(2), q(4)) * size
+        };
+        (self.records.iter().enumerate())
+            .filter(|(_, r)| standing.stands_at(place(r)))
+            .map(|(at, _)| at as u32)
+            .collect()
+    }
+}
+
+/// Where every instance a selection draws stands, by the cell of the ground it stands in: what
+/// a far stand-in yields to.
+#[derive(Default)]
+pub struct Standing {
+    cells: std::collections::HashMap<(i32, i32), Vec<Vec3>>,
+    /// The box that holds every place.
+    low: Vec3,
+    high: Vec3,
+}
+
+/// The side of a cell of `Standing`, in metres.
+const CELL: f32 = 8.0;
+/// How far off its far stand-in's place a model drawn may stand and still be the same tree: the
+/// most a list's box quantises a place by, with room.
+const SAME_TREE: f32 = 0.15;
+/// How far above or below it, the height quantised by a box much taller than it is wide.
+const SAME_TREE_HEIGHT: f32 = 2.0;
+
+fn cell_of(at: Vec3) -> (i32, i32) {
+    ((at.x / CELL).floor() as i32, (at.y / CELL).floor() as i32)
+}
+
+impl Standing {
+    /// The places `places` held for looking up.
+    pub fn of(places: impl IntoIterator<Item = Vec3>) -> Self {
+        let mut standing = Self {
+            low: Vec3::splat(f32::MAX),
+            high: Vec3::splat(f32::MIN),
+            ..Self::default()
+        };
+        for at in places {
+            standing.cells.entry(cell_of(at)).or_default().push(at);
+            standing.low = standing.low.min(at);
+            standing.high = standing.high.max(at);
+        }
+        standing
+    }
+
+    /// Whether some place lies inside `list`'s box, grown by the room a place is allowed.
+    fn reaches(&self, list: &CardList) -> bool {
+        let room = Vec3::new(SAME_TREE, SAME_TREE, SAME_TREE_HEIGHT);
+        let (min, max) = (
+            Vec3::from(list.min),
+            Vec3::from(list.min) + Vec3::from(list.size),
+        );
+        (self.low - room).cmple(max).all() && (self.high + room).cmpge(min).all()
+    }
+
+    /// Whether a place lies at `at`, within the room a far stand-in's place is allowed.
+    fn stands_at(&self, at: Vec3) -> bool {
+        let (x, y) = cell_of(at);
+        (x - 1..=x + 1)
+            .flat_map(|cx| (y - 1..=y + 1).map(move |cy| (cx, cy)))
+            .filter_map(|c| self.cells.get(&c))
+            .flatten()
+            .any(|p| {
+                (p.x - at.x).hypot(p.y - at.y) <= SAME_TREE
+                    && (p.z - at.z).abs() <= SAME_TREE_HEIGHT
+            })
     }
 }
 

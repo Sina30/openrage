@@ -475,10 +475,12 @@ impl Streamer {
         }
         // And the instances of one list: a chunk a list.
         let listed = out.instances.len();
+        // The far stand-ins drawn, laid out once every model is placed, and the instances of grass
+        let (mut stand_ins, mut grass) = (Vec::new(), Vec::new());
         for draw in &selection.lists {
             if let Some(cards) = cards_of(draw.node) {
                 let scale = (self.forest.node(draw.node)).map_or(1.0, |node| node.scale(view));
-                (out.cards).push(cards.seen(scale, draw.fade, &[]));
+                stand_ins.push((cards, scale, draw.fade));
                 continue;
             }
             let Some((map, drawn)) = drawn_of(draw.node) else {
@@ -507,7 +509,19 @@ impl Streamer {
                     tint,
                 ));
             });
+            if matches!(list.instances, Instances::Grass(_)) {
+                grass.push(from..out.instances.len());
+            }
             close(&mut out, from);
+        }
+        // A far stand-in yields to the model of its tree where one is drawn, and draws where none is.
+        let standing = slod::Standing::of(
+            (out.instances.iter().enumerate())
+                .filter(|(at, _)| !grass.iter().any(|run| run.contains(at)))
+                .map(|(_, i)| Vec3::new(i.rows[0][3], i.rows[1][3], i.rows[2][3])),
+        );
+        for (cards, scale, fade) in stand_ins {
+            (out.cards).push(cards.seen(scale, fade, &cards.handed_off(&standing)));
         }
         let list_instances = out.instances.len() - listed;
         // Each model waited for once, by the nearest node that waits for it; one the camera's
