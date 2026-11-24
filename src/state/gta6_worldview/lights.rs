@@ -17,6 +17,7 @@ use or_io::gta6::map::{self, MapBody};
 use or_io::meta::binary::rbm::schema::RbmModel;
 
 use super::index::{Enabled, WorldIndex};
+use super::lights_distant::{self, DistantReach};
 use super::lights_frame::{self, FrameLights, Lamp, LodReach};
 use super::lights_lod::{self, MapLod};
 use super::pool::Pool;
@@ -138,6 +139,7 @@ pub struct Lights {
     /// What of the world is switched on, as the streamer is told it.
     enabled: Enabled,
     reach: LodReach,
+    distant_reach: DistantReach,
     /// Every lamp of the maps loaded, worked out again when they or the reach change.
     lamps: Vec<Lamp>,
 }
@@ -184,6 +186,7 @@ impl Lights {
             drawn: 0,
             enabled: Enabled::default(),
             reach: LodReach::default(),
+            distant_reach: DistantReach::default(),
             lamps: Vec::new(),
         }
     }
@@ -203,6 +206,11 @@ impl Lights {
             self.reach = reach;
             self.lamps = lamps_of(&self.loaded, &self.reach);
         }
+    }
+
+    /// Say how far the distant lights of each size class are drawn as sprites, and how large.
+    pub fn set_distant_reach(&mut self, reach: DistantReach) {
+        self.distant_reach = reach;
     }
 
     /// Ask for the lights of the maps within reach of `eye` and take in those read since; whether any came or went.
@@ -265,10 +273,14 @@ impl Lights {
         }
     }
 
-    /// The lights lit at `hour` (0 to 24) brightest at `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with.
+    /// The lights lit at `hour` (0 to 24) nearest `eye`, at most `most`, their stated intensity times `scale`, as the volumes the frame draws them with, and the distant lights as sprites.
     pub fn lights(&mut self, eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
-        let out = lights_frame::frame_lights(&self.lamps, eye, hour, scale, most);
+        let mut out = lights_frame::frame_lights(&self.lamps, eye, hour, scale, most);
         self.drawn = out.lights;
+        let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
+        let kept = lights_frame::Places::of(out.kept.iter().copied());
+        out.sprites = lights_distant::sprites(lists, eye, scale, &self.distant_reach, &kept);
+        out.sprite_size = self.distant_reach.size;
         out
     }
 

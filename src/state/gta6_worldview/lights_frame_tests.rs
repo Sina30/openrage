@@ -56,7 +56,23 @@ fn point_light_at(lights: &FrameLights, at: f32, d: f32) -> f32 {
 }
 
 #[test]
-fn the_brightest_at_the_camera_are_kept_each_in_the_pass_of_its_kind() {
+fn the_nearest_by_the_edge_of_their_reach_are_kept_however_bright_a_far_one_is() {
+    let mut far = placed(LightKind::Point, 60.0, ALL_HOURS);
+    far.light.intensity = 10_000.0;
+    let mut wide = placed(LightKind::Point, 40.0, ALL_HOURS);
+    wide.light.radius = 38.0;
+    let dim = placed(LightKind::Point, 10.0, ALL_HOURS);
+    let one = frame_lights(&[far, dim], Vec3::ZERO, 12.0, 1.0, 1);
+    assert_eq!(one.kept, [(Vec3::new(10.0, 0.0, 0.0), 1.0)]);
+    let one = frame_lights(&[dim, wide], Vec3::ZERO, 12.0, 1.0, 1);
+    assert_eq!(
+        one.points[0].position.x, 40.0,
+        "its reach comes to 2 m of the camera"
+    );
+}
+
+#[test]
+fn the_nearest_are_kept_each_in_the_pass_of_its_kind() {
     let lamps = [
         placed(LightKind::Point, 100.0, ALL_HOURS),
         placed(LightKind::Spot, 10.0, ALL_HOURS),

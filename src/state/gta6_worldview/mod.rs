@@ -20,6 +20,7 @@ pub(crate) mod index;
 mod interior;
 mod interior_rooms;
 pub(crate) mod lights;
+mod lights_distant;
 pub(crate) mod lights_frame;
 pub(crate) mod lights_index;
 mod lights_law;
@@ -486,6 +487,9 @@ impl Viewer {
             .map_or_else(Default::default, |lights| {
                 if let Some(tables) = &tables {
                     lights.set_reach(lights_frame::LodReach::of(&tables.visual_settings));
+                    lights.set_distant_reach(lights_distant::DistantReach::of(
+                        &tables.visual_settings,
+                    ));
                 }
                 lights.set_enabled(&enabled);
                 lights.look(eye);

@@ -452,6 +452,7 @@ impl RenderBridge {
         self.renderer.set_point_lights(lights.points);
         self.renderer.set_spot_lights(lights.spots);
         self.renderer.set_capsule_lights(lights.capsules);
+        (self.renderer).set_distant_lights(lights.sprite_size, lights.sprites);
         self.renderer.set_world_exposure(exposure);
         // The GTA V day is worked out again once the world is left.
         self.day_key = None;
@@ -762,6 +763,7 @@ impl RenderBridge {
             self.renderer.set_point_lights(Vec::new());
             self.renderer.set_spot_lights(Vec::new());
             self.renderer.set_capsule_lights(Vec::new());
+            (self.renderer).set_distant_lights(Default::default(), Vec::new());
             self.world.hide_cards(&mut self.renderer);
             (self.world.laid_for, self.world.day) = (None, None);
         }

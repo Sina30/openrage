@@ -5,7 +5,8 @@
 use glam::Vec3;
 use or_io::gta5::data::visual_settings::VisualSettings;
 use or_io::gta6::map::light_ext::{Light, LightKind};
-use or_renderer::{CapsuleLight, PointLight, SpotLight};
+use or_renderer::game_shaders::distant_lights::SpriteSize;
+use or_renderer::{CapsuleLight, DistantLight, PointLight, SpotLight};
 
 use super::lights_law::{spot_cones, SHELLS, SHELL_EXPONENT};
 use super::lights_lod::{Distant, MapLod};
@@ -25,6 +26,11 @@ pub struct FrameLights {
     pub capsules: Vec<CapsuleLight>,
     /// How many lights they draw.
     pub lights: usize,
+    /// Where each light drawn as volumes stands, and how much of it its reach leaves.
+    pub kept: Vec<(Vec3, f32)>,
+    /// The distant lights drawn as sprites, and how large a sprite is.
+    pub sprites: Vec<DistantLight>,
+    pub sprite_size: SpriteSize,
 }
 /// A level-of-detail light stands for a placed light this near it, in metres.
 const SAME_PLACE: f32 = 0.02;
@@ -121,48 +127,67 @@ pub fn lod_lamps(lod: &MapLod, parent: &MapLod, reach: &LodReach) -> Vec<Lamp> {
         .collect()
 }
 
+/// Places, each with a value, found again by any point within [`SAME_PLACE`] of one.
+pub struct Places(std::collections::HashMap<[i64; 3], Vec<(Vec3, f32)>>);
+
+impl Places {
+    fn cell(p: Vec3) -> [i64; 3] {
+        p.to_array().map(|x| (x / SAME_PLACE).floor() as i64)
+    }
+
+    pub fn of(places: impl IntoIterator<Item = (Vec3, f32)>) -> Self {
+        let mut at = std::collections::HashMap::<_, Vec<_>>::new();
+        for (p, value) in places {
+            at.entry(Self::cell(p)).or_default().push((p, value));
+        }
+        Self(at)
+    }
+
+    /// How far from `p` the farthest place lies, and [`SAME_PLACE`] beyond; nought where there is none.
+    pub fn farthest_from(&self, p: Vec3) -> f32 {
+        (self.0.values().flatten())
+            .map(|(q, _)| q.distance(p) + SAME_PLACE)
+            .fold(0.0, f32::max)
+    }
+
+    /// The value of a place within [`SAME_PLACE`] of `p`.
+    pub fn near(&self, p: Vec3) -> Option<f32> {
+        let [x, y, z] = Self::cell(p);
+        let cells = (-1..=1).flat_map(|dx| {
+            (-1..=1).flat_map(move |dy| (-1..=1).map(move |dz| [x + dx, y + dy, z + dz]))
+        });
+        cells
+            .filter_map(|c| self.0.get(&c))
+            .flatten()
+            .find(|(q, _)| q.distance(p) <= SAME_PLACE)
+            .map(|(_, value)| *value)
+    }
+}
+
 /// `lod` without the lights a lamp of `placed` stands within [`SAME_PLACE`] of: the placed one is drawn instead.
 pub fn without_placed(lod: Vec<Lamp>, placed: &[Lamp]) -> Vec<Lamp> {
-    use std::collections::HashMap;
-    let cell = |p: [f32; 3]| p.map(|x| (x / SAME_PLACE).floor() as i64);
-    let mut at: HashMap<[i64; 3], Vec<Vec3>> = HashMap::new();
-    for lamp in placed {
-        let p = lamp.light.position;
-        at.entry(cell(p)).or_default().push(Vec3::from(p));
-    }
-    let near = |p: [f32; 3]| {
-        let [x, y, z] = cell(p);
-        let p = Vec3::from(p);
-        (-1..=1).any(|dx| {
-            (-1..=1).any(|dy| {
-                (-1..=1).any(|dz| {
-                    (at.get(&[x + dx, y + dy, z + dz]).into_iter().flatten())
-                        .any(|q| q.distance(p) <= SAME_PLACE)
-                })
-            })
-        })
-    };
+    let at = Places::of(placed.iter().map(|l| (Vec3::from(l.light.position), 0.0)));
     (lod.into_iter())
-        .filter(|l| !near(l.light.position))
+        .filter(|l| at.near(Vec3::from(l.light.position)).is_none())
         .collect()
 }
 
-/// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` brightest at the camera first, as the volumes of the frame's passes.
+/// The lamps lit at `hour` and within reach of `eye`, their intensity times `scale` (the frame's units for a stated intensity), the `most` nearest the camera by the edge of their reach, nearest first, as the volumes of the frame's passes.
 pub fn frame_lights(lamps: &[Lamp], eye: Vec3, hour: f32, scale: f32, most: usize) -> FrameLights {
-    let mut lit: Vec<(f32, Light)> = (lamps.iter())
+    let mut lit: Vec<(f32, Light, f32)> = (lamps.iter())
         .filter_map(|lamp| {
             let l = lamp.light;
             let distance = Vec3::from(l.position).distance(eye);
-            let strength = hour_strength(l.hours, hour) * reach_strength(lamp.reach, distance);
-            let intensity = l.intensity * scale * strength;
-            let brightest = l.colour.into_iter().fold(0.0, f32::max);
-            if !(intensity > 0.0 && l.radius > 0.0 && brightest > 0.0) {
+            let reach = reach_strength(lamp.reach, distance);
+            let intensity = l.intensity * scale * hour_strength(l.hours, hour) * reach;
+            if !(intensity > 0.0 && l.radius > 0.0 && l.colour.iter().any(|c| *c > 0.0)) {
                 return None;
             }
-            let away = (distance - l.radius).max(1.0);
+            // The nearest by the edge of their reach are kept: a light past them is a distant light's sprite.
             Some((
-                intensity * brightest / (away * away),
+                -(distance - l.radius).max(0.0),
                 Light { intensity, ..l },
+                reach,
             ))
         })
         .collect();
@@ -173,9 +198,13 @@ pub fn frame_lights(lamps: &[Lamp], eye: Vec3, hour: f32, scale: f32, most: usiz
     lit.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
     let mut out = FrameLights {
         lights: lit.len(),
+        kept: lit
+            .iter()
+            .map(|(_, l, reach)| (Vec3::from(l.position), *reach))
+            .collect(),
         ..FrameLights::default()
     };
-    for (_, l) in lit {
+    for (_, l, _) in lit {
         let (position, colour) = (Vec3::from(l.position), Vec3::from(l.colour));
         let direction = Vec3::from(l.direction).normalize_or_zero();
         // A spot or a capsule with no axis shines all round.
