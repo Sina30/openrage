@@ -216,6 +216,73 @@ fn a_registered_archive_is_bound_by_its_name_in_the_table_of_its_pack_s_folder_f
 }
 
 #[test]
+fn a_mode_s_game_shapes_are_the_archives_its_pack_registers_under_that_folder() {
+    let rpf = "RPF_FILE";
+    let registry = Registry::of(vec![
+        (
+            "root/common.rpf".into(),
+            vec![
+                device_setup("core"),
+                typed_set(
+                    "town",
+                    &[
+                        ("platform:/levels/town/GameShapes/towncommon.rpf", rpf),
+                        ("platform:/levels/town/gameshapes/towncommon.rpf", rpf),
+                        ("platform:/levels/town/docks_metadata.rpf", rpf),
+                        ("platform:/levels/town/gameshapes/notes.meta", "TEXT_FILE"),
+                        ("platform:/levels/town/gameshapes/absent.rpf", rpf),
+                    ],
+                    "",
+                ),
+            ],
+        ),
+        (
+            "root/pack/tale/tale.rpf".into(),
+            vec![
+                device_setup("story_tale"),
+                typed_set(
+                    "tale_shapes",
+                    &[("$(target)/levels/town/gameshapes/townstory.rpf", rpf)],
+                    "",
+                ),
+            ],
+        ),
+    ]);
+    let levels = Table::of_entries(vec![
+        entry("levels/town/gameshapes/towncommon", 0, 0x1000, false),
+        entry("levels/town/docks_metadata", 0, 0x2000, false),
+    ]);
+    let tale = Table::of_entries(vec![entry(
+        "levels/town/gameshapes/townstory",
+        0,
+        0x3000,
+        false,
+    )]);
+    let tables = [
+        Listed {
+            archive: 0,
+            path: Path::new("root/levels.rpf"),
+            table: &levels,
+        },
+        Listed {
+            archive: 1,
+            path: Path::new("root/pack/tale/tale.rpf"),
+            table: &tale,
+        },
+    ];
+    let mut found: Vec<(Mode, u32, u64)> = (game_shapes(&registry.packs, &tables).into_iter())
+        .map(|(mode, archive, entry)| (mode, archive, entry.offset))
+        .collect();
+    found.sort_by_key(|(_, archive, _)| *archive);
+    // One archive named twice is found once.
+    assert_eq!(
+        found,
+        [(Mode::Base, 0, 0x1000), (Mode::Story, 1, 0x3000)]
+    );
+    assert!(game_shapes(&registry.packs, &[]).is_empty());
+}
+
+#[test]
 fn a_map_is_held_back_by_no_registration_then_its_flag_then_holding_nothing() {
     let with = |flags, holds| MapFact {
         flags,

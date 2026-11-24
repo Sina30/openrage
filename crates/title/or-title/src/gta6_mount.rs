@@ -33,6 +33,8 @@ pub const SCRIPT_MANAGED: u32 = 1;
 const PERMANENT_TYPES: &str = "PERMANENT_ITYP_FILE";
 /// What ends the name of a registered archive of maps or map types.
 const METADATA: &str = "_metadata";
+/// The folder a registered archive of a mode's world-state selectors lies in.
+const GAME_SHAPES: &str = "gameshapes";
 
 /// One registration document a scan of an archive found, with where it lies.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -487,6 +489,27 @@ pub fn world_archives(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<u32> {
                 if !found.contains(&archive) {
                     found.push(archive);
                 }
+            }
+        }
+    }
+    found
+}
+
+/// The nested game-shape archives the packs register, each with its pack's mode, the caller's index of the archive that lists it, and its entry there.
+// ponytail: known by the folder its registered path names, as a metadata archive is by its name.
+pub fn game_shapes(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<(Mode, u32, Entry)> {
+    let mut found: Vec<(Mode, u32, Entry)> = Vec::new();
+    for pack in packs {
+        for file in pack.sets.iter().flat_map(|set| &set.files) {
+            let (bare, extension) = split_extension(entry_path(&file.filename));
+            let shapes = extension.eq_ignore_ascii_case("rpf")
+                && (bare.split('/')).any(|part| part.eq_ignore_ascii_case(GAME_SHAPES));
+            let Some((archive, entry)) = shapes.then(|| resolve(pack, bare, tables)).flatten()
+            else {
+                continue;
+            };
+            if !(found.iter()).any(|(_, a, e)| *a == archive && e.offset == entry.offset) {
+                found.push((pack.mode, archive, *entry));
             }
         }
     }
