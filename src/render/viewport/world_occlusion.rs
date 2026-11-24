@@ -230,7 +230,7 @@ impl Occlusion {
         let depth = self.view_proj.row(3);
         let nearest = depth.dot(centre.extend(1.0)) - radius * depth.truncate().length();
         // A sphere that reaches the near plane is in front of everything.
-        if !(nearest >= NEAR) {
+        if nearest.is_nan() || nearest < NEAR {
             return false;
         }
         // The sphere is tested by its box, which holds it.
@@ -238,7 +238,7 @@ impl Occlusion {
         let (mut lo, mut hi) = (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY));
         for corner in box_corners(centre - reach, centre + reach) {
             let clip = self.view_proj * corner.extend(1.0);
-            if !(clip.w >= NEAR) {
+            if clip.w.is_nan() || clip.w < NEAR {
                 return false;
             }
             let at = screen(clip);
@@ -246,7 +246,7 @@ impl Occlusion {
         }
         let (lo, hi) = (lo.max(Vec2::ZERO), hi.min(GRID));
         // Off the screen it is the frustum's to judge.
-        if !(lo.x <= hi.x && lo.y <= hi.y) {
+        if lo.x > hi.x || lo.y > hi.y {
             return false;
         }
         let texel = |at: f32, most: usize| ((at / 2.0) as usize).min(most - 1);
