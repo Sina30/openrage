@@ -235,7 +235,7 @@ fn prop_lists(model: &RbmModel, map: &MapData, links: &MapLinks) -> Result<Vec<S
             })
             .collect::<Result<Vec<_>>>()?;
         let tints = (placed.iter())
-            .map(|i| field(i, 0x34))
+            .map(|i| field::<4>(i, 0x34))
             .collect::<Result<Vec<_>>>()?;
         let parent_instances = match blocks.array(record, 0x80, &what)? {
             None => Vec::new(),
