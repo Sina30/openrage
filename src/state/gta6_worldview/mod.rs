@@ -428,6 +428,9 @@ impl Viewer {
         let day =
             (tables.as_ref()).and_then(|tables| sky::day_of(tables, hour, days, weather, eye.y));
         let scale = sky::light_scale(tables.as_deref(), hour, weather, eye.y);
+        if let (Some(tables), Some(world)) = (&tables, &self.world) {
+            world.set_fade(stream::fade_of(&tables.visual_settings));
+        }
         let enabled = self.enabled.clone();
         let lights = self
             .lights
