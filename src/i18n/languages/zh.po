@@ -16667,9 +16667,6 @@ msgstr "启用游戏的世界状态在此时刻启用的组，取代所选的组
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "由脚本管理的组：{groups} 个中已启用 {on} 个"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "没有说明默认启用哪些组：勾选的组会流式加载其地图"
-
 msgid "A group ticked streams its maps in"
 msgstr "勾选的组会流式加载其地图"
 

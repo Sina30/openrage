@@ -16806,9 +16806,6 @@ msgstr "Включить группы, которые состояние мир�
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Группы, управляемые скриптом: включено {on} из {groups}"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "Ничто не говорит, какие включены по умолчанию: отмеченная группа загружает свои карты"
-
 msgid "A group ticked streams its maps in"
 msgstr "Отмеченная группа загружает свои карты"
 

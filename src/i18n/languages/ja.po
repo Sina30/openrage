@@ -16667,9 +16667,6 @@ msgstr "選択したグループの代わりに、この時刻にゲームのワ
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "スクリプト管理のグループ：{groups} 個中 {on} 個がオン"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "既定でどれがオンかは示されていません。チェックしたグループのマップがストリーミングされます"
-
 msgid "A group ticked streams its maps in"
 msgstr "チェックしたグループのマップがストリーミングされます"
 

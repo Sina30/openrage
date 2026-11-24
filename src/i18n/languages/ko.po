@@ -16667,9 +16667,6 @@ msgstr "선택한 그룹 대신, 이 시각에 게임의 월드 상태가 켜는
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "스크립트로 관리되는 그룹: {groups}개 중 {on}개 켜짐"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "기본적으로 어떤 것이 켜져 있는지 알려 주는 것이 없습니다: 선택한 그룹은 그 맵을 스트리밍합니다"
-
 msgid "A group ticked streams its maps in"
 msgstr "선택한 그룹은 그 맵을 스트리밍합니다"
 

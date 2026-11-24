@@ -16667,9 +16667,6 @@ msgstr "Die Gruppen aktivieren, die der Weltzustand des Spiels zu dieser Stunde 
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Per Skript verwaltete Gruppen: {on} von {groups} aktiv"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "Nichts gibt an, welche standardmäßig aktiv sind: Eine angehakte Gruppe streamt ihre Maps"
-
 msgid "A group ticked streams its maps in"
 msgstr "Eine angehakte Gruppe streamt ihre Maps"
 

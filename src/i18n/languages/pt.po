@@ -16667,9 +16667,6 @@ msgstr "Ativar os grupos que o estado do mundo do jogo ativa nesta hora, no luga
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Grupos controlados por script: {on} de {groups} ativados"
 
-msgid "Nothing says which are on at rest: a group ticked streams its maps in"
-msgstr "Nada diz quais estão ativados por padrão: um grupo marcado carrega seus mapas por streaming"
-
 msgid "A group ticked streams its maps in"
 msgstr "Um grupo marcado carrega seus mapas por streaming"
 
