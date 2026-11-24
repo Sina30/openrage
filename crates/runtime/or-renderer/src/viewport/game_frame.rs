@@ -513,11 +513,26 @@ impl ViewportRenderer {
             far: camera.far,
             reflection_levels: deferred.reflection.levels(),
         };
-        // Where the sun shines the drawable shades itself: its surfaces are cast from the sun, and the G-buffer keeps what reaches each pixel
+        // What blends over the lit frame is lit by the frame's own sun and ambient light
+        self.world.write_light(queue, &engine);
+        // A world is shaded by cascades about what the camera sees, and a scene's own surfaces are then cast into the nearest of them
+        let cascades = (self.shadows && deferred.passes.has_shadow())
+            .then(|| self.world.cascades(queue, &engine, camera, aspect))
+            .flatten();
+        // With no world, where the sun shines the drawable shades itself: its surfaces are cast from the sun, and the G-buffer keeps what reaches each pixel
         let shadow = scene
             .sphere()
-            .filter(|_| self.shadows)
+            .filter(|_| self.shadows && cascades.is_none())
             .and_then(|sphere| deferred.passes.shadow_fit(&engine, sphere));
+        if let Some(cascades) = &cascades {
+            scene.update_shadow(queue, &cascades.caster());
+            deferred.passes.write_shadow_with(
+                queue,
+                &engine,
+                &screen,
+                cascades.values(camera.eye()),
+            );
+        }
         if let Some(fit) = &shadow {
             scene.update_shadow(queue, &fit.caster());
             deferred.passes.write_shadow(queue, &engine, &screen, fit);
@@ -556,14 +571,16 @@ impl ViewportRenderer {
                 multiview_mask: None,
             });
             scene.record_gbuffer(&mut pass);
-            self.world
-                .draw_gbuffer(&mut pass, &self.bind_group, &self.fallback_material_bg);
+            self.world.draw_gbuffer(&mut pass, &self.bind_group);
         }
         self.gpu_mark(encoder, "g-buffer");
-        if shadow.is_some() {
-            deferred
-                .passes
-                .record_shadow_cast(encoder, |pass| scene.record_shadow(pass));
+        if shadow.is_some() || cascades.is_some() {
+            deferred.passes.record_shadow_cast(encoder, |pass| {
+                scene.record_shadow(pass);
+                if cascades.is_some() {
+                    self.world.draw_shadow(pass);
+                }
+            });
             deferred
                 .passes
                 .record_shadow_receive(encoder, &deferred.gbuffer, &self.depth_view);
@@ -667,6 +684,7 @@ impl ViewportRenderer {
                 }),
             );
             scene.record_blended(&mut pass);
+            self.world.draw_lit(&mut pass, &self.bind_group);
         }
         self.gpu_mark(encoder, "blended");
         // The fog the particles fill the air with is laid over what blends, testing the depth and leaving the stencil be
