@@ -1,55 +1,96 @@
-//! The world viewer on the device: each model's meshes and each texture kept while they draw, and
-//! each frame's instances culled to what the camera sees and laid out a run a model.
+//! The world viewer on the device: each model's levels of detail in pages of vertices and indices
+//! that models share, each texture and each material kept while they draw, and each frame's
+//! instances culled to what the camera sees and laid out a run a model and level.
 //!
 //! ⚠ What draws is selected on the world's own thread: a frame reads the last selection and
 //! never waits for one, and lays it out again only when the camera, the selection or what is on
 //! the device changed.
+//!
+//! ⚠ A page's bytes are written again once a model leaves it. Whatever puts a model on the
+//! device or takes one off counts `changes` up, so that the frame is laid out again before the
+//! renderer draws a run of the old bytes.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
-use or_renderer::{Frustum, ShadingMode, WorldDraw, WorldInstance, WorldMesh};
-use rayon::prelude::*;
+use glam::Vec3;
+use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
 use crate::state::gta6_world::worldview::index::ModelRef;
-use crate::state::gta6_world::worldview::CpuTexture;
+use crate::state::gta6_world::worldview::{Bucket, CpuModel, Maps};
 
-/// The bytes of models, and of textures, put on the device in one frame; the rest wait for the next.
-const MODELS_A_FRAME: u64 = 48 << 20;
-const TEXTURES_A_FRAME: u64 = 8 << 20;
-/// The bytes of models, and of textures, kept on the device, past which those drawn longest ago go.
-// ponytail: fixed budgets; the device's own memory once a card with less shows it.
-const MODELS_KEPT: u64 = 3 << 30;
-const TEXTURES_KEPT: u64 = 1 << 30;
+#[path = "world_budget.rs"]
+mod budget;
+#[path = "world_layout.rs"]
+mod layout;
+#[path = "world_pages.rs"]
+mod pages;
+#[path = "world_textures.rs"]
+mod textures;
 
-/// One mesh of a model, with the key of the texture that colours it and whether it holds it yet.
+use budget::{ahead, evicted, Budgets, Idle};
+use layout::{order, Layout, View};
+use pages::{Pages, Place};
+use textures::{Texture, Textures, ABSENT, MISSING};
+
+/// One mesh of a level of a model: where it lies in the pages and what draws it.
 struct Mesh {
-    mesh: Arc<WorldMesh>,
-    key: Option<u64>,
-    textured: bool,
+    place: Place,
+    /// Which of the materials draws it.
+    material: u32,
+    /// How often its texture turns over its surface, in turns a metre.
+    density: f32,
+    /// The mesh as the renderer draws it, and the making of its material it was built with.
+    drawn: Option<(Arc<WorldMesh>, u64)>,
+}
+
+/// One level of detail of a model, drawn while the camera is nearer than `until` metres.
+struct Lod {
+    until: f32,
+    meshes: Vec<Mesh>,
 }
 
 /// A model on the device, or one that did not read.
 enum Slot {
     Ready {
-        meshes: Vec<Mesh>,
+        /// From the highest detail down.
+        lods: Vec<Lod>,
         bytes: u64,
-        /// The frame it last drew in.
+        /// The frame it last drew in, and the frame a selection last held it in.
         drawn: u64,
+        held: u64,
+        /// Where the nearest instance of it stood when it last drew.
+        at: Vec3,
     },
     Missing,
 }
 
-/// A texture on the device, or one no pack holds.
-enum Texture {
-    Ready {
-        group: Arc<wgpu::BindGroup>,
-        bytes: u64,
-        /// The frame a model that draws last asked for it in.
-        used: u64,
-    },
-    Missing,
+/// What meshes of the same maps and bucket draw with: one bind group, made again when a map of
+/// it comes to the device, is replaced by a larger one, or leaves.
+struct Material {
+    /// The keys of its colour, normal and specular maps.
+    maps: [Option<u64>; 3],
+    bucket: WorldBucket,
+    /// What it draws with, and what each map was when it was made.
+    made: Option<(WorldMaterial, [u64; 3])>,
+    /// Counted up each time it is made: a mesh built with an earlier making is built again.
+    making: u64,
+    /// The frame a mesh that draws last named it in, and for that frame the longest side its
+    /// maps are needed at, how soon they are needed and where the nearest thing it draws stands.
+    touched: u64,
+    pixels: u32,
+    priority: f32,
+    at: Vec3,
+}
+
+/// A run of the layout that draws: a level of a model of the selection, and how far its nearest instance is.
+struct Run {
+    model: usize,
+    level: usize,
+    slot: u32,
+    away: f32,
 }
 
 /// What the world viewer drew last, for the screen to say.
@@ -63,17 +104,29 @@ pub struct WorldDrawn {
     /// Textures on the device, and those no pack holds or that did not read.
     pub textures: usize,
     pub textures_unread: usize,
+    /// The bytes of device memory the pages and the textures hold.
     pub bytes: u64,
+    /// The pages of vertices and indices the models share.
+    pub pages: usize,
     /// Whether the game's own lighting passes light them.
     pub lit_by_the_game: bool,
 }
 
+/// What a layout was made for: the selection, the camera, what is on the device, the scale of
+/// the level-of-detail distances and the height of the screen.
+type LaidFor = (u64, [u32; 16], u64, u32, u32);
+
 #[derive(Default)]
 pub(super) struct WorldGpu {
     models: HashMap<ModelRef, Slot>,
+    /// The bytes the models take of the pages.
     model_bytes: u64,
-    textures: HashMap<u64, Texture>,
-    texture_bytes: u64,
+    pages: Pages,
+    textures: Textures,
+    materials: Vec<Material>,
+    material_of: HashMap<([Option<u64>; 3], WorldBucket), u32>,
+    /// What the device may hold, worked out the first frame.
+    budgets: Option<Budgets>,
     frame: u64,
     /// Whether the world panel asked for the world this frame.
     pub(super) shown: bool,
@@ -81,137 +134,165 @@ pub(super) struct WorldGpu {
     changes: u64,
     /// The models that came, will never come (`None`) or left (`false`), not yet told to the world's thread.
     told: Vec<(ModelRef, Option<bool>)>,
-    /// What the instances on the device were laid out for: the selection, the camera and the changes.
-    laid_for: Option<(u64, [u32; 16], u64)>,
-    /// The instances the camera sees, by their place in the selection, and where each model's run starts and ends.
-    visible: Vec<u32>,
-    starts: Vec<u32>,
-    ends: Vec<u32>,
-    laid: Vec<WorldInstance>,
-    /// What a mesh whose texture did not read is drawn with: a mid grey, never the white of no texture.
-    grey: Option<Arc<wgpu::BindGroup>>,
+    laid_for: Option<LaidFor>,
+    layout: Layout,
+    /// When the last frame was and where the camera stood in it.
+    was: Option<(Instant, Vec3)>,
     drawn: WorldDrawn,
 }
 
-impl WorldGpu {
-    /// Let the models and the textures drawn longest ago go until the rest fit their budgets.
-    fn evict(&mut self) {
-        let now = self.frame;
-        if self.model_bytes > MODELS_KEPT {
-            let mut idle: Vec<(u64, ModelRef, u64)> = (self.models.iter())
-                .filter_map(|(model, slot)| match slot {
-                    Slot::Ready { bytes, drawn, .. } if *drawn < now => {
-                        Some((*drawn, *model, *bytes))
-                    }
-                    _ => None,
-                })
-                .collect();
-            idle.sort_unstable_by_key(|(drawn, ..)| *drawn);
-            for (_, model, bytes) in idle {
-                if self.model_bytes <= MODELS_KEPT {
-                    break;
-                }
-                self.models.remove(&model);
-                self.model_bytes -= bytes;
-                self.told.push((model, Some(false)));
-                self.changes += 1;
-            }
-        }
-        if self.texture_bytes > TEXTURES_KEPT {
-            let mut idle: Vec<(u64, u64, u64)> = (self.textures.iter())
-                .filter_map(|(key, texture)| match texture {
-                    Texture::Ready { bytes, used, .. } if *used < now => {
-                        Some((*used, *key, *bytes))
-                    }
-                    _ => None,
-                })
-                .collect();
-            idle.sort_unstable_by_key(|(used, ..)| *used);
-            for (_, key, bytes) in idle {
-                if self.texture_bytes <= TEXTURES_KEPT {
-                    break;
-                }
-                // ⚠ A mesh that holds it keeps it until its model goes: only the cache lets it go.
-                self.textures.remove(&key);
-                self.texture_bytes -= bytes;
-            }
-        }
+fn bucket_of(bucket: Bucket) -> WorldBucket {
+    match bucket {
+        Bucket::Opaque => WorldBucket::Opaque,
+        Bucket::Cutout => WorldBucket::Cutout,
+        Bucket::Blend => WorldBucket::Blend,
+        Bucket::Decal => WorldBucket::Decal,
+        Bucket::Emissive => WorldBucket::Emissive,
     }
 }
 
-/// `texture` as the bind group a mesh's material samples, every level of it, and the bytes it holds.
-fn upload(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    layout: &wgpu::BindGroupLayout,
-    texture: &CpuTexture,
-) -> (wgpu::BindGroup, u64) {
-    let format = match texture.srgb {
-        true => wgpu::TextureFormat::Rgba8UnormSrgb,
-        false => wgpu::TextureFormat::Rgba8Unorm,
-    };
-    let size = |level: u32| wgpu::Extent3d {
-        width: (texture.width >> level).max(1),
-        height: (texture.height >> level).max(1),
-        depth_or_array_layers: 1,
-    };
-    let on_device = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("world-texture"),
-        size: size(0),
-        mip_level_count: texture.levels.len().max(1) as u32,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
+/// One ask a key of `wanted`, sorted by key: the soonest of its asks and the largest.
+fn merged(mut wanted: Vec<(f32, u64, u32)>) -> Vec<(f32, u64, u32)> {
+    wanted.sort_unstable_by_key(|(_, key, _)| *key);
+    wanted.dedup_by(|next, kept| {
+        let same = next.1 == kept.1;
+        if same {
+            kept.0 = kept.0.min(next.0);
+            kept.2 = kept.2.max(next.2);
+        }
+        same
     });
-    let mut bytes = 0;
-    for (level, pixels) in texture.levels.iter().enumerate() {
-        let extent = size(level as u32);
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &on_device,
-                mip_level: level as u32,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(extent.width * 4),
-                rows_per_image: Some(extent.height),
-            },
-            extent,
-        );
-        bytes += pixels.len() as u64;
+    wanted
+}
+
+impl WorldGpu {
+    /// The material that draws a mesh of these maps in this bucket: one for every mesh that names the same.
+    // ponytail: a material is never forgotten, only what it holds on the device; there are no more than the install has distinct materials.
+    fn material(&mut self, maps: Maps, bucket: Bucket) -> u32 {
+        let key = ([maps.colour, maps.normal, maps.specular], bucket_of(bucket));
+        let materials = &mut self.materials;
+        *self.material_of.entry(key).or_insert_with(|| {
+            materials.push(Material {
+                maps: key.0,
+                bucket: key.1,
+                made: None,
+                making: 0,
+                touched: 0,
+                pixels: 0,
+                priority: 0.0,
+                at: Vec3::ZERO,
+            });
+            materials.len() as u32 - 1
+        })
     }
-    let view = on_device.create_view(&Default::default());
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("world-texture-sampler"),
-        address_mode_u: wgpu::AddressMode::Repeat,
-        address_mode_v: wgpu::AddressMode::Repeat,
-        address_mode_w: wgpu::AddressMode::Repeat,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::MipmapFilterMode::Linear,
-        anisotropy_clamp: 8,
-        ..Default::default()
-    });
-    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("world-texture-bg"),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            },
-        ],
-    });
-    (group, bytes)
+
+    /// Write every mesh of every level of `model` to the pages; a mesh of nothing, or one larger
+    /// than the device makes a buffer, is left out.
+    fn put(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        budgets: &Budgets,
+        model: &CpuModel,
+        (frame, eye): (u64, Vec3),
+    ) -> Slot {
+        let mut bytes = 0;
+        let mut lods = Vec::with_capacity(model.lods.len());
+        for lod in &model.lods {
+            let mut meshes = Vec::with_capacity(lod.meshes.len());
+            for mesh in &lod.meshes {
+                let place = (self.pages).put(device, queue, budgets, &mesh.vertices, &mesh.indices);
+                let Some(place) = place else {
+                    continue;
+                };
+                bytes += place.bytes();
+                meshes.push(Mesh {
+                    place,
+                    material: self.material(mesh.maps, mesh.bucket),
+                    density: textures::density(&mesh.vertices, &mesh.indices),
+                    drawn: None,
+                });
+            }
+            lods.push(Lod {
+                until: lod.until,
+                meshes,
+            });
+        }
+        self.model_bytes += bytes;
+        Slot::Ready {
+            lods,
+            bytes,
+            drawn: frame,
+            held: frame,
+            at: eye,
+        }
+    }
+
+    /// Take `model` off the device and give its room in the pages back.
+    fn forget(&mut self, model: &ModelRef) {
+        if let Some(Slot::Ready { lods, bytes, .. }) = self.models.remove(model) {
+            for mesh in lods.iter().flat_map(|lod| &lod.meshes) {
+                self.pages.free(mesh.place);
+            }
+            self.model_bytes -= bytes;
+        }
+    }
+
+    /// Let go of what did not draw in the frame `frame` until the rest fit the budgets: the
+    /// models the selection no longer holds first, and of models and of textures the farthest
+    /// from `eye` first.
+    // ponytail: where what the selection holds is alone over the budget, what of it is out of view is let go and read again; a smaller selection if a card that small shows it.
+    fn evict(&mut self, budgets: &Budgets, frame: u64, eye: Vec3) {
+        if self.model_bytes > budgets.models_kept {
+            let idle = (self.models.iter())
+                .filter_map(|(model, slot)| match slot {
+                    Slot::Ready {
+                        bytes,
+                        drawn,
+                        held,
+                        at,
+                        ..
+                    } if *drawn < frame => Some(Idle {
+                        key: *model,
+                        bytes: *bytes,
+                        held: *held == frame,
+                        away: eye.distance(*at),
+                    }),
+                    _ => None,
+                })
+                .collect();
+            for idle in evicted(idle, self.model_bytes - budgets.models_kept) {
+                self.forget(&idle.key);
+                self.told.push((idle.key, Some(false)));
+                self.changes += 1;
+            }
+        }
+        let gone: HashSet<u64> = (self.textures.evict(budgets.textures_kept, frame, eye))
+            .into_iter()
+            .collect();
+        if gone.is_empty() {
+            return;
+        }
+        self.changes += 1;
+        // ⚠ A material and a mesh made with a texture hold it on the device: both let it go here,
+        // or the bytes counted as freed would stay.
+        for material in &mut self.materials {
+            if material.maps.iter().flatten().any(|key| gone.contains(key)) {
+                material.made = None;
+            }
+        }
+        let materials = &self.materials;
+        for slot in self.models.values_mut() {
+            let Slot::Ready { lods, .. } = slot else {
+                continue;
+            };
+            for mesh in lods.iter_mut().flat_map(|lod| &mut lod.meshes) {
+                if materials[mesh.material as usize].made.is_none() {
+                    mesh.drawn = None;
+                }
+            }
+        }
+    }
 }
 
 impl RenderBridge {
@@ -235,36 +316,31 @@ impl RenderBridge {
                 self.renderer.reset_deferred_pipelines();
             }
         }
-        let mut viewer = crate::state::gta6_world::worldview::viewer();
+        let bc = (self.device.features()).contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
         let world = &mut self.world;
+        // ponytail: wgpu 29's adapter states no size of memory, so the kept bytes are the fixed ones; a size read from the backend goes here.
+        let budgets = *(world.budgets).get_or_insert_with(|| Budgets::of(&self.device.limits(), None));
+        let mut viewer = crate::state::gta6_world::worldview::viewer();
+        let eye = viewer.camera.position;
+        let now = Instant::now();
+        let lead = world.was.map_or(eye, |(then, was)| {
+            ahead(eye, was, now.duration_since(then).as_secs_f32())
+        });
+        world.was = Some((now, eye));
+
         let mut uploaded = 0u64;
-        while uploaded < MODELS_A_FRAME {
-            let Some((model, meshes)) = viewer.take_model() else {
+        while uploaded < budgets.models_a_frame {
+            let Some((model, read)) = viewer.take_model() else {
                 break;
             };
-            let slot = match meshes {
-                Some(meshes) => {
-                    let meshes: Vec<Mesh> = (meshes.iter())
-                        .map(|m| Mesh {
-                            mesh: Arc::new(WorldMesh::new(
-                                &self.device,
-                                &m.vertices,
-                                &m.indices,
-                                None,
-                            )),
-                            key: m.texture,
-                            textured: false,
-                        })
-                        .collect();
-                    let bytes = meshes.iter().map(|m| m.mesh.bytes()).sum();
-                    uploaded += bytes;
-                    world.model_bytes += bytes;
+            world.forget(&model);
+            let slot = match read {
+                Some(read) => {
+                    let before = world.model_bytes;
+                    let slot = world.put(&self.device, &self.queue, &budgets, &read, (frame, eye));
+                    uploaded += world.model_bytes - before;
                     world.told.push((model, Some(true)));
-                    Slot::Ready {
-                        meshes,
-                        bytes,
-                        drawn: frame,
-                    }
+                    slot
                 }
                 None => {
                     world.told.push((model, None));
@@ -272,39 +348,29 @@ impl RenderBridge {
                 }
             };
             world.changes += 1;
-            if let Some(Slot::Ready { bytes, .. }) = world.models.insert(model, slot) {
-                world.model_bytes -= bytes;
-            }
+            world.models.insert(model, slot);
         }
         let mut uploaded = 0u64;
-        while uploaded < TEXTURES_A_FRAME {
-            let Some((key, texture)) = viewer.take_texture() else {
+        while uploaded < budgets.textures_a_frame {
+            let Some((key, pixels, read)) = viewer.take_texture() else {
                 break;
             };
-            let texture = match texture {
-                Some(texture) => {
-                    let (group, bytes) =
-                        upload(&self.device, &self.queue, &self.material_bgl, &texture);
-                    uploaded += bytes;
-                    world.texture_bytes += bytes;
-                    Texture::Ready {
-                        group: Arc::new(group),
-                        bytes,
-                        used: frame,
-                    }
-                }
-                None => Texture::Missing,
-            };
+            uploaded += world.textures.arrive(
+                &self.device,
+                &self.queue,
+                (key, pixels),
+                read.as_ref(),
+                (bc, budgets.most_side),
+                (frame, eye),
+            );
             world.changes += 1;
-            if let Some(Texture::Ready { bytes, .. }) = world.textures.insert(key, texture) {
-                world.texture_bytes -= bytes;
-            }
         }
 
         let selected = viewer.selected(&mut world.told);
         let (width, height) = self.desired_size;
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let view_proj = viewer.camera.view_proj(aspect);
+        let (lod_scale, fov_y) = (viewer.lod_scale, viewer.camera.fov_y);
         drop(viewer);
         let Some(selected) = selected else {
             if self.renderer.has_world() {
@@ -319,116 +385,197 @@ impl RenderBridge {
             selected.version,
             view_proj.to_cols_array().map(f32::to_bits),
             world.changes,
+            lod_scale.to_bits(),
+            height,
         );
         if world.laid_for == Some(key) {
             return;
         }
         world.laid_for = Some(key);
 
-        // The chunks the camera sees, then the instances of those it sees, counted a model.
-        // ⚠ On every core: a selection holds tens of thousands of instances, and a frame that tested
-        // each on the UI thread spent most of its time here.
-        let frustum = Frustum::of(view_proj);
+        // A slot for each level of each model of the selection that is on the device.
         let instances = &selected.instances;
-        let sees = |at: &u32| {
-            let instance = &instances[*at as usize];
-            frustum.sees_sphere(instance.centre, instance.radius.max(0.01))
-        };
-        world.visible = (selected.chunks.par_iter())
-            .flat_map_iter(|chunk| {
-                // A chunk wholly in view is taken whole, and one out of view not at all.
-                let whole = frustum.holds_sphere(chunk.centre, chunk.radius);
-                let part = whole || frustum.sees_sphere(chunk.centre, chunk.radius);
-                (chunk.from..chunk.to).filter(move |at| part && (whole || sees(at)))
-            })
-            .collect();
-        world.starts.clear();
-        world.starts.resize(selected.models.len(), 0);
-        for at in &world.visible {
-            world.starts[instances[*at as usize].model as usize] += 1;
-        }
-        // Each model's instances side by side: where its run starts, then each put at its run's end.
-        let mut total = 0;
-        for start in &mut world.starts {
-            total += std::mem::replace(start, total);
-        }
-        world.ends.clone_from(&world.starts);
-        world.laid.clear();
-        world.laid.resize(
-            total as usize,
-            WorldInstance {
-                rows: [[0.0; 4]; 3],
-                tint: [1.0; 4],
-            },
-        );
-        for at in &world.visible {
-            let instance = &selected.instances[*at as usize];
-            let end = &mut world.ends[instance.model as usize];
-            world.laid[*end as usize].rows = instance.rows;
-            *end += 1;
-        }
-
-        let grey = Arc::clone(world.grey.get_or_insert_with(|| {
-            let pixel = CpuTexture {
-                width: 1,
-                height: 1,
-                srgb: true,
-                levels: vec![vec![128, 128, 128, 255]],
-            };
-            Arc::new(upload(&self.device, &self.queue, &self.material_bgl, &pixel).0)
-        }));
-        let (mut draws, mut wanted) = (Vec::new(), Vec::new());
-        for (at, model) in selected.models.iter().enumerate() {
-            let range = world.starts[at]..world.ends[at];
-            if range.is_empty() {
-                continue;
+        world.layout.clear();
+        for model in &selected.models {
+            match world.models.get_mut(model) {
+                Some(Slot::Ready { lods, held, .. }) => {
+                    *held = frame;
+                    world.layout.model(lods.iter().map(|lod| lod.until));
+                }
+                _ => world.layout.model(std::iter::empty()),
             }
-            let Some(Slot::Ready { meshes, drawn, .. }) = world.models.get_mut(model) else {
+        }
+        // What casts a shadow into the view draws as well, where the sun's shadows are cast.
+        let casts = self.renderer.shadows() && self.renderer.has_deferred();
+        let view = View {
+            frustum: Frustum::of(view_proj),
+            eye,
+            lod_scale,
+            shadow_far: casts.then_some(or_renderer::world::SHADOW_FAR),
+        };
+        world.layout.cull(&selected.chunks, instances, &view);
+        world.layout.place(instances);
+
+        // The runs that draw, and for each material they name how large and how soon its maps are needed.
+        let per_metre = textures::per_metre(height, fov_y);
+        let (mut runs, mut touched) = (Vec::new(), Vec::new());
+        for (model, named) in selected.models.iter().enumerate() {
+            let Some(Slot::Ready {
+                lods, drawn, at, ..
+            }) = world.models.get_mut(named)
+            else {
                 continue;
             };
-            *drawn = frame;
-            for mesh in meshes {
-                // A mesh takes its texture the first frame it draws after the texture arrived.
-                match mesh.key.map(|key| (key, world.textures.get_mut(&key))) {
-                    Some((_, Some(Texture::Ready { group, used, .. }))) => {
-                        *used = frame;
-                        if !mesh.textured {
-                            mesh.mesh = Arc::new(mesh.mesh.with_texture(Arc::clone(group)));
-                            mesh.textured = true;
+            let mut nearest = f32::INFINITY;
+            for (level, slot) in world.layout.slots(model).enumerate() {
+                let Some(lod) = lods.get(level) else {
+                    continue;
+                };
+                if world.layout.run(slot).is_empty() {
+                    continue;
+                }
+                let (away, which) = world.layout.nearest[slot as usize];
+                let instance = &instances[which as usize];
+                *drawn = frame;
+                if away < nearest {
+                    (nearest, *at) = (away, instance.centre);
+                }
+                let rows = &instance.rows;
+                let scale = Vec3::new(rows[0][0], rows[1][0], rows[2][0]).length();
+                // What is nearest where the camera will shortly be is asked for first.
+                let priority = lead.distance(instance.centre);
+                for mesh in &lod.meshes {
+                    let material = &mut world.materials[mesh.material as usize];
+                    let needed =
+                        textures::pixels(mesh.density, away, scale, per_metre, budgets.most_side);
+                    if material.touched != frame {
+                        touched.push(mesh.material);
+                        material.touched = frame;
+                        (material.pixels, material.priority) = (needed, priority);
+                        material.at = instance.centre;
+                    } else {
+                        material.pixels = material.pixels.max(needed);
+                        if priority < material.priority {
+                            (material.priority, material.at) = (priority, instance.centre);
                         }
                     }
-                    Some((_, Some(Texture::Missing))) if !mesh.textured => {
-                        mesh.mesh = Arc::new(mesh.mesh.with_texture(Arc::clone(&grey)));
-                        mesh.textured = true;
-                    }
-                    Some((key, None)) if !mesh.textured => wanted.push((0.0, key)),
-                    _ => {}
                 }
-                draws.push(WorldDraw {
-                    mesh: Arc::clone(&mesh.mesh),
-                    instances: range.clone(),
+                runs.push(Run {
+                    model,
+                    level,
+                    slot,
+                    away,
                 });
             }
         }
-        wanted.sort_unstable_by_key(|(_, key)| *key);
-        wanted.dedup_by_key(|(_, key)| *key);
+
+        // Each of those materials with the maps the device holds now, and the maps it waits for.
+        let grey = world.textures.grey(&self.device, &self.queue);
+        let room = world.textures.bytes < budgets.textures_kept;
+        let mut wanted = Vec::new();
+        for id in touched {
+            let material = &mut world.materials[id as usize];
+            let mut with = [ABSENT; 3];
+            for (stamp, key) in with.iter_mut().zip(material.maps) {
+                let Some(key) = key else {
+                    continue;
+                };
+                match world.textures.map.get_mut(&key) {
+                    Some(Texture::Ready(ready)) => {
+                        if ready.used != frame {
+                            (ready.used, ready.at) = (frame, material.at);
+                        }
+                        *stamp = ready.stamp;
+                        // Seen larger than it was asked for at, it is asked for again while there is room.
+                        if !ready.top && material.pixels > ready.got && room {
+                            wanted.push((material.priority, key, material.pixels));
+                        }
+                    }
+                    Some(Texture::Missing) => *stamp = MISSING,
+                    None => wanted.push((material.priority, key, material.pixels)),
+                }
+            }
+            if (material.made.as_ref()).is_none_or(|(_, made_with)| *made_with != with) {
+                let view = |map: usize| {
+                    let key = material.maps[map]?;
+                    world.textures.of(key).1
+                };
+                // A colour map that is not on the device is a mid grey; a material that names none is white.
+                let colour = (material.maps[0]).map(|_| view(0).unwrap_or(&grey));
+                let made = (self.renderer).world_material(
+                    &self.device,
+                    colour,
+                    view(1),
+                    view(2),
+                    material.bucket,
+                );
+                material.made = Some((made, with));
+                material.making += 1;
+            }
+        }
+        let mut wanted = merged(wanted);
+        world.textures.hold(&mut wanted);
         crate::state::gta6_world::worldview::viewer().want_textures(wanted);
+
+        // A draw for each mesh of each run, in the order the renderer sends most of them together.
+        let mut keyed = Vec::with_capacity(runs.len());
+        for run in &runs {
+            let Some(Slot::Ready { lods, .. }) = world.models.get_mut(&selected.models[run.model])
+            else {
+                continue;
+            };
+            let Some(lod) = lods.get_mut(run.level) else {
+                continue;
+            };
+            for mesh in &mut lod.meshes {
+                let material = &world.materials[mesh.material as usize];
+                let Some((made, _)) = &material.made else {
+                    continue;
+                };
+                if (mesh.drawn.as_ref()).is_none_or(|(_, making)| *making != material.making) {
+                    let Some((vertices, indices)) = world.pages.buffers(mesh.place.page) else {
+                        continue;
+                    };
+                    let shared = WorldMesh::shared(
+                        vertices.clone(),
+                        indices.clone(),
+                        mesh.place.base_vertex as i32,
+                        mesh.place.first_index,
+                        mesh.place.indices,
+                        made.clone(),
+                    );
+                    mesh.drawn = Some((Arc::new(shared), material.making));
+                }
+                let Some((drawn, _)) = &mesh.drawn else {
+                    continue;
+                };
+                keyed.push((
+                    order(material.bucket, run.away, mesh.place.page, made.key()),
+                    WorldDraw {
+                        mesh: Arc::clone(drawn),
+                        instances: world.layout.run(run.slot),
+                    },
+                ));
+            }
+        }
+        keyed.sort_unstable_by_key(|(key, _)| *key);
+        let draws: Vec<WorldDraw> = keyed.into_iter().map(|(_, draw)| draw).collect();
+
+        let (pages, page_bytes) = world.pages.held();
+        let (textures, textures_unread) = world.textures.counts();
         world.drawn = WorldDrawn {
-            selected: selected.instances.len(),
-            seen: world.visible.len(),
+            selected: instances.len(),
+            seen: world.layout.seen.len(),
             draws: draws.len(),
             models: world.models.len(),
-            textures: (world.textures.values())
-                .filter(|t| matches!(t, Texture::Ready { .. }))
-                .count(),
-            textures_unread: (world.textures.values())
-                .filter(|t| matches!(t, Texture::Missing))
-                .count(),
-            bytes: world.model_bytes + world.texture_bytes,
+            textures,
+            textures_unread,
+            bytes: page_bytes + world.textures.bytes,
+            pages,
             lit_by_the_game: self.renderer.has_deferred(),
         };
-        (self.renderer).set_world(&self.device, &self.queue, &world.laid, draws);
-        world.evict();
+        (self.renderer).set_world(&self.device, &self.queue, &world.layout.laid, draws);
+        world.evict(&budgets, frame, eye);
     }
 
     /// Take the world away where no panel asked for it this frame.
@@ -436,6 +583,38 @@ impl RenderBridge {
         if !self.world.shown && self.renderer.has_world() {
             (self.renderer).set_world(&self.device, &self.queue, &[], Vec::new());
             self.world.laid_for = None;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_key_wanted_twice_is_asked_for_once_at_its_soonest_and_largest() {
+        let wanted = vec![
+            (40.0, 7, 256),
+            (9.0, 3, 128),
+            (12.0, 7, 1024),
+            (80.0, 7, 512),
+        ];
+        let once: Vec<(f32, u64, u32)> = vec![(9.0, 3, 128), (12.0, 7, 1024)];
+        assert_eq!(merged(wanted), once);
+        assert!(merged(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn every_bucket_of_a_model_is_the_renderers_of_the_same_name() {
+        let pairs = [
+            (Bucket::Opaque, WorldBucket::Opaque),
+            (Bucket::Cutout, WorldBucket::Cutout),
+            (Bucket::Decal, WorldBucket::Decal),
+            (Bucket::Blend, WorldBucket::Blend),
+            (Bucket::Emissive, WorldBucket::Emissive),
+        ];
+        for (model, renderer) in pairs {
+            assert_eq!(bucket_of(model), renderer);
         }
     }
 }
