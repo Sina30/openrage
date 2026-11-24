@@ -24,8 +24,11 @@ const PROBE_SIZE: usize = 0x60;
 const STRUCT: u8 = 0x05;
 const ARRAY: u8 = 0x52;
 
+/// A member: its class hash, its class name, its own name, where the class holds it and its type code.
+type Member = (u32, &'static str, &'static [u8], usize, Option<u8>);
+
 /// Each member this reads, where its class holds it and its type code, which a body's own table must agree with; `None` takes any code.
-const LAYOUT: &[(u32, &str, &[u8], usize, Option<u8>)] = &[
+const LAYOUT: &[Member] = &[
     (
         C_MAP_DATA,
         "CMapData",
