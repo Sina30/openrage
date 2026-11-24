@@ -3,9 +3,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use or_renderer::game_shaders::lighting::{night_emissive, Day};
 use or_renderer::game_shaders::tone::ToneSettings;
+use or_renderer::viewport::Metered;
 use or_title::gta6_day::{read_day, DayTables, Moment};
 
 use crate::state::drivers::WeatherState;
@@ -16,6 +18,10 @@ const ARCHIVE: &str = "common.rpf";
 const NEAR_FULL_MOON: f32 = 13.0;
 /// What a light is scaled by while no GTA VI day is read and the frame keeps its own day.
 const NO_DAY_LIGHT_SCALE: f32 = 0.1;
+/// How far north, in metres, a camera moves before its moment is worked out again.
+const LATITUDE_STEP: f32 = 100.0;
+/// The least change of exposure, in stops, the frame is given a new day for.
+const STEADY: f32 = 0.01;
 
 type Read = Arc<OnceLock<Arc<DayTables>>>;
 
@@ -64,10 +70,84 @@ pub fn tables(root: &Path) -> Option<Arc<DayTables>> {
 
 /// The moment of GTA VI's day at `hour` in `weather` for a camera `y` metres north on the map, which a frame takes its day, its lights' scale and its exposure from; `None` where the tables hold no cycle for it.
 pub fn moment(tables: &DayTables, hour: f32, weather: WeatherState, y: f32) -> Option<Moment> {
-    tables.moment(hour, weather_name(weather), y)
+    type Key = (usize, u32, WeatherState, i32);
+    // ponytail: the last moment held, as a frame asks for the same one many times over.
+    static LAST: Mutex<Option<(Key, Option<Moment>)>> = Mutex::new(None);
+    // The latitude moves the sun by a hundredth of a degree over a hundred metres.
+    let rows = (y / LATITUDE_STEP).round();
+    let key = (
+        std::ptr::from_ref(tables) as usize,
+        hour.to_bits(),
+        weather,
+        rows as i32,
+    );
+    let mut last = LAST.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((_, moment)) = last.as_ref().filter(|(held, _)| *held == key) {
+        return moment.clone();
+    }
+    let moment = tables.moment(hour, weather_name(weather), rows * LATITUDE_STEP);
+    *last = Some((key, moment.clone()));
+    moment
+}
+
+/// Where the frame's exposure stands: the moment it was metered for, its stops and when they were set, and whether the next reading is the first of that moment.
+struct Adapting {
+    of: (u32, WeatherState),
+    stops: f32,
+    at: Instant,
+    fresh: bool,
+}
+
+// ponytail: one exposure for the one World view; a second view would share it.
+static ADAPTING: Mutex<Option<Adapting>> = Mutex::new(None);
+
+/// `moment` exposed by the frame's own luminance, `metered` as last read from a frame drawn under the day set now: adapted from frame to frame at the pace of the settings, taken whole at the first reading of a new hour or weather, and held where nothing was read.
+pub fn exposed(
+    tables: &DayTables,
+    moment: Moment,
+    hour: f32,
+    weather: WeatherState,
+    metered: Option<&Metered>,
+) -> Moment {
+    let of = (hour.to_bits(), weather);
+    let now = Instant::now();
+    let mut held = ADAPTING.lock().unwrap_or_else(|p| p.into_inner());
+    let Some(adapting) = held.as_mut().filter(|a| a.of == of) else {
+        // ⚠ What is read now was drawn under the hour before: the new one waits for its own frame.
+        *held = Some(Adapting {
+            of,
+            stops: moment.stops,
+            at: now,
+            fresh: true,
+        });
+        return moment;
+    };
+    // ⚠ Inferred: the build names these percentages; they are taken as parts of the frame.
+    let low = moment.own.get_or("postfx_exposure_lowlights_percent", 0.0);
+    let high = moment.own.get_or("postfx_exposure_highlights_percent", 0.0);
+    let Some(luminance) = metered.and_then(|m| m.average(low, high)) else {
+        return moment.exposed_at(adapting.stops);
+    };
+    let seconds = match std::mem::take(&mut adapting.fresh) {
+        true => 0.0,
+        false => now.duration_since(adapting.at).as_secs_f32(),
+    };
+    let exposed = moment.metered(
+        &tables.exposure_settings(),
+        luminance,
+        adapting.stops,
+        seconds,
+    );
+    // ponytail: a step too small to see is not taken, so that a still frame keeps its day.
+    if (exposed.stops - adapting.stops).abs() < STEADY {
+        return moment.exposed_at(adapting.stops);
+    }
+    (adapting.stops, adapting.at) = (exposed.stops, now);
+    exposed
 }
 
 /// The day the frame is lit by at `hour` of the `days`th day in `weather`, for a camera `y` metres north on the map; `None` where the tables hold no cycle for it.
+#[cfg(test)]
 pub fn day_of(
     tables: &DayTables,
     hour: f32,
@@ -119,6 +199,7 @@ pub fn day_of_moment(
 }
 
 /// What a light the game states in its own unit is multiplied by to be the frame's at `hour` in `weather` for a camera `y` metres north: the moment's exposure over pi, and the old stand-in where no GTA VI day is read.
+#[cfg(test)]
 pub fn light_scale(tables: Option<&DayTables>, hour: f32, weather: WeatherState, y: f32) -> f32 {
     scale_of(
         tables
@@ -211,6 +292,39 @@ mod tests {
         let none = light_scale(None, 12.0, WeatherState::Clear, 0.0);
         assert_eq!(none, NO_DAY_LIGHT_SCALE);
         assert_eq!(scale_of(None), NO_DAY_LIGHT_SCALE);
+    }
+
+    #[test]
+    fn the_frame_is_exposed_by_its_own_luminance_from_the_first_reading_of_its_own_hour() {
+        let tables = tables();
+        let at = |metered: Option<&Metered>| {
+            let moment = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
+            exposed(&tables, moment, 9.5, WeatherState::Clear, metered)
+        };
+        let unread = moment(&tables, 9.5, WeatherState::Clear, 0.0).expect("a moment");
+        // What is read in the first frame of an hour was drawn under the hour before.
+        let bright = Metered::of(vec![8.0; 16]);
+        let grey = at(Some(&bright));
+        assert_eq!(grey.stops, unread.stops);
+        // The first reading of its own is taken whole: the curve over the scene's luminance.
+        let first = at(Some(&bright));
+        let scene = 8.0 / grey.stops.exp2();
+        let curve = -2.0 * scene.ln() - 10.0;
+        assert!(
+            (first.stops - curve).abs() < 1e-3,
+            "{} {curve}",
+            first.stops
+        );
+        assert_eq!(first.light_scale, first.stops.exp2() / std::f32::consts::PI);
+        // A frame that reads the same scene keeps its exposure; nothing read holds it.
+        let same = Metered::of(vec![scene * first.stops.exp2(); 16]);
+        assert_eq!(at(Some(&same)).stops, first.stops);
+        assert_eq!(at(None).stops, first.stops);
+        // A scene four times as bright is moved towards, not jumped to, a moment later.
+        let brighter = Metered::of(vec![4.0 * scene * first.stops.exp2(); 16]);
+        let next = at(Some(&brighter)).stops;
+        let wanted = curve - 2.0 * 4f32.ln();
+        assert!(next <= first.stops && next > wanted, "{next} {wanted}");
     }
 
     #[test]

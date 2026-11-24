@@ -269,7 +269,11 @@ impl Moment {
         // The frame holds every light times its exposure, so its luminance over that is the scene's.
         let luminance = metered / previous.exp2();
         let target = target_stops(settings, &self.own, luminance);
-        let stops = adapt(settings, &self.own, previous, target, seconds);
+        self.exposed_at(adapt(settings, &self.own, previous, target, seconds))
+    }
+
+    /// This moment's light given to the frame at `stops`.
+    pub fn exposed_at(&self, stops: f32) -> Moment {
         let light = FrameLight {
             exposure: stops.exp2(),
             ..self.light

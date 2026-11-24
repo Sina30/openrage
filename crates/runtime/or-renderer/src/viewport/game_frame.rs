@@ -59,6 +59,7 @@ impl ViewportRenderer {
                 stale: false,
                 refraction: None,
                 fog_sink: None,
+                meter: super::meter::Meter::new(device),
             });
         }
         self.rebind_deferred(device, queue);
@@ -259,6 +260,8 @@ impl ViewportRenderer {
         let Some(frame) = self.deferred.as_mut() else {
             return;
         };
+        frame.meter.collect(device);
+        frame.meter.bind(device, &frame.hdr);
         if frame.reflection_of != Some(revision) {
             let map = crate::game_shaders::sky::ReflectionMap::of(
                 &sky,
@@ -289,6 +292,11 @@ impl ViewportRenderer {
                 frame.reflection.view(),
             );
         }
+    }
+
+    /// The lit frame's luminance as last read back, where that frame was drawn under the day set now.
+    pub fn metered(&self) -> Option<Metered> {
+        (self.deferred.as_ref()?.meter).last(self.day_revision)
     }
 
     /// End the stage `label` for the GPU timer, where the device has one.
@@ -728,6 +736,7 @@ impl ViewportRenderer {
             deferred.passes.record_fog(&mut pass);
         }
         self.gpu_mark(encoder, "fog volumes");
+        deferred.meter.record(encoder, self.day_revision);
         // The bright part of the lit frame is blurred and put back over it, before the frame is mapped
         deferred.passes.record_bloom(encoder, &deferred.hdr, &tone);
         self.gpu_mark(encoder, "bloom");

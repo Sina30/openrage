@@ -416,11 +416,12 @@ impl Viewer {
         Some((model, read))
     }
 
-    /// The day the frame is lit by, the lights around the camera, and the exposure a material's own light is given at, at the viewer's hour.
+    /// The day the frame is lit by, the lights around the camera, and the exposure a material's own light is given at, at the viewer's hour, exposed by the frame's own luminance where `metered` holds it.
     pub fn sky(
         &mut self,
         days: f32,
         weather: crate::state::drivers::WeatherState,
+        metered: Option<&or_renderer::viewport::Metered>,
     ) -> (
         Option<or_renderer::game_shaders::lighting::Day>,
         lights_frame::FrameLights,
@@ -428,9 +429,14 @@ impl Viewer {
     ) {
         let (eye, hour) = (self.camera.position, self.hour);
         let tables = self.root.as_deref().and_then(sky::tables);
-        let day =
-            (tables.as_ref()).and_then(|tables| sky::day_of(tables, hour, days, weather, eye.y));
-        let scale = sky::light_scale(tables.as_deref(), hour, weather, eye.y);
+        let moment = (tables.as_ref()).and_then(|tables| {
+            let moment = sky::moment(tables, hour, weather, eye.y)?;
+            Some(sky::exposed(tables, moment, hour, weather, metered))
+        });
+        let scale = sky::scale_of(moment.as_ref());
+        let day = (tables.as_ref())
+            .zip(moment)
+            .map(|(tables, moment)| sky::day_of_moment(tables, moment, hour, days, weather));
         if let (Some(tables), Some(world)) = (&tables, &self.world) {
             world.set_fade(stream::fade_of(&tables.visual_settings));
         }

@@ -308,6 +308,8 @@ struct DeferredFrame {
     refraction: Option<wgpu::TextureView>,
     /// Where the second colour the water fog pass writes goes, which nothing reads; made with the copy.
     fog_sink: Option<wgpu::TextureView>,
+    /// What samples the lit frame for its exposure.
+    meter: meter::Meter,
 }
 
 /// A pass over `colour` that reads the depth and the stencil of the frame and writes neither, as the lighting, the sky and what blends are drawn: `stencil` says what it does with the stencil where it marks it.
@@ -1289,6 +1291,8 @@ fn fs_bump(
 
 mod build;
 mod game_frame;
+mod meter;
+pub use meter::Metered;
 
 #[cfg(test)]
 mod tests;

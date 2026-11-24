@@ -130,8 +130,8 @@ pub struct WorldDrawn {
 type LaidFor = (u64, [u32; 16], u64, u32, u32, bool);
 
 /// What the day was worked out for: the hour, the days, the weather, the camera's place north
-/// in hundreds of metres, and whether the install's tables gave one.
-type DayFor = (u32, u32, WeatherState, i32, bool);
+/// in hundreds of metres, whether the install's tables gave one, and the exposure the frame metered.
+type DayFor = (u32, u32, WeatherState, i32, bool, u32);
 
 #[derive(Default)]
 pub(super) struct WorldGpu {
@@ -396,13 +396,15 @@ impl RenderBridge {
         }
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
-        let (day, lights, exposure) = viewer.sky(days, weather);
+        let metered = self.renderer.metered();
+        let (day, lights, exposure) = viewer.sky(days, weather, metered.as_ref());
         let day_for = (
             viewer.hour.to_bits(),
             days.to_bits(),
             weather,
             (eye.y / 100.0).round() as i32,
             day.is_some(),
+            exposure.to_bits(),
         );
         if world.day != Some(day_for) {
             world.day = Some(day_for);
