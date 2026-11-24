@@ -515,6 +515,21 @@ fn a_polygon_s_flags_write_in_place_but_for_the_bits_kept_and_another_count_is_r
     ));
 }
 
+#[test]
+fn a_cell_s_links_end_across_its_four_borders_and_at_its_four_corners_inside_the_grid() {
+    let c = 10 + 512 * 20;
+    let (e, w, n, s) = (c + 1, c - 1, c + 512, c - 512);
+    let corners = [e + 512, e - 512, w + 512, w - 512];
+    assert_eq!(Border::around(c), [[e, w, n, s], corners].concat());
+    assert_eq!(Border::around(0), [1, 512, 513], "the grid's first cell");
+    let last = 511 + 512 * 511;
+    assert_eq!(
+        Border::around(last),
+        [last - 1, last - 512, last - 513],
+        "the grid's last cell"
+    );
+}
+
 #[path = "write_navmesh.rs"]
 mod write_navmesh;
 

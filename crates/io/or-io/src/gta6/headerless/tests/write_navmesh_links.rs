@@ -72,6 +72,32 @@ fn a_neighbouring_body_s_links_are_renumbered_with_the_cell_and_written_in_place
 }
 
 #[test]
+fn a_body_at_a_corner_of_the_cell_has_its_links_renumbered_as_one_across_a_border_is() {
+    let m = read_navmesh(&deletable().img.bytes).expect("the cell reads");
+    let corner = CELL + 512 + 1;
+    assert!(Border::around(CELL).contains(&corner));
+    let built = deletable();
+    let mut img = built.img;
+    img.u32(0xC8, corner);
+    let edges = first_item(&img, built.adjacency);
+    for j in 0..CORNERS.iter().map(|c| c.len()).sum::<usize>() {
+        if u32_at(&img.bytes, edges + 12 * j) == CELL {
+            img.u32(edges + 12 * j, corner);
+        }
+    }
+    // Link 2 runs from the corner body's own polygon 7.
+    let links = target(&img.bytes, 0xA8);
+    img.u32(links + 64 + 0x10, corner);
+    let body = read_navmesh(&img.bytes).expect("the corner body reads");
+    let made = deletion(&m, 0, &[&body]).expect("deleted");
+    let links = (relinked(&body, &m, &made).expect("resolved")).expect("renumbered");
+    let ends: Vec<_> = (links.iter())
+        .map(|l| (l.from_mesh, l.from_polygon, l.to_polygon))
+        .collect();
+    assert_eq!(ends, [(CELL, 1, 0), (CELL, 1, 0), (corner, 7, 0)]);
+}
+
+#[test]
 fn a_neighbouring_body_s_link_into_a_deleted_polygon_goes_and_its_lists_shrink() {
     let m = read_navmesh(&deletable().img.bytes).expect("the cell reads");
     let mut img = east();

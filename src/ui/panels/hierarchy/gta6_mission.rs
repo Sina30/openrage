@@ -7,7 +7,8 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 use or_io::gta6::mission_tables::{Body, Run, StateTable, RECORD};
-use or_io::meta::binary::hash_index::default_hash_index;
+
+mod other;
 
 use super::*;
 use crate::state::MetaDocument;
@@ -81,7 +82,7 @@ impl Tables<'_> {
             return;
         };
         for (k, record) in records.iter().enumerate() {
-            let name = default_hash_index().name_or_literal(record.key);
+            let name = crate::state::hash_name_or_text(record.key);
             let detail = match record.run {
                 Some((block, offset)) => tr_n!(
                     "{count} element at {offset} of block {block}",
@@ -112,7 +113,11 @@ impl Tables<'_> {
                             let [x, y, z] = element.position;
                             let [a, b, c] = element.rotation;
                             leaf_row(ui, |ui| {
-                                ui.label(format!("{:08X}", element.archetype));
+                                let archetype = format!("{:08X}", element.archetype);
+                                ui.label(match crate::state::hash_text_name(element.archetype) {
+                                    Some(name) => format!("{archetype} {name}"),
+                                    None => archetype,
+                                });
                                 ui.add(detail_label(tr!(
                                     "at {at}: position {position}, rotation {rotation}, link {link}",
                                     at = format!("{at:#X}"),
@@ -130,6 +135,7 @@ impl Tables<'_> {
                             usize::from(record.count),
                             size = element
                         )));
+                        other::rows(ui, id, self.bytes, self.body, record);
                     }
                     _ => {}
                 },

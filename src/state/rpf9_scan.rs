@@ -750,7 +750,7 @@ impl super::AppState {
             let Some(Row::Body(find)) = found.rows.get(row).cloned() else {
                 return;
             };
-            let ended = super::gta6_first_entry::note(&scan.path, &found.rows, &find);
+            let ended = super::gta6_first_entry::note(&scan.path, &found, &find);
             let view = match found.view(&find) {
                 // Its tab says why no reader fits it, so its row raises no toast.
                 Err(_) if opens_as_bytes(&find) && ended => Ok(View::Bytes),
@@ -828,7 +828,7 @@ impl super::AppState {
             // A nested archive ends with its names row; the names themselves have no end.
             let ends = |find: &Rpf9ScanFind| {
                 !matches!(find.kind, Rpf9BodyKind::Names { .. })
-                    && super::gta6_first_entry::note(&scan.path, &found.rows, find)
+                    && super::gta6_first_entry::note(&scan.path, &found, find)
             };
             (rows.iter())
                 .filter_map(|row| match found.rows.get(*row) {

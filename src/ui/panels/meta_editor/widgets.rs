@@ -354,6 +354,7 @@ fn draw_string(
             .on_hover_text("Jenkins-1 hash (RAGE atHashString)");
         }
     }
+    super::text_names::draw(ui, ctx, value);
 
     if let Some(category) = super::picker::picker_category(field.hint) {
         if ui

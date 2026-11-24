@@ -87,7 +87,7 @@ fn an_event_duplicated_is_its_effects_last_and_counts_its_rules_once_more() {
     }
     assert_eq!(kept, before, "nothing else that was there changed");
 
-    // An event holding an object is not copied.
+    // An event whose object breaks a measured rule is not copied.
     let to = (0x5000_0000 + at.particle as u64).to_le_bytes();
     s.virtual_section[at.event + 0x60..at.event + 0x68].copy_from_slice(&to);
     let why = refused_unchanged(&mut s, |s| duplicate_particle_event(s, 0, 0));
@@ -252,3 +252,93 @@ fn a_behaviour_copied_into_a_rule_takes_its_class_bits_place() {
     assert!(why.contains("already"), "{why}");
     refused_unchanged(&mut s, |s| copy_particle_behaviour(s, 99, copy));
 }
+
+/// Curve 0 of a rule's five: two keys ramping to 10 as half floats, the other four with no key.
+fn sprite_curves() -> ParticleCurves {
+    let mut c: ParticleCurves = Default::default();
+    c[0].times = vec![0, 0x7299];
+    c[0].values = vec![[0.0, 0.0], [10.0, 0.0]];
+    c
+}
+
+/// Lay `curves` into the sprite rule at `particle`: its five kinds, curve 0's key arrays past the
+/// virtual section's end, and the +0x388 tables' physical data (at 0) baked from them.
+fn install_curves(s: &mut Rpf9Sections, particle: usize, curves: &ParticleCurves) {
+    // Mirrors particles_tables.rs: curves start at +0x248, each 0x18 bytes, kinds 3, 2, 7, 6, 6.
+    const CURVES: usize = 0x248;
+    const CURVE: usize = 0x18;
+    const KINDS: [u32; 5] = [3, 2, 7, 6, 6];
+    let v = &mut s.virtual_section;
+    for (k, kind) in KINDS.iter().enumerate() {
+        put(v, particle + CURVES + CURVE * k + 0x14, &kind.to_le_bytes());
+    }
+    let c = &curves[0];
+    let times = v.len().next_multiple_of(16);
+    v.resize(times + 0x20, 0);
+    for (j, t) in c.times.iter().enumerate() {
+        put(v, times + 2 * j, &t.to_le_bytes());
+    }
+    let values = v.len().next_multiple_of(16);
+    v.resize(values + 2 * c.values.len(), 0);
+    for (j, x) in c.values.iter().enumerate() {
+        put(
+            v,
+            values + 2 * j,
+            &crate::half::f32_to_half(x[0]).to_le_bytes(),
+        );
+    }
+    put(
+        v,
+        particle + CURVES,
+        &(0x5000_0000 + times as u64).to_le_bytes(),
+    );
+    put(
+        v,
+        particle + CURVES + 8,
+        &(0x5000_0000 + values as u64).to_le_bytes(),
+    );
+    put(
+        v,
+        particle + CURVES + 0x10,
+        &(c.times.len() as u32).to_le_bytes(),
+    );
+    for (t, table) in bake_particle_tables(curves).iter().enumerate() {
+        for (r, row) in table.iter().enumerate() {
+            for (l, h) in row.iter().enumerate() {
+                put(&mut s.physical, 0x100 * t + 8 * r + 2 * l, &h.to_le_bytes());
+            }
+        }
+    }
+}
+
+#[test]
+fn a_duplicated_rules_curves_are_its_own_and_an_edit_leaves_the_source() {
+    let (mut s, at) = with_buffers();
+    let curves = sprite_curves();
+    install_curves(&mut s, at.particle, &curves);
+    let named = |s: &Rpf9Sections, name: &str| {
+        let list = read_list(&s.virtual_section).expect("it reads");
+        (list.particles.iter().find(|p| p.name == name).cloned()).expect("the rule")
+    };
+    let read = |s: &Rpf9Sections, rule: &ParticleRule| {
+        read_particle_curves(&s.virtual_section, &s.physical, rule)
+    };
+    assert_eq!(
+        read(&s, &named(&s, PARTICLE)).expect("source curves"),
+        curves
+    );
+
+    duplicate_particle_rule(&mut s, 0, PARTICLE_COPY).expect("it copies");
+    let (src, copy) = (named(&s, PARTICLE), named(&s, PARTICLE_COPY));
+    assert_eq!(read(&s, &copy).expect("the copy's curves"), curves);
+
+    // Edit the copy's first curve; the source re-reads unchanged, the copy reads the edit.
+    let mut edited = curves.clone();
+    edited[0].values[1][0] = 2.0;
+    write_particle_curves(&mut s.virtual_section, &mut s.physical, &copy, &edited).expect("writes");
+    assert_eq!(read(&s, &copy).expect("the copy reads its edit"), edited);
+    assert_eq!(read(&s, &src).expect("the source still reads"), curves);
+}
+
+#[path = "particles_event_object_tests.rs"]
+mod event_object;

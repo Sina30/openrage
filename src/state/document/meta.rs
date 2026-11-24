@@ -137,7 +137,7 @@ impl MetaDocument {
 
         let text_bytes = match (&parsed, source_format) {
             (Some(p), fmt) if fmt.is_binary() => or_io::meta::write_meta(&p.instance)
-                .map(|s| s.into_bytes())
+                .map(|s| super::gta6_meta_names::shown_xml(s, layout.as_ref()).into_bytes())
                 .unwrap_or_else(|_| bytes.clone()),
             _ => bytes.clone(),
         };
@@ -231,6 +231,7 @@ impl MetaDocument {
             .as_ref()
             .map(|p| or_io::meta::write_meta(&p.instance).unwrap_or_default())
             .unwrap_or_default();
+        let xml = super::gta6_meta_names::shown_xml(xml, self.layout.as_ref());
         self.text = TextDocument::decode(xml.as_bytes());
         self.text_revision = self.text_revision.wrapping_add(1);
         self.parsed_at_text_revision = self.text_revision;
@@ -238,6 +239,14 @@ impl MetaDocument {
 
     pub fn mark_text_edited(&mut self) {
         self.text_revision = self.text_revision.wrapping_add(1);
+    }
+
+    /// A GTA VI form's deterministic, comment-free XML — the document the CLI writes, which a
+    /// `.xml` export and a compare must use; `None` for any document the Text panel adds no
+    /// display-only name comments to.
+    pub fn comment_free_xml(&self) -> Option<String> {
+        super::gta6_meta_names::meta_names_from_the_text(self.layout.as_ref())
+            .then(|| super::gta6_meta_names::without_text_names(&self.text.text.to_string()))
     }
 
     pub fn type_name(&self) -> &str {

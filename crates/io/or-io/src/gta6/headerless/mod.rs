@@ -25,6 +25,7 @@ mod write;
 mod write_bone_names;
 mod write_bound_grow;
 mod write_bound_reshape;
+mod write_bound_runs;
 mod write_bound_vertex;
 mod write_bvh;
 mod write_dictionary;
@@ -72,6 +73,10 @@ pub use navmesh::{
 pub use octree::{read_octree, NavOctree};
 pub use particles::duplicate_particle_effect;
 pub use particles::{add_particle_keys, ParticleKeysError};
+pub use particles::{
+    bake_particle_tables, read_particle_curves, write_particle_curves, ParticleCurve,
+    ParticleCurves,
+};
 pub use particles::{class_of_bit, read_particle_gpu_tables, ClassNamedBy, GpuTables};
 pub use particles::{
     copy_particle_behaviour, duplicate_particle_emitter, duplicate_particle_event,
@@ -127,6 +132,7 @@ pub use write_fragment_child::{
 pub use write_geometry::{
     write_geometry, GeometryAt, GeometryEdit, GeometryWriteError, GeometryWritten,
 };
+pub use write_geometry::{write_geometry_cut, GeometryCut};
 pub use write_material::stated_words;
 pub use write_material::{
     shader_layout_holds, write_materials, write_materials_with, MaterialLayoutError,

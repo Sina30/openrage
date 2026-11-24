@@ -30,7 +30,8 @@ pub use expressions::{
     EXPRESSIONS_SIGNATURE,
 };
 pub use expressions_layout::{
-    add_expression_track, lay_out_expressions, remove_expression_track, write_edited_expressions,
+    add_expression_track, lay_out_expressions, offered_facial_outputs, remove_expression_track,
+    write_edited_expressions,
 };
 pub use matcher::{
     Matcher, MatcherClass, MatcherClip, MatcherDatabase, MatcherEntry, MatcherFeature, MatcherLevel,
@@ -145,6 +146,8 @@ pub enum AnimError {
     External { clip: String, key: u32 },
     #[error("animation {animation:?} is not owned by the animation set whose map holds it")]
     Owner { animation: String },
+    #[error("the root states 0 at 0x6C as a lone animation set does, but the objects its map holds are not owned by it, so they are no animations and the root is no animation set; its word at 0x70 is {word:#010X}, a kind no reader here knows")]
+    NotAnimationSet { word: u32 },
     #[error("animation {animation:?}: {why}")]
     Blocks { animation: String, why: String },
     #[error("block {block} of animation {animation:?}: its channel directory of 11 sections does not hold to the measured layout: {why}")]
@@ -627,7 +630,15 @@ impl Section<'_> {
         match root {
             RootKind::ClipDictionary => self.dictionary(&mut resource)?,
             RootKind::MotionDictionary => self.motion_dictionary(&mut resource)?,
-            RootKind::AnimationSet => resource.sets.push(self.set(0, 0, &mut HashMap::new())?),
+            RootKind::AnimationSet => {
+                // A root whose map objects its owner word does not name is another kind of root.
+                let set = self.set(0, 0, &mut HashMap::new());
+                let set = set.map_err(|e| match (e, self.u32("root", SET_LEN)) {
+                    (AnimError::Owner { .. }, Ok(word)) => AnimError::NotAnimationSet { word },
+                    (e, _) => e,
+                })?;
+                resource.sets.push(set);
+            }
         }
         Ok(resource)
     }

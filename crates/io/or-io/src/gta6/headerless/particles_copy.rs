@@ -237,7 +237,7 @@ fn effect(t: &mut Tail, v: &Bytes, from: usize, name: &str) -> Result<usize> {
         let e = v.to("event", events + 8 * i)?;
         need(
             v.u64("event", e + EVENT_OBJECT)? == 0,
-            "an event holding an object at +0x60 is not copied: the object's extent is not stated",
+            "an effect rule whose event holds an object at +0x60 is not copied whole: copy that event on its own, which gives its object's buffer data of its own",
         )?;
         let copied = t.copy(v, "event", e, EVENT)?;
         t.ptr(held + 8 * i, copied)?;

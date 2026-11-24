@@ -180,10 +180,10 @@ fn a_driven_bone_added_or_removed_takes_its_mask_s_slots_after_the_others() {
 }
 
 #[test]
-fn a_track_of_groups_b_and_d_a_twice_stated_id_and_the_last_facial_control_are_refused() {
+fn a_track_of_group_d_a_twice_stated_id_and_the_last_facial_control_are_refused() {
     let set = set(true);
     let refused = [
-        add_expression_track(&set, ExpressionGroup::Bones, 0, 0xB1),
+        add_expression_track(&set, ExpressionGroup::FacialOutputs, 0, 0xD2),
         remove_expression_track(&set, ExpressionGroup::FacialOutputs, 0),
         add_expression_track(&set, ExpressionGroup::Inputs, 0, 0xA2),
         add_expression_track(&set, ExpressionGroup::Inputs, 5, 0xA9),
@@ -220,4 +220,81 @@ fn an_edited_set_is_written_in_place_for_an_id_and_laid_out_anew_for_a_track() {
     let err = write_edited_expressions(&mut elsewhere, 0, &added).expect_err("refused");
     assert!(matches!(err, AnimError::Unwritten(_)), "{err}");
     assert_eq!(elsewhere, kept);
+}
+
+/// A set reading two facial controls and one bone, A's slots before B's or, `after`, A's last
+/// slot after B's; it writes a facial control and drives a bone as `set(true)` does.
+fn reading_a_bone(after: bool) -> Expressions {
+    let (rotation, translation) = (
+        name_hash32(b"boneRotation"),
+        name_hash32(b"boneTranslation"),
+    );
+    let (a, b): (Vec<u16>, Vec<u16>) = match after {
+        false => (vec![0, 1, 2], (3..9).collect()),
+        true => (vec![0, 1, 8], (2..8).collect()),
+    };
+    Expressions {
+        inputs: group(&[(0xA1, facial()), (0xA2, facial())], &a, &[1, 2]),
+        bones: group(&[(0xB0, rotation), (0xB0, translation)], &b, &[0, 3]),
+        bone_masks: vec![7, 0x87],
+        controls: group(&[], &[], &[]),
+        control_slots: Vec::new(),
+        control_words: Vec::new(),
+        ..set(true)
+    }
+}
+
+#[test]
+fn a_bone_pair_added_takes_six_slots_after_group_b_s_and_removed_gives_the_set_back() {
+    let pair = |id: u32| {
+        [
+            (id, name_hash32(b"boneRotation")),
+            (id, name_hash32(b"boneTranslation")),
+        ]
+    };
+    for after in [false, true] {
+        let set = reading_a_bone(after);
+        let added = add_expression_track(&set, ExpressionGroup::Bones, 1, 0xB1).expect("added");
+        let tracks: Vec<(u32, u32)> = pair(0xB0).into_iter().chain(pair(0xB1)).collect();
+        assert_eq!(added.bones.tracks, tracks);
+        assert_eq!(added.bones.components, [0, 3, 6, 9]);
+        assert_eq!(added.bone_masks, [7, 0x87, 7, 0x87]);
+        let first: u16 = if after { 2 } else { 3 };
+        assert_eq!(added.bones.slots, (first..first + 12).collect::<Vec<u16>>());
+        let a_last: u16 = if after { 14 } else { 2 };
+        assert_eq!(added.inputs.slots, [0, 1, a_last]);
+        let bytes = lay_out_expressions(&added, 0).expect("laid out");
+        assert_eq!(read_expressions(&bytes).expect("reads"), added);
+
+        for track in [2, 3] {
+            let removed =
+                remove_expression_track(&added, ExpressionGroup::Bones, track).expect("removed");
+            assert_eq!(removed, set, "after {after}, track {track}");
+        }
+        let none = remove_expression_track(&set, ExpressionGroup::Bones, 0).expect("removed");
+        assert!(none.bones.tracks.is_empty() && none.bone_masks.is_empty());
+        assert_eq!(none.inputs.slots, [0, 1, 2]);
+        let bytes = lay_out_expressions(&none, 0).expect("laid out");
+        assert_eq!(read_expressions(&bytes).expect("reads"), none);
+    }
+}
+
+#[test]
+fn a_bone_read_already_or_a_bone_not_read_as_a_pair_is_refused() {
+    let set = reading_a_bone(false);
+    let err = add_expression_track(&set, ExpressionGroup::Bones, 0, 0xB0).expect_err("refused");
+    assert!(err.to_string().contains("already reads that bone"), "{err}");
+    let mut lone = set.clone();
+    lone.bones.tracks[1].0 = 0xB9;
+    let refused = [
+        add_expression_track(&lone, ExpressionGroup::Bones, 0, 0xB1),
+        remove_expression_track(&lone, ExpressionGroup::Bones, 1),
+    ];
+    for r in refused {
+        let err = r.expect_err("refused");
+        assert!(
+            err.to_string().contains("rotation and a translation"),
+            "{err}"
+        );
+    }
 }

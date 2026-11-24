@@ -162,6 +162,40 @@ fn decode_with(model: &RbmModel, names: &DataNames) -> Result<(MetaInstance, Unn
     Ok((instance, decoder.unnamed))
 }
 
+/// The type table and blocks of a table-form document's bytes.
+#[cfg(feature = "gta6")]
+pub(crate) fn model_of(bytes: &[u8]) -> Result<RbmModel> {
+    model(&super::sections::split_sections(bytes)?)
+}
+
+/// The structure `class` at `at` of block `block` (from 0) and everything below it, read as the
+/// document's tree reads it; a hash value is named only by the tree's hash index.
+#[cfg(feature = "gta6")]
+pub(crate) fn read_struct_at(
+    model: &RbmModel,
+    block: usize,
+    at: usize,
+    class: u32,
+) -> Result<MetaInstance> {
+    let Some(data) = model.data_blocks.get(block).map(|b| b.data.as_slice()) else {
+        return Err(malformed(format!(
+            "no block {block} of {}",
+            model.data_blocks.len()
+        )));
+    };
+    let names = DataNames::default();
+    let bytes: usize = model.data_blocks.iter().map(|b| b.data.len()).sum();
+    let mut decoder = Decoder {
+        model,
+        names: &names,
+        unnamed: Unnamed::default(),
+        open: HashSet::new(),
+        budget: bytes.saturating_mul(VALUES_PER_BYTE),
+        key_enum: None,
+    };
+    decoder.read_struct(class_of(model, class)?, data, at)
+}
+
 /// A GTA VI enum value record, `{i64 value, u32 name hash, u32}`.
 ///
 /// ⚠ A value above `i32::MAX` is kept as its low 32 bits: a 4-byte member stores it so.

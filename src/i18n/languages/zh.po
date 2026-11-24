@@ -15574,8 +15574,8 @@ msgstr "未带入：{held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "这会检查数据体的字节，但不测试 GTA VI 是否加载它们。"
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "网格指名的每个几何体会取得其位置、法线、切线、纹理坐标、颜色和三角形，并从网格的关节取得权重和混合索引，其调色板缺少的骨骼会被加入；其他通道保持原样，且仅在其自身顶点数不变时。"
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks. A channel the mesh leaves out is kept as the geometry holds it at its own vertex count and refused at another, unless the box above is ticked: then a normal is filled with +Z, a tangent with +X, a colour with white, a UV with 0 and a skin with a whole weight on its first bone."
+msgstr "网格指名的每个几何体会取得其位置、法线、切线、纹理坐标、颜色和三角形，并从网格的关节取得权重和混合索引，其调色板缺少的骨骼会被加入。网格省略的通道在其自身顶点数下保持几何体原有的样子，在其他顶点数下则被拒绝，除非勾选了上方的复选框：此时法线用 +Z 填充，切线用 +X，颜色用白色，UV 用 0，蒙皮则将全部权重放在其第一根骨骼上。"
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "此字典条目在打开时没有可读取的骨架，因此没有可编辑的骨骼。"
@@ -16396,9 +16396,6 @@ msgstr "某条规则被赋予了 GTA VI 粒子列表中没有任何规则拥有�
 msgid "Only a geometry child's primitives and vertices are added or deleted."
 msgstr "只有几何子项的基本体和顶点可以添加或删除。"
 
-msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
-msgstr "只有独立 bound 的 composite 可以添加或删除子项：在 drawable 或 fragment 中，每个子项也是 fragment 的子项。"
-
 msgid "Delete primitive {primitive}"
 msgstr "删除基本体 {primitive}"
 
@@ -16459,9 +16456,6 @@ msgstr "删除子项"
 msgid "Delete the primitive"
 msgstr "删除基本体"
 
-msgid "Add a triangle"
-msgstr "添加三角形"
-
 msgid "Delete the vertex"
 msgstr "删除顶点"
 
@@ -16482,3 +16476,35 @@ msgstr "（其他每条规则都已有该类的一个行为）"
 
 msgid "(the file holds no map here)"
 msgstr "（此处文件不含键值对表）"
+
+msgid "{size} bytes, halves at +0x00, +0x02 and +0x06 {first} {second} {fourth}, operators {operators}"
+msgstr "{size} 字节，+0x00、+0x02 和 +0x06 处的半字 {first} {second} {fourth}，运算符 {operators}"
+
+msgid "{words}, a curve over [{minimum}, {maximum}] with keys {keys}"
+msgstr "{words}，区间 [{minimum}, {maximum}] 上的曲线，键为 {keys}"
+
+msgid "Triangle"
+msgstr "三角形"
+
+msgid "Add the primitive"
+msgstr "添加基本体"
+
+msgid "Add primitive {primitive}"
+msgstr "添加基本体 {primitive}"
+
+msgid "A drawable's lone bound has no child added or deleted: the drawable points at its record."
+msgstr "drawable 的单个 bound 不能添加或删除子项：drawable 指向它的记录。"
+
+msgid "In a fragment each child of the composite is also a fragment child, so it is not added or deleted."
+msgstr "在 fragment 中，composite 的每个子项也是 fragment 的子项，因此不能添加或删除。"
+
+msgid "The elements do not read: {e}"
+msgstr "无法读取这些元素：{e}"
+
+msgid "at {at}: {class}"
+msgstr "{at}：{class}"
+
+msgid "{count} pair"
+msgid_plural "{count} pairs"
+msgstr[0] "{count} 个键值对"
+msgstr[1] "{count} 个键值对"

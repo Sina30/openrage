@@ -257,15 +257,22 @@ fn import_body(ui: &mut egui::Ui, asked: &mut Import, answer: &mut Option<Answer
         }
     };
     ui.add_space(crate::ui::theme::SPACING_DEFAULT);
-    // A GTA VI geometry keeps the channels the mesh does not replace, so neither choice is asked.
+    // A GTA VI geometry keeps the channels the mesh does not replace at its own vertex count, so
+    // only the fill, which acts at another count, is asked.
     if asked.is_gta6() {
-        weak(ui, tr!("Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."));
+        let filled = ui
+            .checkbox(
+                &mut asked.choice.fill_missing,
+                tr!("Fill a channel the mesh leaves out"),
+            )
+            .changed();
+        weak(ui, tr!("Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks. A channel the mesh leaves out is kept as the geometry holds it at its own vertex count and refused at another, unless the box above is ticked: then a normal is filled with +Z, a tangent with +X, a colour with white, a UV with 0 and a skin with a whole weight on its first bone."));
         match buttons(ui, tr!("Replace"), ready) {
             Some(true) => *answer = Some(Answer::Import),
             Some(false) => *answer = Some(Answer::Cancel),
             None => {}
         }
-        return false;
+        return filled;
     }
     let choice = &mut asked.choice;
     let mut changed = false;

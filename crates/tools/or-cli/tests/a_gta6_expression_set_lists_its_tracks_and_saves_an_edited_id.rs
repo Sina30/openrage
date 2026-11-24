@@ -185,3 +185,107 @@ fn an_expression_set_lists_its_tracks_and_saves_an_edited_id_that_reads_back() {
     assert!(!ok, "{said}");
     assert!(!std::path::Path::new(&refused).exists());
 }
+
+/// The set of [`expression_set`] as the layout writes it, so a track can be added or removed.
+fn laid_out_set() -> Vec<u8> {
+    use or_io::gta6::anim::{lay_out_expressions, ExpressionTracks, Expressions};
+    let none = || ExpressionTracks {
+        tracks: Vec::new(),
+        slots: Vec::new(),
+        components: Vec::new(),
+    };
+    let facial = or_io::gta6::hash::name_hash32(b"facialTranslation");
+    let set = Expressions {
+        key: 0x3433_3231,
+        inputs: ExpressionTracks {
+            tracks: vec![(0xA1, facial), (0xA2, facial)],
+            slots: vec![0, 1, 2],
+            components: vec![1, 2],
+        },
+        bones: none(),
+        bone_masks: Vec::new(),
+        controls: none(),
+        control_slots: Vec::new(),
+        control_words: Vec::new(),
+        facial_outputs: none(),
+        outputs: None,
+        output_masks: Vec::new(),
+    };
+    lay_out_expressions(&set, 0).expect("laid out")
+}
+
+#[test]
+fn a_track_added_and_removed_saves_a_set_laid_out_anew_that_reads_back() {
+    let mut bytes = rpf9_head();
+    bytes.resize(0x1000, 0);
+    bytes.extend(zlib(&laid_out_set()));
+    let dir = tempfile::tempdir().expect("a folder");
+    let archive = dir.path().join("anim.rpf");
+    std::fs::write(&archive, &bytes).expect("written");
+    let archive = archive.display().to_string();
+
+    let added = dir.path().join("added.rsc").display().to_string();
+    let add = [
+        "rpf",
+        "scan-expressions",
+        &archive,
+        "0x1000",
+        "--add",
+        "inputs",
+        "1",
+        "hash_000000A3",
+        "--out",
+        &added,
+    ];
+    let (wrote, ok) = run(&add);
+    assert!(ok, "{wrote}");
+    assert!(wrote.contains("added under hash_000000A3"), "{wrote}");
+    let (again, ok) = run(&["rpf", "scan-expressions", &added, "0"]);
+    assert!(ok, "{again}");
+    assert!(
+        again.contains("inputs          3 track(s) it reads"),
+        "{again}"
+    );
+    assert!(again.contains("slot(s) 3, 4"), "{again}");
+
+    let removed = dir.path().join("removed.rsc").display().to_string();
+    let remove = [
+        "rpf",
+        "scan-expressions",
+        &added,
+        "0",
+        "--remove",
+        "inputs",
+        "0",
+        "--out",
+        &removed,
+    ];
+    let (wrote, ok) = run(&remove);
+    assert!(ok, "{wrote}");
+    assert!(wrote.contains("is removed"), "{wrote}");
+    let (again, ok) = run(&["rpf", "scan-expressions", &removed, "0"]);
+    assert!(ok, "{again}");
+    assert!(
+        again.contains("inputs          2 track(s) it reads"),
+        "{again}"
+    );
+    assert!(!again.contains("hash_000000A1"), "{again}");
+
+    // A facial control the set writes is not added; nothing is written.
+    let refused = dir.path().join("refused.rsc").display().to_string();
+    let group_d = [
+        "rpf",
+        "scan-expressions",
+        &archive,
+        "0x1000",
+        "--add",
+        "facial-outputs",
+        "0",
+        "7",
+        "--out",
+        &refused,
+    ];
+    let (said, ok) = run(&group_d);
+    assert!(!ok, "{said}");
+    assert!(!std::path::Path::new(&refused).exists());
+}

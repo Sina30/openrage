@@ -262,7 +262,8 @@ fn text_of(payload: &DocPayload) -> Option<String> {
     match payload {
         DocPayload::Text(text) => Some(text.text.to_string()),
         DocPayload::Meta(meta) if !meta.source_format.is_binary() => {
-            Some(meta.text.text.to_string())
+            // Name comments are display-only, so a diff reads the comment-free XML.
+            Some((meta.comment_free_xml()).unwrap_or_else(|| meta.text.text.to_string()))
         }
         _ => None,
     }

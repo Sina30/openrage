@@ -1184,6 +1184,13 @@ pub use bits::{class_of_bit, ClassNamedBy};
 #[path = "particles_colour.rs"]
 mod colour_word;
 
+#[path = "particles_tables.rs"]
+mod tables;
+pub use tables::{
+    bake_particle_tables, read_particle_curves, write_particle_curves, ParticleCurve,
+    ParticleCurves,
+};
+
 #[cfg(test)]
 #[path = "particles_tests.rs"]
 mod tests;

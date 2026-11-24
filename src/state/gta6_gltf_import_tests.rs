@@ -247,3 +247,69 @@ fn a_gltf_replaces_a_gta_vi_drawable_s_geometry_as_a_step_that_undoes_and_saves(
     super::super::rpf9_scan::read_body(&path, &path, 0).expect("it opens again");
     assert!(!imports().contains_key(&path));
 }
+
+#[test]
+fn a_mesh_without_normals_at_another_count_is_refused_until_the_fill_is_ticked_and_saves_filled() {
+    let _serial = crate::ui::theme::serial();
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let path = dir.path().join("tri.rsc");
+    let sections = body();
+    std::fs::write(&path, write_rpf9_resource(&sections).expect("writes")).expect("written");
+    let mut state = AppState::new();
+    state.load_file(path.clone());
+    settle(&mut state);
+    let doc =
+        (state.active_document).unwrap_or_else(|| panic!("opened: {}", state.error_dialog_message));
+
+    // A fourth vertex, and no normals at all.
+    let drawable = read_drawable(&sections.virtual_section, Some(&sections.physical))
+        .expect("the drawable reads");
+    let names = or_cli::Gta6Names {
+        effect: &|hash| format!("hash_{hash:08X}"),
+        texture: &|key| format!("hash_{key:016X}"),
+    };
+    let mut scene = or_cli::gta6_scene(&drawable, None, "tri", false, &names);
+    let p = &mut scene.objects[0].meshes[0].primitives[0];
+    p.positions.push([-1.0, -1.0, -1.0]);
+    p.uvs[0].push([1.0, 1.0]);
+    p.indices.extend([1, 3, 2]);
+    p.normals.clear();
+    let mesh = dir.path().join("tri.glb");
+    std::fs::write(&mesh, gltf::write(&scene, "tri", Container::Glb).primary).expect("written");
+
+    state.import_gltf(doc, mesh);
+    worked_out(&mut state);
+    let Some(Asked::Import(asked)) = &mut state.gltf.asked else {
+        panic!("the import's question");
+    };
+    assert!(
+        matches!(&asked.made, Some(Err(why)) if why.contains("channel 4")),
+        "refused while the fill is off"
+    );
+    asked.choice.fill_missing = true;
+    state.rerun_gltf();
+    worked_out(&mut state);
+    let Some(Asked::Import(asked)) = &state.gltf.asked else {
+        panic!("the import's question");
+    };
+    let Some(Ok((_, report))) = &asked.made else {
+        panic!(
+            "filled: {:?}",
+            asked.made.as_ref().map(|m| m.as_ref().err())
+        );
+    };
+    let line = &report.splits[0];
+    assert!(line.contains("channels 4 filled"), "{line}");
+
+    state.apply_gltf_import();
+    assert_eq!(shown(&state, doc), 4);
+    state.active_document = Some(doc);
+    assert!(state.save_active_document());
+    finished(&mut state);
+    let bytes = std::fs::read(&path).expect("the saved file");
+    let (find, read) = read_rpf9_body(Cursor::new(bytes), 0, u64::MAX).expect("it reads");
+    let saved = Rpf9Sections::of(&find, &read).expect("a resource");
+    let g = only(&saved);
+    assert_eq!(g.vertex_count, 4);
+    assert_eq!(g.vertices.normals, vec![[0.0, 0.0, 1.0]; 4]);
+}

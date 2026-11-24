@@ -217,7 +217,10 @@ fn draw_audio_items(ui: &mut egui::Ui, state: &AppState, doc_id: DocumentId) -> 
     let pool = pool_names();
     let name = |key: u32| {
         let pooled = pool.get(&key).map(String::as_str);
-        hash_text(key, pooled.or_else(|| state.name_index.name_of(key)))
+        match pooled.or_else(|| state.name_index.name_of(key)) {
+            Some(known) => hash_text(key, Some(known)),
+            None => hash_text(key, crate::state::hash_text_name(key).as_deref()),
+        }
     };
     let row_height = ui.spacing().interact_size.y;
     for (class, items) in &doc.groups {

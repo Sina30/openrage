@@ -2,11 +2,17 @@
 //! 0x1C0-byte root, then every array and the block map packed by byte length, the counts and
 //! slot numbers following from the tracks.
 //!
-//! ⚠ Group B's tracks come as a bone's rotation and translation together, and group D's rules
-//! rest on seven bodies, so neither takes a track or loses one.
+//! ⚠ Group B's tracks come as a bone's rotation and translation together, so a bone is added or
+//! removed as its pair; group D takes only a track group A reads (`group_d`).
 
-use super::expressions::{read_expressions, write_expression_ids, ExpressionGroup, Expressions};
+use super::expressions::{
+    read_expressions, write_expression_ids, ExpressionGroup, ExpressionTracks, Expressions,
+};
 use super::AnimError;
+
+#[path = "expressions_group_d.rs"]
+mod group_d;
+pub use group_d::offered_facial_outputs;
 
 /// The root: 21 slots of 16 bytes from 0x18, then zeros.
 const ROOT_LEN: usize = 0x1C0;
@@ -32,7 +38,7 @@ fn unwritten(why: impl Into<String>) -> AnimError {
 impl ExpressionGroup {
     /// Whether a track of this group can be added or removed.
     pub fn takes_tracks(self) -> bool {
-        matches!(self, Self::Inputs | Self::Controls | Self::Outputs)
+        true
     }
 }
 
@@ -237,24 +243,20 @@ fn picked(
         .ok_or_else(|| unwritten(format!("the group has no track {track}")))
 }
 
-fn refuse_group(group: ExpressionGroup) -> Result<(), AnimError> {
-    match group.takes_tracks() {
-        true => Ok(()),
-        false => Err(unwritten(
-            "a track of this group is not added or removed: its bone tracks come in pairs, or its rules rest on too few sets",
-        )),
-    }
-}
-
-/// `set` with a copy of track `from` of `group`, under id `id`, after the group's last track.
+/// `set` with a copy of track `from` of `group`, a bone's pair in group B, under id `id`, last.
 pub fn add_expression_track(
     set: &Expressions,
     group: ExpressionGroup,
     from: usize,
     id: u32,
 ) -> Result<Expressions, AnimError> {
-    refuse_group(group)?;
+    if group == ExpressionGroup::FacialOutputs {
+        return group_d::add_facial_output(set, from, id);
+    }
     let (_, word) = picked(set, group, from)?;
+    if group == ExpressionGroup::Bones {
+        return add_bone_pair(set, from, id);
+    }
     if group
         .of(set)
         .is_some_and(|t| t.tracks.contains(&(id, word)))
@@ -319,14 +321,19 @@ pub fn add_expression_track(
     Ok(out)
 }
 
-/// `set` without track `track` of `group`, the slots after the track's moved down.
+/// `set` without track `track` of `group`, a bone's pair in group B, the slots after moved down.
 pub fn remove_expression_track(
     set: &Expressions,
     group: ExpressionGroup,
     track: usize,
 ) -> Result<Expressions, AnimError> {
-    refuse_group(group)?;
+    if group == ExpressionGroup::FacialOutputs {
+        return group_d::remove_facial_output(set, track);
+    }
     picked(set, group, track)?;
+    if group == ExpressionGroup::Bones {
+        return remove_bone_pair(set, track);
+    }
     let mut out = set.clone();
     let slots = group
         .slots(set, track)
@@ -377,6 +384,96 @@ pub fn remove_expression_track(
     for slot in input_slots(&mut out) {
         let below = slots.iter().filter(|s| **s < *slot).count() as u16;
         *slot -= below;
+    }
+    Ok(out)
+}
+
+/// The tracks of group B that read the bone of track `track`: its rotation and its translation.
+fn bone_pair(set: &Expressions, track: usize) -> Result<[usize; 2], AnimError> {
+    let b = &set.bones;
+    if b.slots.len() != 3 * b.tracks.len() || set.bone_masks.len() != b.tracks.len() {
+        return Err(unwritten(
+            "the bones it reads are not three slots and a mask a track",
+        ));
+    }
+    let (id, _) = picked(set, ExpressionGroup::Bones, track)?;
+    let pair: Vec<usize> = (b.tracks.iter().enumerate())
+        .filter(|(_, t)| t.0 == id)
+        .map(|(k, _)| k)
+        .collect();
+    <[usize; 2]>::try_from(pair).map_err(|pair| {
+        unwritten(format!(
+            "the bone of track {track} is read by {} track(s), where a bone read is a rotation and a translation",
+            pair.len()
+        ))
+    })
+}
+
+/// `set` with a copy of the bone pair track `from` belongs to, reading bone `id`: its six slots
+/// after group B's last, every input slot after them moved up.
+// Both stored places of group B keep: A's slots before B's, or A's last slot after B's.
+fn add_bone_pair(set: &Expressions, from: usize, id: u32) -> Result<Expressions, AnimError> {
+    let pair = bone_pair(set, from)?;
+    if set.bones.tracks.iter().any(|t| t.0 == id) {
+        return Err(unwritten("the set already reads that bone"));
+    }
+    let past = || unwritten("the input slots pass 65,535");
+    let last = (set.bones.slots.iter().max())
+        .ok_or_else(|| unwritten("the bones it reads hold no slot"))?;
+    let at = last.checked_add(1).ok_or_else(past)?;
+    let total = set.inputs.slots.len()
+        + set.bones.slots.len()
+        + set.controls.slots.len()
+        + set.control_slots.len();
+    if total.max(usize::from(at)) + 6 > usize::from(u16::MAX) {
+        return Err(past());
+    }
+    let mut out = set.clone();
+    for slot in input_slots(&mut out) {
+        if *slot >= at {
+            *slot = slot.checked_add(6).ok_or_else(past)?;
+        }
+    }
+    for (k, held) in pair.into_iter().enumerate() {
+        let start = u16::try_from(out.bones.slots.len()).map_err(|_| past())?;
+        let first = at + 3 * k as u16;
+        out.bones.tracks.push((id, set.bones.tracks[held].1));
+        out.bones.components.push(start);
+        out.bones.slots.extend(first..first + 3);
+        out.bone_masks.push(set.bone_masks[held]);
+    }
+    Ok(out)
+}
+
+/// `set` without the bone pair track `track` belongs to, the input slots after its six moved down.
+fn remove_bone_pair(set: &Expressions, track: usize) -> Result<Expressions, AnimError> {
+    let pair = bone_pair(set, track)?;
+    let mut bones = ExpressionTracks {
+        tracks: Vec::new(),
+        slots: Vec::new(),
+        components: Vec::new(),
+    };
+    let (mut masks, mut gone) = (Vec::new(), Vec::new());
+    for k in 0..set.bones.tracks.len() {
+        let slots = (ExpressionGroup::Bones.slots(set, k))
+            .ok_or_else(|| unwritten("the track's slots are not where its group states them"))?;
+        if pair.contains(&k) {
+            gone.extend_from_slice(slots);
+            continue;
+        }
+        let start = u16::try_from(bones.slots.len())
+            .map_err(|_| unwritten("the input slots pass 65,535"))?;
+        bones.components.push(start);
+        bones.slots.extend_from_slice(slots);
+        bones.tracks.push(set.bones.tracks[k]);
+        masks.push(set.bone_masks[k]);
+    }
+    let mut out = set.clone();
+    out.bones = bones;
+    out.bone_masks = masks;
+    for slot in input_slots(&mut out) {
+        let below = gone.iter().filter(|s| **s < *slot).count() as u16;
+        *slot = slot.saturating_sub(below);
     }
     Ok(out)
 }

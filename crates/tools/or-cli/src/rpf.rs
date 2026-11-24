@@ -45,6 +45,22 @@ pub fn run(args: &[String]) -> ExitCode {
         "scan-relayout" => super::gta6_relayout::cmd_scan_relayout(&args[1..]).map_err(Run),
         "scan-census" => super::gta6_meta_census::cmd_scan_census(&args[1..]).map_err(Run),
         "scan-particles" => super::gta6_particles::cmd_scan_particles(&args[1..]).map_err(Run),
+        "scan-particle-copies" => {
+            super::gta6_particle_copies::cmd_scan_particle_copies(&args[1..]).map_err(Run)
+        }
+        "scan-bound-edits" => {
+            super::gta6_bound_edits::cmd_scan_bound_edits(&args[1..]).map_err(Run)
+        }
+        "scan-fragment-regroup" => {
+            super::gta6_fragment_regroup::cmd_scan_fragment_regroup(&args[1..]).map_err(Run)
+        }
+        "scan-map-entities" => {
+            super::gta6_map_entities::cmd_scan_map_entities(&args[1..]).map_err(Run)
+        }
+        "scan-expression-tracks" => {
+            super::gta6_expression_tracks::cmd_scan_expression_tracks(&args[1..]).map_err(Run)
+        }
+        "scan-group-map" => super::gta6_group_map::cmd_scan_group_map(&args[1..]).map_err(Run),
         "scan-maps" => super::gta6_map::cmd_scan_maps(&args[1..]).map_err(Run),
         "map-entity" => super::gta6_map_entity::cmd_map_entity(&args[1..]).map_err(Run),
         "scan-names" => super::gta6_names::cmd_scan_names(&args[1..]).map_err(Run),
@@ -103,15 +119,21 @@ fn print_usage() {
          openrage-cli rpf scan-open <archive.rpf> <offset> [--limit <bytes>] [--effects <archive.rpf> <offset>] [--export <dir> [--format png|dds]] [--texts]   (one scanned body through the reader that fits, or the scan of a nested archive whose names the scan placed or a count of the entries its header states placed; --effects names a drawable's shaders by the SGD5 container there; --export writes a texture dictionary's textures that read, by name, or a drawable's embedded ones as hash_<key>, one file per face or slice; --texts lists a text table's every text by key)\n  \
          openrage-cli rpf scan-extract <archive.rpf> <out_dir> [--kind <kind>] [--role <role>] [--limit <bytes>] [--dry-run]   (every scanned body of a kind as `rpf scan` tallies it or of a family as `rpf list --kind` names it, or of a role, as <offset>.<ext>, each as scan-body --stored writes it)\n  \
          openrage-cli rpf scan-export <archive.rpf> <offset> <out.glb|out.gltf> [--every-lod] [--entry <code>] [--limit <bytes>] [--effects <archive.rpf> <offset>] [--textures <pack.ttpf|folder>]   (a scanned GTA VI drawable, fragment or dictionary entry to glTF, a dictionary's entry skinned to its own skeleton; --textures carries as images the textures the drawable embeds and those the pack, or a .ttpf in the folder, holds, its DiffuseTex map the base colour)\n  \
-         openrage-cli rpf scan-import <archive.rpf|file> <offset> <mesh.glb|mesh.gltf> <out> [--entry <code>] [--limit <bytes>]   (a scanned or loose GTA VI drawable, fragment or dictionary entry with each geometry a primitive of the mesh names replaced from it, as mesh import replaces a GTA V one; channels the mesh cannot state are kept while the vertex count is, and the import is refused by name otherwise; written as a loose resource that scan-open reads at offset 0)\n  \
+         openrage-cli rpf scan-import <archive.rpf|file> <offset> <mesh.glb|mesh.gltf> <out> [--entry <code>] [--limit <bytes>] [--fill-missing]   (a scanned or loose GTA VI drawable, fragment or dictionary entry with each geometry a primitive of the mesh names replaced from it, as mesh import replaces a GTA V one; channels the mesh cannot state are kept while the vertex count is, and the import is refused by name otherwise; --fill-missing gives a normal, tangent, colour, texcoord or skin the mesh omits at another vertex count its stated default, as mesh import --fill-missing does; written as a loose resource that scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-texture <archive.rpf|file> <offset> <texture> <out> [--image <file>] [--add] [--remove] [--slice <n>] [--format <format>] [--mips <n>] [--filter box|lanczos3] [--quality fast|normal|high] [--srgb|--linear] [--allow-npot] [--limit <bytes>]   (a scanned or loose GTA VI texture dictionary's texture, as texture import and reencode edit a .ytd: from --image in its own size, format and mips, one slice of a cube, an array or a one-level volume by --slice, else given the image's size, --format and --mips; without --image re-encoded from its top mip; --add adds it from --image; a drawable's or fragment's embedded texture, named or hash_ and its key, from --image or re-encoded in any size, format and mips, the physical section packed anew, --add embedding one from --image and --remove unembedding it; written as a loose resource that scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-anim <archive.rpf> <offset> [--json] [--on <archive.rpf> <offset> [--clip <name>] [--at <seconds>]] [--limit <bytes>]   (a GTA VI animation body as JSON, or bound to the skeleton of the drawable or fragment body --on names, with its pose at --at)\n  \
-         openrage-cli rpf scan-expressions <archive.rpf> <offset> [--limit <bytes>] [--id <group> <track> <hash> --out <file>]   (a GTA VI expression set's tracks group by group, each with its id, track word, components or mask and slots; --id gives track <track> of the group inputs, bones, controls, facial-outputs or outputs the id <hash>, written where it lies, and writes the set as a loose resource, which scan-open reads at offset 0)\n  \
+         openrage-cli rpf scan-expressions <archive.rpf> <offset> [--limit <bytes>] [--id <group> <track> <hash> --out <file> | --add <group> <track> <hash> --out <file> | --remove <group> <track> --out <file>]   (a GTA VI expression set's tracks group by group, each with its id, track word, components or mask and slots; --id gives track <track> of the group inputs, bones, controls, facial-outputs or outputs the id <hash>, written where it lies; --add adds a copy of the track under <hash> and --remove removes it, a bone's rotation and translation together, the set laid out anew; each writes the set as a loose resource, which scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-radio <archive.rpf>... [--tracks] [--language <name>] [--limit <bytes>]   (the radio stations of the archives' GTA VI audio game data: the lists of stations, and each station's track lists and tracks, joined to the streamed sounds they play with each one's length and audio stream ids; a station is named by its key's text in the archives' text tables of the language, the first a change set among the archives registers unless --language names one; --tracks lists every track with the title and artists its text names)\n  \
          openrage-cli rpf scan-dialogue <archive.rpf>... [--out <file.tsv>] [--language <name>] [--limit <bytes>]   (the GTA VI dialogue lines the archives' conversation bodies state, each with its audio stream and its text in every text table that holds its label, with the table's language, tab-separated; a language is the name a change set among the archives registers its text archive under, else the archive's place among its file's; --language reads the tables of one; `awc export --dialogue` reads the file)\n  \
          openrage-cli rpf scan-relayout <archive.rpf> [--from <offset>] [--to <offset>] [--every <n>] [--count <n>] [--limit <bytes>]   (whether each n-th scanned resource's block map, blocks and RSC8 head are what the loose-resource writer derives from its sections, in memory; nothing is written)\n  \
          openrage-cli rpf scan-census <archive.rpf> [--from <offset>] [--to <offset>] [--every <n>] [--limit <bytes>]   (each n-th metadata row through scan-open, each in a process of its own: how many read and refused per row, the refusals by message with numbers as N, and the save lines; exits 1 when a reader of metadata refuses one; nothing is written)\n  \
          openrage-cli rpf scan-particles <archive.rpf> <offset> [--validate] [--limit <bytes>]   (a GTA VI particle effects list's effects, events, emitter and particle rules and behaviours, a line each; --validate says whether it reads and whether its values written back in place leave its section unchanged, and exits 1 when not)\n  \
+         openrage-cli rpf scan-particle-copies <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI particle effects list's first effect, emitter and particle rule, first event that copies and first behaviour a rule lacks the class of, each copied and the copy removed again, in memory: a line each saying whether the list reads as stored; exits 1 when one does not; nothing is written)\n  \
+         openrage-cli rpf scan-bound-edits <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI bound's, drawable's or fragment's collision given a vertex and a copy of a geometry's last primitive, and a copy of its first primitive child, each deleted again, in memory: a line each saying whether the bound reads as stored; exits 1 when one does not; nothing is written)\n  \
+         openrage-cli rpf scan-fragment-regroup <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI fragment's first child that takes another group given it and written, then given its own group at its own place and written again, in memory: whether the virtual section is the stored one; exits 1 when not; nothing is written)\n  \
+         openrage-cli rpf scan-map-entities <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI CMapData's first entity copied in as an orphan and the copy removed, and its first parent's child count raised and lowered, in memory: a line each saying whether the map reads, or its sections are, as stored; exits 1 when one does not; nothing is written)\n  \
+         openrage-cli rpf scan-expression-tracks <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI expression set laid out anew unchanged, and in each group that takes a track a copy of its first track added and removed again, in memory: a line each saying whether the virtual section is the stored one; exits 1 when one is not; nothing is written)\n  \
+         openrage-cli rpf scan-group-map <archive.rpf> <offset> [--limit <bytes>]   (a GTA VI PSO body's first map keyed by hashes given a pair, saved, read again and saved without it, in memory: whether the save is the stored body; exits 1 when not; nothing is written)\n  \
          openrage-cli rpf scan-maps <archive.rpf> [--from <offset>] [--to <offset>] [--limit <bytes>] [--list] [--check] [--extents]   (every GTA VI map body a scan finds, CMapData and CMapTypes, as its structure and counts; --list adds every entity, list and archetype, --check resolves each level-of-detail link among the maps found and counts the elements naming each entity against its numChildren, --extents recomputes each map's entities' box from the archetypes found)\n  \
          openrage-cli rpf map-entity add|remove <archive.rpf> <offset> <entity> <out_dir> [--orphan] [--limit <bytes>]   (a GTA VI map body's entity copied to the end, as a sibling of its source or with --orphan as an orphan, or removed, with its parent map's child count and every map of the archive that names it as a parent renumbered; each body that changed written to the folder as <offset>.rsc, a loose resource that scan-open reads at offset 0)\n  \
          openrage-cli rpf scan-names [<archive.rpf>...] [--prefix <bytes>] [--threads <count>] [--pack <file.ttpf>]   (the names the bodies of GTA VI archives spell, name.#dr and its like and plain ones, read from the first bytes of each body, 16 MiB unless --prefix says, in one pass over each archive on every core unless --threads says, with a line a second on stderr, and kept with those of every archive read before in the configuration folder, where the GTA VI commands and the app find the name a hash or a scanned body has; then how many names are held by ending; --pack counts the keys of a texture pack they name, by a name held and by the naming rules)\n  \
@@ -1082,7 +1104,15 @@ fn extract_scanned(
     // A first entry of unstated end and a nested archive are written as the span the list gives.
     let file_len = file.metadata().map_err(|e| format!("{path}: {e}"))?.len();
     let ends = spans.ends(&file, file_len)?;
+    // ⚠ The archive at offset 0 is the file itself; a nested one with no names row has no end.
+    let unplaced = (finds.iter())
+        .filter(|f| matches!(f.kind, Rpf9BodyKind::Archive(_)) && f.offset > 0)
+        .filter(|f| !ends.contains_key(&f.offset))
+        .count();
     finds.retain(|find| is_read(find) || ends.contains_key(&find.offset));
+    if unplaced > 0 {
+        println!("{unplaced} nested archive(s) left out: no names row ends them");
+    }
     let out_dir = PathBuf::from(out_dir);
     if !dry_run {
         fs::create_dir_all(&out_dir).map_err(|e| format!("create_dir_all: {e}"))?;
@@ -1754,10 +1784,13 @@ pub(crate) fn listed_rpf9(
     let (mut finds, mut ends, mut missing) = (Vec::new(), BTreeMap::new(), Vec::new());
     let (mut after, mut counted) = (0, 0);
     let mut by_count = or_io::container::rpf::Rpf9NamesByCount::default();
+    // The spans `rpf extract` writes the bodies a read gives no end as.
+    let mut spans = super::gta6_spans::Spans::default();
     loop {
         let find = scan.next().transpose().map_err(|e| e.to_string())?;
         if let Some(find) = &find {
             by_count.push(find);
+            spans.push(find);
         }
         // A run is counted once the scan is past it, at the next find or at the file's end.
         if scan.missing_bytes() > counted {
@@ -1802,6 +1835,7 @@ pub(crate) fn listed_rpf9(
     if !json {
         return Ok(out);
     }
+    let spanned = spans.ends(&file, scan.file_len())?;
     let bodies: Vec<serde_json::Value> = (finds.iter())
         .map(|find| {
             let nested_in = (ends.range(..find.offset).next_back())
@@ -1813,7 +1847,8 @@ pub(crate) fn listed_rpf9(
                 "found_as": scan_row(find),
                 "stored": find.stored_len,
                 "inflated": find.inflated_len,
-                "file": is_read(find).then(|| find.file_name()),
+                "file": (is_read(find) || spanned.contains_key(&find.offset))
+                    .then(|| find.file_name()),
                 "nested_in": nested_in,
             })
         })

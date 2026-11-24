@@ -19,8 +19,6 @@ use or_io::gta6::headerless::{
 const USAGE: &str = "navmesh disable|delete <archive.rpf|file> <offset> <polygon> <out> \
                      [--neighbour <offset>]... [--limit <bytes>]";
 
-const BORDERS: [Border; 4] = [Border::East, Border::West, Border::North, Border::South];
-
 pub(crate) fn run(verb: &str, args: &[String]) -> ExitCode {
     let (limit, neighbours, path, offset, polygon, out) = match parse(args) {
         Ok(parsed) => parsed,
@@ -153,12 +151,9 @@ fn edit_body(
     let (mut near, mut stored) = (Vec::new(), Vec::new());
     for &at in neighbours {
         let (s, body) = cell_at(&file, at, limit).map_err(|e| format!("--neighbour: {e}"))?;
-        let across = BORDERS
-            .iter()
-            .any(|b| b.across(cell.cell) == Some(body.cell));
-        if !across {
+        if !across(&cell).any(|c| c == body.cell) {
             return Err(format!(
-                "--neighbour {at:#X} is cell {}, which is not across a border of cell {}",
+                "--neighbour {at:#X} is cell {}, which is not across a border or at a corner of cell {}",
                 body.cell, cell.cell
             ));
         }
@@ -275,15 +270,18 @@ fn disable(
     Ok((lines, removed))
 }
 
-/// The cells across `cell`'s borders; none for a body of no cell, which no other body links into.
-fn across(cell: &NavMesh) -> impl Iterator<Item = u32> + '_ {
-    (BORDERS.into_iter())
-        .filter(|_| cell.cell != 0)
-        .filter_map(|b| b.across(cell.cell))
+/// The cells across `cell`'s borders and at its corners; none for a body of no cell, which no other
+/// body links into.
+fn across(cell: &NavMesh) -> impl Iterator<Item = u32> {
+    let cells = match cell.cell {
+        0 => Vec::new(),
+        c => Border::around(c),
+    };
+    cells.into_iter()
 }
 
-/// Polygon proper `polygon` deleted as the editor deletes it, once every cell across a border is
-/// given, since their special links number this cell's polygons.
+/// Polygon proper `polygon` deleted as the editor deletes it, once every cell across a border or at
+/// a corner is given, since their special links number this cell's polygons.
 fn delete(
     sections: &mut Rpf9Sections,
     cell: &NavMesh,
@@ -303,7 +301,7 @@ fn delete(
         for mesh in [l.from_mesh, l.to_mesh] {
             if mesh != cell.cell && mesh != NOWHERE && !all.contains(&mesh) {
                 return Err(format!(
-                    "polygon {polygon} is not deleted: special link {i} ends in cell {mesh}, which is not across a border of this one"
+                    "polygon {polygon} is not deleted: special link {i} ends in cell {mesh}, which is not across a border or at a corner of this one"
                 ));
             }
         }
@@ -475,7 +473,34 @@ mod tests {
         let path = loose(dir.path(), CELL);
         let why = edit_body("delete", &path, 0, 0, &[], u64::MAX).expect_err("refused");
         let cells = [CELL + 1, CELL - 1, CELL + 512, CELL - 512].map(|c| c.to_string());
-        assert!(why.contains(&cells.join(", ")), "{why}");
+        let corners = [CELL + 513, CELL - 511, CELL + 511, CELL - 513].map(|c| c.to_string());
+        let named = format!("{}, {}", cells.join(", "), corners.join(", "));
+        assert!(why.contains(&named), "{why}");
+    }
+
+    #[test]
+    fn a_body_at_a_corner_of_the_cell_is_taken_as_a_neighbour() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let corner = CELL + 512 + 1;
+        let read = |p: String| std::fs::read(p).expect("read");
+        // A read refuses a file that starts with a resource and holds more, so the cell and the
+        // corner body sit at 0x1000-aligned offsets past a leading slot, as they do in an archive.
+        let mut bytes = vec![0u8; 0x1000];
+        let main = bytes.len() as u64;
+        bytes.extend(read(loose(dir.path(), CELL)));
+        bytes.resize(bytes.len().next_multiple_of(0x1000), 0);
+        let at = bytes.len() as u64;
+        bytes.extend(read(loose(dir.path(), corner)));
+        let path = dir.path().join("both.rsc");
+        std::fs::write(&path, &bytes).expect("saved");
+        let path = path.to_string_lossy().into_owned();
+        let (_, lines, _) =
+            edit_body("disable", &path, main, 0, &[at], u64::MAX).expect("disabled");
+        let unread = (lines.iter())
+            .find(|l| l.contains("not given with --neighbour"))
+            .expect("the seven others are named");
+        assert!(!unread.contains(&corner.to_string()), "{unread}");
+        assert!(unread.contains(&(CELL - 513).to_string()), "{unread}");
     }
 
     #[test]

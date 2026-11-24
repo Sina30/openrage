@@ -26,6 +26,7 @@ mod write_embedded_repack;
 mod write_filter_tracks;
 mod write_filters;
 mod write_geometry;
+mod write_geometry_cut;
 mod write_material;
 mod write_skeleton;
 

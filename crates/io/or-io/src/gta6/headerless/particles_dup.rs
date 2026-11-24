@@ -14,7 +14,7 @@ const PHYSICAL: u64 = 0x6000_0000;
 const EMITTER_RULE: usize = 0x300;
 const PARTICLE_RULE: usize = 0x430;
 const EVENT: usize = 0x88;
-/// An event's object whose extent and inner pointers are not stated.
+/// Where an event points at its object.
 const EVENT_OBJECT: usize = 0x60;
 /// A domain's size, and a mesh domain's (shape 4).
 const DOMAIN: usize = 0x1B0;
@@ -108,9 +108,11 @@ fn counts(t: &mut Tail, head: usize, n: usize) -> Result<()> {
 
 /// A copy of the event `event` of the effect rule `effect`, appended to that effect's timeline.
 pub fn duplicate_particle_event(body: &mut Rpf9Sections, effect: usize, event: usize) -> Copied {
+    let mut grown = body.clone();
+    let data = event_object::data_copied(&mut grown, effect, event)?;
     append(
-        body,
-        |v, base, list| event_copied(v, base, list, effect, event),
+        &mut grown,
+        |v, base, list| event_copied(v, base, list, (effect, event), data),
         |mut list, _| {
             let Some(rule) = list.effects.get_mut(effect) else {
                 return refuse("the effect rule is not one of the list");
@@ -121,15 +123,19 @@ pub fn duplicate_particle_event(body: &mut Rpf9Sections, effect: usize, event: u
             rule.events.push(copy);
             Ok(list)
         },
-    )
+    )?;
+    event_object::copy_holds(&grown, effect, event)?;
+    *body = grown;
+    Ok(())
 }
 
+/// The event's copy, its object's buffer data at `data`.
 fn event_copied(
     v: &Bytes,
     base: usize,
     list: &ParticleEffects,
-    effect: usize,
-    event: usize,
+    (effect, event): (usize, usize),
+    data: Option<usize>,
 ) -> Result<Laid> {
     const WHAT: &str = "event";
     let Some(rule) = list.effects.get(effect) else {
@@ -141,12 +147,9 @@ fn event_copied(
     let head = rule.at as usize + 0x38;
     let (events, count, _) = array(v, WHAT, head, false)?;
     let from = v.to(WHAT, events + 8 * event)?;
-    need(
-        v.u64(WHAT, from + EVENT_OBJECT)? == 0,
-        "an event holding an object at +0x60 is not copied: the object's extent is not stated",
-    )?;
     let mut t = Tail::new(base);
     let copy = t.copy(v, WHAT, from, EVENT)?;
+    event_object::object_copied(&mut t, v, (from, ev), copy, data)?;
     t.put(copy + 8, &(count as u32).to_le_bytes())?;
     if let Some(l) = v.ptr(WHAT, from + 0x30)? {
         let copied = evolution_list_copied(&mut t, v, l)?;
@@ -438,6 +441,8 @@ fn rule_copied(v: &Bytes, base: usize, list: &ParticleEffects, c: &RuleCopy) -> 
     t.ptr(at + 0x178, text)?;
     // No event names the copy.
     t.put(at + 0x10, &1u32.to_le_bytes())?;
+    // The copied record's curve heads still aim at the source's key arrays; give the copy its own.
+    super::tables::own_particle_curves(&mut t, v, from, at)?;
     // Shader words, drawable references and the drawables' runtime slots; the drawables' floats
     // are pooled, rules sharing runs of them, so the copy shares its source's.
     for (head, stride) in [(0x370, 8), (0x3B0, 0x20), (0x3C0, 8)] {
@@ -578,3 +583,6 @@ fn own_buffers(s: &Rpf9Sections, from: &ParticleRule, to: &ParticleRule) -> Resu
     }
     Ok(())
 }
+
+#[path = "particles_event_object.rs"]
+mod event_object;

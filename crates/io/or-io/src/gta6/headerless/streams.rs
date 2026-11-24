@@ -262,7 +262,7 @@ pub struct Vertices {
     pub tangents: Vec<[f32; 4]>,
     /// Channels 9 to 11, the tangents of texcoords 1 to 3, `w` as in [`Self::tangents`].
     pub uv_tangents: Vec<(u8, Vec<[f32; 4]>)>,
-    /// Channels 28 to 32, texcoords 0 to 4.
+    /// Channels 28 to 33, texcoords 0 to 5.
     pub uvs: Vec<(u8, Vec<[f32; 2]>)>,
     /// Channels 24 to 26, each byte over 255 in the order stored; what each colour means is not known.
     pub colours: Vec<(u8, Vec<[f32; 4]>)>,
@@ -355,7 +355,7 @@ pub(super) fn vertices(data: &[u8], channels: &[Channel], count: u32) -> Vertice
                 index,
                 elements().map(|e| [f32_at(e, 0), f32_at(e, 4)]).collect(),
             )),
-            (28..=32, 0x26, 4) => out.uvs.push((
+            (28..=33, 0x26, 4) => out.uvs.push((
                 index,
                 elements()
                     .map(|e| {

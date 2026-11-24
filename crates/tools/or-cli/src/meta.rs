@@ -98,6 +98,7 @@ pub(crate) fn print_info(name: &str, bytes: &[u8], mode: ErrorMode) -> Result<()
     print_document(name, format_label(bytes), bytes.len(), &document);
     if let (instance, Some(layout), _) = &document {
         print_gta6_save(layout, instance, bytes);
+        super::gta6_meta_names::print_text_names(layout, instance);
     }
     Ok(())
 }

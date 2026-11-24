@@ -13,18 +13,21 @@ use or_io::container::rpf::{
     read_rpf9_body, write_rpf9_resource, Rpf9BodyKind, Rpf9Role, Rpf9Sections,
 };
 use or_io::gta6::headerless::{
-    read_dictionary, read_drawable, read_drawable_with_bound, read_skeleton_of, write_geometry,
+    read_dictionary, read_drawable, read_drawable_with_bound, read_skeleton_of, write_geometry_cut,
     write_palette, Drawable, Entry, Geometry, GeometryAt, GeometryEdit, Model, SkeletonOwner,
 };
 
+mod fill;
 mod skin;
 
 const USAGE: &str =
     "usage: rpf scan-import <archive.rpf|file> <offset> <mesh.glb|mesh.gltf> <out> \
-                     [--entry <code>] [--limit <bytes>]";
+                     [--entry <code>] [--limit <bytes>] [--fill-missing]";
 
 pub(crate) fn cmd_scan_import(args: &[String]) -> Result<(), String> {
-    let (limit, args) = super::rpf::split_limit(args)?;
+    let (fill, args): (Vec<String>, Vec<String>) =
+        args.iter().cloned().partition(|a| a == "--fill-missing");
+    let (limit, args) = super::rpf::split_limit(&args)?;
     let (entry, args) = super::rpf::split_value(&args, "--entry")?;
     let entry = entry
         .map(|word| {
@@ -52,7 +55,8 @@ pub(crate) fn cmd_scan_import(args: &[String]) -> Result<(), String> {
     let source = fs::read(mesh).map_err(|e| format!("read({mesh}): {e}"))?;
     let scene = or_interchange::gltf::read::load(Path::new(mesh), &source)
         .map_err(|e| format!("{mesh} is not a mesh this can read: {e}"))?;
-    let (written, lines) = replace_gta6_mesh(&sections, role, entry, &scene)?;
+    let fill_missing = !fill.is_empty();
+    let (written, lines) = replace_gta6_mesh_with(&sections, role, entry, &scene, fill_missing)?;
     let saved = write_rpf9_resource(&written).map_err(|e| e.to_string())?;
     // The file is written only once it reads back as the drawable it was made from.
     let (find, bytes) = read_rpf9_body(Cursor::new(&saved), 0, u64::MAX)
@@ -187,7 +191,7 @@ fn paired<T: Clone>(
 
 /// What `p` gives geometry `g`, and the texcoord and colour sets it has no channel for.
 fn edit_of(g: &Geometry, p: &Primitive) -> (GeometryEdit, usize) {
-    let (uvs, no_uv) = paired(&p.uvs, &p.uv_channels, &declared(g, 28..=32));
+    let (uvs, no_uv) = paired(&p.uvs, &p.uv_channels, &declared(g, 28..=33));
     let (colours, no_colour) = paired(&p.colours, &p.colour_channels, &declared(g, 24..=26));
     let edit = GeometryEdit {
         positions: p.positions.clone(),
@@ -216,10 +220,25 @@ pub fn replace_gta6_mesh(
     entry: Option<u32>,
     scene: &Scene,
 ) -> Result<(Rpf9Sections, Vec<String>), String> {
+    replace_gta6_mesh_with(sections, role, entry, scene, false)
+}
+
+/// [`replace_gta6_mesh`], with `fill_missing` as `mesh import --fill-missing` takes it.
+// A channel a geometry declares and the mesh omits takes its stated default where the vertex
+// count changes, each named in the geometry's line.
+pub fn replace_gta6_mesh_with(
+    sections: &Rpf9Sections,
+    role: Rpf9Role,
+    entry: Option<u32>,
+    scene: &Scene,
+    fill_missing: bool,
+) -> Result<(Rpf9Sections, Vec<String>), String> {
     let mut drawable = drawable_of(sections, role, entry)?;
     let mut out = sections.clone();
     let mut lines = Vec::new();
     let mut taken = BTreeSet::new();
+    // Each geometry cut into several, at its stated place, and the geometries it added.
+    let mut cuts: Vec<(GeometryAt, usize)> = Vec::new();
     let (mut before, mut after, mut triangles) = (0, 0, 0);
     let owner = match (role, entry) {
         (_, Some(code)) => SkeletonOwner::Entry(code),
@@ -238,6 +257,17 @@ pub fn replace_gta6_mesh(
             if !taken.insert((at.level, at.model, at.geometry)) {
                 return Err(format!("{named}: two primitives of the mesh replace it"));
             }
+            // A geometry cut earlier in the same model moved the ones after it.
+            let stated = at;
+            let moved: usize = (cuts.iter())
+                .filter(|(c, _)| (c.level, c.model) == (at.level, at.model))
+                .filter(|(c, _)| c.geometry < at.geometry)
+                .map(|(_, added)| added)
+                .sum();
+            let at = GeometryAt {
+                geometry: at.geometry + moved,
+                ..at
+            };
             let wearer = skin::Wearer {
                 bones: &object.bones,
                 own: own.as_ref(),
@@ -252,10 +282,20 @@ pub fn replace_gta6_mesh(
             }
             let (g, model) = located(&drawable, at, &named)?;
             let (mut edit, dropped) = edit_of(g, p);
-            skin::fill(&mut edit, g, model, p, &wearer, &add.bones)
+            let n = p.positions.len();
+            let bare = p.joints.len() != n || p.weights.len() != n;
+            match skin::fill(&mut edit, g, model, p, &wearer, &add.bones) {
+                // A mesh with no skin is refused only at another count, where the fill gives one.
+                Err(_) if fill_missing && bare => {}
+                done => done.map_err(|e| format!("{named}: {e}"))?,
+            }
+            let filled = match fill_missing {
+                true => fill::defaults(&mut edit, g),
+                false => Vec::new(),
+            };
+            let cut = write_geometry_cut(&mut out, role, entry, at, &edit)
                 .map_err(|e| format!("{named}: {e}"))?;
-            let written = write_geometry(&mut out, role, entry, at, &edit)
-                .map_err(|e| format!("{named}: {e}"))?;
+            let written = cut.written;
             before += g.vertex_count as usize;
             after += edit.positions.len();
             triangles += edit.triangles.len();
@@ -275,6 +315,13 @@ pub fn replace_gta6_mesh(
                 said.push(format!(
                     "channels {} kept as it held them",
                     carried.join(", ")
+                ));
+            }
+            if !filled.is_empty() {
+                let filled: Vec<String> = filled.iter().map(u8::to_string).collect();
+                said.push(format!(
+                    "channels {} filled with a stated default the mesh does not give",
+                    filled.join(", ")
                 ));
             }
             if !add.hashes.is_empty() {
@@ -304,7 +351,18 @@ pub fn replace_gta6_mesh(
             if written.root_reboxed {
                 said.push("the drawable's box and sphere derived again".to_string());
             }
+            if cut.pieces > 1 {
+                said.push(format!(
+                    "cut into {} geometries of at most 65,536 vertices, each after the first \
+                     taking its shader and its density words and a fresh content word at +0x30",
+                    cut.pieces
+                ));
+            }
             lines.push(said.join("; "));
+            if cut.pieces > 1 {
+                cuts.push((stated, cut.pieces - 1));
+                drawable = drawable_of(&out, role, entry)?;
+            }
         }
     }
     if taken.is_empty() {
@@ -513,6 +571,81 @@ mod tests {
         let triangles: Vec<[u32; 3]> = edited.indices.as_chunks::<3>().0.to_vec();
         assert_eq!(g.triangles, triangles);
         assert_eq!(write_rpf9_resource(&back).expect("again"), file);
+    }
+
+    #[test]
+    fn a_channel_the_mesh_omits_at_another_count_is_filled_only_when_asked() {
+        let sections = body();
+        let mut scene = through_gltf(&sections);
+        let p = &mut scene.objects[0].meshes[0].primitives[0];
+        p.positions.push([1.0, 1.0, 0.0]);
+        p.indices.extend([1, 3, 2]);
+        p.normals.clear();
+        p.uvs.clear();
+        let refused =
+            replace_gta6_mesh(&sections, Rpf9Role::Drawable, None, &scene).expect_err("refused");
+        assert!(refused.contains("channel 4"), "{refused}");
+        let (written, lines) =
+            replace_gta6_mesh_with(&sections, Rpf9Role::Drawable, None, &scene, true)
+                .expect("filled");
+        assert!(lines[0].contains("channels 4, 28 filled"), "{lines:?}");
+        let g = only(&written);
+        assert_eq!(g.vertex_count, 4);
+        assert_eq!(g.vertices.normals, vec![[0.0, 0.0, 1.0]; 4]);
+        assert_eq!(g.vertices.uvs, [(28, vec![[0.0, 0.0]; 4])]);
+
+        // At the geometry's own count the fill takes nothing: the channels are kept as held.
+        let (same, lines) = replace_gta6_mesh_with(
+            &sections,
+            Rpf9Role::Drawable,
+            None,
+            &through_gltf(&sections),
+            true,
+        )
+        .expect("replaced");
+        assert_eq!(same, sections);
+        assert!(!lines[0].contains("filled"), "{lines:?}");
+    }
+
+    #[test]
+    fn scan_import_fills_a_mesh_without_normals_only_under_fill_missing() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let sections = body();
+        let drawable = drawable_of(&sections, Rpf9Role::Drawable, None).expect("it reads");
+        let names = crate::gta6_export::Names {
+            effect: &|hash| format!("hash_{hash:08X}"),
+            texture: &|key| format!("hash_{key:016X}"),
+        };
+        let mut scene = crate::gta6_export::scene(&drawable, None, "tri", false, &names);
+        let p = &mut scene.objects[0].meshes[0].primitives[0];
+        p.positions.push([1.0, 1.0, 0.0]);
+        p.uvs[0].push([1.0, 1.0]);
+        p.indices.extend([1, 3, 2]);
+        p.normals.clear();
+        let (input, mesh, out) = (
+            dir.path().join("tri.rsc"),
+            dir.path().join("tri.glb"),
+            dir.path().join("out.rsc"),
+        );
+        let resource = write_rpf9_resource(&sections).expect("written");
+        fs::write(&input, resource).expect("written");
+        let glb = gltf::write(&scene, "tri", Container::Glb).primary;
+        fs::write(&mesh, glb).expect("written");
+        let words = [&input, &mesh, &out].map(|p| p.to_string_lossy().into_owned());
+        let mut args = vec![words[0].clone(), "0".to_string(), words[1].clone()];
+        args.push(words[2].clone());
+        let refused = cmd_scan_import(&args).expect_err("refused");
+        assert!(refused.contains("channel 4"), "{refused}");
+        assert!(!out.exists(), "nothing is written for a refusal");
+
+        args.push("--fill-missing".to_string());
+        cmd_scan_import(&args).expect("filled");
+        let saved = fs::read(&out).expect("the written resource");
+        let (find, bytes) = read_rpf9_body(Cursor::new(&saved), 0, u64::MAX).expect("it reads");
+        let back = Rpf9Sections::of(&find, &bytes).expect("a resource");
+        let g = only(&back);
+        assert_eq!(g.vertex_count, 4);
+        assert_eq!(g.vertices.normals, vec![[0.0, 0.0, 1.0]; 4]);
     }
 
     #[test]

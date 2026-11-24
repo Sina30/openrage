@@ -18,9 +18,12 @@ use super::write_physics::put;
 use super::HeaderlessError;
 use crate::container::rpf::{grow_section, Rpf9GrowError, Rpf9Role, Rpf9Section, Rpf9Sections};
 
+mod cut;
 mod reference;
 mod reference_cells;
 mod skin;
+
+pub use cut::{write_geometry_cut, GeometryCut};
 
 /// A vertex list's u16 entries name at most this many vertices.
 const MAX_VERTICES: usize = 0x1_0000;
@@ -63,7 +66,7 @@ pub struct GeometryEdit {
     pub normals: Vec<[f32; 3]>,
     /// Texcoord 0's tangent, `w` 1 where the cross product of normal and tangent runs along v.
     pub tangents: Vec<[f32; 4]>,
-    /// Texcoords by declaration channel, 28 to 32.
+    /// Texcoords by declaration channel, 28 to 33.
     pub uvs: Vec<(u8, Vec<[f32; 2]>)>,
     /// Colours by declaration channel, 24 to 26.
     pub colours: Vec<(u8, Vec<[f32; 4]>)>,
@@ -553,7 +556,7 @@ fn vertex_data(
                 let uvs = chosen(of_channel(&edit.uvs, c.index), read, n, c.index)?;
                 floats(uvs.iter().flatten())
             }
-            (28..=32, 0x26, 4) => {
+            (28..=33, 0x26, 4) => {
                 let read = of_channel(&v.uvs, c.index);
                 let uvs = chosen(of_channel(&edit.uvs, c.index), read, n, c.index)?;
                 elements(

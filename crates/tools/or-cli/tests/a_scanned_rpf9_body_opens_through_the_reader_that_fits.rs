@@ -567,9 +567,23 @@ fn a_gta_vi_archive_lists_as_json_and_by_family() {
             (offset, text("kind"), text("file").to_string())
         })
         .collect();
-    assert_eq!(found, listed);
+    // The nested archive whose names end it is given the file `rpf extract` writes of it.
+    let mut written = listed.clone();
+    let at = written.partition_point(|(offset, _, _)| *offset < NESTED);
+    written.insert(at, (NESTED, "archives", format!("{NESTED:#X}.rpf")));
+    assert_eq!(found, written);
     assert!(rows.iter().all(|b| b["kind"] == "archives"), "{rows:?}");
-    assert!(rows.iter().any(|b| b["offset"] == NESTED), "{rows:?}");
+    assert!(rows.iter().any(|b| b["offset"] == 0), "{rows:?}");
+    // The nested header with no names is the one `rpf extract` counts as left out; a names row,
+    // which ends an archive that is extracted, is not a header left out.
+    let unplaced = (rows.iter())
+        .filter(|b| b["offset"] != 0 && b["found_as"] == "archive")
+        .count();
+    assert_eq!(unplaced, 1, "{rows:?}");
+    let out = dir.path().join("out").display().to_string();
+    let (said, ok) = run(&["rpf", "extract", &archive, &out, "--dry-run"]);
+    let left_out = format!("{unplaced} nested archive(s) left out");
+    assert!(ok && said.contains(&left_out), "{said}");
 
     let document_at = listed[2].0;
     assert_eq!(body(document_at)["found_as"], "zlib xml");

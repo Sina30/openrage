@@ -487,6 +487,7 @@ impl AppState {
                 let (mesh, choice, handler) =
                     (asked.mesh.clone(), asked.choice.clone(), asked.handler);
                 let gta6 = asked.gta6.clone();
+                let fill = choice.fill_missing;
                 let doing = tr!(
                     "Replacing {name} from {mesh}",
                     name = name,
@@ -496,7 +497,7 @@ impl AppState {
                     doing,
                     Box::new(move |cancel| {
                         let made = match (&gta6, handler) {
-                            (Some(gta6), _) => match gta6.imported(&mesh, cancel) {
+                            (Some(gta6), _) => match gta6.imported(&mesh, fill, cancel) {
                                 // Stopped between two of its replacements.
                                 None => return None,
                                 Some(made) => made,

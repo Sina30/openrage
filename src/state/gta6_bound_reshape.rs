@@ -1,6 +1,6 @@
 //! A scanned GTA VI bound's collision reshaped where a count changes, one step of undo each: a
-//! geometry's primitive or vertex added or deleted, a child of a lone bound's composite copied or
-//! deleted, a primitive child given another type. A save makes each count change again on the
+//! geometry's primitive or vertex added or deleted, a child of a lone bound's or a drawable's
+//! composite copied or deleted, a primitive child given another type. A save makes each count change again on the
 //! body read again, before the values the document shows are written over it in place.
 
 use std::collections::BTreeMap;
@@ -25,19 +25,19 @@ use crate::state::{AppState, DocPayload, DocumentId};
 pub(crate) enum ReshapeEdit {
     /// Primitive `primitive` of geometry child `child` deleted.
     DeletePrimitive { child: usize, primitive: usize },
-    /// A triangle over `vertices` added to geometry child `child`, of material index `material`.
-    AddTriangle {
+    /// `primitive` added to geometry child `child`, of material index `material`.
+    AddPrimitive {
         child: usize,
-        vertices: [u16; 3],
+        primitive: Primitive,
         material: u8,
     },
     /// Vertex `vertex` of geometry child `child` deleted.
     DeleteVertex { child: usize, vertex: usize },
     /// A vertex at `position` added to geometry child `child`.
     AddVertex { child: usize, position: [f32; 3] },
-    /// Child `child` of a lone bound's composite deleted.
+    /// Child `child` of a lone bound's or a drawable's composite deleted.
     DeleteChild { child: usize },
-    /// Primitive child `child` of a lone bound's composite copied as its last.
+    /// Primitive child `child` of a lone bound's or a drawable's composite copied as its last.
     CopyChild { child: usize },
     /// Primitive child `child` given the type `kind`, filling its box.
     ChildType { child: usize, kind: u8 },
@@ -235,10 +235,14 @@ fn changed(
     holder: BoundHolder,
     edit: ReshapeEdit,
 ) -> Result<(Option<BoundReshape>, String, Change), String> {
+    // A drawable's lone bound reads as a composite of one child with no flag entry.
+    let lone_shape = b.children.len() == 1 && b.children[0].flags.is_none();
     let lone = || {
         match holder {
         BoundHolder::Bound => Ok(()),
-        _ => Err(tr!("Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child.").to_string()),
+        BoundHolder::Drawable if !lone_shape => Ok(()),
+        BoundHolder::Drawable => Err(tr!("A drawable's lone bound has no child added or deleted: the drawable points at its record.").to_string()),
+        BoundHolder::Fragment => Err(tr!("In a fragment each child of the composite is also a fragment child, so it is not added or deleted.").to_string()),
     }
     };
     Ok(match edit {
@@ -252,27 +256,26 @@ fn changed(
                 geometry_change(child, was),
             )
         }
-        ReshapeEdit::AddTriangle {
+        ReshapeEdit::AddPrimitive {
             child,
-            vertices,
+            primitive,
             material,
         } => {
             let g = geometry_in(b, child)?;
             let was = held(g);
-            let triangle = Primitive::Triangle {
-                vertices,
-                neighbours: [0xFFFF; 3],
-                edges: [0xFF; 3],
+            let at = add_bound_primitive(g, primitive, material).map_err(|e| e.to_string())?;
+            let record = g.primitives.get(at).copied().unwrap_or(primitive);
+            let label = match primitive {
+                Primitive::Triangle { .. } => tr!("Add triangle {primitive}", primitive = at),
+                _ => tr!("Add primitive {primitive}", primitive = at),
             };
-            let at = add_bound_primitive(g, triangle, material).map_err(|e| e.to_string())?;
-            let record = g.primitives.get(at).copied().unwrap_or(triangle);
             (
                 Some(BoundReshape::AddPrimitive {
                     child,
                     record,
                     material,
                 }),
-                tr!("Add triangle {primitive}", primitive = at),
+                label,
                 geometry_change(child, was),
             )
         }
@@ -330,7 +333,6 @@ fn changed(
             )
         }
         ReshapeEdit::ChildType { child, kind } => {
-            let lone_shape = b.children.len() == 1 && b.children[0].flags.is_none();
             if holder == BoundHolder::Drawable && lone_shape {
                 return Err(tr!(
                     "A drawable's lone bound keeps its type: the drawable points at its record."
@@ -568,5 +570,38 @@ mod tests {
         };
         assert!(!past.swap(&mut payload), "no child there");
         assert_eq!(first(&mut payload), Some((2, 1.0)), "and nothing changed");
+    }
+
+    #[test]
+    fn a_drawable_s_composite_has_a_child_copied_and_a_fragment_s_or_a_lone_shape_does_not() {
+        let child = |flags: Option<[u64; 2]>| BoundChild {
+            matrix: [[0.0; 4]; 4],
+            flags,
+            bound: Some(Ok(ChildBound::Box {
+                box_min: [0.0; 3],
+                box_max: [1.0; 3],
+            })),
+            material_id: None,
+        };
+        let bound = |children: Vec<BoundChild>| Bound {
+            radius: 1.0,
+            box_min: [0.0; 3],
+            box_max: [1.0; 3],
+            centroid: [0.5; 3],
+            children,
+            bvh: None,
+        };
+        let copy = ReshapeEdit::CopyChild { child: 0 };
+        let two = || bound(vec![child(Some([1, 0])), child(Some([2, 0]))]);
+        let mut b = two();
+        let made = changed(&mut b, BoundHolder::Drawable, copy).map(|(op, ..)| op);
+        assert_eq!(made, Ok(Some(BoundReshape::CopyChild { child: 0 })));
+        assert_eq!(b.children.len(), 3);
+        let mut b = two();
+        assert!(changed(&mut b, BoundHolder::Fragment, copy).is_err());
+        assert_eq!(b.children.len(), 2, "a fragment's children are its records");
+        let mut b = bound(vec![child(None)]);
+        assert!(changed(&mut b, BoundHolder::Drawable, copy).is_err());
+        assert_eq!(b.children.len(), 1, "the drawable points at its lone shape");
     }
 }

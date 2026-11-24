@@ -29,6 +29,8 @@ pub(super) fn draw_ypt_effect_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     effect_idx: usize,
 ) {
+    // A scanned GTA VI list holds no zoom level to write.
+    let zoom_field = !crate::state::gta6_particles::written_in_place(state, doc_id);
     let mut dirty = false;
     let before;
     {
@@ -64,7 +66,9 @@ pub(super) fn draw_ypt_effect_mut<T: ParticleTarget>(
             &mut dirty,
         );
         drag_i32(ui, "num_loops", &mut effect.num_loops, &mut dirty);
-        drag_f32(ui, "zoom_level", &mut effect.zoom_level, 0.01, &mut dirty);
+        if zoom_field {
+            drag_f32(ui, "zoom_level", &mut effect.zoom_level, 0.01, &mut dirty);
+        }
         drag_f32(
             ui,
             "playback_rate_min",
@@ -239,6 +243,8 @@ pub(super) fn draw_ypt_emitter_lib_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     idx: usize,
 ) {
+    // A scanned GTA VI list holds no one-shot flag to write.
+    let one_shot_field = !crate::state::gta6_particles::written_in_place(state, doc_id);
     let mut dirty = false;
     let before;
     {
@@ -308,7 +314,9 @@ pub(super) fn draw_ypt_emitter_lib_mut<T: ParticleTarget>(
             0.01,
             &mut dirty,
         );
-        check_bool8(ui, "is_one_shot", &mut rule.is_one_shot, &mut dirty);
+        if one_shot_field {
+            check_bool8(ui, "is_one_shot", &mut rule.is_one_shot, &mut dirty);
+        }
     }
     if dirty {
         super::ypt_steps::emitter::<T>(state, doc_id, idx, before);
@@ -380,7 +388,7 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
     doc_id: DocumentId,
     idx: usize,
 ) {
-    // A scanned GTA VI list holds no render state or shader instance to write.
+    // A scanned GTA VI list holds no draw type, flags, render state or shader instance to write.
     let render_fields = !crate::state::gta6_particles::written_in_place(state, doc_id);
     let mut dirty = false;
     let before;
@@ -415,24 +423,26 @@ pub(super) fn draw_ypt_particle_lib_mut<T: ParticleTarget>(
             &mut dirty,
         );
         drag_u8(ui, "sort_type", &mut rule.sort_type, 3, &mut dirty);
-        drag_u8(ui, "draw_type", &mut rule.draw_type, 4, &mut dirty);
-        let mut no_shadows = (rule.flags & 0x01) != 0;
-        let mut screen_space = (rule.flags & 0x02) != 0;
-        let mut no_fog = (rule.flags & 0x04) != 0;
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut no_shadows, "no_shadows").changed() {
-                rule.flags = (rule.flags & !0x01) | (no_shadows as u8);
-                dirty = true;
-            }
-            if ui.checkbox(&mut screen_space, "screen_space").changed() {
-                rule.flags = (rule.flags & !0x02) | ((screen_space as u8) << 1);
-                dirty = true;
-            }
-            if ui.checkbox(&mut no_fog, "no_fog").changed() {
-                rule.flags = (rule.flags & !0x04) | ((no_fog as u8) << 2);
-                dirty = true;
-            }
-        });
+        if render_fields {
+            drag_u8(ui, "draw_type", &mut rule.draw_type, 4, &mut dirty);
+            let mut no_shadows = (rule.flags & 0x01) != 0;
+            let mut screen_space = (rule.flags & 0x02) != 0;
+            let mut no_fog = (rule.flags & 0x04) != 0;
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut no_shadows, "no_shadows").changed() {
+                    rule.flags = (rule.flags & !0x01) | (no_shadows as u8);
+                    dirty = true;
+                }
+                if ui.checkbox(&mut screen_space, "screen_space").changed() {
+                    rule.flags = (rule.flags & !0x02) | ((screen_space as u8) << 1);
+                    dirty = true;
+                }
+                if ui.checkbox(&mut no_fog, "no_fog").changed() {
+                    rule.flags = (rule.flags & !0x04) | ((no_fog as u8) << 2);
+                    dirty = true;
+                }
+            });
+        }
         ui.horizontal(|ui| {
             ui.label("dict_hash");
             ui.label(

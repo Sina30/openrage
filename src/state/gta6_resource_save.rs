@@ -131,7 +131,12 @@ impl AppState {
             && (doc.path.as_deref()).is_some_and(super::rpf9_scan::opened_as_text);
         let item = match &doc.payload {
             super::DocPayload::Meta(meta) if xml => {
-                Ok(ExtractItem::bytes(name.clone(), meta.text.encode()))
+                // A GTA VI form's name comments are display-only; the file is the comment-free XML.
+                let bytes = match meta.comment_free_xml() {
+                    Some(xml) => xml.into_bytes(),
+                    None => meta.text.encode(),
+                };
+                Ok(ExtractItem::bytes(name.clone(), bytes))
             }
             // An edited text body is written in the encoding and line endings it was read with.
             super::DocPayload::Text(text) if edited_text => {

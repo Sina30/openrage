@@ -1034,6 +1034,25 @@ fn an_animation_its_set_does_not_own_is_refused() {
 }
 
 #[test]
+fn a_lone_set_root_whose_map_objects_it_does_not_own_is_refused_as_no_animation_set() {
+    let built = build(&Spec {
+        root: 0,
+        ..Spec::default()
+    });
+    let mut bytes = built.bytes;
+    let at = built.animation + 0x18;
+    let elsewhere = VIRTUAL + built.animation as u64;
+    bytes[at..at + 8].copy_from_slice(&elsewhere.to_le_bytes());
+    let word = u32::from_le_bytes(bytes[0x70..0x74].try_into().expect("four bytes"));
+    let error = refused(&bytes);
+    assert!(
+        matches!(error, AnimError::NotAnimationSet { word: w } if w == word),
+        "{error}"
+    );
+    assert!(error.to_string().contains("no animation set"), "{error}");
+}
+
+#[test]
 fn a_block_count_its_frames_do_not_give_is_refused() {
     let built = build(&Spec::default());
     let mut bytes = built.bytes;

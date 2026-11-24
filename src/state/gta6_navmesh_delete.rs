@@ -12,8 +12,8 @@ use or_io::container::rpf::Rpf9Sections;
 use or_io::gta5::navmesh::NO_NEIGHBOUR;
 use or_io::gta5::{CNavMesh, TAdjPoly, TNavMeshPoly};
 use or_io::gta6::headerless::{
-    delete_polygon, deletion, disable_polygon, disabling, read_navmesh, Border, NavMesh,
-    NavRebuild, NOWHERE,
+    delete_polygon, deletion, disable_polygon, disabling, read_navmesh, NavMesh, NavRebuild,
+    NOWHERE,
 };
 
 use super::edit_history::{Change, Swap};
@@ -75,16 +75,16 @@ impl Swap for CellPart {
     }
 }
 
-/// The open bodies of the cells across `cell`'s borders, which a deletion checks for links into
-/// it, or why it needs more of them.
+/// The open bodies of the cells across `cell`'s borders and at its corners, which a deletion checks
+/// for links into it, or why it needs more of them.
 fn others(
     cell: &NavMesh,
-    near: &[(Border, u32, Option<Arc<NavMesh>>)],
+    near: &[(u32, Option<Arc<NavMesh>>)],
     polygon: usize,
 ) -> Result<Vec<Arc<NavMesh>>, String> {
     let closed: Vec<String> = (near.iter())
-        .filter(|(_, _, body)| body.is_none())
-        .map(|(_, c, _)| c.to_string())
+        .filter(|(_, body)| body.is_none())
+        .map(|(c, _)| c.to_string())
         .collect();
     if !closed.is_empty() {
         return Err(tr!(
@@ -93,7 +93,7 @@ fn others(
             cells = closed.join(", ")
         ));
     }
-    let across: Vec<u32> = near.iter().map(|(_, c, _)| *c).collect();
+    let across: Vec<u32> = near.iter().map(|(c, _)| *c).collect();
     for (i, l) in cell.special_links.iter().enumerate() {
         for mesh in [l.from_mesh, l.to_mesh] {
             if mesh != cell.cell && mesh != NOWHERE && !across.contains(&mesh) {
@@ -106,10 +106,7 @@ fn others(
             }
         }
     }
-    Ok(near
-        .iter()
-        .filter_map(|(_, _, body)| body.clone())
-        .collect())
+    Ok(near.iter().filter_map(|(_, body)| body.clone()).collect())
 }
 
 impl AppState {
@@ -132,7 +129,7 @@ impl AppState {
         cell: &NavMesh,
         polygon: usize,
     ) -> Result<String, String> {
-        let near = super::gta6_navmesh::neighbours(path, cell);
+        let near = super::gta6_navmesh::linked_cells(path, cell);
         let open = others(cell, &near, polygon)?;
         let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
         let made = deletion(cell, polygon, &bodies).map_err(|e| e.to_string())?;
@@ -176,13 +173,13 @@ impl AppState {
         path: &Path,
         cell: &NavMesh,
         polygon: usize,
-        near: &[(Border, u32, Option<Arc<NavMesh>>)],
+        near: &[(u32, Option<Arc<NavMesh>>)],
     ) -> Option<Result<usize, String>> {
         // A body of no cell has no side record to chain again.
         if cell.cell == 0 {
             return None;
         }
-        let open: Vec<Arc<NavMesh>> = near.iter().filter_map(|(_, _, b)| b.clone()).collect();
+        let open: Vec<Arc<NavMesh>> = near.iter().filter_map(|(_, b)| b.clone()).collect();
         let bodies: Vec<&NavMesh> = open.iter().map(|b| &**b).collect();
         let made = match disabling(cell, polygon, &bodies) {
             Ok(made) if made.mesh.indices.len() == cell.indices.len() => return None,
@@ -191,8 +188,8 @@ impl AppState {
         };
         if made.records.len() < cell.polygons.len() {
             let closed: Vec<String> = (near.iter())
-                .filter(|(_, _, body)| body.is_none())
-                .map(|(_, c, _)| c.to_string())
+                .filter(|(_, body)| body.is_none())
+                .map(|(c, _)| c.to_string())
                 .collect();
             if !closed.is_empty() {
                 return Some(Err(tr!(
@@ -376,7 +373,7 @@ pub(super) fn write_deletions(
 #[cfg(test)]
 mod tests {
     use or_io::container::rpf::Rpf9Form;
-    use or_io::gta6::headerless::{NavDeleteError, SpecialLink};
+    use or_io::gta6::headerless::{Border, NavDeleteError, SpecialLink};
 
     use super::*;
     use crate::state::opening_an_rpf9_archive::{
@@ -412,26 +409,35 @@ mod tests {
     }
 
     #[test]
-    fn a_link_into_a_cell_across_no_border_is_named_and_the_body_s_own_rules_still_hold() {
+    fn a_link_into_a_corner_cell_is_taken_one_farther_is_named_and_the_body_s_own_rules_hold() {
         let mut m = cell();
-        let near: Vec<(Border, u32, Option<Arc<NavMesh>>)> =
-            [Border::East, Border::West, Border::North, Border::South]
-                .into_iter()
-                .filter_map(|b| Some((b, b.across(m.cell)?, Some(Arc::new(cell())))))
-                .collect();
-        let diagonal = m.cell + 512 + 1;
-        m.special_links.push(SpecialLink {
+        let near: Vec<(u32, Option<Arc<NavMesh>>)> = (Border::around(m.cell).into_iter())
+            .map(|c| (c, Some(Arc::new(cell()))))
+            .collect();
+        assert_eq!(near.len(), 8, "four borders and four corners");
+        let own = m.cell;
+        let link = |to_mesh| SpecialLink {
             from: [0; 3],
             to: [0; 3],
             from_polygon: 0,
             to_polygon: 0,
-            from_mesh: m.cell,
-            to_mesh: diagonal,
+            from_mesh: own,
+            to_mesh,
             word_18: 0,
             heading: 0,
-        });
+        };
+        let diagonal = m.cell + 512 + 1;
+        let farther = m.cell + 2;
+        m.special_links.push(link(diagonal));
+        let open = others(&m, &near, 0).expect("the corner cell's body is open");
+        assert_eq!(open.len(), near.len());
+        let mut closed = near.clone();
+        closed[4].1 = None;
+        let refused = others(&m, &closed, 0).unwrap_err();
+        assert!(refused.contains(&closed[4].0.to_string()), "{refused}");
+        m.special_links.push(link(farther));
         let refused = others(&m, &near, 0).unwrap_err();
-        assert!(refused.contains(&diagonal.to_string()), "{refused}");
+        assert!(refused.contains(&farther.to_string()), "{refused}");
         m.special_links.clear();
         let open = others(&m, &near, 0).expect("every border's body is open");
         assert_eq!(open.len(), near.len());

@@ -1,9 +1,9 @@
 //! A bound's collision reshaped where its arrays change length: a primitive or a vertex of a
-//! geometry with a BVH added or deleted, a child of a lone bound's composite copied or deleted, a
-//! primitive child given another type. What goes is taken out where it stands and the bytes after
+//! geometry with a BVH added or deleted, a child of a lone bound's or a drawable's composite copied
+//! or deleted, a primitive child given another type. What goes is taken out where it stands and the bytes after
 //! the array's new end are zeroed; what comes is laid out past the virtual section's end with the
-//! array it joins, so nothing already in the section moves. A geometry's +0x138 and +0x148 arrays,
-//! whose elements are not known, are kept as read.
+//! array it joins, so nothing already in the section moves. A geometry's +0x148 runs, which give
+//! each primitive an entry of its +0x138 key table, follow a primitive added or deleted.
 
 use std::cmp::Ordering;
 
@@ -11,6 +11,9 @@ use crate::container::rpf::{grow_section, Rpf9GrowError, Rpf9Section, Rpf9Sectio
 
 use super::bound::{bound_at, child_bound, COMPOSITE, GEOMETRY};
 use super::bytes::sections;
+use super::write_bound_runs::{
+    geometry_copied, geometry_value_copied, runs_after_add, runs_after_delete, NOT_COPIED,
+};
 use super::write_bound_vertex::item_box;
 use super::write_bvh::{corners, refit_composite, tree, union, Span, NODE};
 use super::write_physics::{local_box, put, put_shape, refuse};
@@ -321,10 +324,10 @@ pub fn delete_bound_child(b: &mut Bound, child: usize) -> Result<BoundChild> {
     Ok(taken)
 }
 
-/// A primitive shape's copy; `None` for a geometry.
+/// A shape's copy; `None` for a geometry with no BVH.
 fn copied(shape: &ChildBound) -> Option<ChildBound> {
     Some(match *shape {
-        ChildBound::Geometry(_) => return None,
+        ChildBound::Geometry(ref g) => return geometry_value_copied(g),
         ChildBound::Sphere { centre, radius } => ChildBound::Sphere { centre, radius },
         ChildBound::Capsule {
             box_min,
@@ -388,7 +391,7 @@ fn copied(shape: &ChildBound) -> Option<ChildBound> {
     })
 }
 
-/// Child `child` of `b`, a primitive, copied as `b`'s last child at its place; where the copy is.
+/// Child `child` of `b` copied as `b`'s last child at its place; where the copy is.
 pub fn copy_bound_child(b: &mut Bound, child: usize) -> Result<usize> {
     let c = (b.children.get(child)).ok_or(past("child to copy", child, b.children.len()))?;
     if b.children.len() >= usize::from(u16::MAX) {
@@ -397,7 +400,7 @@ pub fn copy_bound_child(b: &mut Bound, child: usize) -> Result<usize> {
     let shape = (c.bound.as_ref())
         .and_then(|s| s.as_ref().ok())
         .and_then(copied)
-        .ok_or(refuse(ONLY_PRIMITIVE))?;
+        .ok_or(refuse(NOT_COPIED))?;
     let copy = BoundChild {
         matrix: c.matrix,
         flags: c.flags,
@@ -488,6 +491,35 @@ pub fn retyped_bound_child(shape: &ChildBound, kind: u8) -> Result<ChildBound> {
     })
 }
 
+/// Refuses a child edit unless `holder` names a composite laid out as a lone bound's.
+// A fragment's composite children are also its child records. A drawable's composite passes where
+// its counts at +0x98 and +0x9A agree and +0x80 names +0x78's matrices, as a lone bound's do.
+fn child_holder(s: &Rpf9Sections, holder: BoundHolder) -> Result<()> {
+    if holder == BoundHolder::Bound {
+        return Ok(());
+    }
+    if holder == BoundHolder::Fragment {
+        return Err(refuse(
+            "a child of a fragment's composite is also a fragment child record, so it is not added or deleted",
+        ));
+    }
+    let at = holder.at(s)?;
+    let lone = sections(&s.virtual_section, Some(&[]), |b, _| {
+        if b.u8("bound type", at + 0x10)? != COMPOSITE {
+            return Ok(false);
+        }
+        let counts = b.u16("child count", at + 0x98)? == b.u16("child count", at + 0x9A)?;
+        let matrices = b.u64("child matrices", at + 0x78)? == b.u64("child matrices", at + 0x80)?;
+        Ok(counts && matrices)
+    })?;
+    match lone {
+        true => Ok(()),
+        false => Err(refuse(
+            "only a composite whose arrays are laid out as a lone bound's has a child added or deleted",
+        )),
+    }
+}
+
 /// `op` made to the bound `holder` names in `s`, or refused with `s` unchanged.
 pub fn reshape_bound_body(
     s: &mut Rpf9Sections,
@@ -498,11 +530,8 @@ pub fn reshape_bound_body(
         op,
         BoundReshape::DeleteChild { .. } | BoundReshape::CopyChild { .. }
     );
-    if child_op && holder != BoundHolder::Bound {
-        return Err(refuse(
-            "a child of a drawable's or a fragment's composite is also a fragment child record, so it is not added or deleted",
-        )
-        .into());
+    if child_op {
+        child_holder(s, holder)?;
     }
     let mut work = s.clone();
     let at = holder.at(&work)?;
@@ -510,6 +539,7 @@ pub fn reshape_bound_body(
         BoundReshape::DeletePrimitive { child, primitive } => {
             let c = child_record(&work.virtual_section, at, child)?;
             primitive_deleted(&mut work.virtual_section, c, primitive)?;
+            runs_after_delete(&mut work, c, primitive)?;
         }
         BoundReshape::AddPrimitive {
             child,
@@ -518,6 +548,7 @@ pub fn reshape_bound_body(
         } => {
             let c = child_record(&work.virtual_section, at, child)?;
             primitive_added(&mut work, c, &record, material)?;
+            runs_after_add(&mut work, c)?;
         }
         BoundReshape::DeleteVertex { child, vertex } => {
             let c = child_record(&work.virtual_section, at, child)?;
@@ -626,7 +657,7 @@ fn put_ptr(v: &mut [u8], at: usize, to: usize) -> Result<()> {
 
 /// Zeroed room for each of `lens` past the virtual section's end, each 16-aligned; where each
 /// starts.
-fn room(s: &mut Rpf9Sections, lens: &[usize]) -> Grown<Vec<usize>> {
+pub(super) fn room(s: &mut Rpf9Sections, lens: &[usize]) -> Grown<Vec<usize>> {
     let total: usize = lens.iter().map(|l| l.next_multiple_of(16)).sum();
     let mut grown = s.clone();
     let end = grown.virtual_section.len().next_multiple_of(16);
@@ -1210,8 +1241,13 @@ fn child_copied(s: &mut Rpf9Sections, at: usize, child: usize) -> Grown<()> {
     }
     let source = child_record(v, at, child)?;
     let kind = sections(v, Some(&[]), |b, _| b.u8("bound type", source + 0x10))?;
-    let size = record_size(kind).ok_or(refuse(ONLY_PRIMITIVE))?;
-    let copy = slice(v, source, size)?.to_vec();
+    let geometry = geometry_copied(s, source)?;
+    let v = &s.virtual_section;
+    let copy = match geometry {
+        Some(record) => record,
+        None => slice(v, source, record_size(kind).ok_or(refuse(ONLY_PRIMITIVE))?)?.to_vec(),
+    };
+    let size = copy.len();
     let mut pointers = slice(v, c.pointers, 8 * n)?.to_vec();
     let mut matrices = slice(v, c.matrices, 64 * n)?.to_vec();
     matrices.extend_from_within(64 * child..64 * (child + 1));

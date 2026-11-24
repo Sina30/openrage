@@ -528,6 +528,15 @@ pub fn run_extraction(
                 return Step::Failed(format!("{}: {e}", parent.display()));
             }
         }
+        // A scanned body its list gave an end is copied as a range, never held whole.
+        if let (ExtractSource::Scanned { archive, offset }, false) =
+            (&item.source, on_clash == OnClash::Save)
+        {
+            let copy = super::gta6_first_entry::copied;
+            if let Some(step) = copy(archive, *offset, &target, &item.rel_path, &cancel) {
+                return step;
+            }
+        }
         let write = |bytes: &[u8]| match on_clash {
             OnClash::Save => super::document_io::atomic_write_with_backup(&target, bytes),
             _ => std::fs::write(&target, bytes),

@@ -80,7 +80,7 @@ impl AppState {
         polygon: usize,
     ) -> Result<String, String> {
         let cut = polygon_cut(cell, polygon).map_err(|e| e.to_string())?;
-        let near = super::gta6_navmesh::neighbours(path, cell);
+        let near = super::gta6_navmesh::linked_cells(path, cell);
         let (cuts, in_place) = match self.disable_rechained(doc, path, cell, polygon, &near) {
             Some(made) => (made?, false),
             None => (self.cut_in_view(doc, &cut, polygon)?, true),
@@ -113,7 +113,7 @@ impl AppState {
             ));
         }
         let mut closed = Vec::new();
-        for (_, other, body) in &near {
+        for (other, body) in &near {
             let Some(body) = body else {
                 closed.push(*other as usize);
                 continue;

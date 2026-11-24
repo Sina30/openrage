@@ -187,6 +187,19 @@ impl Border {
         }
     }
 
+    /// The cells a link of `cell` may end in but its own: across each border, then each corner.
+    pub fn around(cell: u32) -> Vec<u32> {
+        let corners = [
+            (Self::East, Self::North),
+            (Self::East, Self::South),
+            (Self::West, Self::North),
+            (Self::West, Self::South),
+        ];
+        let sides = Self::ALL.into_iter().filter_map(|b| b.across(cell));
+        let corners = (corners.into_iter()).filter_map(|(a, b)| b.across(a.across(cell)?));
+        sides.chain(corners).collect()
+    }
+
     fn opposite(self) -> Self {
         match self {
             Self::East => Self::West,

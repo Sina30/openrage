@@ -17,6 +17,8 @@ pub mod hash;
 pub mod headerless;
 #[cfg(feature = "meta")]
 pub mod map;
+#[cfg(feature = "meta")]
+pub mod mission_other;
 pub mod mission_tables;
 pub mod move_network;
 pub mod names;

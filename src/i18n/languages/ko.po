@@ -15574,8 +15574,8 @@ msgstr "옮겨지지 않음: {held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "본문의 바이트를 확인합니다. GTA VI가 이를 불러오는지는 시험하지 않습니다."
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "메시가 가리키는 각 지오메트리는 위치, 노멀, 탄젠트, 텍스처 좌표, 색상, 삼각형을 받고, 가중치와 블렌드 인덱스를 메시의 조인트에서 받으며, 팔레트에 없는 본은 팔레트에 추가합니다. 다른 채널은 가진 그대로 유지되며, 원래 정점 수일 때만 가능합니다."
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks. A channel the mesh leaves out is kept as the geometry holds it at its own vertex count and refused at another, unless the box above is ticked: then a normal is filled with +Z, a tangent with +X, a colour with white, a UV with 0 and a skin with a whole weight on its first bone."
+msgstr "메시가 가리키는 각 지오메트리는 위치, 노멀, 탄젠트, 텍스처 좌표, 색상, 삼각형을 받고, 가중치와 블렌드 인덱스를 메시의 조인트에서 받으며, 팔레트에 없는 본은 팔레트에 추가합니다. 메시가 빠뜨린 채널은 원래 정점 수에서는 지오메트리가 가진 그대로 유지되고 다른 정점 수에서는 거부됩니다. 단, 위의 상자를 선택하면 노멀은 +Z, 탄젠트는 +X, 색상은 흰색, UV는 0, 스킨은 첫 번째 본에 가중치 전체로 채워집니다."
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "이 사전 항목은 열 때 읽을 수 있는 스켈레톤을 보유하지 않았으므로 편집할 본이 없습니다."
@@ -16396,9 +16396,6 @@ msgstr "GTA VI 파티클 목록의 어떤 규칙도 가지지 않은 클래스�
 msgid "Only a geometry child's primitives and vertices are added or deleted."
 msgstr "지오메트리 자식의 프리미티브와 버텍스만 추가하거나 삭제할 수 있습니다."
 
-msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
-msgstr "자식은 단독 바운드의 컴포지트에서만 추가하거나 삭제할 수 있습니다. 드로어블이나 프래그먼트에서는 각 자식이 프래그먼트 자식이기도 합니다."
-
 msgid "Delete primitive {primitive}"
 msgstr "프리미티브 {primitive} 삭제"
 
@@ -16459,9 +16456,6 @@ msgstr "자식 삭제"
 msgid "Delete the primitive"
 msgstr "프리미티브 삭제"
 
-msgid "Add a triangle"
-msgstr "삼각형 추가"
-
 msgid "Delete the vertex"
 msgstr "버텍스 삭제"
 
@@ -16482,3 +16476,35 @@ msgstr "(다른 모든 규칙에 이 클래스의 동작이 있습니다)"
 
 msgid "(the file holds no map here)"
 msgstr "(여기에는 파일에 쌍 표가 없습니다)"
+
+msgid "{size} bytes, halves at +0x00, +0x02 and +0x06 {first} {second} {fourth}, operators {operators}"
+msgstr "{size}바이트, +0x00, +0x02, +0x06의 하프워드 {first} {second} {fourth}, 연산자 {operators}"
+
+msgid "{words}, a curve over [{minimum}, {maximum}] with keys {keys}"
+msgstr "{words}, [{minimum}, {maximum}] 범위의 커브, 키 {keys}"
+
+msgid "Triangle"
+msgstr "삼각형"
+
+msgid "Add the primitive"
+msgstr "프리미티브 추가"
+
+msgid "Add primitive {primitive}"
+msgstr "프리미티브 {primitive} 추가"
+
+msgid "A drawable's lone bound has no child added or deleted: the drawable points at its record."
+msgstr "드로어블의 단독 바운드에는 자식을 추가하거나 삭제할 수 없습니다. 드로어블이 그 레코드를 가리키기 때문입니다."
+
+msgid "In a fragment each child of the composite is also a fragment child, so it is not added or deleted."
+msgstr "프래그먼트에서는 컴포지트의 각 자식이 프래그먼트 자식이기도 하므로 추가하거나 삭제할 수 없습니다."
+
+msgid "The elements do not read: {e}"
+msgstr "요소를 읽을 수 없습니다: {e}"
+
+msgid "at {at}: {class}"
+msgstr "{at}: {class}"
+
+msgid "{count} pair"
+msgid_plural "{count} pairs"
+msgstr[0] "쌍 {count}개"
+msgstr[1] "쌍 {count}개"

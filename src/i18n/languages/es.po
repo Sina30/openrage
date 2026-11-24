@@ -15574,8 +15574,8 @@ msgstr "no se transporta: {held}"
 msgid "This checks the body's bytes. It does not test that GTA VI loads them."
 msgstr "Esto comprueba los bytes del cuerpo. No prueba que GTA VI los cargue."
 
-msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks; its other channels are kept as it holds them, and only at its own vertex count."
-msgstr "Cada geometría que nombra la malla toma sus posiciones, normales, tangentes, coordenadas de textura, colores y triángulos, y sus pesos e índices de mezcla de las articulaciones de la malla, añadiendo a su paleta un hueso que le falta; sus demás canales se conservan como los tiene, y solo con su propio número de vértices."
+msgid "Each geometry the mesh names takes its positions, normals, tangents, texcoords, colours and triangles, and its weights and blend indices from the mesh's joints, adding to its palette a bone it lacks. A channel the mesh leaves out is kept as the geometry holds it at its own vertex count and refused at another, unless the box above is ticked: then a normal is filled with +Z, a tangent with +X, a colour with white, a UV with 0 and a skin with a whole weight on its first bone."
+msgstr "Cada geometría que nombra la malla toma sus posiciones, normales, tangentes, coordenadas de textura, colores y triángulos, y sus pesos e índices de mezcla de las articulaciones de la malla, añadiendo a su paleta un hueso que le falta. Un canal que la malla omite se conserva como lo tiene la geometría con su propio número de vértices y se rechaza con otro, salvo que la casilla de arriba esté marcada: entonces una normal se rellena con +Z, una tangente con +X, un color con blanco, una UV con 0 y un skin con todo el peso en su primer hueso."
 
 msgid "This dictionary entry held no skeleton that read when it opened, so it has no bones to edit."
 msgstr "Esta entrada del diccionario no tenía ningún esqueleto legible al abrirse, así que no tiene huesos que editar."
@@ -16396,9 +16396,6 @@ msgstr "Una regla recibió un comportamiento de una clase que ninguna regla de l
 msgid "Only a geometry child's primitives and vertices are added or deleted."
 msgstr "Solo se agregan o eliminan las primitivas y los vértices de un hijo de geometría."
 
-msgid "Only a lone bound's composite has a child added or deleted: in a drawable or a fragment each child is also a fragment child."
-msgstr "Solo al composite de un bound independiente se le agrega o elimina un hijo: en un drawable o un fragmento cada hijo es también un hijo del fragmento."
-
 msgid "Delete primitive {primitive}"
 msgstr "Eliminar la primitiva {primitive}"
 
@@ -16459,9 +16456,6 @@ msgstr "Eliminar el hijo"
 msgid "Delete the primitive"
 msgstr "Eliminar la primitiva"
 
-msgid "Add a triangle"
-msgstr "Agregar un triángulo"
-
 msgid "Delete the vertex"
 msgstr "Eliminar el vértice"
 
@@ -16482,3 +16476,35 @@ msgstr "(todas las demás reglas tienen uno de su clase)"
 
 msgid "(the file holds no map here)"
 msgstr "(el archivo no contiene aquí ninguna tabla de pares)"
+
+msgid "{size} bytes, halves at +0x00, +0x02 and +0x06 {first} {second} {fourth}, operators {operators}"
+msgstr "{size} bytes, mitades en +0x00, +0x02 y +0x06 {first} {second} {fourth}, operadores {operators}"
+
+msgid "{words}, a curve over [{minimum}, {maximum}] with keys {keys}"
+msgstr "{words}, una curva sobre [{minimum}, {maximum}] con las claves {keys}"
+
+msgid "Triangle"
+msgstr "Triángulo"
+
+msgid "Add the primitive"
+msgstr "Agregar la primitiva"
+
+msgid "Add primitive {primitive}"
+msgstr "Agregar la primitiva {primitive}"
+
+msgid "A drawable's lone bound has no child added or deleted: the drawable points at its record."
+msgstr "Al bound único de un drawable no se le agrega ni elimina ningún hijo: el drawable apunta a su registro."
+
+msgid "In a fragment each child of the composite is also a fragment child, so it is not added or deleted."
+msgstr "En un fragmento, cada hijo del composite es también un hijo del fragmento, así que no se agrega ni se elimina."
+
+msgid "The elements do not read: {e}"
+msgstr "Los elementos no se leen: {e}"
+
+msgid "at {at}: {class}"
+msgstr "en {at}: {class}"
+
+msgid "{count} pair"
+msgid_plural "{count} pairs"
+msgstr[0] "{count} par"
+msgstr[1] "{count} pares"

@@ -9,6 +9,7 @@ use or_io::gta6::move_network::{
     MoveTransition, StopReason,
 };
 use or_io::gta6::other_bodies::{Gta6HeightGrid, Gta6HeightMap, OtherBody, SpanGrid};
+use or_io::mrf::{Operation, Operator};
 
 use super::document::DocPayload;
 use super::rpf9_scan::View;
@@ -323,7 +324,7 @@ fn condition_line_with(c: &MoveCondition, hash: impl Fn(u32) -> String) -> Strin
     }
 }
 
-/// The hashes a state binds to one child, inputs from groups A and B.
+/// The records a state binds to one child, inputs from groups A and B, and its operations.
 fn binding_line(binding: &Binding) -> String {
     let inputs: Vec<[u32; 4]> = (binding.inputs_a.iter())
         .chain(&binding.inputs_b)
@@ -335,11 +336,11 @@ fn binding_line(binding: &Binding) -> String {
         inputs = hashes(&inputs),
         outputs = hashes(&binding.outputs),
         events = hashes(&binding.events),
-        operations = binding.operations.len(),
+        operations = operations_line(&binding.operations),
     )
 }
 
-/// Each record's first word as `named` names a hash, or a dash for none.
+/// Each record's first word as `named` names a hash and its further words as stored, or a dash.
 fn hashes<const N: usize>(records: &[[u32; N]]) -> String {
     hashes_with(records, named)
 }
@@ -349,9 +350,57 @@ fn hashes_with<const N: usize>(records: &[[u32; N]], hash: impl Fn(u32) -> Strin
         return "-".to_string();
     }
     (records.iter())
-        .map(|r| hash(r[0]))
+        .map(|r| {
+            let rest: Vec<String> = r[1..].iter().map(|w| format!("{w:08X}")).collect();
+            format!("{} [{}]", hash(r[0]), rest.join(" "))
+        })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Each operation in brackets, its words as stored and a curve as read, or a dash for none.
+fn operations_line(operations: &[Operation]) -> String {
+    if operations.is_empty() {
+        return "-".to_string();
+    }
+    (operations.iter())
+        .map(|op| format!("[{}]", operation_line(op)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// An operation's size, its three other halves and its operators; no half's role is known.
+fn operation_line(op: &Operation) -> String {
+    let operators: Vec<String> = op.operators.iter().map(operator_line).collect();
+    tr!(
+        "{size} bytes, halves at +0x00, +0x02 and +0x06 {first} {second} {fourth}, operators {operators}",
+        size = op.size,
+        first = format!("{:04X}", op.node_index),
+        second = format!("{:04X}", op.type_index),
+        fourth = format!("{:04X}", op.index),
+        operators = operators.join(", "),
+    )
+}
+
+/// An operator's type and packet words, then a curve's range and keys as read.
+fn operator_line(o: &Operator) -> String {
+    let words = format!("{:08X} {:08X}", o.operator_type, o.packet);
+    let Some(curve) = &o.fcurve else {
+        return words;
+    };
+    let keys: Vec<String> = (curve.keyframes.iter())
+        .map(|k| {
+            let [c0, c1] = k.constants;
+            format!("({:08X} {} {c0} {c1})", k.keyframe_type, k.key)
+        })
+        .collect();
+    tr!(
+        "{words}, a curve over [{minimum}, {maximum}] with keys {keys}",
+        words = words,
+        minimum = curve.minimum,
+        maximum = curve.maximum,
+        keys = keys.join(" "),
+    )
 }
 
 /// A node's kind and id, for a node read or reached; its offset for any other.
@@ -509,7 +558,11 @@ mod tests {
         };
         assert_eq!(
             hashes_with(&[[7u32, 1, 2, 3], [9, 0, 0, 0]], text),
-            "speed (from the text), hash_00000009"
+            "speed (from the text) [00000001 00000002 00000003], hash_00000009 [00000000 00000000 00000000]"
+        );
+        assert_eq!(
+            hashes_with(&[[7u32, 1]], text),
+            "speed (from the text) [00000001]"
         );
         let none: [[u32; 2]; 0] = [];
         assert_eq!(hashes_with(&none, text), "-");
@@ -530,6 +583,65 @@ mod tests {
             format!("words from +0x00 to +0x48 as stored: {}", shown.join(" "))
         );
         assert!(shown[4] == "0000004C" && shown[18] == "FFFFFFB8");
+    }
+
+    #[test]
+    fn a_binding_shows_its_further_words_and_its_operations_as_stored() {
+        let curve = or_io::mrf::FCurve {
+            minimum: -1.0,
+            maximum: 1.0,
+            keyframes_offset: 4,
+            keyframes: vec![or_io::mrf::Keyframe {
+                keyframe_type: 2,
+                key: 0.5,
+                constants: [1.0, 0.25],
+            }],
+        };
+        let operators = vec![
+            Operator {
+                operator_type: Operator::FCURVE,
+                packet: 4,
+                fcurve: Some(curve),
+            },
+            Operator {
+                operator_type: Operator::END,
+                packet: 0,
+                fcurve: None,
+            },
+        ];
+        let operation = Operation {
+            node_index: 1,
+            type_index: 0x2A,
+            size: 0x30,
+            index: 3,
+            operators,
+        };
+        let binding = Binding {
+            child: 2,
+            inputs_a: vec![[7, 1, 0, 0]],
+            inputs_b: Vec::new(),
+            outputs: Vec::new(),
+            events: vec![[7, 1]],
+            operations: vec![operation],
+        };
+        let line = binding_line(&binding);
+        assert!(
+            line.contains("inputs hash_00000007 [00000001 00000000 00000000], outputs -"),
+            "{line}"
+        );
+        assert!(line.contains("events hash_00000007 [00000001]"), "{line}");
+        let op = format!(
+            "[{} bytes, halves at +0x00, +0x02 and +0x06 0001 002A 0003, operators \
+             00000005 00000004, a curve over [-1, 1] with keys (00000002 0.5 1 0.25), \
+             00000000 00000000]",
+            0x30
+        );
+        assert!(line.ends_with(&format!("with operations {op}")), "{line}");
+        let none = Binding {
+            operations: Vec::new(),
+            ..binding
+        };
+        assert!(binding_line(&none).ends_with("with operations -"));
     }
 
     #[test]

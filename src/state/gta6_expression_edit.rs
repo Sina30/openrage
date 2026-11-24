@@ -261,7 +261,7 @@ mod tests {
         ));
 
         // A group whose tracks do not change, a twice-stated id and no track are refused.
-        assert!(!state.add_gta6_expression_track(doc, ExpressionGroup::Bones, 0, 0xB1));
+        assert!(!state.add_gta6_expression_track(doc, ExpressionGroup::FacialOutputs, 0, 0xD1));
         assert!(!state.add_gta6_expression_track(doc, ExpressionGroup::Inputs, 0, 0xA3));
         assert!(!state.remove_gta6_expression_track(doc, ExpressionGroup::Inputs, 9));
         assert_eq!(ids(&state, doc), [0xA2, 0xA3, 0xA4]);

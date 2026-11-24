@@ -245,6 +245,41 @@ fn an_added_triangle_links_across_the_edges_it_shares_and_joins_the_last_leaf() 
 }
 
 #[test]
+fn an_added_sphere_is_stored_as_its_record_and_joins_the_last_leaf() {
+    let (mut s, child, _) = two_triangles();
+    let mut edited = read_bound(&s.virtual_section).expect("the bound reads");
+    let sphere = Primitive::Sphere {
+        centre: 0,
+        radius: 0.5,
+    };
+    let g = geometry_of(&mut edited);
+    assert_eq!(
+        add_bound_primitive(g, sphere, 0).expect("inside the box"),
+        2
+    );
+    let op = BoundReshape::AddPrimitive {
+        child: 0,
+        record: sphere,
+        material: 0,
+    };
+    reshape_bound_body(&mut s, BoundHolder::Bound, &op).expect("laid out past the end");
+    let read = only_geometry(&s.virtual_section).expect("it reads back");
+    assert_eq!(read.primitives, geometry_of(&mut edited).primitives);
+    assert_eq!(read.primitives[2], sphere);
+    assert_eq!(u32_at(&s.virtual_section, child + 0xD4), 3);
+    let bvh = read.bvh.expect("a BVH");
+    assert_eq!((bvh.nodes, bvh.leaves), (3, 2), "the last leaf holds both");
+    let past = Primitive::Sphere {
+        centre: 0,
+        radius: 3.0,
+    };
+    assert!(
+        add_bound_primitive(geometry_of(&mut edited), past, 0).is_err(),
+        "past the child's box"
+    );
+}
+
+#[test]
 fn an_added_vertex_is_placed_by_the_save_s_move_and_a_named_one_is_not_deleted() {
     let (mut s, child, _) = two_triangles();
     let mut edited = read_bound(&s.virtual_section).expect("the bound reads");
@@ -315,6 +350,12 @@ fn an_edit_that_lays_out_bytes_in_a_body_with_no_block_map_is_refused_and_change
 /// under a BVH of a parent over a leaf each, the leaves naming the children in reverse.
 fn two_boxes() -> Rpf9Sections {
     let mut img = Image::default();
+    let root = boxes_into(&mut img);
+    mapped(img, root)
+}
+
+/// The composite of [`two_boxes`] laid out in `img`; where its root lies.
+fn boxes_into(img: &mut Image) -> usize {
     let root = img.alloc(0xB0);
     img.bytes[root + 0x10] = COMPOSITE;
     img.bytes[root + 0x11] = 1;
@@ -369,7 +410,7 @@ fn two_boxes() -> Rpf9Sections {
     img.u32(bvh + 0x58, 3);
     img.u32(bvh + 0x5C, 3);
     img.ptr(root + 0xA0, bvh);
-    mapped(img, root)
+    root
 }
 
 #[test]
@@ -407,9 +448,10 @@ fn a_copied_child_is_the_composite_s_last_at_its_place_with_a_leaf_of_its_own() 
     assert_eq!(u16::from_le_bytes([v[nodes + 0xC], v[nodes + 0xD]]), 5);
 
     let mut lone = read_bound(&two_triangles().0.virtual_section).expect("it reads");
+    geometry_of(&mut lone).bvh = None;
     assert!(
         copy_bound_child(&mut lone, 0).is_err(),
-        "a geometry's arrays are its own"
+        "a geometry with no BVH is not copied"
     );
 }
 
@@ -482,3 +524,82 @@ fn a_child_given_another_type_is_laid_out_anew_at_that_type_s_size() {
     write_retyped(&mut s, BoundHolder::Bound, &edited).expect("no type changes now");
     assert_eq!(s, before);
 }
+
+/// A drawable whose 0xC8 names the composite of [`two_boxes`]: its sections, and where the
+/// composite lies.
+fn drawable_with_boxes() -> (Rpf9Sections, usize) {
+    let (mut img, phys, parts) = drawable([1.0, 1.0, 0.0]);
+    let root = boxes_into(&mut img);
+    img.ptr(parts.root + 0xC8, root);
+    let s = Rpf9Sections {
+        form: Rpf9Form::BlockMapped,
+        virtual_section: img.bytes,
+        physical: phys,
+    };
+    (s, root)
+}
+
+fn drawable_bound(s: &Rpf9Sections) -> Bound {
+    BoundHolder::Drawable
+        .read(s)
+        .expect("the drawable's composite reads")
+}
+
+#[test]
+fn a_drawable_s_composite_has_a_child_copied_and_deleted_as_a_lone_bound_s() {
+    let (mut s, root) = drawable_with_boxes();
+    let mut edited = drawable_bound(&s);
+    assert_eq!(
+        copy_bound_child(&mut edited, 1).expect("a primitive child"),
+        2
+    );
+    let op = BoundReshape::CopyChild { child: 1 };
+    reshape_bound_body(&mut s, BoundHolder::Drawable, &op).expect("laid out past the end");
+    let read = drawable_bound(&s);
+    assert_eq!(read.children.len(), 3);
+    assert_eq!(read.children[2].matrix, read.children[1].matrix);
+    assert_eq!(read.children[2].flags, Some([0x22, 0]));
+    assert_eq!(read.bvh.map(|b| (b.nodes, b.leaves)), Some((5, 3)));
+    let v = &s.virtual_section;
+    assert_eq!(
+        target(v, root + 0x78),
+        target(v, root + 0x80),
+        "one array of matrices"
+    );
+
+    let op = BoundReshape::DeleteChild { child: 0 };
+    reshape_bound_body(&mut s, BoundHolder::Drawable, &op).expect("taken out where it stands");
+    let read = drawable_bound(&s);
+    assert_eq!(read.children.len(), 2);
+    for c in &read.children {
+        assert_eq!((c.flags, c.matrix[3][0]), (Some([0x22, 0]), 2.0));
+    }
+    assert_eq!(read.bvh.map(|b| (b.nodes, b.leaves)), Some((3, 2)));
+}
+
+#[test]
+fn a_child_edit_is_refused_where_a_drawable_s_bound_is_not_laid_out_as_a_lone_bound_s() {
+    let refused = |s: &mut Rpf9Sections| {
+        let kept = s.clone();
+        let op = BoundReshape::CopyChild { child: 0 };
+        let err = reshape_bound_body(s, BoundHolder::Drawable, &op).expect_err("refused");
+        assert_eq!(*s, kept, "{err}");
+        err.to_string()
+    };
+    // +0x80 null: the reader takes it, and no lone bound is so laid out.
+    let (mut s, root) = drawable_with_boxes();
+    s.virtual_section[root + 0x80..root + 0x88].fill(0);
+    drawable_bound(&s);
+    assert!(refused(&mut s).contains("lone bound's"));
+
+    // A box alone at 0xC8, which the reader takes as a composite of it.
+    let (mut s, root) = drawable_with_boxes();
+    let first = target(&s.virtual_section, target(&s.virtual_section, root + 0x70));
+    let word = (0x5000_0000 + first as u64).to_le_bytes();
+    s.virtual_section[0xC8..0xD0].copy_from_slice(&word);
+    assert_eq!(drawable_bound(&s).children.len(), 1);
+    assert!(refused(&mut s).contains("lone bound's"));
+}
+
+#[path = "write_bound_runs.rs"]
+mod write_bound_runs;
