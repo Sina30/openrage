@@ -135,7 +135,7 @@ type LaidFor = (u64, [u32; 16], u64, u32, u32, Option<u32>);
 
 /// What the day was worked out for: the hour, the days, the weather, the camera's place north
 /// in hundreds of metres, whether the install's tables gave one, and the exposure the frame metered.
-type DayFor = (u32, u32, WeatherState, i32, bool, u32);
+type DayFor = (u32, u32, WeatherState, i32, bool, u32, usize);
 
 #[derive(Default)]
 pub(super) struct WorldGpu {
@@ -445,6 +445,9 @@ impl RenderBridge {
             (eye.y / 100.0).round() as i32,
             day.is_some(),
             exposure.to_bits(),
+            // A sky table worked out on a worker arrives some frames after the moment that asked for it.
+            (day.as_ref().and_then(|d| d.sky_view.as_ref()))
+                .map_or(0, |v| Arc::as_ptr(&v.radiance) as usize),
         );
         if world.day != Some(day_for) {
             world.day = Some(day_for);

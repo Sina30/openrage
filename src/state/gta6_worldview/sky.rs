@@ -277,7 +277,7 @@ fn hemisphere_radiance(radiance: &[[f32; 3]]) -> [f32; 3] {
 }
 
 /// What the sky's radiance table is worked out from.
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 struct SkyOf {
     air: Atmosphere,
     sun: [f32; 3],
@@ -288,10 +288,12 @@ struct SkyOf {
     height: i32,
 }
 
-/// The sky's radiance in every way of the table at `moment` for a camera `height` metres above the sea: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour; worked out again only when one of those changes.
+/// The table last worked out, and the worker's: the table it is working out and the one asked for next.
+static TABLE: Mutex<Option<(SkyOf, Radiance)>> = Mutex::new(None);
+static WORK: Mutex<(Option<SkyOf>, Option<SkyOf>)> = Mutex::new((None, None));
+
+/// The sky's radiance in every way of the table at `moment` for a camera `height` metres above the sea: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour. The first table is worked out at once; a later one on a worker, the last shown until it is ready.
 fn sky_radiance(moment: &Moment, height: f32) -> Radiance {
-    // ponytail: one table held, a few tenths of a second to work out on the frame's thread; per moment it changes with the hour, the weather and a climb of a step.
-    static HELD: Mutex<Option<(SkyOf, Radiance)>> = Mutex::new(None);
     let own = &moment.own;
     let of = SkyOf {
         height: (height.max(0.0) / HEIGHT_STEP).round() as i32,
@@ -305,10 +307,47 @@ fn sky_radiance(moment: &Moment, height: f32) -> Radiance {
         ],
         tint: ["r", "g", "b"].map(|c| own.get_or(&format!("sky_scattering_sky_col_{c}"), 1.0)),
     };
-    let mut held = HELD.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some((_, table)) = held.as_ref().filter(|(was, _)| *was == of) {
-        return Arc::clone(table);
+    let mut held = TABLE.lock().unwrap_or_else(|p| p.into_inner());
+    let last = match held.as_ref() {
+        Some((was, table)) if *was == of => return Arc::clone(table),
+        Some((_, table)) => Arc::clone(table),
+        None => {
+            let table = worked_out(&of);
+            *held = Some((of, Arc::clone(&table)));
+            return table;
+        }
+    };
+    drop(held);
+    let mut work = WORK.lock().unwrap_or_else(|p| p.into_inner());
+    let (working, wanted) = &mut *work;
+    if working.as_ref() != Some(&of) && wanted.as_ref() != Some(&of) {
+        *wanted = Some(of);
+        if working.is_none() {
+            std::thread::spawn(work_through);
+        }
     }
+    last
+}
+
+/// Work out the tables asked for, one after another, until none is.
+fn work_through() {
+    loop {
+        let next = {
+            let mut work = WORK.lock().unwrap_or_else(|p| p.into_inner());
+            let next = work.1.take();
+            work.0.clone_from(&next);
+            next
+        };
+        let Some(of) = next else {
+            return;
+        };
+        let table = worked_out(&of);
+        *TABLE.lock().unwrap_or_else(|p| p.into_inner()) = Some((of, table));
+    }
+}
+
+/// The table `of` states, a few tenths of a second's work.
+fn worked_out(of: &SkyOf) -> Radiance {
     // A body far under the horizon lights no air the camera sees.
     let lit = |body: [f32; 3], lux: f32| lux > 0.0 && body[2] > LOWEST_BODY;
     let bodies: Vec<([f32; 3], f32)> = [(of.sun, of.illuminance[0]), (of.moon, of.illuminance[1])]
@@ -316,7 +355,7 @@ fn sky_radiance(moment: &Moment, height: f32) -> Radiance {
         .filter(|(body, lux)| lit(*body, *lux))
         .collect();
     let metres = f64::from(of.height) * f64::from(HEIGHT_STEP);
-    let table = SkyView::of(
+    SkyView::of(
         |view| {
             let mut sum = [0.0f32; 3];
             for (body, lux) in &bodies {
@@ -327,9 +366,7 @@ fn sky_radiance(moment: &Moment, height: f32) -> Radiance {
         },
         1.0,
     )
-    .radiance;
-    *held = Some((of, Arc::clone(&table)));
-    table
+    .radiance
 }
 
 /// What a light the game states in its own unit is multiplied by to be the frame's at `hour` in `weather` for a camera `y` metres north: the moment's exposure over pi, and the old stand-in where no GTA VI day is read.
