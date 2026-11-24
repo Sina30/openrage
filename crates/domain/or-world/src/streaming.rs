@@ -124,6 +124,12 @@ pub struct View {
     pub fade: [f32; Level::COUNT],
 }
 
+/// How far ahead in time a selection asks for what the camera's velocity brings into range, in
+/// seconds, and the most it takes the camera to move in that time, in metres.
+// ponytail: about what a model takes from asked to drawn on a machine at rest, not read from the game; the time each read takes if the flights show it short.
+pub const AHEAD: f32 = 1.0;
+pub const MOST_AHEAD: f32 = 150.0;
+
 impl View {
     /// A camera at rest at `eye`, every level scaled by `scale` and fading out over [`FADE`].
     pub fn at(eye: Vec3, scale: f32) -> Self {
@@ -133,6 +139,11 @@ impl View {
             scales: [scale; Level::COUNT],
             fade: [FADE; Level::COUNT],
         }
+    }
+
+    /// Where the camera is [`AHEAD`] seconds on at its velocity, at most [`MOST_AHEAD`] metres on.
+    pub fn lead(&self) -> Vec3 {
+        self.eye + (self.velocity * AHEAD).clamp_length_max(MOST_AHEAD)
     }
 }
 
@@ -311,6 +322,8 @@ pub struct Selection {
     pub skipped: Vec<u32>,
     /// The nodes in range whose model is loading, nearest ancestors first.
     pub wanted: Vec<NodeId>,
+    /// The nodes out of range whose model is loading that the camera's velocity brings into range at [`View::lead`].
+    pub ahead: Vec<NodeId>,
     /// Whether a fade in time is under way: the next selection differs though nothing moves.
     pub fading: bool,
 }
@@ -543,9 +556,11 @@ impl Forest {
         });
         let timed = steady && view.velocity.length() <= FADE_MAX_SPEED;
         self.last = Some((view.eye, view.scales));
+        let lead = view.lead();
         let mut pass = Pass {
             forest: self,
             view,
+            lead: (lead != view.eye).then_some(lead),
             timed,
             state,
             out: Selection::default(),
@@ -561,6 +576,8 @@ impl Forest {
 struct Pass<'a> {
     forest: &'a mut Forest,
     view: &'a View,
+    /// Where the camera will be, where it moves.
+    lead: Option<Vec3>,
     /// Whether anything fades in time this selection.
     timed: bool,
     state: &'a dyn Fn(NodeId) -> NodeState,
@@ -572,18 +589,20 @@ impl Pass<'_> {
         *self.forest.node_at(&self.forest.links, at as usize)
     }
 
-    /// How far the camera is from node `at`'s position: a list's is its box's centre.
-    fn away(&self, at: u32) -> f32 {
-        self.view.eye.distance(self.node(at).position)
-    }
-
-    /// How far the camera is from what node `at` is judged by: its parent where it is an entity
-    /// that stands in for the whole of one, itself otherwise.
-    fn judged(&self, at: u32) -> f32 {
+    /// How far a camera at `eye` is from what node `at` is judged by: its parent where it is an
+    /// entity that stands in for the whole of one, itself otherwise; a list's place is its box's centre.
+    fn judged(&self, at: u32, eye: Vec3) -> f32 {
         let parent = self.forest.links.parent[at as usize];
         let node = self.node(at);
         let from_parent = parent != NONE && node.instance.is_none() && node.extent == Extent::Point;
-        self.away(if from_parent { parent } else { at })
+        eye.distance(self.node(if from_parent { parent } else { at }).position)
+    }
+
+    /// Whether node `at` is loading and out of range now but in range where the camera will be.
+    fn ahead(&self, at: u32) -> bool {
+        self.lead
+            .is_some_and(|lead| self.by_distance_from(at, lead) > 0.0)
+            && (self.state)(self.forest.id_of(at)) == NodeState::Loading
     }
 
     /// How far node `at` draws whole, by its scale.
@@ -609,8 +628,13 @@ impl Pass<'_> {
     /// How opaque the distance alone makes node `at`: whole within the distance it draws to, and
     /// gone its band past it, in steps of 1/255.
     fn by_distance(&self, at: u32) -> f32 {
+        self.by_distance_from(at, self.view.eye)
+    }
+
+    /// [`Pass::by_distance`] for a camera at `eye`.
+    fn by_distance_from(&self, at: u32, eye: Vec3) -> f32 {
         let band = self.band(at);
-        let share = ((self.reach(at) + band - self.judged(at)) / band).clamp(0.0, 1.0);
+        let share = ((self.reach(at) + band - self.judged(at, eye)) / band).clamp(0.0, 1.0);
         // ⚠ The step is taken down from a fifth of a hundredth of a step above: a node just short of its band's end draws nothing.
         (0.0255 + 255.0 * share).floor() / 255.0
     }
@@ -658,6 +682,8 @@ impl Pass<'_> {
             // ⚠ A child that holds its parent is waited for though its own children leave it nothing to draw.
             if alpha > 0.0 && loading {
                 self.out.wanted.push(id);
+            } else if alpha <= 0.0 && self.ahead(child) {
+                self.out.ahead.push(id);
             }
             (most, found, held) = (most.max(alpha), found + 1, held || (alpha > 0.0 && loading));
             child = self.next_sibling(child);
@@ -670,6 +696,10 @@ impl Pass<'_> {
         }
         let own = self.by_distance(at);
         if own <= 0.0 {
+            // A child was looked ahead for by its parent's pass.
+            if self.forest.links.parent[at as usize] == NONE && self.ahead(at) {
+                self.out.ahead.push(self.forest.id_of(at));
+            }
             return;
         }
         let node = self.node(at);

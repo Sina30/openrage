@@ -193,6 +193,30 @@ fn a_child_that_holds_its_parent_is_waited_for_though_its_own_children_draw_in_i
 }
 
 #[test]
+fn what_the_camera_s_velocity_brings_into_range_is_asked_for_before_it_is_in_range() {
+    let mut forest = parent_and_two_children();
+    let waiting = [(1, 0), (2, 0)];
+    // 1,060 m from the parent, past its range and its band, closing at 100 m a second.
+    let mut view = along(1060.0);
+    let at_rest = forest.select(&view, &loading(&waiting));
+    assert!(at_rest.ahead.is_empty() && at_rest.wanted.is_empty());
+    view.velocity = Vec3::new(-100.0, 0.0, 0.0);
+    let closing = forest.select(&view, &loading(&waiting));
+    assert_eq!((closing.ahead, closing.wanted), (vec![(1, 0)], vec![]));
+    assert!(closing.drawn.is_empty());
+    // Flying away, nothing is asked for ahead; the lead is held to its most.
+    view.velocity = Vec3::new(100.0, 0.0, 0.0);
+    assert!(forest.select(&view, &loading(&waiting)).ahead.is_empty());
+    view.velocity = Vec3::new(-1.0e6, 0.0, 0.0);
+    assert!((view.lead().x - (1060.0 - MOST_AHEAD)).abs() < 0.01);
+    // 140 m from the parent and closing: the children's range of 100 m comes within the lead.
+    let mut near = along(140.0);
+    near.velocity = Vec3::new(-50.0, 0.0, 0.0);
+    let children = forest.select(&near, &loading(&waiting));
+    assert_eq!(children.ahead, vec![(2, 0)]);
+}
+
+#[test]
 fn a_parent_draws_beside_its_children_until_as_many_as_it_states_are_loaded() {
     let mut forest = parent_and_two_children();
     // It states a third child, whose map is not loaded.

@@ -486,13 +486,16 @@ impl Streamer {
             close(&mut out, from);
         }
         let list_instances = out.instances.len() - listed;
-        // Each model waited for once, by the nearest node that waits for it.
+        // Each model waited for once, by the nearest node that waits for it; one the camera's
+        // velocity brings into range after those in range, by the way to it.
         let mut waited: HashMap<ModelRef, f32> = HashMap::new();
-        for id in &selection.wanted {
+        let lead = eye.distance(view.lead());
+        let now = selection.wanted.iter().map(|id| (id, 0.0));
+        for (id, later) in now.chain(selection.ahead.iter().map(|id| (id, lead))) {
             let (Some(model), Some(node)) = (model_of(*id), self.forest.node(*id)) else {
                 continue;
             };
-            let away = eye.distance(node.position);
+            let away = eye.distance(node.position) + later;
             let nearest = waited.entry(model).or_insert(away);
             *nearest = nearest.min(away);
         }
