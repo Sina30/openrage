@@ -14,7 +14,7 @@ use or_io::gta6::timecycle::{
     frame_hours, frame_keyframe, high_level_vars, modifiers, sun_angle, sun_lights, sun_roll,
     sun_round, sun_towards, DayTable, Modifier, LATITUDE,
 };
-use or_io::gta6::weather::WeatherSet;
+use or_io::gta6::weather::{WeatherData, WeatherSet};
 
 /// What a text of the day may inflate to; a longer one is passed over.
 const BODY_LIMIT: u64 = 16 << 20;
@@ -122,12 +122,16 @@ impl DayTables {
         (high > low).then(|| (from + (to - from) * along).to_radians())
     }
 
-    /// The cycle that stands for `weather`: that of the weather type of that name, else the cycle of that name.
-    fn cycle_of(&self, weather: &str) -> Option<&str> {
-        let of_type = (self.weather.weather(weather))
+    /// The weather data `weather` names: that of the weather type of that name, else the data of that name.
+    fn data_of(&self, weather: &str) -> Option<&WeatherData> {
+        (self.weather.weather(weather))
             .and_then(|w| self.weather.data(&w.data))
             .or_else(|| self.weather.data(weather))
-            .and_then(|d| self.timecycle.cycle(&d.time_cycle));
+    }
+
+    /// The cycle that stands for `weather`: that of the weather type of that name, else the cycle of that name.
+    fn cycle_of(&self, weather: &str) -> Option<&str> {
+        let of_type = (self.data_of(weather)).and_then(|d| self.timecycle.cycle(&d.time_cycle));
         (of_type.or_else(|| self.timecycle.cycle(weather))).map(|c| c.name.as_str())
     }
 
@@ -142,8 +146,7 @@ impl DayTables {
         let own = (self.timecycle).keyframe_between(between, cycle, cycle, 0.0, 0.0)?;
         let frame_hours = frame_hours(round);
         let degrees = |name: &str| self.visual_settings.get_f32(name, 0.0).to_radians();
-        let rain = (self.weather.data(weather))
-            .or_else(|| (self.weather.weather(weather)).and_then(|w| self.weather.data(&w.data)));
+        let rain = self.data_of(weather);
         Some(Moment {
             keyframe: frame_keyframe(&own, sun_lights(frame_hours)),
             own,
