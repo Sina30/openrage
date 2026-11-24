@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use super::script::{file_stem, numbers, split_word};
 use super::Shell;
+use crate::state::drivers::WeatherState;
 use crate::state::gta6_world::worldview::viewer;
 use crate::state::AppState;
 use crate::ui::dock::Workspace;
@@ -50,7 +51,18 @@ pub(super) enum WorldStep {
     Move(Pose, Duration, String),
     /// A script-managed group, by its id, switched on or off as the person ticks it; the hour then no longer sets the groups.
     Group(u32, bool),
+    /// The weather the world is drawn in, as the Weather bar sets it.
+    Weather(WeatherState),
 }
+
+/// The words `world weather` takes, each with its state.
+const WEATHERS: [(&str, WeatherState); 5] = [
+    ("clear", WeatherState::Clear),
+    ("cloudy", WeatherState::Cloudy),
+    ("rain", WeatherState::Rain),
+    ("storm", WeatherState::Storm),
+    ("fog", WeatherState::Fog),
+];
 
 /// The words `world modes` takes, each with its bit.
 const MODES: [(&str, u8); 3] = [("base", 1), ("story", 2), ("minigames", 4)];
@@ -141,8 +153,13 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
                 other => Err(format!("no group state `{other}`; use on or off")),
             }
         }
+        "weather" => (WEATHERS.iter().find(|(name, _)| *name == rest))
+            .map(|(_, state)| WorldStep::Weather(*state))
+            .ok_or(format!(
+                "no weather `{rest}`; use clear, cloudy, rain, storm or fog"
+            )),
         other => Err(format!(
-            "no world step `{other}`; use camera, hour, clean, settle, dump, modes, fly, perf, move or group"
+            "no world step `{other}`; use camera, hour, clean, settle, dump, modes, fly, perf, move, group or weather"
         )),
     }
 }
@@ -346,6 +363,9 @@ impl Shell {
                     viewer.enabled.groups.sort_unstable();
                 }
             }
+            WorldStep::Weather(weather) => {
+                state.set_weather_state(*weather);
+            }
         }
         Ok(())
     }
@@ -474,6 +494,10 @@ mod tests {
             Ok(WorldStep::Group(0x0D93_912D, true))
         );
         assert_eq!(parse("group 0x1 off"), Ok(WorldStep::Group(1, false)));
+        assert_eq!(
+            parse("weather cloudy"),
+            Ok(WorldStep::Weather(WeatherState::Cloudy))
+        );
     }
 
     #[test]
@@ -516,6 +540,8 @@ mod tests {
             "dump two words",
             "modes",
             "modes base online",
+            "weather",
+            "weather sunny",
             "group",
             "group 0D93912D",
             "group zz on",
