@@ -292,6 +292,7 @@ fn dump(path: &Path) -> Result<(), String> {
             "fov": pose.fov,
         },
         "hour": viewer.hour,
+        "ground": viewer.ground_under(pose.position.x, pose.position.y),
         "lod_scale": viewer.lod_scale,
         "modes": viewer.enabled.modes,
         "groups_on": hex(&viewer.enabled.groups),

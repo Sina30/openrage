@@ -12,6 +12,13 @@ pub(super) fn tint(instance: &GrassInstance) -> [f32; 3] {
     instance.colour.map(|c| (f32::from(c) / 255.0).powi(2))
 }
 
+impl super::super::Viewer {
+    /// The height of the ground at `x`, `y` by the install's height map, once it is read: where a camera stands on the grass.
+    pub fn ground_under(&self, x: f32, y: f32) -> Option<f32> {
+        super::super::water::ground(self.root.as_deref()?)?.ground(x, y)
+    }
+}
+
 /// The rows that place `instance` of `list` at `origin`, its place in the world.
 pub(super) fn rows(list: &StreamGrassList, instance: &GrassInstance, origin: Vec3) -> Rows {
     let [across, up] = list.scale_of(instance);
