@@ -23,7 +23,7 @@ pub(super) struct Mount {
 }
 
 /// The key snapshot of this run, where one is found and reads.
-pub(super) fn keys() -> Option<GtaViKeys> {
+pub(crate) fn keys() -> Option<GtaViKeys> {
     GtaViKeys::for_install(crate::state::prefs::config_root().as_deref())
         .inspect_err(|error| tracing::warn!(%error, "the GTA VI key snapshot is not read"))
         .ok()
@@ -140,7 +140,11 @@ impl Mount {
                 _ => base,
             })
             .collect();
-        if self.tables.is_empty() {
+        let by_table =
+            gta6_mount::bind_by_table(&self.registry.packs, &self.listed(every, archives), maps);
+        // Tables that bind no archive, as where the level's own does not decipher, leave the block
+        // maps to bind it whole.
+        if self.tables.is_empty() || by_table.bound_archives == 0 {
             return Bound {
                 modes: scanned,
                 named_archives: by_blocks.report.named_archives,
@@ -148,8 +152,6 @@ impl Mount {
                 ..Bound::default()
             };
         }
-        let by_table =
-            gta6_mount::bind_by_table(&self.registry.packs, &self.listed(every, archives), maps);
         // The block maps bind the level's archive whole: where the two disagree on a map of the
         // base game, the table stands and the count says so.
         let disagree = (by_table.modes.iter().zip(&scanned))

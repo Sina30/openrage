@@ -25,7 +25,9 @@ mod scan;
 mod types;
 
 pub use keep::kept_at;
-pub use types::ALL_HOURS;
+pub(crate) use mount::keys;
+#[cfg(test)]
+use types::ALL_HOURS;
 
 /// A map of the index.
 #[repr(C)]
