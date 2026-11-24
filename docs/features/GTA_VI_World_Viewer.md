@@ -54,8 +54,8 @@ hours it states.
 - A node with a parent is judged by the distance to its **parent**, so the children of one parent
   appear together. A parent gives way to its children once every child map is loaded and every
   child's model is on the device; until then it draws alone, so no hole opens while models arrive.
-  It stays whole until its children are a band short of the distance it states for them, and fades
-  out over the next 20 m.
+  It stays whole until the farthest-drawing of its children, each by its own scale, is a band short
+  of its distance, and fades out over the next 20 m.
 - A node is whole within the distance it draws to and fades out over a band past it: 20 m for the
   high, orphan, first and second levels of detail, 25 m for the three farthest, 5 m for an orphan that
   draws to 20 m or less.
@@ -65,7 +65,8 @@ hours it states.
 - A distance is scaled by what the archetype is: terrain and environment draw shorter at the near
   levels, a grass list at 0.8, keeping the part of the distance inside the model's own radius whole.
   A prop list is never drawn shorter than it states.
-- A list of instances draws by the distance to its box, less each instance whose own entity draws.
+- A list of instances draws by the distance to its box's centre, less each instance whose own entity
+  draws; that entity fades out over its band by its own place.
   A grass list draws each of its instances within the distance the list states for one instance,
   scaled with the list, fading out towards it.
 - An interior a map places draws its contents, and the entity sets its instance names, while the
