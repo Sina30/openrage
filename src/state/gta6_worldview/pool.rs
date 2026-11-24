@@ -21,20 +21,24 @@ struct Queue<Q> {
     wanted: Vec<(f32, Q)>,
     /// What a worker holds, or has answered and the owner has not taken yet.
     held: HashSet<Q>,
+    /// What the answers not taken yet weigh.
+    waiting: u64,
     stopped: bool,
 }
 
 struct Shared<Q> {
     queue: Mutex<Queue<Q>>,
     woken: Condvar,
+    /// The most the answers not taken may weigh before the workers wait for the owner to take some.
+    most: u64,
 }
 
 /// A pool of workers, each answering one request at a time.
 pub(super) struct Pool<Q, A> {
     shared: Arc<Shared<Q>>,
-    answers: Receiver<(Q, A)>,
-    /// Answers drawn from the workers that [`Pool::take_soonest`] has not taken yet.
-    arrived: Mutex<Vec<(Q, A)>>,
+    answers: Receiver<(Q, A, u64)>,
+    /// Answers drawn from the workers that [`Pool::take_soonest`] has not taken yet, each with its weight.
+    arrived: Mutex<Vec<(Q, A, u64)>>,
 }
 
 impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
@@ -44,13 +48,25 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
         state: impl Fn() -> S + Send + Sync + 'static,
         answer: impl Fn(&mut S, Q) -> A + Send + Sync + 'static,
     ) -> Self {
+        Self::bounded(workers, (u64::MAX, |_| 0), state, answer)
+    }
+
+    /// As [`Self::new`], but no worker starts another request while the answers the owner has not taken weigh `most` or more, each weighed by `weigh`: what is read waits on the device's uploads rather than piling up in memory.
+    pub(super) fn bounded<S>(
+        workers: usize,
+        (most, weigh): (u64, fn(&A) -> u64),
+        state: impl Fn() -> S + Send + Sync + 'static,
+        answer: impl Fn(&mut S, Q) -> A + Send + Sync + 'static,
+    ) -> Self {
         let shared = Arc::new(Shared {
             queue: Mutex::new(Queue {
                 wanted: Vec::new(),
                 held: HashSet::new(),
+                waiting: 0,
                 stopped: false,
             }),
             woken: Condvar::new(),
+            most,
         });
         let (send, answers) = mpsc::channel();
         let (state, answer) = (Arc::new(state), Arc::new(answer));
@@ -71,7 +87,8 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
                                 .filter(|(_, (_, q))| !queue.held.contains(q))
                                 .min_by(|a, b| a.1 .0.total_cmp(&b.1 .0))
                                 .map(|(at, _)| at);
-                            if let Some(at) = nearest {
+                            let room = queue.waiting < shared.most;
+                            if let (Some(at), true) = (nearest, room) {
                                 let (_, request) = queue.wanted.swap_remove(at);
                                 queue.held.insert(request);
                                 break request;
@@ -84,7 +101,11 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
                         answer(&mut own, request)
                     }));
                     if let Ok(answered) = answered {
-                        if send.send((request, answered)).is_err() {
+                        let weight = weigh(&answered);
+                        let mut queue = shared.queue.lock().unwrap_or_else(|p| p.into_inner());
+                        queue.waiting = queue.waiting.saturating_add(weight);
+                        drop(queue);
+                        if send.send((request, answered, weight)).is_err() {
                             return;
                         }
                     }
@@ -106,10 +127,13 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
         let first = (arrived.iter().enumerate())
             .min_by(|a, b| soon(&a.1 .0).total_cmp(&soon(&b.1 .0)))
             .map(|(at, _)| at)?;
-        let (request, answer) = arrived.swap_remove(first);
+        let (request, answer, weight) = arrived.swap_remove(first);
         drop(arrived);
         let mut queue = self.shared.queue.lock().unwrap_or_else(|p| p.into_inner());
         queue.held.remove(&request);
+        queue.waiting = queue.waiting.saturating_sub(weight);
+        drop(queue);
+        self.shared.woken.notify_all();
         Some((request, answer))
     }
 
@@ -130,13 +154,20 @@ impl<Q: Copy + Eq + Hash + Send + 'static, A: Send + 'static> Pool<Q, A> {
                 Err(_) => break,
             }
         }
-        if !taken.is_empty() {
-            let mut queue = self.shared.queue.lock().unwrap_or_else(|p| p.into_inner());
-            for (request, _) in &taken {
-                queue.held.remove(request);
-            }
+        if taken.is_empty() {
+            return Vec::new();
         }
+        let mut queue = self.shared.queue.lock().unwrap_or_else(|p| p.into_inner());
+        for (request, _, weight) in &taken {
+            queue.held.remove(request);
+            queue.waiting = queue.waiting.saturating_sub(*weight);
+        }
+        drop(queue);
+        self.shared.woken.notify_all();
         taken
+            .into_iter()
+            .map(|(request, answer, _)| (request, answer))
+            .collect()
     }
 }
 
@@ -169,6 +200,8 @@ impl<Q, A> Drop for Pool<Q, A> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
 
     #[test]
@@ -192,5 +225,35 @@ mod tests {
         assert_eq!(pool.take_soonest(soon), Some((5, 50)));
         assert_eq!(pool.take_soonest(soon), None);
         assert_eq!(soonest([(1, 3.0), (1, 2.0), (4, 9.0)].into_iter())[&1], 2.0);
+    }
+
+    /// Take answers from `pool` until `count` have come, or a few seconds pass.
+    fn wait_for(pool: &Pool<u32, u64>, count: usize, got: &mut Vec<u32>) {
+        let started = Instant::now();
+        while got.len() < count && started.elapsed() < Duration::from_secs(5) {
+            got.extend(pool.take(|| true).into_iter().map(|(q, _)| q));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn a_bounded_pool_starts_nothing_while_what_waits_to_be_taken_weighs_its_most() {
+        let pool: Pool<u32, u64> = Pool::bounded(1, (10, |weight| *weight), || (), |_, _| 6);
+        pool.want(vec![(1.0, 1), (2.0, 2), (3.0, 3)]);
+        // Two answers weigh 12, past the most of 10: the third waits until they are taken.
+        let started = Instant::now();
+        while pool.shared.queue.lock().map_or(0, |q| q.waiting) < 12
+            && started.elapsed() < Duration::from_secs(5)
+        {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        let queue = pool.shared.queue.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(queue.waiting, 12);
+        assert_eq!(queue.wanted.len(), 1, "the third is not started");
+        drop(queue);
+        let mut got = Vec::new();
+        wait_for(&pool, 3, &mut got);
+        assert_eq!(got, [1, 2, 3]);
     }
 }

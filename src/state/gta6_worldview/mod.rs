@@ -60,6 +60,10 @@ fn wait_for_room(held: &AtomicU64) {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
+/// The bytes of models, and of textures, read and not yet taken onto the device, past which the readers wait: about five frames of what a frame puts on the device.
+// ⚠ Unbounded, the models read faster than the frames take them pile up in memory while the camera flies.
+const MODELS_WAITING: u64 = 256 << 20;
+const TEXTURES_WAITING: u64 = 64 << 20;
 
 /// How a build of the index ended.
 enum Built {
@@ -257,8 +261,10 @@ impl Viewer {
         let places = places.map(Arc::new);
         if let Some(places) = places.clone() {
             let held = Arc::clone(&self.held);
-            self.textures = Some(Pool::new(
+            let weigh = |read: &Option<CpuTexture>| read.as_ref().map_or(0, CpuTexture::bytes);
+            self.textures = Some(Pool::bounded(
                 4,
+                (TEXTURES_WAITING, weigh),
                 HashMap::<u32, OpenPack>::new,
                 move |open, (key, pixels)| {
                     wait_for_room(&held);
@@ -278,8 +284,10 @@ impl Viewer {
         let shared = Arc::clone(&index);
         let workers = std::thread::available_parallelism().map_or(4, usize::from) / 2;
         let held = Arc::clone(&self.held);
-        self.models = Some(Pool::new(
+        let weigh = |read: &Option<CpuModel>| read.as_ref().map_or(0, CpuModel::bytes);
+        self.models = Some(Pool::bounded(
             workers.clamp(2, 12),
+            (MODELS_WAITING, weigh),
             HashMap::<u32, File>::new,
             move |files, model| {
                 wait_for_room(&held);
