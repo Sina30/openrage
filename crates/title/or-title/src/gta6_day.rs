@@ -17,7 +17,7 @@ use or_io::gta6::timecycle::{
 };
 use or_io::gta6::weather::{WeatherData, WeatherSet};
 
-use crate::gta6_exposure::{light, moon_towards, ExposureSettings};
+use crate::gta6_exposure::{adapt, light, moon_towards, target_stops, ExposureSettings};
 
 /// What a text of the day may inflate to; a longer one is passed over.
 const BODY_LIMIT: u64 = 16 << 20;
@@ -221,8 +221,7 @@ impl DayTables {
                     .sin();
             moon_towards(day, roll.to_radians(), wobble)
         };
-        let exposure = ExposureSettings::of(&|name, default| visual.get_f32(name, default));
-        let (light, stops) = light(&own, sun, moon, &exposure);
+        let (light, stops) = light(&own, sun, moon, &self.exposure_settings());
         let rain = |weather: &str| {
             self.data_of(weather)
                 .map_or(0.0, |d| d.rain.clamp(0.0, 1.0))
@@ -250,6 +249,38 @@ impl DayTables {
             moon_dim: visual.get_f32("misc.MoonDimMult", 1.0),
             wetness: rain(from) + (rain(to) - rain(from)) * along,
         })
+    }
+
+    /// What the visual settings state of the exposure.
+    pub fn exposure_settings(&self) -> ExposureSettings {
+        ExposureSettings::of(&|name, default| self.visual_settings.get_f32(name, default))
+    }
+}
+
+impl Moment {
+    /// This moment exposed by a frame drawn at `previous` stops whose average luminance, in the frame's units, was `metered`: adapted from `previous` over `seconds` towards what the curve wants of it.
+    pub fn metered(
+        &self,
+        settings: &ExposureSettings,
+        metered: f32,
+        previous: f32,
+        seconds: f32,
+    ) -> Moment {
+        // The frame holds every light times its exposure, so its luminance over that is the scene's.
+        let luminance = metered / previous.exp2();
+        let target = target_stops(settings, &self.own, luminance);
+        let stops = adapt(settings, &self.own, previous, target, seconds);
+        let light = FrameLight {
+            exposure: stops.exp2(),
+            ..self.light
+        };
+        Moment {
+            keyframe: frame_keyframe(&self.own, &light),
+            stops,
+            light_scale: light.exposure * FRAME_DIFFUSE,
+            light,
+            ..self.clone()
+        }
     }
 }
 

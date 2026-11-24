@@ -181,3 +181,28 @@ fn half_way_between_two_weathers_their_cycles_and_rain_are_half_of_each() {
     // The modifier only one of them names is laid whole.
     assert_eq!(half.own.get("far_clip"), Some(1.0));
 }
+
+#[test]
+fn a_metered_frame_is_exposed_by_the_curve_and_adapted_towards_it_at_the_settings_pace() {
+    let tables = tables();
+    let night = tables.moment(1.45, "Rainy", 0.0).expect("a cycle");
+    let settings = tables.exposure_settings();
+    let previous = night.stops;
+    // A frame drawn at the night's stops that meters a thousand cd/m² of scene.
+    let metered = 1000.0 * previous.exp2();
+    let at_once = night.metered(&settings, metered, previous, 0.0);
+    let want = -(1000f32.ln()) + 6.0 - 10.0;
+    assert!(
+        (at_once.stops - want).abs() < 1e-3,
+        "{} {want}",
+        at_once.stops
+    );
+    let strength = |m: &Moment| m.keyframe.get("light_dir_mult").expect("worked out");
+    let ratio = strength(&at_once) / strength(&night);
+    assert!((ratio - (at_once.stops - night.stops).exp2()).abs() < 1e-3 * ratio);
+    assert_eq!(at_once.own, night.own);
+    // A tenth of a second goes a tenth of the way, the rate being within the settings' steps.
+    let step = night.metered(&settings, metered, previous, 0.1);
+    let tenth = previous + (want - previous) * 0.1;
+    assert!((step.stops - tenth).abs() < 1e-2, "{} {tenth}", step.stops);
+}
