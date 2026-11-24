@@ -46,10 +46,10 @@ pub(super) const STAND_INS: [[f32; 4]; WORLD_MAPS] = {
         colour,
         normal,
         a,
-        // Material B of the first layer and of the second, or the fourth layer's colour and normal: a material B of no detail reads as white and as flat as they need
+        // Material B of the first layer and of the second; the four-layer family's fourth layer takes the first layer's stand-ins in slots 9 to 11 instead
         [0.0, 0.0, 0.5, 1.0],
         [0.0, 0.0, 0.5, 1.0],
-        // The emissive map, or the fourth layer's material A, which then is black
+        // The emissive map
         [0.0; 4],
         [1.0, 0.0, 0.0, 0.0],
         [1.0; 4],

@@ -433,8 +433,15 @@ impl World {
         let maps = match plain {
             true => Arc::clone(&self.plain),
             false => {
-                let views =
-                    std::array::from_fn(|at| surface.maps[at].unwrap_or(&self.stand_ins[at]));
+                // The four-layer family's slots 9 to 11 are its fourth layer's, and terrain LOD's material A reads its green as a smoothness, which material B's stand-in leaves at nought
+                let stand_in = |at: usize| match (surface.family, at) {
+                    (WorldFamily::FourLayer, 9..=11) => &self.stand_ins[at - 9],
+                    (WorldFamily::TerrainLod, at) if at == slot::material_a(0) => {
+                        &self.stand_ins[slot::MATERIAL_B[0]]
+                    }
+                    _ => &self.stand_ins[at],
+                };
+                let views = std::array::from_fn(|at| surface.maps[at].unwrap_or(stand_in(at)));
                 let constants = (surface.family, &surface.constants);
                 Arc::new(bound(device, &self.materials, &self.sampler, views, constants))
             }
