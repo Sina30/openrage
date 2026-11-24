@@ -330,6 +330,7 @@ pub fn apply_modifier(keyframe: &mut Keyframe, vars: &BTreeMap<String, [f32; 2]>
 
 /// The variables GTA VI states under the name and in the unit a frame built for GTA V's day reads them by.
 const SAME: &[&str] = &[
+    "dir_shadow_distance_multiplier",
     "far_clip",
     "fog_start",
     "light_artificial_int_down_col_r",

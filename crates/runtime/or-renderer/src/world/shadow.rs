@@ -16,11 +16,31 @@ use crate::viewport::OrbitCamera;
 /// How many cascades the game's pass reads, each a tile of its map.
 pub(crate) const CASCADES: usize = 4;
 
-/// How far ahead of the camera the sun's shadow of a world is cast, in metres.
-pub const SHADOW_FAR: f32 = 300.0;
+/// The cycle's variable every cascade's end is multiplied by.
+pub const DISTANCE_MULTIPLIER: &str = "dir_shadow_distance_multiplier";
 
-/// How far ahead of the camera each cascade ends, in metres: this renderer's own choice, each about three and a half times the one before.
-const ENDS: [f32; CASCADES] = [8.0, 30.0, 100.0, SHADOW_FAR];
+/// The ends of the game's split ahead of the camera before the cycle's multiplier, in metres, and how far each end between them is drawn from the even split towards the geometric one.
+const SPLIT_NEAR: f32 = 0.5;
+const SPLIT_FAR: f32 = 176.551_71;
+const SPLIT_WEIGHT: f32 = 0.9;
+
+/// How far ahead of the camera the sun's shadow of a world is cast at a multiplier of one, in metres.
+pub const SHADOW_FAR: f32 = SPLIT_FAR;
+
+/// How far ahead of the camera each cascade ends at the cycle's `multiplier`, in metres: the game's split of four, each end between an even and a geometric split from half a metre to [`SHADOW_FAR`].
+pub fn ends(multiplier: f32) -> [f32; CASCADES] {
+    std::array::from_fn(|at| {
+        let along = (at + 1) as f32 / CASCADES as f32;
+        let even = SPLIT_NEAR + (SPLIT_FAR - SPLIT_NEAR) * along;
+        let geometric = SPLIT_NEAR * (SPLIT_FAR / SPLIT_NEAR).powf(along);
+        multiplier * (even + (geometric - even) * SPLIT_WEIGHT)
+    })
+}
+
+/// How far ahead of the camera the sun's shadow of a world is cast at the cycle's `multiplier`, in metres.
+pub fn shadow_reach(multiplier: f32) -> f32 {
+    ends(multiplier)[CASCADES - 1]
+}
 
 /// The part of the reach, at its far end, over which the shadow fades to none.
 const FADE: f32 = 0.1;
@@ -46,11 +66,12 @@ pub(crate) struct Cascades {
 }
 
 impl Cascades {
-    /// The cascades about what `camera` sees in a frame of `aspect`, cast by the sun of `engine`; none where it does not shine.
+    /// The cascades about what `camera` sees in a frame of `aspect`, cast by the sun of `engine` as far as the cycle's `multiplier` takes them; none where it does not shine.
     pub(crate) fn about(
         engine: &EngineConstants,
         camera: &OrbitCamera,
         aspect: f32,
+        multiplier: f32,
     ) -> Option<Self> {
         let sun = Sun::of(engine);
         if !sun.shines() {
@@ -58,9 +79,13 @@ impl Cascades {
         }
         let eye = camera.eye();
         let forward = (camera.target - eye).normalize_or(Vec3::Y);
-        let far = SHADOW_FAR.min(camera.far);
+        let ends = ends(multiplier);
+        let far = ends[CASCADES - 1].min(camera.far);
+        if !(far > 0.0) {
+            return None;
+        }
         let mut near = camera.near.min(far);
-        let spheres = ENDS.map(|end| {
+        let spheres = ends.map(|end| {
             let end = end.min(far).max(near);
             let (centre, radius) = slice_sphere(eye, forward, camera.fov_y, aspect, near, end);
             near = end;
@@ -325,6 +350,23 @@ fn snapped(travel: Vec3, centre: Vec3, radius: f32) -> (Vec3, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cascades_end_where_the_games_split_puts_them_scaled_by_the_cycles_multiplier() {
+        let one = ends(1.0);
+        assert!(one.windows(2).all(|pair| pair[0] < pair[1]), "{one:?}");
+        assert_eq!(one[CASCADES - 1], SHADOW_FAR);
+        assert_eq!(shadow_reach(2.0), 2.0 * SHADOW_FAR);
+        for (at, end) in one.iter().enumerate().take(CASCADES - 1) {
+            let along = (at + 1) as f32 / CASCADES as f32;
+            let even = SPLIT_NEAR + (SPLIT_FAR - SPLIT_NEAR) * along;
+            let geometric = SPLIT_NEAR * (SPLIT_FAR / SPLIT_NEAR).powf(along);
+            // Nine tenths of the way from the even split to the geometric one
+            let drawn = (even - end) / (even - geometric);
+            assert!((drawn - SPLIT_WEIGHT).abs() < 1e-4, "{at}: {drawn}");
+            assert!((ends(2.0)[at] - 2.0 * end).abs() < 1e-3);
+        }
+    }
 
     #[test]
     fn a_caster_reaches_a_tile_while_its_sphere_overlaps_the_square_at_any_depth() {

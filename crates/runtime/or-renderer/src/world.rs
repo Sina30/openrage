@@ -28,7 +28,7 @@ pub use material::{
 };
 use material::{uniform_bytes, STAND_INS};
 use pipelines::{ByBucket, Pipelines};
-pub use shadow::SHADOW_FAR;
+pub use shadow::{shadow_reach, DISTANCE_MULTIPLIER, SHADOW_FAR};
 use shadow::{Cascades, CASCADES};
 
 /// How and when a mesh of the world is drawn; declared in the order the buckets draw.
@@ -725,18 +725,19 @@ impl World {
         queue.write_buffer(&self.light, 0, bytemuck::cast_slice(&light));
     }
 
-    /// The cascades the sun's shadow of this frame's world is cast into, the view of each written for the cast; none where nothing of the world casts or the sun does not shine.
+    /// The cascades the sun's shadow of this frame's world is cast into as far as the cycle's `multiplier` takes them, the view of each written for the cast; none where nothing of the world casts or the sun does not shine.
     pub(crate) fn cascades(
         &self,
         queue: &wgpu::Queue,
         engine: &EngineConstants,
         camera: &OrbitCamera,
         aspect: f32,
+        multiplier: f32,
     ) -> Option<Cascades> {
         if self.cast_batches.is_empty() && !self.cards.draws_anything() {
             return None;
         }
-        let cascades = Cascades::about(engine, camera, aspect)?;
+        let cascades = Cascades::about(engine, camera, aspect, multiplier)?;
         let views = cascades.views();
         for (view, (buffer, _)) in views.iter().zip(&self.cascades) {
             let mut uniform = [0.0f32; CAMERA_FLOATS];

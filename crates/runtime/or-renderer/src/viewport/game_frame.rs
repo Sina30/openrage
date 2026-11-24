@@ -389,6 +389,19 @@ impl ViewportRenderer {
         self.day_revision += 1;
     }
 
+    /// How far ahead of the camera the sun's shadow of a world is cast by the day's cycle, in metres.
+    pub fn shadow_reach(&self) -> f32 {
+        crate::world::shadow_reach(self.shadow_multiplier())
+    }
+
+    /// What the day's cycle multiplies the ends of the sun's cascades by; one with no day.
+    fn shadow_multiplier(&self) -> f32 {
+        let of = |day: &crate::game_shaders::lighting::Day| {
+            day.keyframe.get_or(crate::world::DISTANCE_MULTIPLIER, 1.0)
+        };
+        self.day.as_ref().map_or(1.0, of)
+    }
+
     /// The skin matrices of the pose, one for each bone of the palette of the scene; none where there is no pose or no skinned surface.
     fn posed_bones(&self) -> Option<Vec<Mat4>> {
         let scene = self.deferred_scene.as_ref()?;
@@ -552,7 +565,10 @@ impl ViewportRenderer {
         self.world.write_light(queue, &engine);
         // A world is shaded by cascades about what the camera sees, and a scene's own surfaces are then cast into the nearest of them
         let cascades = (self.shadows && deferred.passes.has_shadow())
-            .then(|| self.world.cascades(queue, &engine, camera, aspect))
+            .then(|| {
+                let multiplier = self.shadow_multiplier();
+                (self.world).cascades(queue, &engine, camera, aspect, multiplier)
+            })
             .flatten();
         // With no world, where the sun shines the drawable shades itself: its surfaces are cast from the sun, and the G-buffer keeps what reaches each pixel
         let shadow = scene

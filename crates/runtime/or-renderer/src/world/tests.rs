@@ -276,7 +276,7 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
     let aspect = 16.0 / 9.0;
     let eye = camera.eye();
     let forward = (camera.target - eye).normalize();
-    let cascades = shadow::Cascades::about(&engine, &camera, aspect).expect("the sun shines");
+    let cascades = shadow::Cascades::about(&engine, &camera, aspect, 1.0).expect("the sun shines");
     let values = cascades.values(eye);
     let shared = &values["gCSMShaderVars_shared"];
     assert_eq!(shared.len(), 48);
@@ -290,7 +290,12 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
     let views = cascades.views();
     // A point on the view's axis in each cascade's slice, and one beside it within the view
     let side = camera.view().inverse().x_axis.truncate();
-    for (cascade, ahead) in [4.0f32, 20.0, 60.0, 250.0].into_iter().enumerate() {
+    let ends = shadow::ends(1.0);
+    let middles = std::array::from_fn::<f32, { shadow::CASCADES }, _>(|at| match at {
+        0 => ends[0] * 0.6,
+        _ => (ends[at - 1] + ends[at]) * 0.5,
+    });
+    for (cascade, ahead) in middles.into_iter().enumerate() {
         for point in [
             eye + forward * ahead,
             eye + forward * ahead + side * (ahead * 0.5),
@@ -326,7 +331,7 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
         yaw: 0.9,
         ..camera.clone()
     };
-    let after = shadow::Cascades::about(&engine, &moved, aspect).expect("the sun shines");
+    let after = shadow::Cascades::about(&engine, &moved, aspect, 1.0).expect("the sun shines");
     let point = Vec3::new(118.0, -70.0, 12.0);
     for (cascade, (was, is)) in views.iter().zip(after.views()).enumerate() {
         let texels = |view: Mat4| (view * point.extend(1.0)).truncate() * (TILE as f32 * 0.5);
@@ -341,7 +346,7 @@ fn the_cascades_hold_what_the_camera_sees_each_in_its_own_tile_and_their_texels_
         sun_colour: Vec3::ZERO,
         ..engine
     };
-    assert!(shadow::Cascades::about(&dark, &camera, aspect).is_none());
+    assert!(shadow::Cascades::about(&dark, &camera, aspect, 1.0).is_none());
 }
 
 #[cfg_attr(

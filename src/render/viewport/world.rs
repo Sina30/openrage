@@ -130,8 +130,8 @@ pub struct WorldDrawn {
 }
 
 /// What a layout was made for: the selection, the camera, what is on the device, the scale of
-/// the level-of-detail distances and the height of the screen.
-type LaidFor = (u64, [u32; 16], u64, u32, u32, bool);
+/// the level-of-detail distances, the height of the screen and how far the sun's shadow is cast.
+type LaidFor = (u64, [u32; 16], u64, u32, u32, Option<u32>);
 
 /// What the day was worked out for: the hour, the days, the weather, the camera's place north
 /// in hundreds of metres, whether the install's tables gave one, and the exposure the frame metered.
@@ -479,6 +479,7 @@ impl RenderBridge {
         };
         // What casts a shadow into the view draws as well, where the sun's shadows are cast.
         let casts = self.renderer.shadows() && self.renderer.has_deferred();
+        let reach = casts.then(|| self.renderer.shadow_reach());
         // Nothing moved, arrived or left: the device holds this frame's instances already.
         let key = (
             selected.version,
@@ -486,7 +487,7 @@ impl RenderBridge {
             world.changes,
             lod_scale.to_bits(),
             height,
-            casts,
+            reach.map(f32::to_bits),
         );
         if world.laid_for == Some(key) {
             return;
@@ -511,7 +512,7 @@ impl RenderBridge {
             view_proj,
             eye,
             lod_scale,
-            shadow_far: casts.then_some(or_renderer::world::SHADOW_FAR),
+            shadow_far: reach,
         };
         let occluding = Instant::now();
         world.layout.occlude(&selected.occluders, &view);
@@ -542,7 +543,7 @@ impl RenderBridge {
                 *drawn = frame;
                 // A run that only casts shadows into the view asks for no map.
                 if away.is_infinite() {
-                    let away = or_renderer::world::SHADOW_FAR;
+                    let away = reach.unwrap_or(or_renderer::world::SHADOW_FAR);
                     runs.push(Run {
                         model,
                         level,
