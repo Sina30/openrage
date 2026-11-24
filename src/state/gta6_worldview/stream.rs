@@ -317,11 +317,15 @@ impl Streamer {
             // ⚠ A parent that is not switched on is no part of the world, but one that holds
             // nothing (`held` 3) is still a link to its own parents.
             let off = !self.enabled.allows(map) && map.held != 3;
-            if off || self.wanted.contains_key(&name) {
+            if off {
+                continue;
+            }
+            // ⚠ A map wanted for itself may be a parent too: it is linked though already wanted.
+            self.linked.insert(name);
+            if self.wanted.contains_key(&name) {
                 continue;
             }
             self.wanted.insert(name, away);
-            self.linked.insert(name);
             parents.extend(self.index.parents_of(map).iter().map(|p| (*p, away)));
         }
     }

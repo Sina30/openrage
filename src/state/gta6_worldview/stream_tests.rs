@@ -756,6 +756,35 @@ fn a_map_that_reads_with_nothing_to_draw_is_not_wanted_again_and_still_leads_to_
 }
 
 #[test]
+fn a_script_managed_map_that_reads_empty_is_kept_while_it_is_the_parent_of_a_map_wanted() {
+    let near = ([-10.0; 3], [10.0; 3]);
+    // Around the camera: the script-managed 2, and 1, whose parent is 2.
+    let mut managed = map_row(2, 2, near.0, near.1, (0, 0));
+    managed.group = 7;
+    let maps = vec![map_row(1, 0, near.0, near.1, (0, 1)), managed];
+    let index = Arc::new(index_with(
+        vec![PathBuf::from("made-up.rpf")],
+        &[],
+        maps,
+        vec![2],
+    ));
+    let mut streamer = Streamer::new(Arc::clone(&index));
+    streamer.set_enabled(Enabled {
+        modes: 1,
+        groups: vec![7],
+    });
+    streamer.stream(&View::at(Vec3::ZERO, 1.0));
+    let empty = StreamMap {
+        name: 2,
+        entities: Vec::new(),
+        prop_lists: Vec::new(),
+        ..made_up()
+    };
+    assert!(streamer.insert(2, read_map(&index, &empty)));
+    assert_eq!(wanted_by(&streamer), vec![1, 2]);
+}
+
+#[test]
 fn a_fast_camera_still_wants_the_high_tier() {
     let near = ([-10.0; 3], [10.0; 3]);
     // Content flags 0: the high tier.
