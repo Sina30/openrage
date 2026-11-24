@@ -135,6 +135,18 @@ impl Page {
     }
 }
 
+/// The bytes of a new page's vertex buffer and of its index buffer: the whole of `page` shared as the meshes on the device share `taken`, the vertices' bytes and the indices', each at least an eighth; `page` as it is before any is taken.
+// ⚠ Pages of a fixed share run out of one side while the other keeps holes no mesh can use, and those holes are device memory.
+fn split(page: (u64, u64), taken: (u64, u64)) -> (u64, u64) {
+    let (whole, of) = (page.0 + page.1, taken.0 + taken.1);
+    if of == 0 {
+        return page;
+    }
+    let share = (taken.0 as f64 / of as f64).clamp(0.125, 0.875);
+    let vertices = (whole as f64 * share) as u64;
+    (vertices, whole - vertices)
+}
+
 /// How many vertices and indices a new page holds for a mesh of `need`: a page's own count, or the
 /// mesh's where it is larger; `None` where the device makes no buffer that large.
 fn page_size(page: (u64, u64), most: u64, need: (u32, u32)) -> Option<(u32, u32)> {
@@ -172,7 +184,14 @@ impl Pages {
         }
         let mut found = self.taken(need, None);
         if found.is_none() {
-            let size = page_size(budgets.page, budgets.most_buffer, need)?;
+            let taken = (self.pages.iter().flatten()).fold((0, 0), |(v, i), page| {
+                let (vertices, indices) = page.taken;
+                (
+                    v + u64::from(vertices) * VERTEX,
+                    i + u64::from(indices) * INDEX,
+                )
+            });
+            let size = page_size(split(budgets.page, taken), budgets.most_buffer, need)?;
             let mut page = Page::new(device, size);
             let (vertex, index) = page.take(need)?;
             let at = match self.pages.iter().position(Option::is_none) {
@@ -341,6 +360,19 @@ mod tests {
         // Nothing given back changes nothing.
         free.give(50..50);
         assert!(free.is_whole(100));
+    }
+
+    #[test]
+    fn a_new_page_is_shared_between_vertices_and_indices_as_the_meshes_on_the_device_are() {
+        let page = (192 << 20, 64 << 20);
+        assert_eq!(split(page, (0, 0)), page);
+        // Meshes of seven parts of vertices to one of indices: a page shared the same way, whole.
+        let (vertices, indices) = split(page, (7_000, 1_000));
+        assert_eq!(vertices + indices, 256 << 20);
+        assert_eq!(vertices, 224 << 20);
+        // Never less than an eighth either side.
+        assert_eq!(split(page, (1, 0)).1, 32 << 20);
+        assert_eq!(split(page, (0, 1)).0, 32 << 20);
     }
 
     #[test]

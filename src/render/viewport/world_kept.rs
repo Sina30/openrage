@@ -9,8 +9,9 @@ use super::{bucket_of, material, textures, Lod, Material, Mesh, Slot, WorldGpu};
 use crate::state::gta6_world::worldview::index::ModelRef;
 use crate::state::gta6_world::worldview::{Bucket, CpuMaterial, CpuModel};
 
-/// The most bytes of meshes a frame moves out of a page left with holes.
+/// The most bytes of meshes a frame moves out of a page left with holes, and the most meshes it tries to.
 const MOVED_A_FRAME: u64 = 16 << 20;
+const TRIED_A_FRAME: u32 = 256;
 
 impl WorldGpu {
     /// The material that draws one more mesh of this material in this bucket: one for every mesh on the device that names the same.
@@ -158,7 +159,7 @@ impl WorldGpu {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("world-pages-compact"),
         });
-        let mut moved = 0;
+        let (mut moved, mut tries) = (0, 0);
         'models: for slot in self.models.values_mut() {
             let Slot::Ready { lods, .. } = slot else {
                 continue;
@@ -167,11 +168,13 @@ impl WorldGpu {
                 if mesh.place.page != emptiest {
                     continue;
                 }
-                if moved >= MOVED_A_FRAME {
+                tries += 1;
+                if moved >= MOVED_A_FRAME || tries > TRIED_A_FRAME {
                     break 'models;
                 }
+                // A mesh no other page has room for stays; a smaller one may still move.
                 let Some(place) = self.pages.moved(&mut encoder, mesh.place) else {
-                    break 'models;
+                    continue;
                 };
                 moved += place.bytes();
                 (mesh.place, mesh.drawn) = (place, None);
