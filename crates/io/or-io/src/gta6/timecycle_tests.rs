@@ -3,7 +3,11 @@ use super::*;
 fn table() -> DayTable {
     let samples: String = (0..13)
         .map(|k| {
-            let kind = if k == 1 { "EASE_QUARTIC_INOUT" } else { "EASE_LINEAR_IN" };
+            let kind = if k == 1 {
+                "EASE_QUARTIC_INOUT"
+            } else {
+                "EASE_LINEAR_IN"
+            };
             format!(r#"<sample name="s{k}" hour="{k}" uw_tc_mod="u" interpolation_type="{kind}"/>"#)
         })
         .collect();
@@ -16,7 +20,10 @@ fn table() -> DayTable {
 fn the_time_table_states_its_samples_their_easing_and_its_regions() {
     let table = table();
     assert_eq!(table.samples.len(), 13);
-    assert_eq!((table.samples[3].name.as_str(), table.samples[3].hour), ("s3", 3.0));
+    assert_eq!(
+        (table.samples[3].name.as_str(), table.samples[3].hour),
+        ("s3", 3.0)
+    );
     assert_eq!(table.samples[1].easing, Easing::QuarticInOut);
     assert_eq!(table.samples[0].easing, Easing::Linear);
     assert_eq!(table.regions, ["URBAN"]);
@@ -31,9 +38,14 @@ fn a_sample_is_found_by_the_suns_angle_and_eased_by_the_first_of_the_two() {
     assert_eq!((first, second), (6, 7));
     assert!(along.abs() < 1e-6);
     // Half way from the second sample to the third, bent by the second sample's own easing.
-    let (first, second, along) = table.locate((-0.45 + -0.22) / 2.0).expect("thirteen samples");
+    let (first, second, along) = table
+        .locate((-0.45 + -0.22) / 2.0)
+        .expect("thirteen samples");
     assert_eq!((first, second), (1, 2));
-    assert!((along - 0.5).abs() < 1e-4, "the quartic passes through its middle: {along}");
+    assert!(
+        (along - 0.5).abs() < 1e-4,
+        "the quartic passes through its middle: {along}"
+    );
     let (_, _, early) = table.locate(-0.45 + 0.23 * 0.25).expect("thirteen samples");
     assert!((early - 8.0 * 0.25f32.powi(4)).abs() < 1e-3, "{early}");
     // The round closes: past the last row the way runs on to the first, and an angle under the first is a turn on.
@@ -99,7 +111,11 @@ fn the_values_before_a_cycle_and_the_modifiers_of_a_file_are_read() {
     );
     assert_eq!(mods.len(), 2);
     assert_eq!((mods[0].name.as_str(), mods[0].user_flags), ("a", 8));
-    assert_eq!(mods[0].vars.len(), 1, "a variable with one number is left out");
+    assert_eq!(
+        mods[0].vars.len(),
+        1,
+        "a variable with one number is left out"
+    );
     assert_eq!(mods[0].vars["light_dir_mult"], [1.5, 1.0]);
     assert!(mods[1].vars.is_empty());
 }
@@ -117,7 +133,10 @@ fn the_sun_at_its_stated_default_is_the_frames_default_and_its_fade_dims_everyth
     let noon = frame_keyframe(&own(&[("light_dir_col_g", 0.5)]), true);
     assert_eq!(noon.get("light_dir_mult"), Some(FRAME_SUN));
     assert_eq!(noon.get("light_dir_col_g"), Some(0.5));
-    assert_eq!(noon.get("light_natural_amb_down_intensity"), Some(FRAME_AMBIENT_DOWN));
+    assert_eq!(
+        noon.get("light_natural_amb_down_intensity"),
+        Some(FRAME_AMBIENT_DOWN)
+    );
     assert_eq!(noon.get("fog_hdr"), Some(1.0));
 
     let dusk = frame_keyframe(
@@ -131,8 +150,14 @@ fn the_sun_at_its_stated_default_is_the_frames_default_and_its_fade_dims_everyth
     );
     assert_eq!(dusk.get("light_dir_mult"), Some(FRAME_SUN * 0.5));
     assert_eq!(dusk.get("light_dir_col_b"), Some(0.4));
-    assert_eq!(dusk.get("light_natural_amb_up_intensity"), Some(FRAME_AMBIENT_UP * 0.5));
-    assert_eq!(dusk.get("sky_zenith_col_inten"), Some(FRAME_SUN * SKY_SHARE * 0.5));
+    assert_eq!(
+        dusk.get("light_natural_amb_up_intensity"),
+        Some(FRAME_AMBIENT_UP * 0.5)
+    );
+    assert_eq!(
+        dusk.get("sky_zenith_col_inten"),
+        Some(FRAME_SUN * SKY_SHARE * 0.5)
+    );
 }
 
 #[test]

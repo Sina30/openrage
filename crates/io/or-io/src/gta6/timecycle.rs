@@ -394,7 +394,8 @@ pub fn frame_keyframe(own: &Keyframe, sun_lit: bool) -> Keyframe {
         }
     }
     let get = |name: &str, default: f32| own.get_or(name, default);
-    let rgb = |stem: &str, default: f32| ["r", "g", "b"].map(|c| get(&format!("{stem}_{c}"), default));
+    let rgb =
+        |stem: &str, default: f32| ["r", "g", "b"].map(|c| get(&format!("{stem}_{c}"), default));
     let set_rgb = |frame: &mut Keyframe, stem: &str, colour: [f32; 3]| {
         for (c, value) in ["r", "g", "b"].iter().zip(colour) {
             frame.set(&format!("{stem}_{c}"), value);
@@ -405,7 +406,11 @@ pub fn frame_keyframe(own: &Keyframe, sun_lit: bool) -> Keyframe {
     let share = light_share(own, sun_lit);
     let body = if sun_lit { "sun" } else { "moon" };
     let body_tint = rgb(&format!("sky_scattering_{body}_col"), 1.0);
-    set_rgb(&mut frame, "light_dir_col", times(rgb("light_dir_col", 1.0), body_tint));
+    set_rgb(
+        &mut frame,
+        "light_dir_col",
+        times(rgb("light_dir_col", 1.0), body_tint),
+    );
     frame.set("light_dir_mult", FRAME_SUN * share);
 
     // The sky's light follows the body that makes it, tinted as the cycle tints the sky.
@@ -418,7 +423,10 @@ pub fn frame_keyframe(own: &Keyframe, sun_lit: bool) -> Keyframe {
         "light_natural_amb_down_col",
         times(FRAME_AMBIENT_DOWN_COLOUR, sky_tint),
     );
-    frame.set("light_natural_amb_down_intensity", FRAME_AMBIENT_DOWN * share);
+    frame.set(
+        "light_natural_amb_down_intensity",
+        FRAME_AMBIENT_DOWN * share,
+    );
     frame.set("light_natural_amb_up_intensity", FRAME_AMBIENT_UP * share);
     frame.set("fog_hdr", share);
     frame.set("fog_haze_hdr", share);
