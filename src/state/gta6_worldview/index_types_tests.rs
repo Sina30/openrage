@@ -13,8 +13,8 @@ fn pointer(id: u64, offset: u64) -> u64 {
     id | offset << 20
 }
 
-/// A map-types body of a base archetype, a time archetype on from `hours`, and a base archetype
-/// in the time archetypes' block: its root, the pointers, then the two blocks of records.
+/// A map-types body of a base archetype, a time archetype on from `hours`, and a second base
+/// archetype in the base archetypes' block: its root, the pointers, then the two blocks of records.
 fn types_body(hours: u32) -> Vec<RbmDataBlock> {
     let mut root = vec![0u8; 0x50];
     // The pointers start 8 bytes into their block.
