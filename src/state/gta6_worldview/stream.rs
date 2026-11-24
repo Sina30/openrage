@@ -1,167 +1,34 @@
 //! The maps streamed in around the camera and what of them draws: each wanted map's body is read
 //! on a worker into the nodes of the level-of-detail forest, and a selection gives each entity and
-//! each instance that draws with the model that draws it and where it stands.
+//! each instance that draws with the model that draws it, where it stands and how opaque it is.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::Instant;
 
-use glam::{Mat4, Quat, Vec3};
+use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_io::gta6::map::stream::{StreamLink, StreamMap};
-use or_world::streaming::{Extent, Forest, Node, NodeId, NodeState, ParentRef};
+use or_world::streaming::{Forest, NodeId, NodeState, View};
 
-use super::index::{ModelRef, WorldIndex};
+use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
+
+#[path = "stream_grass.rs"]
+mod grass;
+#[path = "stream_read.rs"]
+mod read;
+
+pub use read::Rows;
+pub(super) use read::{read_map, ReadMap};
+use read::{place, stretch, Drawn, Loaded};
 
 /// The bytes a map body is read to.
 const BODY_LIMIT: u64 = 256 << 20;
 /// How far the camera moves before the wanted maps are worked out again, in metres.
 const RESTREAM: f32 = 4.0;
-
-/// The rows of a 3×4 matrix: the model's axes, with the translation in the fourth column.
-pub type Rows = [[f32; 4]; 3];
-
-fn rows_of(m: Mat4) -> Rows {
-    let c = m.to_cols_array_2d();
-    std::array::from_fn(|row| [c[0][row], c[1][row], c[2][row], c[3][row]])
-}
-
-fn place(rows: &Rows, p: Vec3) -> Vec3 {
-    let at = |r: [f32; 4]| r[0] * p.x + r[1] * p.y + r[2] * p.z + r[3];
-    Vec3::new(at(rows[0]), at(rows[1]), at(rows[2]))
-}
-
-/// The length of the longest axis of `rows`, which a sphere's radius grows by.
-fn stretch(rows: &Rows) -> f32 {
-    (0..3)
-        .map(|axis| Vec3::new(rows[0][axis], rows[1][axis], rows[2][axis]).length())
-        .fold(0.0, f32::max)
-}
-
-/// What draws at a node: its model, and the sphere of that model in its own space.
-#[derive(Clone, Copy)]
-struct Drawn {
-    /// `None` where no archetype or no body of the index gives one: the node draws nothing.
-    model: Option<ModelRef>,
-    centre: Vec3,
-    radius: f32,
-}
-
-/// A map streamed in.
-struct Loaded {
-    /// One for each node: the entities, then the prop lists.
-    drawn: Vec<Drawn>,
-    /// Where each entity stands.
-    entities: Vec<Rows>,
-    /// Where each instance of each prop list stands.
-    lists: Vec<Vec<Rows>>,
-}
-
-/// What a worker read of a map: its nodes for the forest, and what draws at each.
-pub(super) struct ReadMap {
-    nodes: Vec<Node>,
-    loaded: Loaded,
-}
-
-fn link(map: &StreamMap, own: u32, link: Option<StreamLink>) -> (Option<ParentRef>, Option<u32>) {
-    let Some(link) = link else {
-        return (None, None);
-    };
-    let name = match link.map {
-        Some(selector) => map.lod_parents.get(usize::from(selector)).copied(),
-        None => Some(own),
-    };
-    let parent = name.map(|name| ParentRef {
-        map: u64::from(name),
-        node: u32::from(link.index),
-    });
-    (parent, link.instance.map(u32::from))
-}
-
-/// The nodes of `map` and what draws at each, by the archetypes and models of `index`.
-pub(super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap {
-    let count = map.entities.len() + map.prop_lists.len();
-    let (mut nodes, mut drawn) = (Vec::with_capacity(count), Vec::with_capacity(count));
-    let of = |word: u64| {
-        let archetype = index.archetype(word);
-        let model = archetype.and_then(|a| index.model(a));
-        let (centre, radius, lod_dist) = archetype.map_or((Vec3::ZERO, 0.0, 0.0), |a| {
-            (Vec3::from(a.centre), a.radius, a.lod_dist)
-        });
-        (
-            Drawn {
-                model,
-                centre,
-                radius,
-            },
-            lod_dist,
-        )
-    };
-    let mut entities = Vec::with_capacity(map.entities.len());
-    for e in &map.entities {
-        let (what, archetype_dist) = of(e.archetype_word);
-        let (parent, instance) = link(map, map.name, e.parent);
-        nodes.push(Node {
-            position: Vec3::from(e.position),
-            extent: Extent::Point,
-            // An entity that states no distance takes its archetype's.
-            lod_dist: if e.lod_dist > 0.0 {
-                e.lod_dist
-            } else {
-                archetype_dist
-            },
-            child_lod_dist: e.child_lod_dist,
-            parent,
-            instance,
-        });
-        // ⚠ An interior's contents stand in its own space, which nothing here places: it draws nothing.
-        drawn.push(Drawn {
-            model: what.model.filter(|_| !e.interior),
-            ..what
-        });
-        entities.push(rows_of(Mat4::from_scale_rotation_translation(
-            Vec3::new(e.scale_xy, e.scale_xy, e.scale_z),
-            Quat::from_array(e.rotation).normalize(),
-            Vec3::from(e.position),
-        )));
-    }
-    let mut lists = Vec::with_capacity(map.prop_lists.len());
-    for list in &map.prop_lists {
-        let (what, archetype_dist) = of(list.archetype_word);
-        let (parent, _) = link(map, map.name, list.parent);
-        let (min, max) = (
-            Vec3::from(list.batch_aabb.min),
-            Vec3::from(list.batch_aabb.max),
-        );
-        nodes.push(Node {
-            position: (min + max) / 2.0,
-            extent: Extent::Box(min, max),
-            lod_dist: if list.lod_dist > 0.0 {
-                list.lod_dist
-            } else {
-                archetype_dist
-            },
-            child_lod_dist: list.child_lod_dist,
-            parent,
-            instance: None,
-        });
-        drawn.push(what);
-        // A list states each instance as its three axes, each with one part of the translation.
-        let rows = |a: &[[f32; 4]; 3]| -> Rows {
-            std::array::from_fn(|row| [a[0][row], a[1][row], a[2][row], a[row][3]])
-        };
-        lists.push(list.instances.iter().map(rows).collect());
-    }
-    ReadMap {
-        nodes,
-        loaded: Loaded {
-            drawn,
-            entities,
-            lists,
-        },
-    }
-}
+/// The hour the world starts at.
+const NOON: f32 = 12.0;
 
 /// One thing a selection draws: its model, where it stands, and its sphere in the world.
 #[derive(Clone, Copy)]
@@ -171,6 +38,8 @@ pub struct Instance {
     pub rows: Rows,
     pub centre: Vec3,
     pub radius: f32,
+    /// How opaque it is, above 0 and to 1.
+    pub fade: f32,
 }
 
 /// A run of a selection's instances that stand together, and the sphere that holds them all: a
@@ -205,6 +74,24 @@ pub struct Selected {
     /// Each model waited for, with how far the nearest thing that waits for it is.
     pub wanted: Vec<(f32, ModelRef)>,
     pub streaming: Streaming,
+    /// Whether a fade in time is under way: the next selection differs though nothing moves.
+    pub fading: bool,
+}
+
+/// The models of a selection, each once, in the order they were first drawn with.
+#[derive(Default)]
+struct Models {
+    list: Vec<ModelRef>,
+    places: HashMap<ModelRef, u32>,
+}
+
+impl Models {
+    fn ix(&mut self, model: ModelRef) -> u32 {
+        *self.places.entry(model).or_insert_with(|| {
+            self.list.push(model);
+            self.list.len() as u32 - 1
+        })
+    }
 }
 
 /// The maps around the camera.
@@ -217,6 +104,10 @@ pub(super) struct Streamer {
     /// A map that did not read is not asked for again.
     failed: HashSet<u32>,
     streamed_at: Option<Vec3>,
+    /// What of the game is switched on: a map it does not allow is not wanted.
+    enabled: Enabled,
+    /// The hour of the day, 0 to 23: a time archetype draws inside its hours alone.
+    hour: u32,
     readers: Pool<u32, Option<ReadMap>>,
     pub(super) streaming: Streaming,
 }
@@ -242,6 +133,11 @@ fn close(out: &mut Selected, from: usize) {
             to: out.instances.len() as u32,
         });
     }
+}
+
+/// The hour of the day `hour` falls in, 0 to 23.
+fn hour_of(hour: f32) -> u32 {
+    (hour.rem_euclid(24.0) as u32).min(23)
 }
 
 impl Streamer {
@@ -279,14 +175,35 @@ impl Streamer {
             wanted: HashMap::new(),
             failed: HashSet::new(),
             streamed_at: None,
+            enabled: Enabled::default(),
+            hour: hour_of(NOON),
             readers,
             streaming: Streaming::default(),
         }
     }
 
-    /// Work out the maps a camera at `eye` wants, ask for those not loaded and let go of the
+    /// Switch on what `enabled` names in place of what was on; whether that is a change.
+    pub(super) fn set_enabled(&mut self, enabled: Enabled) -> bool {
+        if self.enabled == enabled {
+            return false;
+        }
+        self.enabled = enabled;
+        // The wanted maps are worked out again though the camera stands.
+        self.streamed_at = None;
+        true
+    }
+
+    /// Set the hour of the day, 0.0 to 24.0; whether a time archetype may come or go by it.
+    pub(super) fn set_hour(&mut self, hour: f32) -> bool {
+        let hour = hour_of(hour);
+        let changed = self.hour != hour;
+        self.hour = hour;
+        changed
+    }
+
+    /// Work out the maps the camera of `view` wants, ask for those not loaded and let go of the
     /// rest; whether a map came or went.
-    pub(super) fn stream(&mut self, eye: Vec3) -> bool {
+    pub(super) fn stream(&mut self, view: &View) -> bool {
         let mut changed = false;
         for (name, read) in self.readers.take(|| true) {
             match read {
@@ -298,10 +215,10 @@ impl Streamer {
         }
         let moved = self
             .streamed_at
-            .is_none_or(|at| at.distance(eye) >= RESTREAM);
+            .is_none_or(|at| at.distance(view.eye) >= RESTREAM);
         if moved {
-            self.streamed_at = Some(eye);
-            self.rewant(eye);
+            self.streamed_at = Some(view.eye);
+            self.rewant(view);
         }
         // What is loaded and no longer wanted goes.
         let gone: Vec<u32> = (self.loaded.keys().copied())
@@ -335,12 +252,13 @@ impl Streamer {
     }
 
     // ponytail: every map's box is tested each time the camera has moved; a grid of the boxes if the walk shows.
-    fn rewant(&mut self, eye: Vec3) {
+    fn rewant(&mut self, view: &View) {
         self.wanted.clear();
+        let eye = view.eye;
         let mut parents = Vec::new();
-        for map in self.index.maps.iter().filter(|m| m.held == 0) {
+        for map in (self.index.maps.iter()).filter(|m| self.enabled.allows(m)) {
             let boxes = map.boxes();
-            if !boxes.wants(eye) {
+            if !boxes.wanted(view, map.content_flags) {
                 continue;
             }
             let (min, max) = boxes.entities;
@@ -354,8 +272,10 @@ impl Streamer {
                 continue;
             };
             let map = &self.index.maps[at];
-            // A parent the mount holds back is no part of the world at rest.
-            if matches!(map.held, 1 | 2) || self.wanted.contains_key(&name) {
+            // ⚠ A parent that is not switched on is no part of the world, but one that holds
+            // nothing (`held` 3) is still a link to its own parents.
+            let off = !self.enabled.allows(map) && map.held != 3;
+            if off || self.wanted.contains_key(&name) {
                 continue;
             }
             self.wanted.insert(name, away);
@@ -373,76 +293,76 @@ impl Streamer {
         true
     }
 
-    /// What draws for a camera at `eye` with distances scaled by `scale`; `ready` says whether a
-    /// model is on the device, and `None` that it never will be.
+    /// What draws for the camera of `view`; `ready` says whether a model is on the device, and
+    /// `None` that it never will be.
     pub(super) fn select(
         &mut self,
-        eye: Vec3,
-        scale: f32,
+        view: &View,
         ready: &dyn Fn(ModelRef) -> Option<bool>,
     ) -> Selected {
-        let loaded = &self.loaded;
+        let (loaded, hour, eye) = (&self.loaded, self.hour, view.eye);
         let drawn_of = |id: NodeId| {
             let map = loaded.get(&(id.0 as u32))?;
             Some((map, map.drawn.get(id.1 as usize)?))
         };
-        let model_of = |id: NodeId| drawn_of(id).and_then(|(_, drawn)| drawn.model);
+        // A time archetype outside its hours has no model for the while: it draws nothing, is
+        // not waited for and holds nothing back.
+        let model_of = |id: NodeId| drawn_of(id).and_then(|(_, drawn)| drawn.model_at(hour));
         let state = |id: NodeId| match model_of(id).map(ready) {
             None | Some(None) => NodeState::Absent,
             Some(Some(true)) => NodeState::Ready,
             Some(Some(false)) => NodeState::Loading,
         };
-        let mut selection = self.forest.select(eye, scale, &state);
-        let mut out = Selected::default();
-        let mut models: HashMap<ModelRef, u32> = HashMap::new();
-        let mut model_ix = |model: ModelRef, out: &mut Selected| {
-            *models.entry(model).or_insert_with(|| {
-                out.models.push(model);
-                out.models.len() as u32 - 1
-            })
+        let mut selection = self.forest.select(view, &state);
+        let mut out = Selected {
+            fading: selection.fading,
+            ..Selected::default()
         };
-        let instance = |model: u32, rows: &Rows, drawn: &Drawn| Instance {
+        let mut models = Models::default();
+        let instance = |model: u32, rows: Rows, drawn: &Drawn, fade: f32| Instance {
             model,
-            rows: *rows,
-            centre: place(rows, drawn.centre),
-            radius: drawn.radius * stretch(rows),
+            rows,
+            centre: place(&rows, drawn.centre),
+            radius: drawn.radius * stretch(&rows),
+            fade,
         };
         // The entities of one map stand together: a chunk a map.
-        selection.drawn.sort_unstable();
+        selection.drawn.sort_unstable_by_key(|d| d.node);
         let (mut from, mut of_map) = (0, None);
-        for id in &selection.drawn {
+        for draw in &selection.drawn {
+            let id = draw.node;
             if of_map != Some(id.0) {
                 close(&mut out, from);
                 (from, of_map) = (out.instances.len(), Some(id.0));
             }
-            let Some((map, drawn)) = drawn_of(*id) else {
+            let Some((map, drawn)) = drawn_of(id) else {
                 continue;
             };
-            if let (Some(model), Some(rows)) = (drawn.model, map.entities.get(id.1 as usize)) {
-                let model = model_ix(model, &mut out);
-                out.instances.push(instance(model, rows, drawn));
+            let rows = map.entities.get(id.1 as usize);
+            if let (Some(model), Some(rows)) = (drawn.model_at(hour), rows) {
+                let model = models.ix(model);
+                (out.instances).push(instance(model, *rows, drawn, draw.fade));
             }
         }
         close(&mut out, from);
         // And the instances of one list: a chunk a list.
-        for list in &selection.lists {
-            let Some((map, drawn)) = drawn_of(list.node) else {
+        for draw in &selection.lists {
+            let Some((map, drawn)) = drawn_of(draw.node) else {
                 continue;
             };
-            let instances = (list.node.1 as usize)
+            let list = (draw.node.1 as usize)
                 .checked_sub(map.entities.len())
                 .and_then(|at| map.lists.get(at));
-            let (Some(model), Some(instances)) = (drawn.model, instances) else {
+            let (Some(model), Some(list)) = (drawn.model_at(hour), list) else {
                 continue;
             };
-            let model = model_ix(model, &mut out);
-            let skipped = &selection.skipped[list.skipped.clone()];
+            let model = models.ix(model);
+            let skipped = &selection.skipped[draw.skipped.clone()];
             let from = out.instances.len();
-            for (at, rows) in instances.iter().enumerate() {
-                if !skipped.contains(&(at as u32)) {
-                    out.instances.push(instance(model, rows, drawn));
-                }
-            }
+            // An instance that fades by its own distance fades with its list too.
+            list.each(eye, view.scales[list.level as usize], skipped, |rows, fade| {
+                (out.instances).push(instance(model, rows, drawn, fade * draw.fade));
+            });
             close(&mut out, from);
         }
         // Each model waited for once, by the nearest node that waits for it.
@@ -456,6 +376,7 @@ impl Streamer {
             *nearest = nearest.min(away);
         }
         out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
+        out.models = models.list;
         self.streaming.drawn = out.instances.len();
         out.streaming = self.streaming;
         out
@@ -466,12 +387,17 @@ impl Streamer {
 const RESELECT: f32 = 0.5;
 /// How long the world's thread waits for a change before it looks for map bodies that arrived.
 const TICK: std::time::Duration = std::time::Duration::from_millis(20);
+/// The shortest time between two passes a speed is measured over, in seconds.
+const SPEED_STEP: f32 = 0.001;
 
 /// What the screen tells the world's thread.
 #[derive(Default)]
 struct Told {
     eye: Vec3,
     scale: f32,
+    hour: f32,
+    /// What of the game to switch on, where that was told since the thread last took it.
+    enabled: Option<Enabled>,
     /// Models that came to or left the device since the last selection, with whether each is
     /// there now and `None` for one that will never be.
     models: Vec<(ModelRef, Option<bool>)>,
@@ -498,6 +424,7 @@ impl World {
             told: Mutex::new(Told {
                 eye,
                 scale,
+                hour: NOON,
                 ..Told::default()
             }),
             woken: Condvar::new(),
@@ -508,13 +435,41 @@ impl World {
         Self { shared }
     }
 
+    /// Tell the thread what `tell` changes, and wake it where that is a change.
+    fn tell_of(&self, tell: impl FnOnce(&mut Told) -> bool) {
+        let mut told = self.shared.told.lock().unwrap_or_else(|p| p.into_inner());
+        let changed = tell(&mut told);
+        told.changed |= changed;
+        drop(told);
+        if changed {
+            self.shared.woken.notify_one();
+        }
+    }
+
     /// Say where the camera is and the scale of its distances.
     pub(super) fn look(&self, eye: Vec3, scale: f32) {
-        let mut told = self.shared.told.lock().unwrap_or_else(|p| p.into_inner());
-        told.changed |= (told.eye, told.scale) != (eye, scale);
-        (told.eye, told.scale) = (eye, scale);
-        drop(told);
-        self.shared.woken.notify_one();
+        self.tell_of(|told| {
+            let changed = (told.eye, told.scale) != (eye, scale);
+            (told.eye, told.scale) = (eye, scale);
+            changed
+        });
+    }
+
+    /// Say the hour of the day, 0.0 to 24.0: a time archetype draws inside its hours alone.
+    pub(super) fn set_hour(&self, hour: f32) {
+        self.tell_of(|told| {
+            let changed = hour_of(told.hour) != hour_of(hour);
+            told.hour = hour;
+            changed
+        });
+    }
+
+    /// Say what of the game is switched on: a map it does not allow is not streamed in.
+    pub(super) fn set_enabled(&self, enabled: Enabled) {
+        self.tell_of(|told| {
+            told.enabled = Some(enabled);
+            true
+        });
     }
 
     /// Say which models came to the device, will never come, or left it.
@@ -522,11 +477,10 @@ impl World {
         if models.is_empty() {
             return;
         }
-        let mut told = self.shared.told.lock().unwrap_or_else(|p| p.into_inner());
-        told.models.append(models);
-        told.changed = true;
-        drop(told);
-        self.shared.woken.notify_one();
+        self.tell_of(|told| {
+            told.models.append(models);
+            true
+        });
     }
 
     /// What was selected last.
@@ -543,14 +497,16 @@ impl Drop for World {
 }
 
 /// The world's thread: stream the maps around the camera, and select again whenever the camera
-/// moved, a map came or went, or a model did.
+/// moved, a map came or went, a model did, the hour or what is switched on changed, or a fade
+/// in time is under way.
 fn run(index: Arc<WorldIndex>, shared: &Shared) {
     let mut streamer = Streamer::new(index);
     let mut ready: HashMap<ModelRef, Option<bool>> = HashMap::new();
-    let mut selected_at: Option<(Vec3, f32)> = None;
-    let mut version = 0;
+    let mut selected_at: Option<(Vec3, f32, Instant)> = None;
+    let mut passed_at: Option<(Vec3, Instant)> = None;
+    let (mut velocity, mut fading, mut version) = (Vec3::ZERO, false, 0);
     loop {
-        let (eye, scale, models) = {
+        let (eye, scale, hour, enabled, models) = {
             let mut told = shared.told.lock().unwrap_or_else(|p| p.into_inner());
             // What was told while the last selection was made is taken at once.
             if !told.changed && !told.stopped {
@@ -561,9 +517,23 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
                 return;
             }
             told.changed = false;
-            (told.eye, told.scale, std::mem::take(&mut told.models))
+            let (enabled, models) = (told.enabled.take(), std::mem::take(&mut told.models));
+            (told.eye, told.scale, told.hour, enabled, models)
         };
-        let mut stale = !models.is_empty();
+        let now = Instant::now();
+        // The camera's speed is what it moved by since the pass before; two passes too close
+        // together to measure keep the speed they had.
+        match passed_at {
+            Some((at, then)) => {
+                let step = now.duration_since(then).as_secs_f32();
+                if step >= SPEED_STEP {
+                    velocity = (eye - at) / step;
+                    passed_at = Some((eye, now));
+                }
+            }
+            None => passed_at = Some((eye, now)),
+        }
+        let mut stale = !models.is_empty() || fading;
         for (model, state) in models {
             match state {
                 // A model that left the device is waited for again where it is wanted.
@@ -571,14 +541,20 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
                 state => ready.insert(model, state),
             };
         }
-        stale |= streamer.stream(eye);
-        stale |= selected_at.is_none_or(|(at, by)| at.distance(eye) >= RESELECT || by != scale);
+        stale |= enabled.is_some_and(|enabled| streamer.set_enabled(enabled));
+        stale |= streamer.set_hour(hour);
+        let mut view = View::at(eye, scale);
+        view.velocity = velocity;
+        stale |= streamer.stream(&view);
+        stale |= selected_at.is_none_or(|(at, by, _)| at.distance(eye) >= RESELECT || by != scale);
         if stale {
+            view.dt = selected_at.map_or(0.0, |(.., then)| now.duration_since(then).as_secs_f32());
             let state = |model: ModelRef| ready.get(&model).copied().unwrap_or(Some(false));
-            let mut selected = streamer.select(eye, scale, &state);
+            let mut selected = streamer.select(&view, &state);
             version += 1;
             selected.version = version;
-            selected_at = Some((eye, scale));
+            fading = selected.fading;
+            selected_at = Some((eye, scale, now));
             *shared.latest.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(selected);
         }
     }
