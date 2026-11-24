@@ -345,6 +345,20 @@ pub fn draw_side(ui: &mut egui::Ui, state: &mut AppState, bridge: Option<&mut Re
                 waiting = viewer.textures_waiting,
             ),
         );
+        if let Some(lights) = viewer.lights.as_ref().map(|l| l.report()) {
+            said(
+                ui,
+                &tr!(
+                    "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn",
+                    maps = lights.maps_read,
+                    placed = count(lights.placed as u64),
+                    lod = count(lights.lod as u64),
+                    distant = count(lights.distant as u64),
+                    probes = lights.probes,
+                    drawn = lights.drawn,
+                ),
+            );
+        }
         said(
             ui,
             match drawn.lit_by_the_game {
