@@ -92,6 +92,36 @@ pub(super) fn record_bytes(
     written
 }
 
+/// The records of `items` side by side, each the bytes [`record_bytes`] writes for it, each attribute's input found once for all of them.
+fn records<L>(
+    attributes: &[wgpu::VertexAttribute],
+    stride: u64,
+    inputs: &[SignatureElement],
+    items: &[L],
+    value: &dyn Fn(&SignatureElement, &L) -> [f32; 4],
+) -> Vec<u8> {
+    let reads: Vec<(usize, usize, Option<&SignatureElement>)> = (attributes.iter())
+        .map(|attribute| {
+            let input = inputs
+                .iter()
+                .find(|i| i.register == attribute.shader_location);
+            let words = (attribute.format.size() / 4) as usize;
+            (attribute.offset as usize, words, input)
+        })
+        .collect();
+    let stride = stride as usize;
+    let mut bytes = vec![0u8; stride * items.len()];
+    for (record, item) in bytes.chunks_exact_mut(stride.max(1)).zip(items) {
+        for &(offset, words, input) in &reads {
+            let values = input.map_or([0.0; 4], |input| value(input, item));
+            for (k, v) in values.iter().take(words).enumerate() {
+                record[offset + 4 * k..offset + 4 * k + 4].copy_from_slice(&v.to_le_bytes());
+            }
+        }
+    }
+    bytes
+}
+
 /// The lights of one kind, drawn into the frame the sun lit.
 pub struct LightVolumes<L> {
     pass: ScreenPass,
@@ -230,17 +260,13 @@ impl<L: Copy + PartialEq> LightVolumes<L> {
             return;
         }
         let streams = self.pass.streams();
-        let bytes: Vec<u8> = lights
-            .iter()
-            .flat_map(|light| {
-                record_bytes(
-                    &streams.instance,
-                    streams.instance_stride,
-                    &self.inputs,
-                    &|input| (self.value)(&input.semantic, input.index, light),
-                )
-            })
-            .collect();
+        let bytes = records(
+            &streams.instance,
+            streams.instance_stride,
+            &self.inputs,
+            lights,
+            &|input, light| (self.value)(&input.semantic, input.index, light),
+        );
         queue.write_buffer(&self.instances, 0, &bytes);
         written.clear();
         written.extend_from_slice(lights);
