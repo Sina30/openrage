@@ -16600,3 +16600,72 @@ msgstr "世界视图"
 
 msgid "{textures} textures on the device, {unread} not read, {waiting} waited for"
 msgstr "显卡上有 {textures} 个纹理，{unread} 个未能读取，{waiting} 个在等待"
+
+msgid "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn"
+msgstr "{maps} 个地图的灯光：{placed} 个已放置，{lod} 个细节层次，{distant} 个远景，{probes} 个反射探针；已绘制 {drawn} 个"
+
+msgid "Capture"
+msgstr "捕获"
+
+msgid "Clean frame"
+msgstr "纯净画面"
+
+msgid "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
+msgstr "在整个窗口中只绘制世界，上面不叠加任何行或面板；按 Esc 恢复"
+
+msgid "Copy the camera"
+msgstr "复制相机"
+
+msgid "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
+msgstr "将相机的位置和朝向复制为一行，截图脚本可读取该行，下方字段也可接受"
+
+msgid "Paste a camera line, then press Enter"
+msgstr "粘贴一行相机数据，然后按 Enter"
+
+msgid "A camera line to jump to"
+msgstr "要跳转到的相机行"
+
+msgid "That is not a camera line: copy one with Copy the camera"
+msgstr "这不是相机行：用“复制相机”复制一行"
+
+msgid "Time and modes"
+msgstr "时间和模式"
+
+msgid "Hour"
+msgstr "小时"
+
+msgid "The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"
+msgstr "一天中的时刻：为某些时段放置的内容在这些时段内绘制，世界按该时刻的日光照明"
+
+msgid "Story pack"
+msgstr "故事包"
+
+msgid "Stream the maps the story pack adds"
+msgstr "流式加载故事包添加的地图"
+
+msgid "Shared minigames"
+msgstr "共享小游戏"
+
+msgid "Stream the maps the shared minigames add"
+msgstr "流式加载共享小游戏添加的地图"
+
+msgid "The index holds no script-managed group"
+msgstr "索引中没有由脚本管理的组"
+
+msgid "Script-managed groups: {on} of {groups} on"
+msgstr "由脚本管理的组：{groups} 个中已启用 {on} 个"
+
+msgid "Nothing says which are on at rest: a group ticked streams its maps in"
+msgstr "没有说明默认启用哪些组：勾选的组会流式加载其地图"
+
+msgid "{name}, {maps} maps"
+msgstr "{name}，{maps} 个地图"
+
+msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
+msgstr "{story} 个地图属于故事包，{minigames} 个属于共享小游戏；{groups} 个由脚本管理的组"
+
+msgid "Bound by block maps: no key snapshot was found"
+msgstr "通过区块地图匹配：未找到密钥快照"
+
+msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
+msgstr "通过归档的表匹配；关卡的变更集中有 {ciphered} 个已加密"
