@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_world::streaming::{Forest, Level, NodeId, NodeState, View, HD_MAX_SPEED};
+use or_world::streaming::{Forest, NodeId, NodeState, View, HD_MAX_SPEED};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -385,7 +385,7 @@ impl Streamer {
         for map in loaded.values() {
             for interior in &map.interiors {
                 let from = out.instances.len();
-                interior.each(eye, view.scales[Level::Hd as usize], |child, away| {
+                interior.each(eye, &view.scales, hour, |child, away| {
                     match ready(child.model) {
                         Some(true) => {
                             let model = models.ix(child.model);
