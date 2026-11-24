@@ -1293,6 +1293,43 @@ fn foliage_reads_no_metal_in_its_material_a_red_and_keeps_a_dielectrics_reflecta
     let square = coloured_square(&device, [1.0; 4], [1.0; 4], other);
     let (targets, _) = shade(&device, &queue, &mut renderer, &[(square, WHITE)]);
     assert!(near(targets[0], [0, 0, 0, 255], 2), "{targets:?}");
+    // A leaf's vertex alpha is no coverage: a cutout leaf whose vertices hold 0 there is drawn, any other cut away
+    let cutout = |flags: u32| {
+        let maps = [
+            (slot::colour(0), one([255; 4])),
+            (slot::material_a(0), one([0, 64, 0, 0])),
+        ];
+        let constants = WorldConstants {
+            flags: WorldConstants::default().flags | WorldConstants::MODEL_VERTEX | flags,
+            ..WorldConstants::default()
+        };
+        let family = (WorldFamily::Standard, WorldBucket::Cutout);
+        surface(&device, &renderer, family, &maps, constants)
+    };
+    let (leaf, plain) = (cutout(WorldConstants::FOLIAGE), cutout(0));
+    let model_square = |material| {
+        let mut vertices = corners([0.0, 0.0], 0.5);
+        coloured(
+            &mut vertices,
+            (Some(&[[1.0, 1.0, 1.0, 0.0]; 4]), None),
+            (None, None),
+        );
+        Arc::new(WorldMesh::new(&device, &vertices, &SQUARE, material))
+    };
+    let (targets, _) = shade(
+        &device,
+        &queue,
+        &mut renderer,
+        &[(model_square(leaf), WHITE)],
+    );
+    assert!(near(targets[0], [255, 255, 255, 255], 2), "{targets:?}");
+    let (cut, _) = shade(
+        &device,
+        &queue,
+        &mut renderer,
+        &[(model_square(plain), WHITE)],
+    );
+    assert!(!near(cut[0], [255, 255, 255, 255], 2), "{cut:?}");
     assert!(accepted(scope), "the device accepted every pass");
 }
 

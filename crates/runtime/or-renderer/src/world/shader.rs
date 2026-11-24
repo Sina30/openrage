@@ -201,10 +201,16 @@ fn dropped(in: VsOut, alpha: f32, cut: f32) -> bool {
 // Below this a texel of a cutout is not drawn.
 const CUTOUT_ALPHA: f32 = 0.5;
 
+// What the vertex's first colour leaves of a surface's coverage: its alpha, but none of a tree's or grass's, whose programs cut by their colour map alone.
+// ⚠ A tree's leaves hold other data in that alpha: read as coverage, it cuts every leaf of a near tree away.
+fn vertex_coverage(in: VsOut) -> f32 {
+    return select(in.colour.a, 1.0, (m.flags & FOLIAGE) != 0u);
+}
+
 // The coverage a cutout is cut by: its colour map's first level, whatever the screen needs.
 // ⚠ A smaller level averages a mask of thin leaves and blades under the cut: a tree a hundred metres off would lose every leaf.
 fn cut_coverage(in: VsOut) -> f32 {
-    let top = textureSampleLevel(layer0_colour, map_smp, in.uv, 0.0).a * in.colour.a;
+    let top = textureSampleLevel(layer0_colour, map_smp, in.uv, 0.0).a * vertex_coverage(in);
     return select(top, 1.0, m.family.x == FOUR_LAYER);
 }
 // Below this a texel of what blends adds nothing.
@@ -390,7 +396,7 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
         colour = mix(colour, maps.second.rgb, maps.second.a);
     }
     (*s).albedo = colour;
-    (*s).coverage = maps.c0.a * in.colour.a;
+    (*s).coverage = maps.c0.a * vertex_coverage(in);
     if ((m.flags & GROUND_BLEND) != 0u) {
         (*s).coverage = maps.c0.a * ground_share(maps.a0.b, in.colour.a);
     }
