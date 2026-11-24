@@ -16,10 +16,23 @@ use or_io::gta6::map::stream::StreamMap;
 use or_world::streaming::Level;
 
 use super::index::{BodyRow, ModelRef, WorldIndex};
-use super::stream::{rows_of, stretch, Rows};
+use super::stream::Rows;
 
 /// The bytes a body of interiors is read to.
 const BODY_LIMIT: u64 = 256 << 20;
+
+fn rows_of(m: Mat4) -> Rows {
+    let t = m.transpose().to_cols_array_2d();
+    [t[0], t[1], t[2]]
+}
+
+/// The length of the longest axis of `m`, which a sphere's radius grows by.
+fn stretch(m: Mat4) -> f32 {
+    [m.x_axis, m.y_axis, m.z_axis]
+        .map(|axis| axis.truncate().length())
+        .into_iter()
+        .fold(0.0, f32::max)
+}
 
 /// One entity an interior draws, in the world.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,7 +91,7 @@ pub(super) fn place(
                 model,
                 rows,
                 centre: m.transform_point3(Vec3::from(archetype.centre)),
-                radius: archetype.radius * stretch(&rows),
+                radius: archetype.radius * stretch(m),
                 // An entity that states no distance takes its archetype's.
                 lod_dist: if e.lod_dist > 0.0 {
                     e.lod_dist
@@ -93,7 +106,7 @@ pub(super) fn place(
     let (min, max) = (Vec3::from(interior.bb_min), Vec3::from(interior.bb_max));
     Placed {
         centre: outer.transform_point3((min + max) / 2.0),
-        radius: (max - min).length() / 2.0 * stretch(&rows_of(outer)),
+        radius: (max - min).length() / 2.0 * stretch(outer),
         lod_dist: if instance.lod_dist > 0.0 {
             instance.lod_dist
         } else {
