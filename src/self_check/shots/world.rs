@@ -55,7 +55,7 @@ pub(super) fn parse(rest: &str) -> Result<WorldStep, String> {
         "settle" if args.is_empty() => Ok(WorldStep::Settle(SETTLE_DEADLINE)),
         "settle" => {
             let [seconds] = numbers::<1>(&args)?;
-            if !(seconds > 0.0 && seconds <= MOST_SECONDS) {
+            if seconds <= 0.0 || seconds > MOST_SECONDS {
                 return Err(format!(
                     "a deadline is a number of seconds above 0, {MOST_SECONDS} at most"
                 ));
@@ -80,9 +80,8 @@ pub(super) struct Found {
 }
 
 /// The rule `world settle` waits by: an index held, nothing waited for, and nothing changed for [`QUIET`].
-///
-/// ⚠ Nothing waited for is not enough: for a frame or two after the camera jumps, the world's
-/// thread has not yet asked for the maps of the new place.
+// ⚠ Nothing waited for is not enough: for a frame or two after the camera jumps, the world's
+// thread has not yet asked for the maps of the new place.
 #[derive(Debug, Default)]
 pub(super) struct Settle {
     last: Option<Found>,
@@ -157,7 +156,14 @@ impl Shell {
                 self.indexed(state)?;
                 pose.put(&mut viewer().camera);
             }
-            WorldStep::Hour(hour) => viewer().hour = *hour,
+            WorldStep::Hour(hour) => {
+                // What is placed for some hours alone follows the viewer's hour and the light follows the day's: a frame has one.
+                viewer().hour = *hour;
+                let day = &mut state.drivers.time_of_day;
+                day.set_hour(*hour);
+                // ⚠ A day that runs, or days gone by, which the moon and the clouds follow, would draw no two runs alike.
+                (day.playing, day.days) = (false, 0.0);
+            }
             WorldStep::Clean(on) => state.panels.get::<Capture>().clean = *on,
             WorldStep::Settle(deadline) => self.settle(state, *deadline)?,
         }
