@@ -139,6 +139,20 @@ fn a_turn_counts_seventy_seconds_and_a_normal_is_of_length_one() {
     }
 }
 
+#[test]
+fn an_instance_gives_back_the_sixteen_bytes_the_body_stores() {
+    let map = read(&grass_model()).expect("it reads");
+    let (plain, far) = (&map.grass[0], &map.grass[1]);
+    assert_eq!(
+        plain.instances[0].record().to_vec(),
+        instance([0, 65535, 13107], 255, 0, 18, 0)
+    );
+    assert_eq!(
+        far.instances[0].record().to_vec(),
+        instance([1, 2, 3], 255, 0, 0, 0x277)
+    );
+}
+
 type Patch = Box<dyn Fn(&mut RbmModel)>;
 
 #[test]

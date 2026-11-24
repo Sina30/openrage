@@ -2,7 +2,7 @@
 //! distances, and each instance's place in the box, tilt, colour, scale and turn.
 //!
 //! ⚠ A list of far stand-ins (`IsSLODList`) names several archetypes, and the `GUID` of each of
-//! its instances picks one by an id no map body states: the id is kept and nothing here resolves it.
+//! its instances picks one by an id no map body states: [`slod::solve`] works it out over every list.
 
 use super::super::lights::{check_table, Layouts};
 use super::super::links::MapLinks;
@@ -114,6 +114,21 @@ impl GrassInstance {
     pub fn yaw(&self) -> f32 {
         f32::from(self.rotation) * (std::f32::consts::TAU / TURN_STEPS)
     }
+
+    /// Its 16 bytes as the body stores them.
+    pub fn record(&self) -> [u8; INSTANCE_SIZE] {
+        let mut out = [0; INSTANCE_SIZE];
+        for (axis, q) in self.position.iter().enumerate() {
+            out[2 * axis..2 * axis + 2].copy_from_slice(&q.to_le_bytes());
+        }
+        out[0x06..0x08].copy_from_slice(&self.normal);
+        out[0x08..0x0B].copy_from_slice(&self.colour);
+        out[0x0B] = self.scale;
+        out[0x0C] = self.scale_z;
+        out[0x0D] = self.rotation;
+        out[0x0E..].copy_from_slice(&self.guid.to_le_bytes());
+        out
+    }
 }
 
 impl StreamGrassList {
@@ -224,6 +239,9 @@ pub(super) fn lists(
     })
     .collect()
 }
+
+#[path = "map_slod.rs"]
+pub mod slod;
 
 #[cfg(test)]
 #[path = "map_grass_tests.rs"]
