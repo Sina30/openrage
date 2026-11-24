@@ -460,13 +460,13 @@ pub struct Listed<'a> {
     pub table: &'a Table,
 }
 
-/// The entry of the path `path` a file of `pack` registers, and the archive that lists it: an archive of the folder the pack's setup lies in before any other.
+/// The nested archive of the path `path` a file of `pack` registers, and the archive that lists it: an archive of the folder the pack's setup lies in before any other.
 pub fn resolve<'a>(pack: &Pack, path: &str, tables: &[Listed<'a>]) -> Option<(u32, &'a Entry)> {
     let own = pack.archive.parent();
     let find = |near: bool| {
         (tables.iter())
             .filter(|listed| (listed.path.parent() == own) == near)
-            .find_map(|listed| Some((listed.archive, listed.table.find(path)?)))
+            .find_map(|listed| Some((listed.archive, listed.table.find_archive(path)?)))
     };
     find(true).or_else(|| find(false))
 }
