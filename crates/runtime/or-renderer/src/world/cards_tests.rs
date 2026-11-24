@@ -118,6 +118,25 @@ fn cube(device: &wgpu::Device, half: f32, centre: Vec3) -> (wgpu::Buffer, wgpu::
             MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], [1.0; 4])
         })
         .collect();
+    cube_buffers(device, &vertices)
+}
+
+/// The same cube with its vertices packed as a world model's are, each colour white.
+fn model_cube(device: &wgpu::Device, half: f32) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+    let mut vertices: Vec<MeshVertex> = (0..8)
+        .map(|at| {
+            let corner = [0, 1, 2].map(|axis| if (at >> axis) & 1 == 1 { half } else { -half });
+            MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [0.0, 0.0], [1.0; 4])
+        })
+        .collect();
+    crate::world::coloured(&mut vertices, (None, None), (None, None));
+    cube_buffers(device, &vertices)
+}
+
+fn cube_buffers(
+    device: &wgpu::Device,
+    vertices: &[MeshVertex],
+) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let faces: [[u32; 4]; 6] = [
         [0, 1, 3, 2],
         [4, 5, 7, 6],
@@ -140,7 +159,7 @@ fn cube(device: &wgpu::Device, half: f32, centre: Vec3) -> (wgpu::Buffer, wgpu::
     (
         buffer(
             "cube-vertices",
-            bytemuck::cast_slice(&vertices),
+            bytemuck::cast_slice(vertices),
             wgpu::BufferUsages::VERTEX,
         ),
         buffer(
@@ -298,6 +317,21 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
             && (column - middle).abs() > SIZE as f32 / 8.0,
         "the red lies at column {column}, the model's side is at {expected}"
     );
+    // A cutout of a world model is covered where its map is, whatever its vertex packing puts in the colour's floats
+    let (model_vertices, model_indices, model_count) = model_cube(&device, 1.0);
+    let mesh = CardMesh {
+        vertices: &model_vertices,
+        indices: &model_indices,
+        base_vertex: 0,
+        first_index: 0,
+        index_count: model_count,
+        colour: Some(&red),
+        cutout: true,
+    };
+    assert!(renderer.bake_card_slot(&device, &queue, 2, [0.0; 3], radius, &[mesh]));
+    renderer.set_card_species(&device, &queue, &[species(Some(2))]);
+    let cut = drawn(&mut renderer, &one, &[0]).0;
+    assert!(cut * 10 > whole * 9, "{cut} of {whole}");
     // A slot past the device's is refused
     let past = renderer.card_slots(&device);
     let mesh = CardMesh {

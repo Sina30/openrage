@@ -348,7 +348,8 @@ fn vs_bake(in: VsIn) -> VsOut {
     var out: VsOut;
     out.clip_pos = view.view_proj * vec4<f32>(in.position, 1.0);
     out.uv = in.uv;
-    out.colour = in.colour;
+    // ⚠ A world model's vertex keeps its first colour in the bits of the colour's third float, as `material::coloured` packs it: read as a float, its alpha is noise that cuts every leaf away.
+    out.colour = unpack4x8unorm(bitcast<u32>(in.colour.z));
     return out;
 }
 
