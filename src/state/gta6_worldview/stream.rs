@@ -86,6 +86,8 @@ pub struct Streaming {
 pub struct Selected {
     /// Counted up with each selection, so that one already laid out is not laid out again.
     pub version: u64,
+    /// Where the camera stood when it was made: a frame or more behind a camera in flight.
+    pub eye: Vec3,
     pub models: Vec<ModelRef>,
     pub chunks: Vec<Chunk>,
     pub instances: Vec<Instance>,
@@ -387,6 +389,7 @@ impl Streamer {
         let mut selection = self.forest.select(view, &state);
         let mut out = Selected {
             fading: selection.fading,
+            eye,
             ..Selected::default()
         };
         let mut models = Models::default();
