@@ -343,6 +343,7 @@ fn emissive_strength() -> f32 {
 }
 
 // ⚠ Every map is sampled and every derivative taken before anything is discarded, and in control flow every pixel shares.
+// ponytail: every slot is sampled whatever the family, fifteen samples a pixel, most of them of a one-texel stand-in; sample by family where the G-buffer pass's cost shows it.
 fn surface_of(in: VsOut, front_facing: bool) -> Surface {
     var maps: Maps;
     maps.c0 = textureSample(layer0_colour, map_smp, in.uv);
