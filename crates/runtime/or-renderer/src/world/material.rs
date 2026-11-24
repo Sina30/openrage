@@ -135,6 +135,8 @@ impl WorldConstants {
     pub const HARD_LIGHT: u32 = 8;
     /// The meshes are a model's, their vertices packed by [`coloured`].
     pub const MODEL_VERTEX: u32 = 16;
+    /// The albedo is the instance's tint: the material names no colour map and no palette, as a region-tint prop list's.
+    pub const INSTANCE_COLOUR: u32 = 32;
 }
 
 impl Default for WorldConstants {

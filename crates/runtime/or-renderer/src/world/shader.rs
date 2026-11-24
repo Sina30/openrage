@@ -87,6 +87,7 @@ const MASK_FROM_ALPHA: u32 = 2u;
 const INVERT_CONTROL: u32 = 4u;
 const HARD_LIGHT: u32 = 8u;
 const MODEL_VERTEX: u32 = 16u;
+const INSTANCE_COLOUR: u32 = 32u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
@@ -438,7 +439,8 @@ fn surface_of(in: VsOut, front_facing: bool) -> Surface {
         } else {
             lean = one_layer(&s, maps, in, tint);
         }
-        if (family != GRASS) {
+        // A game model's instance tint colours only a material that names no colour of its own: a prop list's tint is no part of a mapped material's colour.
+        if (family != GRASS && ((m.flags & MODEL_VERTEX) == 0u || (m.flags & INSTANCE_COLOUR) != 0u)) {
             s.albedo = s.albedo * in.tint;
         }
         let dielectric = 0.04 * (1.0 + m.specular_fresnel) * reach(s.albedo * (1.0 - s.metal));
