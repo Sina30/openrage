@@ -20,7 +20,7 @@ const GROUP: Member = (0x4C0A_CB96, 0x7C, 0x4A);
 /// The same name as the 64-bit word the world-state data names the group by.
 const GROUP_WORD: Member = (0x6587_6A4D, 0x48, 0x4F);
 /// An archetype's load flags, a `u64` of which the bits read lie in the low half.
-const LOAD_FLAGS: Member = (0xC067_A638, 0x30, 0x17);
+const LOAD_FLAGS: Member = (lit(b"loadFlags"), 0x30, 0x17);
 /// Where a map-types body's array of archetype pointers lies in its root.
 const ARCHETYPES: usize = 0x18;
 
