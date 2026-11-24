@@ -16652,11 +16652,26 @@ msgstr "공유 미니게임이 추가하는 맵 스트리밍"
 msgid "The index holds no script-managed group"
 msgstr "인덱스에 스크립트로 관리되는 그룹이 없습니다"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "그룹 {on}개 켜짐: 이 시각의 게임 자체 그룹"
+
+msgid "{on} groups on, as you chose them"
+msgstr "선택한 대로 그룹 {on}개 켜짐"
+
+msgid "The game's own groups"
+msgstr "게임 자체 그룹"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "선택한 그룹 대신, 이 시각에 게임의 월드 상태가 켜는 그룹을 켭니다"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "스크립트로 관리되는 그룹: {groups}개 중 {on}개 켜짐"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "기본적으로 어떤 것이 켜져 있는지 알려 주는 것이 없습니다: 선택한 그룹은 그 맵을 스트리밍합니다"
+
+msgid "A group ticked streams its maps in"
+msgstr "선택한 그룹은 그 맵을 스트리밍합니다"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}, 맵 {maps}개"
