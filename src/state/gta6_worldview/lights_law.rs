@@ -43,7 +43,7 @@ pub fn angular(x: f32) -> f32 {
 /// whose sum meets [`angular`] at the cone's edge, half way across it and inside it.
 pub fn spot_cones(inner: f32, outer: f32) -> [(f32, f32); 2] {
     let (cos_in, cos_out) = (inner.to_radians().cos(), outer.to_radians().cos());
-    if !(cos_in > cos_out) {
+    if cos_in <= cos_out {
         return [(outer, 1.0), (outer, 0.0)];
     }
     let half_way = (cos_out + (cos_in - cos_out) / 2.0).acos().to_degrees();
