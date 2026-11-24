@@ -119,8 +119,9 @@ does nothing.
   that leaves and grass keep their coverage far from the camera; a far stand-in's card the same
   by its atlas.
 - A grass instance is tinted by its own colour, as far as its material's grass tint and the
-  vertex's second colour let it. A prop instance's own tint is the whole colour of a material that
-  names no colour map and no palette, as the region-tint far prop lists are, and no part of any other.
+  vertex's second colour let it. A prop instance's own tint is the whole colour of a material of
+  the region-tint effects of the far prop lists, under the vertex's first colour as far as its
+  alpha in their per-vertex variant, and no part of any other material.
 - A fading instance is drawn through an ordered dither, the same in every pass.
 - In Shaded the instances are written into the frame the game's own lighting passes light, where a
   game shader pack is read, and the sun casts their shadow in four cascades about what the camera
