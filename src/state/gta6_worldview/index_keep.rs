@@ -87,6 +87,7 @@ impl WorldIndex {
         put_rows(&mut out, &self.archetypes)?;
         put_rows(&mut out, &self.models)?;
         put_rows(&mut out, &self.dictionaries)?;
+        put_rows(&mut out, &self.interiors)?;
         put_rows(&mut out, std::slice::from_ref(&self.report))?;
         out.flush()?;
         drop(out);
@@ -111,6 +112,7 @@ impl WorldIndex {
                 archetypes: rows(from)?,
                 models: rows(from)?,
                 dictionaries: rows(from)?,
+                interiors: rows(from)?,
                 ..WorldIndex::default()
             };
             let report: Vec<Report> = rows(from)?;
