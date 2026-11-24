@@ -278,8 +278,11 @@ impl Casting {
 }
 
 impl Casting {
-    /// The calls and the triangles the four cascades cast together, of `draws` as the lists were last made for them.
-    pub(super) fn cost(&self, draws: &[WorldDraw], multi: bool) -> (usize, u64) {
+    /// The calls and the triangles the four cascades cast together, of `draws` as the lists were made for them; none where the lists are of an earlier set of the frame, as where the sun does not shine.
+    pub(super) fn cost(&self, draws: &[WorldDraw], multi: bool, set: u64) -> (usize, u64) {
+        if self.of.is_none_or(|(_, of)| of != set) {
+            return (0, 0);
+        }
         let mut calls = 0;
         let mut triangles = 0;
         for (ranges, batches) in self.ranges.iter().zip(&self.batches) {

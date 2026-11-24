@@ -794,7 +794,11 @@ impl ViewportRenderer {
     /// What the world's draws of the last frame set ask of the device, the shadow's as last cast.
     pub fn world_calls(&self) -> WorldCalls {
         let world = &self.world;
-        let (cast_calls, cast_triangles) = world.casting.borrow().cost(&world.draws, world.multi);
+        let (cast_calls, cast_triangles) =
+            world
+                .casting
+                .borrow()
+                .cost(&world.draws, world.multi, world.set);
         WorldCalls {
             cast_calls,
             cast_triangles,
