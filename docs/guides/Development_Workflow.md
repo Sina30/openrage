@@ -450,6 +450,11 @@ Coordinates are points on a 1600×900 screen unless `size` changes it.
 | `shot NAME` | saves `NAME.png` |
 | `picker NAME` | saves `NAME.png` of Browse with nothing open, which is the start page |
 | `settings NAME PAGE` | draws the Settings page with that label, at its own window size |
+| `world camera X Y Z YAW PITCH [FOV]` | puts the World screen's camera at a place in metres, with its yaw and pitch in degrees (a yaw of 0 looks along +Y and a growing yaw turns towards −X) and, where given, its vertical field of view in degrees; it waits for the install's index first, because the viewer moves its camera when it takes one; the World panel's Copy the camera writes this line. Every `world` step needs `game gta6 FOLDER` and `workspace World` before it |
+| `world hour H` | sets the hour, from 0 up to 24, of what the world places and of the light it is drawn in, and stops the day |
+| `world clean on`, `world clean off` | draws the world alone over the whole window, with no panel, line or toast over it, so that a `shot` is the frame at the size `size` gives; `off` puts the view back in the dock |
+| `world settle [SECONDS]` | draws frames until the viewer holds an index, waits for no map, model or texture, and nothing streamed in has changed for a second and a half; after `SECONDS`, 180 with no number, the run fails and says what was still arriving |
+| `compare NAME REFERENCE.png TOLERANCE` | measures the shot `NAME` against the image at `REFERENCE.png`, which must be of its size: prints the mean absolute difference of red, green and blue in levels of 255 and the share of pixels with a channel more than 16 levels away, and saves `NAME.diff.png` beside the shot; a mean over `TOLERANCE` fails the run at its end, so one run judges every comparison, and with no file at `REFERENCE.png` the shot is a candidate for it and nothing fails |
 
 App shortcuts such as Ctrl+S are dispatched from winit, so no step reaches
 them.
