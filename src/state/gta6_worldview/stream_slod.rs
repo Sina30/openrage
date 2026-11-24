@@ -1,6 +1,7 @@
 //! The far stand-ins of the maps streamed in, as the card pass takes them: each list's box, scales
 //! and distance with its instances as the body stores them, and the species each id names.
 
+use std::f32::consts::SQRT_2;
 use std::sync::Arc;
 
 use glam::Vec3;
@@ -11,7 +12,7 @@ use super::super::index::{ArchetypeRow, ModelRef, WorldIndex};
 /// A list of far stand-ins that draws, as the card pass takes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardList {
-    /// The sphere that holds every card of the list.
+    /// The sphere that holds every card of the list, corners included.
     pub centre: [f32; 3],
     pub radius: f32,
     /// The lowest corner of the box each instance's place is a fraction of.
@@ -44,13 +45,13 @@ impl CardList {
             Vec3::from(list.batch_aabb.min),
             Vec3::from(list.batch_aabb.max),
         );
-        // A card stands off its place by its species' centre and reaches past it by the radius,
-        // both at the instance's scale.
+        // A card stands off its place by its species' centre and its corner reaches past it by
+        // the radius times √2, both at the instance's scale.
         let mut reach = 0.0f32;
         let mut seen = std::collections::HashSet::new();
         for instance in list.instances.iter().filter(|i| seen.insert(i.guid)) {
             if let Some(a) = archetype_of(index, usize::from(instance.guid)) {
-                reach = reach.max(Vec3::from(a.centre).length() + a.radius);
+                reach = reach.max(Vec3::from(a.centre).length() + a.radius * SQRT_2);
             }
         }
         let most = list.scale_range[1];

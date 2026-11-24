@@ -96,9 +96,10 @@ fn a_card_list_keeps_the_box_the_scales_and_each_record_as_stored() {
     assert_eq!(cards.min, [10.0, 20.0, 30.0]);
     assert_eq!(cards.size, [100.0, 200.0, 50.0]);
     assert_eq!(cards.centre, [60.0, 120.0, 55.0]);
-    // The box's half diagonal, and a radius-1 model at the most scale past it.
+    // The box's half diagonal, and the corner of a radius-1 model's card at the most scale past it.
     let half = Vec3::new(100.0, 200.0, 50.0).length() / 2.0;
-    assert!((cards.radius - (half + 2.0)).abs() < 1e-4, "{}", cards.radius);
+    let corner = 2.0 * std::f32::consts::SQRT_2;
+    assert!((cards.radius - (half + corner)).abs() < 1e-4, "{}", cards.radius);
     assert_eq!(cards.scale_range, [0.5, 2.0]);
     assert_eq!((cards.distance, cards.fade), (900.0, 1.0));
     let stored: Vec<[u8; 16]> = list.instances.iter().map(|i| i.record()).collect();
