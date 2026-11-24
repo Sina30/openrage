@@ -144,7 +144,7 @@ fn every_map_opened_is_indexed_once_and_the_plan_gets_the_points_of_the_others()
 
 fn light(posn: [f32; 3], colour: [u8; 3], falloff: f32) -> LightAttr {
     LightAttr {
-        hash_30eca388: [0.0; 3],
+        hash_30eca388: posn,
         posn,
         colour,
         vol_outer_colour: [0; 3],
