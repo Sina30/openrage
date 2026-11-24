@@ -22,8 +22,8 @@ const FOG: &str = "textures/waterfogatlas/waterfogatlas";
 /// The names a tile's two textures have: the scattering and the extinction.
 const TILE: &str = "waterfog";
 const TILE2: &str = "waterfog2";
-/// How many tiles about the camera's own, each way, the near medium spans.
-const AROUND: u32 = 1;
+/// The fewest tiles about the camera's own, each way, the near medium spans where the grid states no stream radius.
+const LEAST_AROUND: u32 = 1;
 
 /// The fog atlas's two fallbacks on the grid they share: `waterfog` the medium's scattering a metre, `waterfog2` its extinction a metre; and the tiles laid on them.
 pub struct WaterFog {
@@ -47,6 +47,15 @@ pub struct NearFog {
 }
 
 impl WaterFog {
+    /// How many tiles about the camera's own, each way, the near medium spans: as far as the grid streams its tiles.
+    pub fn around(&self) -> u32 {
+        let tile = self.atlas.tile_size;
+        if !(tile > 0.0 && self.atlas.stream_radius > 0.0) {
+            return LEAST_AROUND;
+        }
+        ((self.atlas.stream_radius / tile).ceil() as u32).max(LEAST_AROUND)
+    }
+
     /// The tile of the grid `x`, `y` lies in; `None` off the grid.
     pub fn tile_of(&self, x: f32, y: f32) -> Option<(u32, u32)> {
         let (east, south) = (x - self.atlas.west(), self.atlas.north() - y);
@@ -59,8 +68,9 @@ impl WaterFog {
 
     /// The medium of the tiles about `(col, row)` at the atlas's own size: a laid tile's texels, else the fallback's under it; `None` where no tile about it is laid.
     pub fn near(&self, (col, row): (u32, u32)) -> Option<NearFog> {
-        let (first_col, first_row) = (col.saturating_sub(AROUND), row.saturating_sub(AROUND));
-        let span = 2 * AROUND + 1;
+        let around = self.around();
+        let (first_col, first_row) = (col.saturating_sub(around), row.saturating_sub(around));
+        let span = 2 * around + 1;
         let laid: Vec<_> = (0..span * span)
             .map(|k| (first_col + k % span, first_row + k / span))
             .map(|at| (at, self.tiles.get(&at)))
@@ -261,7 +271,12 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterFog, String> {
             tiles.insert(at, (extinct, scatter));
         }
     }
-    tracing::info!(tiles = tiles.len(), "the water's fog tiles were laid");
+    tracing::info!(
+        tiles = tiles.len(),
+        stream_radius = atlas.stream_radius,
+        tile_size = atlas.tile_size,
+        "the water's fog tiles were laid"
+    );
     Ok(WaterFog {
         commonest: commonest(&extinction, &scattering),
         atlas,
