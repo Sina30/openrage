@@ -1,14 +1,17 @@
 //! GTA VI's water: the level's `WaterData` document, a metadata document in the table form whose
 //! quads are level rectangles and cut corners of water, and the grid a water atlas is tiled by.
 //!
-//! ⚠ The quads are not all of the water: the level also registers a height map streamed by the
-//! grid of [`GridAtlas`], whose tiles this does not read.
+//! ⚠ The level's height map, which [`height`] lays on the grid of [`GridAtlas`], is the ground
+//! under the water and not its surface: a quad's `z` is the surface.
 
 use crate::gta5::data::timecycle::{attr, tokens, Token};
 use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::pso::table_form;
 use crate::meta::binary::rbm::schema::RbmModel;
 use crate::meta::error::MetaError;
+
+#[path = "water_height.rs"]
+pub mod height;
 
 pub const WATER_DATA: u32 = lit(b"WaterData");
 pub const WATER_QUAD: u32 = lit(b"WaterQuad");
@@ -58,6 +61,8 @@ pub enum WaterError {
     Broken(String),
     #[error("the text is not a grid atlas: {0}")]
     NotAnAtlas(String),
+    #[error("the height map does not fit its grid: {0}")]
+    Ground(String),
 }
 
 /// One `WaterQuad`: a level rectangle of water, in whole metres.
@@ -65,11 +70,12 @@ pub enum WaterError {
 pub struct WaterQuad {
     pub min: [i16; 2],
     pub max: [i16; 2],
-    /// The opacity at each corner, `a1` to `a4`.
+    /// The opacity at each corner, `a1` to `a4`: south-west, south-east, north-east, north-west.
     pub alpha: [u8; 4],
     /// The height of its surface.
     pub z: f32,
-    /// 0 a whole rectangle; 1 to 4 one that a corner is cut from, which corner is not measured.
+    /// 0 a whole rectangle; 1 to 4 the triangle of it without its north-east, south-east,
+    /// south-west or north-west corner, measured by how the quads tile.
     pub kind: u8,
     pub ocean: bool,
     pub invisible: bool,
@@ -181,7 +187,7 @@ pub struct GridAtlas {
     pub tile_prefix: String,
     pub tile_suffix: String,
     pub fallback: String,
-    /// The corner the grid starts at, in metres.
+    /// The grid's centre, in metres; its rows run south from its north edge.
     pub origin: [f32; 2],
     /// The grid's extent along x and along y, in metres.
     pub size: [f32; 2],
@@ -190,6 +196,16 @@ pub struct GridAtlas {
 }
 
 impl GridAtlas {
+    /// The grid's west edge, in metres.
+    pub fn west(&self) -> f32 {
+        self.origin[0] - self.size[0] / 2.0
+    }
+
+    /// The grid's north edge, in metres.
+    pub fn north(&self) -> f32 {
+        self.origin[1] + self.size[1] / 2.0
+    }
+
     pub fn parse(text: &str) -> Result<Self, WaterError> {
         let mut atlas = Self::default();
         let (mut rooted, mut depth, mut open) = (false, 0usize, "");
