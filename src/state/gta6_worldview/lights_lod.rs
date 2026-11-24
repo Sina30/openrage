@@ -25,9 +25,21 @@ const VEC3V: u8 = 0x33;
 
 /// Each member this reads, where its class holds it and its type code, which a body's own table must agree with.
 const LAYOUT: &[(u32, &str, &[u8], usize, u8)] = &[
-    (C_MAP_DATA, "CMapData", b"reflectionProbeData", PROBES_AT, ARRAY),
+    (
+        C_MAP_DATA,
+        "CMapData",
+        b"reflectionProbeData",
+        PROBES_AT,
+        ARRAY,
+    ),
     (C_MAP_DATA, "CMapData", b"LODLightsSOA", LOD_AT, STRUCT),
-    (C_MAP_DATA, "CMapData", b"DistantLODLightsSOA", DISTANT_AT, STRUCT),
+    (
+        C_MAP_DATA,
+        "CMapData",
+        b"DistantLODLightsSOA",
+        DISTANT_AT,
+        STRUCT,
+    ),
     (LOD_LIGHT, "CLODLight", b"falloff", 0x10, ARRAY),
     (LOD_LIGHT, "CLODLight", b"falloffExponent", 0x20, ARRAY),
     (DISTANT_LIGHT, "CDistantLODLight", b"position", 0x00, ARRAY),
@@ -98,8 +110,8 @@ fn elements<'m>(
     stride: usize,
     what: &'static str,
 ) -> Result<std::slice::ChunksExact<'m, u8>, LodError> {
-    let header = (bytes.get(at..at + 12))
-        .ok_or_else(|| broken(what, "its header runs past its block"))?;
+    let header =
+        (bytes.get(at..at + 12)).ok_or_else(|| broken(what, "its header runs past its block"))?;
     let raw = u64::from_le_bytes(std::array::from_fn(|k| header[k]));
     let count = usize::from(u16::from_le_bytes([header[8], header[9]]));
     if count == 0 {
@@ -228,8 +240,14 @@ pub(super) mod tests {
             (0x21, bytes(falloff)),
             (0x21, bytes(&vec![1.0; falloff.len()])),
             (0, distant.iter().flat_map(|d| bytes(&d.0)).collect()),
-            (0x15, distant.iter().flat_map(|d| d.1.to_le_bytes()).collect()),
-            (0x21, distant.iter().flat_map(|d| d.2.to_le_bytes()).collect()),
+            (
+                0x15,
+                distant.iter().flat_map(|d| d.1.to_le_bytes()).collect(),
+            ),
+            (
+                0x21,
+                distant.iter().flat_map(|d| d.2.to_le_bytes()).collect(),
+            ),
             (0x11, distant.iter().map(|d| d.3).collect()),
         ];
         RbmModel {
@@ -274,7 +292,13 @@ pub(super) mod tests {
         header(&mut long.data_blocks[0].data, LOD_AT + 0x10, 2, 9);
         let past = read(&long);
         assert!(
-            matches!(&past, Err(LodError::Broken { what: "falloff", .. })),
+            matches!(
+                &past,
+                Err(LodError::Broken {
+                    what: "falloff",
+                    ..
+                })
+            ),
             "{past:?}"
         );
         let mut uneven = model(&[3.0, 4.0], &[]);
