@@ -16791,11 +16791,26 @@ msgstr "Загружать карты, которые добавляют общ�
 msgid "The index holds no script-managed group"
 msgstr "В индексе нет групп, управляемых скриптом"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "Включено групп: {on}; это группы самой игры в этот час"
+
+msgid "{on} groups on, as you chose them"
+msgstr "Включено групп: {on}; выбранные вами"
+
+msgid "The game's own groups"
+msgstr "Группы самой игры"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "Включить группы, которые состояние мира игры включает в этот час, вместо выбранных"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Группы, управляемые скриптом: включено {on} из {groups}"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "Ничто не говорит, какие включены по умолчанию: отмеченная группа загружает свои карты"
+
+msgid "A group ticked streams its maps in"
+msgstr "Отмеченная группа загружает свои карты"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}, карт: {maps}"
