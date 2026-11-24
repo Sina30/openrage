@@ -283,7 +283,7 @@ fn pairs(owner: &MetaInstance, member: u32) -> Vec<(u32, &MetaInstance)> {
         .collect()
 }
 
-fn array<'a>(owner: &'a MetaInstance, member: u32) -> &'a [Value] {
+fn array(owner: &MetaInstance, member: u32) -> &[Value] {
     match owner.get(&name(member)) {
         Some(Value::Array(items)) => items,
         _ => &[],
