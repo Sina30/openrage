@@ -16652,11 +16652,26 @@ msgstr "Carica in streaming le mappe aggiunte dai minigiochi condivisi"
 msgid "The index holds no script-managed group"
 msgstr "L'indice non contiene alcun gruppo gestito da script"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "{on} gruppi attivi: quelli del gioco a quest'ora"
+
+msgid "{on} groups on, as you chose them"
+msgstr "{on} gruppi attivi, quelli scelti"
+
+msgid "The game's own groups"
+msgstr "I gruppi del gioco"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "Attiva i gruppi che lo stato del mondo del gioco attiva a quest'ora, al posto di quelli scelti"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Gruppi gestiti da script: {on} attivi su {groups}"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "Nulla indica quali sono attivi per impostazione predefinita: un gruppo spuntato carica in streaming le sue mappe"
+
+msgid "A group ticked streams its maps in"
+msgstr "Un gruppo spuntato carica in streaming le sue mappe"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}, {maps} mappe"
