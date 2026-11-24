@@ -1,12 +1,17 @@
 //! The GTA VI archive explorer panel: the build's RPF9 archives down one side, and for the chosen
-//! one its deciphered entries — each entry's name64 and, where the recovered-names corpus is set,
-//! its path — and its index groups. The data is read through [`Gta6ArchiveExplorer`]; this only
-//! draws it. Its state is a child of this panel module, so declaring it costs `state/mod.rs` no line.
+//! one a tree of its deciphered entries — each entry's recovered name, hash and size. An entry whose
+//! body is itself an RPF9 archive expands in place (the nested table is mounted on first expand); a
+//! leaf entry opens on a double-click through the app's existing scan-body views. The data is read
+//! through [`Gta6ArchiveExplorer`]; this only draws it. Its state is a child of this panel module, so
+//! declaring it costs `state/mod.rs` no line.
 
 mod state;
 
-use state::Gta6ArchiveExplorer;
+use std::path::{Path, PathBuf};
 
+use state::{Gta6ArchiveExplorer, Node};
+
+use crate::state::rpf9_scan::{body_path, View};
 use crate::state::AppState;
 use crate::ui::panel_registry::{Panel, PanelContext, PanelId, PanelRegistry};
 use crate::ui::theme;
@@ -39,12 +44,18 @@ pub fn register_into(registry: &mut PanelRegistry) {
     registry.register(&PANEL);
 }
 
+/// A deferred action from the tree, applied after the read borrow of the explorer is dropped: toggle
+/// a nested archive's expansion, or open an entry's body in a view.
+enum Action {
+    Toggle(Vec<u32>),
+    Open(PathBuf),
+}
+
 pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
     // Always paint the heading, so the panel draws something even with no build set (the self-check
     // fails a panel that paints nothing).
     ui.label(egui::RichText::new(crate::i18n::tr("Archives")).strong());
 
-    // The archive names are read once and cached, so listing them is cheap every frame.
     let archives: Vec<String> = state
         .panels
         .get::<Gta6ArchiveExplorer>()
@@ -53,9 +64,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
 
     if archives.is_empty() {
         // No build is set (OPENRAGE_GTA6_BUILD), so there is nothing to list; a weak hint names the
-        // variable to set. ⚠ Untranslated: this is a developer-only diagnostic for an experimental,
-        // read-only panel, like the open-error strings in its state (see the module header). It also
-        // keeps the panel painting content of its own when empty, which the self-check requires.
+        // variable to set. ⚠ Untranslated: a developer-only diagnostic for an experimental, read-only
+        // panel. It also keeps the panel painting content of its own when empty, which the self-check
+        // requires.
         ui.add_space(theme::SPACING_TIGHT);
         ui.label(
             egui::RichText::new(format!(
@@ -83,48 +94,94 @@ pub fn draw(ui: &mut egui::Ui, state: &mut AppState) {
     }
     ui.separator();
 
-    let explorer = state.panels.get::<Gta6ArchiveExplorer>();
-    if let Some(error) = &explorer.error {
-        let color = ui.visuals().error_fg_color;
-        ui.colored_label(color, error.as_str());
-        return;
+    // Draw the tree, collecting what to do once the explorer borrow is dropped.
+    let disk = state.panels.get::<Gta6ArchiveExplorer>().selected_path();
+    let mut actions: Vec<Action> = Vec::new();
+    {
+        let explorer = state.panels.get::<Gta6ArchiveExplorer>();
+        // Draw a failed-expand error above the tree without returning, so one bad nested mount does not
+        // blank the whole tree; the next toggle clears it.
+        if let Some(error) = &explorer.error {
+            ui.colored_label(ui.visuals().error_fg_color, error.as_str());
+        }
+        let (Some(root), Some(disk)) = (&explorer.root, disk.as_deref()) else {
+            return;
+        };
+        ui.monospace(format!(
+            "{} entries, index key {:#010X}",
+            root.rows.len(),
+            root.key_id
+        ));
+        ui.add_space(theme::SPACING_TIGHT);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                draw_node(ui, root, &mut Vec::new(), disk, &mut actions);
+            });
     }
-    let Some(listing) = &explorer.listing else {
-        return;
-    };
-    ui.monospace(format!(
-        "{}: {} of {} entries, index key {:#010X}",
-        listing.name,
-        listing.entries.len(),
-        listing.entry_count,
-        listing.key_id
-    ));
-    ui.add_space(theme::SPACING_TIGHT);
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr("Groups")).strong());
-            for g in &listing.groups {
-                ui.monospace(format!(
-                    "{:#018X}  ×{:<6} w{:<3} {}",
-                    g.name_hash,
-                    g.count,
-                    g.width,
-                    if g.external { "ext" } else { "main" }
-                ));
-            }
-            ui.add_space(theme::SPACING_TIGHT);
-            ui.label(egui::RichText::new(crate::i18n::tr("Entries")).strong());
-            for e in &listing.entries {
-                let size = e
-                    .size
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "-".to_string());
-                let name = e.name.as_deref().unwrap_or("");
-                ui.monospace(format!(
-                    "{:>5}  {:#018X}  {:>10}  {name}",
-                    e.index, e.name64, size
-                ));
+
+    for action in actions {
+        match action {
+            Action::Toggle(path) => state.panels.get::<Gta6ArchiveExplorer>().toggle(&path),
+            Action::Open(path) => state.load_file(path),
+        }
+    }
+}
+
+/// Draw `node`'s entries at the depth `path` gives, recursing into the nested archives it has open.
+/// `path` is the chain of entry indices from the root to `node`; `disk` is the archive file on disk,
+/// against which an entry's absolute offset locates its body.
+fn draw_node(
+    ui: &mut egui::Ui,
+    node: &Node,
+    path: &mut Vec<u32>,
+    disk: &Path,
+    actions: &mut Vec<Action>,
+) {
+    let indent = path.len() as f32 * 14.0;
+    for row in &node.rows {
+        let size = row
+            .size
+            .map(|s| format!("{s:>10}"))
+            .unwrap_or_else(|| "         -".to_string());
+        let name = row.display_name();
+        let cipher = if row.cipher { "  [cipher]" } else { "" };
+
+        ui.horizontal(|ui| {
+            ui.add_space(indent);
+            if row.is_archive {
+                let open = node.open.contains(&row.index);
+                let arrow = if open { "▾" } else { "▸" };
+                let label = egui::RichText::new(format!("{arrow} {size}  {name}")).monospace();
+                let resp = ui.selectable_label(false, label);
+                if resp.clicked() {
+                    let mut child = path.clone();
+                    child.push(row.index);
+                    actions.push(Action::Toggle(child));
+                }
+                if resp.double_clicked() {
+                    if let Some(off) = row.absolute_start {
+                        actions.push(Action::Open(body_path(disk, off, View::Archive)));
+                    }
+                }
+            } else {
+                let label = egui::RichText::new(format!("   {size}  {name}{cipher}")).monospace();
+                let resp = ui.selectable_label(false, label);
+                // A double-click opens the body; an enciphered one cannot be opened, so it does not.
+                if resp.double_clicked() && !row.cipher {
+                    if let Some(off) = row.absolute_start {
+                        actions.push(Action::Open(body_path(disk, off, View::Bytes)));
+                    }
+                }
             }
         });
+
+        if row.is_archive && node.open.contains(&row.index) {
+            if let Some(child) = node.children.get(&row.index) {
+                path.push(row.index);
+                draw_node(ui, child, path, disk, actions);
+                path.pop();
+            }
+        }
+    }
 }
