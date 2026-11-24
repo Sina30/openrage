@@ -3,6 +3,7 @@ pub mod hash_index;
 pub mod layout;
 pub mod pso;
 pub mod public_names;
+pub mod ragepar_names;
 pub mod rbf;
 pub mod rbm;
 pub mod root_types;

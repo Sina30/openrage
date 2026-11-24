@@ -79,6 +79,7 @@ mod project_steps;
 mod registry;
 mod retarget;
 mod rpf;
+mod rpf9;
 mod script;
 mod search;
 mod serve;
@@ -243,6 +244,7 @@ pub fn run(args: &[String]) -> ExitCode {
         "weapons" => with_cli_tracing(|| weapons::run(rest)),
         "photo" => photo::run(rest),
         "rpf" => rpf::run(rest),
+        "rpf9" | "gta6-rpf9" => with_cli_tracing(|| rpf9::run(rest)),
         "script" => with_cli_tracing(|| script::run(rest)),
         "search" => {
             let level = if rest.iter().any(|a| a == "--verify") {
@@ -348,6 +350,10 @@ fn print_usage() {
     eprintln!("             scan-open, scan-extract, scan-export and scan-anim do; extract --as");
     eprintln!("             converted writes its textures as PNG, models as glTF, metadata as XML");
     eprintln!("             and audio as Ogg Opus");
+    eprintln!(
+        "  rpf9       GTA VI archives (RPF9): tree deciphers an archive's table of contents and"
+    );
+    eprintln!("             lists its entries, with --names, --keys, --groups and --nested");
     eprintln!(
         "  script     Inspect, disassemble or decompile a .ysc; natives named from a supplied list"
     );

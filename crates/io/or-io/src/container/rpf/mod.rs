@@ -3,6 +3,10 @@ pub mod builder;
 pub mod crypto;
 pub mod defrag;
 pub mod entry;
+#[cfg(feature = "gta6")]
+pub mod gta6_archive;
+#[cfg(feature = "gta6")]
+pub mod gta6_keygate;
 pub mod header;
 mod layout;
 mod lzb16;
@@ -41,6 +45,13 @@ pub use entry::{
     Compressor, FiPackEntry, FiPackEntryDirectory, FiPackEntryFile, FiPackEntryResource,
     FiPackEntryU, RpfBinaryEntry, RpfDirectoryEntry, RpfEntry, RpfEntryKind, RpfResourceEntry,
 };
+#[cfg(feature = "gta6")]
+pub use gta6_archive::{
+    Gta6Archive, Gta6Entry, NameResolver, NestedArchives, DESCRIPTOR_SIZE_AT, GROUP_DESCRIPTOR,
+    GROUP_NAME64, NESTED_SCAN_CAP,
+};
+#[cfg(feature = "gta6")]
+pub use gta6_keygate::{decode_masked, encode_masked, gate_key, is_masked, MASKED_MAGIC};
 pub use header::{
     FiPackHeader, RpfEncryption, RpfHeader, RPF7_MAGIC, RPF_AES_MAGIC, RPF_DIRECTORY_OFFSET_MARKER,
     RPF_FILE_ALIGNMENT, RPF_FILE_ALIGNMENT_SHIFT, RPF_MAX_RESOURCE_CONSUMED_SIZE,
@@ -66,7 +77,9 @@ pub use rpf9_scan::{
 #[cfg(feature = "gta6")]
 pub use rpf9_scan::{rpf9_block_streams, rpf9_names_by_count_at, Rpf9NamesByCount};
 #[cfg(feature = "gta6")]
-pub use rpf9_toc::{GtaViKeys, Rpf9Group, Rpf9Toc, GTA6_SNAPSHOT_ENV, GTA6_SNAPSHOT_FILE_NAME};
+pub use rpf9_toc::{
+    GtaViKeys, Rpf9Group, Rpf9Toc, GTA6_EXE_ENV, GTA6_SNAPSHOT_ENV, GTA6_SNAPSHOT_FILE_NAME,
+};
 #[cfg(feature = "gta6")]
 pub use rpf9_write::write_rpf9_resource_capped;
 #[cfg(feature = "gta6")]

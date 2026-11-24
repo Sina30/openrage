@@ -52,6 +52,29 @@ impl HashIndex {
         self
     }
 
+    /// File each `(hash, name)` pair directly, by the hash as given rather than
+    /// by hashing the name. First-wins, so an answer already in the index — a
+    /// title's own schema, the public names — is never overwritten.
+    pub fn with_pairs(mut self, pairs: impl IntoIterator<Item = (u32, String)>) -> Self {
+        for (hash, name) in pairs {
+            self.map.entry(hash).or_insert(name);
+        }
+        self
+    }
+
+    /// Add GTA VI's recovered `rage::par` names, for the hashes no schema or
+    /// public name resolved. Inert when the host made no corpus available
+    /// ([`crate::meta::binary::ragepar_names`]), so a clean checkout is unchanged.
+    ///
+    /// ⚠ Applied last, after the library and the public names, so its names
+    /// never displace a title's own.
+    pub fn with_parser_names(self) -> Self {
+        match crate::meta::binary::ragepar_names::installed() {
+            Some(names) => self.with_pairs(names.pairs().map(|(h, n)| (h, n.to_string()))),
+            None => self,
+        }
+    }
+
     pub fn lookup(&self, hash: u32) -> Option<&str> {
         self.map.get(&hash).map(String::as_str)
     }
@@ -129,13 +152,26 @@ pub fn with_public_names_only<R>(f: impl FnOnce() -> R) -> R {
 pub fn default_hash_index() -> &'static HashIndex {
     static INSTALLED_INDEX: OnceLock<HashIndex> = OnceLock::new();
     static PUBLIC_INDEX: OnceLock<HashIndex> = OnceLock::new();
-    let installed = crate::meta::snapshot::installed().filter(|_| !PUBLIC_ONLY.with(Cell::get));
-    match installed {
-        Some(library) => {
-            INSTALLED_INDEX.get_or_init(|| HashIndex::from_library(library).with_public_names())
-        }
-        None => PUBLIC_INDEX
-            .get_or_init(|| HashIndex::from_library(&SchemaLibrary::default()).with_public_names()),
+    static CLEAN_INDEX: OnceLock<HashIndex> = OnceLock::new();
+    // ⚠ The override is the clean-checkout simulation, which has no recovered
+    // name corpus either, so it excludes the parser names a dev machine's
+    // `OPENRAGE_PARSER_NAMES` would otherwise fold in.
+    if PUBLIC_ONLY.with(Cell::get) {
+        return CLEAN_INDEX.get_or_init(|| {
+            HashIndex::from_library(&SchemaLibrary::default()).with_public_names()
+        });
+    }
+    match crate::meta::snapshot::installed() {
+        Some(library) => INSTALLED_INDEX.get_or_init(|| {
+            HashIndex::from_library(library)
+                .with_public_names()
+                .with_parser_names()
+        }),
+        None => PUBLIC_INDEX.get_or_init(|| {
+            HashIndex::from_library(&SchemaLibrary::default())
+                .with_public_names()
+                .with_parser_names()
+        }),
     }
 }
 
@@ -291,5 +327,21 @@ mod tests {
         let after = HashIndex::from_library(&lib).with_public_names();
         assert_eq!(after.lookup(h_field), before.lookup(h_field));
         assert!(after.len() > before.len());
+    }
+
+    /// Parser-name pairs are filed by the hash as given — a GTA VI hash the
+    /// name does not literally hash to — and never displace what is there.
+    #[test]
+    fn parser_pairs_are_filed_by_hash_and_do_not_overwrite() {
+        let lib = make_library();
+        let h_field = crate::literal_string_hash(b"m_Probability");
+        let idx = HashIndex::from_library(&lib).with_pairs([
+            (0x16F5_3758, "camMetadata".to_string()),
+            (h_field, "wrong".to_string()),
+        ]);
+        // A fresh hash gets its name though it is not that name's literal hash.
+        assert_eq!(idx.lookup(0x16F5_3758), Some("camMetadata"));
+        // The library's answer is kept; the pair does not overwrite it.
+        assert_eq!(idx.lookup(h_field), Some("m_Probability"));
     }
 }
