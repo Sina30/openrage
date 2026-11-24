@@ -91,7 +91,11 @@ impl Mount {
     }
 
     /// The tables as the binding takes them, each archive by its place among `archives`.
-    fn listed<'a>(&'a self, every: &'a [PathBuf], archives: &[PathBuf]) -> Vec<Listed<'a>> {
+    pub(super) fn listed<'a>(
+        &'a self,
+        every: &'a [PathBuf],
+        archives: &[PathBuf],
+    ) -> Vec<Listed<'a>> {
         (self.tables.iter())
             .map(|(at, table)| Listed {
                 // An archive the index is not built from holds no map of it.
