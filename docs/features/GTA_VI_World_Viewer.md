@@ -1,18 +1,38 @@
 # GTA VI World Viewer
 
-The World screen flies a free camera through GTA VI's world as the game streams it, at an hour
-and in the game's modes the World panel sets. It reads the install the GTA VI folder of
+The World screen flies a free camera through GTA VI's world as the game streams it, at an hour,
+in a weather and in the game's modes the World panel sets. It reads the install the GTA VI folder of
 Settings ▸ Games names, and writes nothing into it.
 
 ## Opening it
 
 The rail shows **World**, a globe with a small gamepad, once a GTA VI folder is set. It opens the
-World workspace: the view, and beside it the World panel, which says what the mount found, what is
-streaming and where the camera is.
+World workspace: the view, and beside it the World panel. With no folder set, both say so and offer
+**Settings ▸ Games…**.
 
 The first visit builds an index of the install as a job with progress and Stop. The index is kept
 in the configuration folder under `gta6_world`, and is built again only when an archive's size or
 modification time changes, or from **Build the index again**.
+
+The World panel lists its sections in the order they are used:
+
+1. What stands in the way, each with what to do about it: the index being built, with its
+   progress; a build that failed; a folder that holds no map of GTA VI; no key snapshot (the
+   maps are then bound by their block maps, see below); and a frame lit by the plain pass because
+   no shader pack is read.
+2. **Time and weather**: the hour and the weather the world is drawn at.
+3. **Camera**: **Go to**, the interior and room the camera stands in, its position, its speed and
+   the level-of-detail scale.
+4. **What streams**: the story pack, the shared minigames and the script-managed groups.
+5. **Capture**.
+6. **Streaming**, what is streamed in and on the device, and **Mount**, what the index holds, closed
+   until opened.
+
+The line over the view says how to fly and, while anything is still on its way, how many maps,
+models and textures are yet to come.
+
+The hour, the weather, the modes, the level-of-detail scale and the camera's speed are kept in the
+preferences and come back on the next run; the groups chosen and the camera's place do not.
 
 ## Which maps it loads
 
@@ -26,11 +46,11 @@ configuration folder, or the file `OPENRAGE_GTA6_KEYS` names.
 - **Without one**, the small archives are scanned for the documents in the clear, and a map is bound
   through its block, a map whose name is the registered archive's.
 
-The World panel says which of the two bound the maps. A change set whose file is ciphered is not
-read.
+The World panel's **Mount** says which of the two bound the maps, and with no snapshot the top of
+the panel says where to put one. A change set whose file is ciphered is not read.
 
 Every pack states its mode: the base game, the story pack or the shared minigames. A map of the base
-game streams when it is not script managed and holds something to draw. **Time and modes** in the
+game streams when it is not script managed and holds something to draw. **What streams** in the
 World panel switches the story pack's and the shared minigames' maps on.
 
 A script-managed map belongs to a group of maps a script switches together. With a key snapshot, the
@@ -162,13 +182,22 @@ ground the level's height map gives and by the day's water.
 
 The keys are read while the pointer is over the view or the view holds the focus.
 
-## Time and modes
+**Go to** lists up to eight places found in the index when it is opened: the squares of 512 m that
+hold the most maps streaming at rest, one for each run of letters their maps' names start with
+(the letters before the first digit or underscore), densest first. A place none of whose maps is
+named, which is every place until **Harvest names** has run, is listed by its coordinates. Choosing one puts the camera 250 m south of the middle of its maps and 80 m over the
+tallest of them, looking north.
+
+## Time, weather and what streams
 
 - **Hour** sets the hour of the day: what is placed for some hours draws inside them, and the world
   is lit by its day at that hour. It stops a running day, so the Time bar shows the same hour.
+- **Weather** sets the weather the day is drawn in; it is the same weather the model viewport's
+  Time bar sets.
 - **Story pack** and **Shared minigames** stream the maps those packs add.
 - **Script-managed groups** lists every group of the index with its maps; a group ticked streams in.
-  The line above it says whether the groups on are the game's own at this hour or the ones chosen.
+  The line under it says whether the groups on are the game's own at this hour or the ones chosen,
+  and the field above the rows keeps those whose name holds the text typed.
 
 ## Capture
 
