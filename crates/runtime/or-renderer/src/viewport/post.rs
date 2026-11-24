@@ -557,7 +557,7 @@ mod tests {
         let weights = [0.712, 0.588, 0.449, 0.384, 0.345, 0.325, 0.319, 0.317];
         let factors = doublings(&weights);
         // Lay the sizes up as the passes do: each doubling mixes what is summed below over the size by its factor
-        let mut share = vec![0.0f32; BLOOM_SIZES];
+        let mut share = [0.0f32; BLOOM_SIZES];
         share[BLOOM_SIZES - 1] = 1.0;
         for k in (1..BLOOM_SIZES).rev() {
             let f = factors[k - 1];
