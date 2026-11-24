@@ -955,9 +955,7 @@ impl TexturePack {
         })
     }
 
-    /// Texture `index` from its mip `from` down, or from the largest mip under it whose rows all
-    /// decode, with which mip that is: only the rows those mips lie in are read. A cube, an array
-    /// or a volume reads whole, from mip 0.
+    /// Texture `index` from mip `from` down, or the largest mip under it whose rows decode, with which mip that is.
     pub fn texture_from(&self, index: usize, from: u32) -> Result<(u32, Texture), TtpfError> {
         let Plan {
             rows,
@@ -965,15 +963,15 @@ impl TexturePack {
             layout,
             ..
         } = self.layout_of(index)?;
+        // Only the rows the mips asked for lie in are read; a cube, an array or a volume reads whole.
         if layout.slices > 1 || layout.depth.is_some() {
             return self.texture(index).map(|texture| (0, texture));
         }
         // The chain holds its small levels first: a level and those under it are a prefix of it.
         let end_of = |level: &Level| level.from() + level.len;
-        let (mut readable, mut refused) = (0, None);
+        let mut readable = 0;
         for row in rows.clone() {
-            if let Err(e) = self.readable(row) {
-                refused = Some(e);
+            if self.readable(row).is_err() {
                 break;
             }
             readable = self.rows[row + 1].virtual_address - start;
@@ -981,7 +979,8 @@ impl TexturePack {
         let asked = (from as usize).min(layout.levels.len().saturating_sub(1));
         let first = (asked..layout.levels.len()).find(|&l| end_of(&layout.levels[l]) <= readable);
         let Some(first) = first else {
-            return Err(refused.unwrap_or(TtpfError::RangeNotKnown { index }));
+            // The rows of the small mips do not read, but those of the large ones may.
+            return self.texture(index).map(|texture| (0, texture));
         };
         let last = self.row_holding(&rows, start, end_of(&layout.levels[first]) - 1);
         let mut memory = vec![0u8; (self.rows[last + 1].virtual_address - start) as usize];

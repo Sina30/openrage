@@ -490,6 +490,16 @@ fn a_texture_reads_from_a_mip_down_out_of_the_rows_those_mips_lie_in() {
         pack.texture_from(0, 3),
         Err(TtpfError::UnidentifiedCodec { kind: 7, .. })
     ));
+    // With its first row alone through one, the top mip still reads by itself.
+    let (mut specs, _) = textures();
+    specs[0].bodies[0] = Body::Coded {
+        kind: 7,
+        decoded: 0x2000,
+    };
+    let (_dir, pack) = pack_of(&specs);
+    let (first, texture) = pack.texture_from(0, 0).expect("the top mip reads");
+    assert_eq!((first, texture.levels), (0, 1));
+    assert!(texture.pixels == expected[0][..top]);
 }
 
 #[test]
