@@ -189,6 +189,7 @@ impl Layout {
             WorldInstance {
                 rows: [[0.0; 4]; 3],
                 tint: [1.0; 4],
+                ambient: or_renderer::OUTDOORS,
             },
         );
         self.spheres.clear();
@@ -204,6 +205,7 @@ impl Layout {
                     instance.tint[2],
                     instance.fade,
                 ],
+                ambient: instance.ambient,
             };
             // As wide as the cull takes it.
             self.spheres[*end as usize] = instance.centre.extend(instance.radius.max(0.01)).into();
@@ -251,6 +253,7 @@ mod tests {
             radius: 1.0,
             fade,
             tint: [1.0; 3],
+            ambient: or_renderer::OUTDOORS,
         }
     }
 

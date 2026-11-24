@@ -131,7 +131,8 @@ fn an_instance_is_the_first_three_rows_of_its_matrix_and_its_tint() {
     );
     assert!((placed - matrix.transform_point3(point)).length() < 1e-4);
     assert_eq!(instance.tint, [0.1, 0.2, 0.3, 0.4]);
-    assert_eq!(std::mem::size_of::<WorldInstance>(), 64);
+    assert_eq!(instance.ambient, crate::world::OUTDOORS);
+    assert_eq!(std::mem::size_of::<WorldInstance>(), 72);
 }
 
 /// The members of the struct `name` the world's program declares, by name, with their offsets, and its size.

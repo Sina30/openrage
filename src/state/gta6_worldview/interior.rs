@@ -53,6 +53,8 @@ pub(super) struct Child {
     pub(super) hours: u32,
     /// The room or portal that holds it.
     pub(super) location: EntitySetLocation,
+    /// How much of the natural and of the artificial ambient light it takes.
+    pub(super) ambient: [f32; 2],
 }
 
 impl Child {
@@ -129,12 +131,32 @@ pub(super) fn place(
         instance.rotation,
         instance.position,
     );
+    let portals: Vec<Opening> = (interior.portals.iter())
+        .map(|p| Opening {
+            rooms: [p.room_from, p.room_to],
+            corners: p.corners.map(Vec3::from),
+        })
+        .collect();
+    let rooms: Vec<RoomBox> = (interior.rooms.iter())
+        .map(|r| RoomBox {
+            min: Vec3::from(r.room.bb_min),
+            max: Vec3::from(r.room.bb_max),
+        })
+        .collect();
     let children = (interior.drawn(&instance.default_entity_sets))
         .filter_map(|(e, location)| {
             let archetype = index.archetype(e.archetype_word)?;
             let model = index.model(archetype)?;
-            let m = outer * placing(e.scale_xy, e.scale_z, e.rotation, e.position);
+            let own = placing(e.scale_xy, e.scale_z, e.rotation, e.position);
+            let m = outer * own;
             let rows = rows_of(m);
+            // What a portal holds is in the room past it from the outside.
+            let room = match location {
+                EntitySetLocation::Room(k) => k,
+                EntitySetLocation::Portal(k) => portals
+                    .get(k as usize)
+                    .map_or(0, |o| o.rooms[0].max(o.rooms[1])),
+            };
             Some(Child {
                 model,
                 rows,
@@ -149,14 +171,11 @@ pub(super) fn place(
                 level: Level::from_raw(e.lod_level),
                 hours: archetype.hours,
                 location,
+                ambient: interior_rooms::ambient_of(&rooms, &portals, room, own.w_axis.truncate()),
             })
         })
         .collect();
     let (min, max) = (Vec3::from(interior.bb_min), Vec3::from(interior.bb_max));
-    let room_box = |r: &interior::InteriorRoom| RoomBox {
-        min: Vec3::from(r.room.bb_min),
-        max: Vec3::from(r.room.bb_max),
-    };
     Placed {
         entity: instance.entity,
         name: interior.name,
@@ -170,7 +189,7 @@ pub(super) fn place(
         children,
         own: outer.inverse(),
         middle: (min + max) / 2.0,
-        rooms: interior.rooms.iter().map(room_box).collect(),
+        rooms,
         names: (interior.rooms.iter())
             .map(|r| RoomNames {
                 name: r.room.name,
@@ -179,12 +198,7 @@ pub(super) fn place(
                 blend: r.blend,
             })
             .collect(),
-        portals: (interior.portals.iter())
-            .map(|p| Opening {
-                rooms: [p.room_from, p.room_to],
-                corners: p.corners.map(Vec3::from),
-            })
-            .collect(),
+        portals,
     }
 }
 

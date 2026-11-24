@@ -163,20 +163,25 @@ impl WorldMesh {
     }
 }
 
-/// Where one instance of a mesh stands: the rows of its 3×4 model matrix, and a tint whose colour its surface is multiplied by and whose alpha is how much of it its fade leaves.
+/// Where one instance of a mesh stands: the rows of its 3×4 model matrix, a tint whose colour its surface is multiplied by and whose alpha is how much of it its fade leaves, and how much of the natural and of the artificial ambient light it takes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct WorldInstance {
     pub rows: [[f32; 4]; 3],
     pub tint: [f32; 4],
+    pub ambient: [f32; 2],
 }
 
+/// The ambient scales of what stands outdoors: the whole of the natural light and none of the artificial.
+pub const OUTDOORS: [f32; 2] = [1.0, 0.0];
+
 impl WorldInstance {
-    /// The instance `matrix` places, its surface multiplied by `tint`.
+    /// The instance `matrix` places, its surface multiplied by `tint`, standing outdoors.
     pub fn of(matrix: glam::Mat4, tint: [f32; 4]) -> Self {
         Self {
             rows: [0, 1, 2].map(|row| matrix.row(row).to_array()),
             tint,
+            ambient: OUTDOORS,
         }
     }
 }

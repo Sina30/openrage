@@ -152,6 +152,77 @@ impl Walk<'_> {
     }
 }
 
+/// How far into the light of an opening `p` stands, 1 within the ellipse of its half sizes about
+/// its middle and nought past 1.25 times it, in the planes across the opening along its upright
+/// side and along its level one.
+fn feather(corners: &[Vec3; 4], p: Vec3) -> f32 {
+    let (a, b) = (corners[0] - corners[1], corners[1] - corners[2]);
+    let (upright, level) = match a.z.abs() > b.z.abs() {
+        true => (a, b),
+        false => (b, a),
+    };
+    let (Some(normal), Some(u1), Some(u2)) = (
+        upright.cross(level).try_normalize(),
+        upright.try_normalize(),
+        level.try_normalize(),
+    ) else {
+        return 0.0;
+    };
+    let to = p - (corners[0] + corners[2]) / 2.0;
+    let across = normal.dot(to) * normal;
+    let fade = |d: f32, r: f32| 1.0 - ((d - r) / (r * (FEATHER * FEATHER - 1.0))).clamp(0.0, 1.0);
+    let along = across + u1.dot(to) * u1;
+    let facing = normal.dot(along.normalize_or_zero()).clamp(0.0, 1.0);
+    // Squares of lengths throughout: the half diagonal straight ahead, the shorter half side edge on.
+    let diagonal = (corners[0] - corners[2]).length_squared() / 4.0;
+    let shortest = upright.length_squared().min(level.length_squared()) / 4.0;
+    let inner = diagonal + (shortest - diagonal) * facing;
+    if along.length_squared() > inner * FEATHER * FEATHER {
+        return 0.0;
+    }
+    let sideways = across + u2.dot(to) * u2;
+    fade(along.length_squared(), inner)
+        * fade(sideways.length_squared(), level.length_squared() / 4.0)
+}
+
+/// How far past an opening's half size its light fades out.
+const FEATHER: f32 = 1.25;
+
+/// The visible sky angle, in degrees, of an opening the daylight factor takes: an unobstructed one.
+const SKY_ANGLE: f32 = 90.0;
+/// The mean reflectance of a room's surfaces the daylight factor takes.
+const REFLECTANCE: f32 = 0.5;
+
+/// How much of the natural and of the artificial ambient light what stands at `p` in room `room`
+/// of `rooms` takes: of the sky's, the room's average daylight factor over its openings to the
+/// outside, rising to the whole of it in an opening; none of the artificial.
+// ⚠ Inferred: the build states no ambient scale for a room (its light inside is traced through the
+// openings), so the architect's average daylight factor, `W θ / (A (1 − R²))` for openings of area
+// W in a room of surface A, stands for what its tracing brings in. It states no artificial ambient
+// light either, and the lighting keeps as much of the sky's reflection as the greater of the two.
+pub(super) fn ambient_of(rooms: &[RoomBox], portals: &[Opening], room: u32, p: Vec3) -> [f32; 2] {
+    let Some(of) = rooms.get(room as usize).filter(|_| room != 0) else {
+        return or_renderer::OUTDOORS;
+    };
+    let outward = portals
+        .iter()
+        .filter(|o| o.rooms.contains(&room) && o.rooms.contains(&0));
+    let (mut window, mut near) = (0.0, 0.0);
+    for o in outward {
+        let c = &o.corners;
+        window += (c[2] - c[0]).cross(c[3] - c[1]).length() / 2.0;
+        near += feather(c, p);
+    }
+    let size = (of.max - of.min).max(Vec3::ZERO);
+    let surface = 2.0 * (size.x * size.y + size.x * size.z + size.y * size.z);
+    let factor = match surface > 0.0 {
+        true => window * SKY_ANGLE / (100.0 * surface * (1.0 - REFLECTANCE * REFLECTANCE)),
+        false => 0.0,
+    };
+    let factor = factor.clamp(0.0, 1.0);
+    [factor + (1.0 - factor) * near.clamp(0.0, 1.0), 0.0]
+}
+
 /// What a camera at `eye` sees of an interior of `rooms` and `portals` whose box's middle is
 /// `middle`: from the room it stands in, else from outside.
 pub(super) fn seen(rooms: &[RoomBox], portals: &[Opening], middle: Vec3, eye: Vec3) -> Seen {

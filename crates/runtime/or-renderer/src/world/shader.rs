@@ -104,6 +104,7 @@ struct VsIn {
     @location(6) row1:     vec4<f32>,
     @location(7) row2:     vec4<f32>,
     @location(8) tint:     vec4<f32>,
+    @location(10) ambient: vec2<f32>,
 };
 
 struct VsOut {
@@ -118,6 +119,8 @@ struct VsOut {
     @location(6) @interpolate(flat) tint: vec3<f32>,
     @location(7) uv1: vec2<f32>,
     @location(8) uv2: vec2<f32>,
+    // How much of the natural and of the artificial ambient light the instance takes.
+    @location(9) @interpolate(flat) ambient: vec2<f32>,
 };
 
 fn placed(in: VsIn) -> vec3<f32> {
@@ -149,6 +152,7 @@ fn handed_on(in: VsIn, world: vec3<f32>) -> VsOut {
     out.world_pos = world;
     out.fade = in.tint.a;
     out.tint = in.tint.rgb;
+    out.ambient = in.ambient;
     return out;
 }
 
@@ -573,7 +577,7 @@ struct GBufferOut {
     @location(3) ambient: vec4<f32>,
 };
 
-fn words(s: Surface, world_pos: vec3<f32>) -> GBufferOut {
+fn words(s: Surface, world_pos: vec3<f32>, ambient: vec2<f32>) -> GBufferOut {
     var out: GBufferOut;
     let diffuse = diffuse_of(s);
     // The lighting pass squares the colour it reads here, so the target holds the square root of the linear colour.
@@ -590,9 +594,9 @@ fn words(s: Surface, world_pos: vec3<f32>) -> GBufferOut {
     let grazing = pow(1.0 - n_dot_v, 5.0);
     let intensity = clamp(f0 + (share - f0) / max(grazing, 1e-6), f0, 1.0);
     out.specular = vec4<f32>(sqrt(intensity), sqrt(stored / SPECULAR_EXPONENT_MAX), 1.0 - f0 / max(intensity, 1e-6), 1.0);
-    // The whole of the natural ambient light in red, none of the artificial in green, and in blue the surface's own light as a multiple of its colour, which the lighting pass adds.
+    // The instance's share of the natural ambient light in red and of the artificial in green, as roots since the lighting squares what it reads there, and in blue the surface's own light as a multiple of its colour, which the lighting pass adds.
     let glow = min(lum(s.emissive) / max(lum(diffuse), 1.0 / 255.0), EMISSIVE_MAX);
-    out.ambient = vec4<f32>(1.0, 0.0, glow / EMISSIVE_MAX, 1.0);
+    out.ambient = vec4<f32>(sqrt(ambient), glow / EMISSIVE_MAX, 1.0);
     return out;
 }
 
@@ -601,7 +605,7 @@ fn gbuffer(in: VsOut, front_facing: bool, cut: f32) -> GBufferOut {
     if (dropped(in, select(s.coverage, cut_coverage(in), cut >= CUTOUT_ALPHA), cut)) {
         discard;
     }
-    return words(s, in.world_pos);
+    return words(s, in.world_pos, in.ambient);
 }
 
 @fragment
@@ -626,7 +630,7 @@ fn fs_gbuffer_decal(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBu
     if (dropped(in, s.coverage * max3(m.opacity.xyz), BLEND_ALPHA)) {
         discard;
     }
-    var out = words(s, in.world_pos);
+    var out = words(s, in.world_pos, in.ambient);
     out.albedo.a = m.opacity.x * s.coverage;
     out.normal.a = m.opacity.y * s.coverage;
     out.specular.a = m.opacity.z * s.coverage;
@@ -648,7 +652,8 @@ fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) 
     }
     let towards = -light.sun_travel.xyz;
     let sun = light.sun_colour.rgb * max(dot(s.normal, towards), 0.0);
-    let ambient = mix(light.ambient_down.rgb, light.ambient_up.rgb, s.normal.z * 0.5 + 0.5);
+    // ⚠ Only the natural ambient light reaches this pass: the artificial is the lighting pass's alone.
+    let ambient = mix(light.ambient_down.rgb, light.ambient_up.rgb, s.normal.z * 0.5 + 0.5) * in.ambient.x;
     let view_dir = normalize(camera.camera_pos_ws.xyz - in.world_pos);
     let highlight = light.sun_colour.rgb * shine(s, towards, view_dir);
     // ⚠ What it reflects is no part of its coverage: a clear pane still shows the sky, which the ambient light's colour above and below stands in for, by the share `reflected` gives, and lets through only what it does not reflect.

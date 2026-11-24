@@ -70,6 +70,31 @@ fn from_outside_the_camera_sees_in_through_the_shell_s_doors_alone() {
 }
 
 #[test]
+fn inside_the_sky_s_ambient_light_comes_in_through_the_openings_to_the_outside_alone() {
+    let (rooms, portals, _) = row();
+    let at = |room, p: [f32; 3]| ambient_of(&rooms, &portals, room, Vec3::from(p));
+    // In the front door, the whole of the sky's.
+    assert_eq!(at(1, [0.0, 0.0, 1.0]), [1.0, 0.0]);
+    // A metre in, the room's daylight factor: a door of 2 m² in a room of 80 m² of surface.
+    let factor = 2.0 * 90.0 / (100.0 * 80.0 * 0.75);
+    let inside = at(1, [1.0, 0.0, 1.0]);
+    assert!(
+        (inside[0] - factor).abs() < 1e-6 && inside[1] == 0.0,
+        "{inside:?} {factor}"
+    );
+    // Half way out along the door's width past its edge, more than the room's and less than the whole.
+    let edge = at(1, [0.0, 0.5 * 1.125, 1.0]);
+    assert!(
+        edge[0] > factor && edge[0] < 1.0 && edge[1] == 0.0,
+        "{edge:?}"
+    );
+    // Room 2 has no opening to the outside, even beside the door into room 1.
+    assert_eq!(at(2, [4.0, 0.0, 1.0]), [0.0, 0.0]);
+    // What stands in room 0 stands outdoors.
+    assert_eq!(at(0, [1.0, 0.0, 1.0]), or_renderer::OUTDOORS);
+}
+
+#[test]
 fn a_camera_in_a_doorway_sees_through_the_whole_of_it() {
     let (rooms, portals, middle) = row();
     // Five centimetres into room 2 the door's edges pass behind the camera.

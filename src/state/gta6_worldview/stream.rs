@@ -56,6 +56,8 @@ pub struct Instance {
     pub fade: f32,
     /// The colour its material's arithmetic tints it by: white but for grass.
     pub tint: [f32; 3],
+    /// How much of the natural and of the artificial ambient light it takes: outdoors but inside an interior.
+    pub ambient: [f32; 2],
 }
 
 /// A run of a selection's instances that stand together, and the sphere that holds them all: a
@@ -371,6 +373,7 @@ impl Streamer {
             radius: drawn.radius * stretch(&rows),
             fade,
             tint,
+            ambient: or_renderer::OUTDOORS,
         };
         // The entities of one map stand together: a chunk a map.
         selection.drawn.sort_unstable_by_key(|d| d.node);
@@ -491,6 +494,7 @@ impl Streamer {
                                 radius: child.radius,
                                 fade,
                                 tint: [1.0; 3],
+                                ambient: child.ambient,
                             });
                         }
                         Some(false) => {
