@@ -49,6 +49,17 @@ use texture::{OpenPack, Places};
 const START_HEIGHT: f32 = 150.0;
 /// The hour of the day the viewer starts at.
 const NOON: f32 = 12.0;
+/// The bytes of models and textures the readers read ahead of what a frame takes: past them a
+/// reader waits, or what it reads piles up faster than a frame puts it on the device.
+// ponytail: about ten frames of what a frame takes at most; the device's own budgets if a reader idles while there is room.
+const READ_AHEAD: u64 = 512 << 20;
+
+/// Wait while what was read and not taken (`held`) is past [`READ_AHEAD`].
+fn wait_for_room(held: &AtomicU64) {
+    while held.load(Ordering::Relaxed) > READ_AHEAD {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
 
 /// How a build of the index ended.
 enum Built {
@@ -250,6 +261,7 @@ impl Viewer {
                 4,
                 HashMap::<u32, OpenPack>::new,
                 move |open, (key, pixels)| {
+                    wait_for_room(&held);
                     let read = texture::read_texture(open, &places, key, pixels);
                     let bytes = read.as_ref().map_or(0, CpuTexture::bytes);
                     held.fetch_add(bytes, Ordering::Relaxed);
@@ -270,6 +282,7 @@ impl Viewer {
             workers.clamp(2, 12),
             HashMap::<u32, File>::new,
             move |files, model| {
+                wait_for_room(&held);
                 let read = model::read_model(files, &shared, places.as_deref(), model);
                 held.fetch_add(read.as_ref().map_or(0, CpuModel::bytes), Ordering::Relaxed);
                 read
