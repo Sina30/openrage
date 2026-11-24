@@ -711,7 +711,8 @@ impl World {
     pub(crate) fn draw_gbuffer(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
         pass.set_stencil_reference(MATERIAL_DEFAULT);
         self.draw(pass, camera, &self.pipelines.gbuffer, true);
-        pass.set_stencil_reference(MATERIAL_DEFAULT);
+        // A far stand-in is a tree's, lit as the tree material its model is lit as
+        pass.set_stencil_reference(MATERIAL_TREE);
         self.cards.draw_gbuffer(pass, camera);
     }
 
