@@ -185,6 +185,7 @@ fn rooms_that_all_open_on_each_other_where_the_camera_stands_are_walked_in_bound
             Vec3::new(0.0, -1.0, 1.0),
         ],
         flags: 0,
+        shut: false,
     };
     let portals: Vec<Opening> = (1..ROOMS)
         .flat_map(|a| (a + 1..ROOMS).map(move |b| door([a, b])))
