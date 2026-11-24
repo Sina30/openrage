@@ -995,6 +995,69 @@ fn the_maps_and_the_bucket_of_a_material_reach_the_g_buffer_in_the_words_the_lig
     ignore = "needs a GPU adapter: acquisition can hang, not just fail"
 )]
 #[test]
+fn a_rough_surface_seen_at_grazing_hands_the_lighting_little_reflection_and_a_mirror_keeps_it_whole(
+) {
+    let test = "a_rough_surface_seen_at_grazing_hands_the_lighting_little_reflection";
+    let Some((device, queue)) = gpu(test) else {
+        return;
+    };
+    let Some(pack) = real_pack(test) else {
+        return;
+    };
+    let middle = (SIZE / 2 * SIZE + SIZE / 2) as usize;
+    let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut renderer = deferred(&device, &queue, &pack, Vec3::new(0.3, 0.2, 0.9).normalize());
+    renderer.set_shadows(false);
+    let rough = renderer.world_material(&device, None, None, None, WorldBucket::Opaque);
+    let smooth = texel(&device, &queue, [0, 0, 0, 255]);
+    let mirror = renderer.world_material(&device, None, None, Some(&smooth), WorldBucket::Opaque);
+    // The intensity and the fresnel word at the middle of a square of `material` seen by `camera`, as the lighting decodes them
+    let mut seen = |material: &WorldMaterial, camera: &OrbitCamera| {
+        let draws = vec![WorldDraw {
+            mesh: square(&device, 0.5, material.clone()),
+            instances: 0..1,
+        }];
+        renderer.set_world(
+            &device,
+            &queue,
+            &[WorldInstance::of(Mat4::IDENTITY, WHITE)],
+            draws,
+        );
+        frame(&device, &queue, &renderer, camera, ShadingMode::Shaded);
+        let [r, _, fresnel, _] = words(&device, &queue, &renderer, middle)[2];
+        ((f32::from(r) / 255.0).powi(2), f32::from(fresnel) / 255.0)
+    };
+    // Some eight degrees off the plane, n.v about a seventh
+    let grazing = OrbitCamera {
+        yaw: 0.0,
+        pitch: 0.15,
+        distance: 5.0,
+        ..OrbitCamera::default()
+    };
+    let (rough_above, _) = seen(&rough, &overhead());
+    let (rough_grazing, fresnel) = seen(&rough, &grazing);
+    let (mirror_grazing, _) = seen(&mirror, &grazing);
+    assert!(rough_above > 0.98, "{rough_above}");
+    // The lighting weighs the reflection by intensity * (f0' + (1 - f0') * (1 - n.v)^5): a rough dielectric's at grazing is a few hundredths, where intensity one would give a half
+    let p = (1.0 - 0.15_f32.sin()).powi(5);
+    let weight = rough_grazing * ((1.0 - fresnel) + fresnel * p);
+    assert!(
+        rough_grazing < 0.25 && weight < 0.1,
+        "{rough_grazing} {fresnel} {weight}"
+    );
+    // A mirror's share there is near the plain Fresnel's, so its intensity stays near one
+    assert!(mirror_grazing > 0.8, "{mirror_grazing}");
+    assert!(
+        pollster::block_on(validation.pop()).is_none(),
+        "the device accepted every pass"
+    );
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
 fn an_instance_of_the_world_shades_the_one_below_it_within_the_reach_of_the_shadow_and_not_past_it()
 {
     let test = "an_instance_of_the_world_shades_the_one_below_it";

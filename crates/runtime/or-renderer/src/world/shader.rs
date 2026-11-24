@@ -200,6 +200,7 @@ const BLEND_ALPHA: f32 = 1.0 / 255.0;
 // The most the G-buffer's word for a surface's own light holds, and the most its exponent word holds.
 const EMISSIVE_MAX: f32 = 16.0;
 const SPECULAR_EXPONENT_MAX: f32 = 512.0;
+const PI: f32 = 3.14159265;
 // The albedo below which a dielectric's reflectance fades to none, and the span over which it reaches the whole: the frame's two linear words.
 const REFLECTANCE_LOW: f32 = 0.0015;
 const REFLECTANCE_SPAN: f32 = 0.0055;
@@ -473,6 +474,22 @@ fn exponent_of(smoothness: f32) -> f32 {
     return clamp(2.0 / (alpha * alpha) - 2.0, 1.0, 8196.0);
 }
 
+// The share of the light about it a GGX lobe of this roughness reflects to an eye `n_dot_v` off its normal, as what it takes of the reflectance at normal incidence and of that at grazing: Lazarov's fit of the split sum.
+fn split_sum(rough: f32, n_dot_v: f32) -> vec2<f32> {
+    let r = rough * vec4<f32>(-1.0, -0.0275, -0.572, 0.022) + vec4<f32>(1.0, 0.0425, 1.04, -0.04);
+    let a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
+    return max(vec2<f32>(-1.04, 1.04) * a004 + r.zw, vec2<f32>(0.0));
+}
+
+// The share of the light about it a surface reflects towards the eye: the reflectance at grazing is fifty times the mean reflectance, up to one, the split sum weighs both by how rough the surface is and how it is seen, and the light it scatters more than once is given back.
+fn reflected(s: Surface, n_dot_v: f32) -> f32 {
+    let f0 = max3(s.f0);
+    let f90 = clamp(16.5 * (s.f0.r + s.f0.g + s.f0.b), 0.0, 1.0);
+    let ab = split_sum(1.0 - s.smoothness, n_dot_v);
+    let once = f0 * ab.x + f90 * ab.y;
+    return once * (1.0 + f0 * (1.0 / max(ab.x + ab.y, 1e-4) - 1.0));
+}
+
 // The highlight a light towards `towards` leaves on the surface seen from `view_dir`.
 fn shine(s: Surface, towards: vec3<f32>, view_dir: vec3<f32>) -> vec3<f32> {
     // A light straight behind the viewer's line has no half way: the sum is then of no length, and is left so
@@ -535,17 +552,23 @@ struct GBufferOut {
     @location(3) ambient: vec4<f32>,
 };
 
-fn words(s: Surface) -> GBufferOut {
+fn words(s: Surface, world_pos: vec3<f32>) -> GBufferOut {
     var out: GBufferOut;
     let diffuse = diffuse_of(s);
     // The lighting pass squares the colour it reads here, so the target holds the square root of the linear colour.
     out.albedo = vec4<f32>(sqrt(max(diffuse, vec3<f32>(0.0))), 1.0);
     // The normal in the world, from -1..1 into 0..1; the default effect leaves the alpha at nought for every normal but one straight up.
     out.normal = vec4<f32>(s.normal * 0.5 + 0.5, 0.0);
-    // The lighting reads its reflectance as the intensity, one here, times one less the fresnel word, so a coloured metal's reflectance turns grey; the exponent is stored as the lighting expands it, a third below 1500 and a 558th above.
+    // The exponent is stored as the lighting expands it, a third below 1500 and a 558th above.
     let n = exponent_of(s.smoothness);
     let stored = select(500.0 + (n - 1500.0) / 558.0, n / 3.0, n <= 1500.0);
-    out.specular = vec4<f32>(1.0, sqrt(stored / SPECULAR_EXPONENT_MAX), 1.0 - max3(s.f0), 1.0);
+    // ⚠ The lighting weighs the reflection by `intensity * (f0' + (1 - f0') * (1 - n.v)^5)` whatever the roughness, `f0' = 1 - fresnel`, and divides a rough lobe's by pi: the intensity and the fresnel word are chosen here, where n.v is known, so that this is the share `reflected` gives and the reflectance at normal incidence is the surface's. The highlights of the lights then reach `intensity` at grazing.
+    let n_dot_v = clamp(dot(s.normal, normalize(camera.camera_pos_ws.xyz - world_pos)), 0.0, 1.0);
+    let f0 = max3(s.f0);
+    let share = clamp(reflected(s, max(n_dot_v, 1e-4)) / mix(1.0 / PI, 1.0, clamp(n / 563.0, 0.0, 1.0)), 0.0, 1.0);
+    let grazing = pow(1.0 - n_dot_v, 5.0);
+    let intensity = clamp(f0 + (share - f0) / max(grazing, 1e-6), f0, 1.0);
+    out.specular = vec4<f32>(sqrt(intensity), sqrt(stored / SPECULAR_EXPONENT_MAX), 1.0 - f0 / max(intensity, 1e-6), 1.0);
     // The whole of the natural ambient light in red, none of the artificial in green, and in blue the surface's own light as a multiple of its colour, which the lighting pass adds.
     let glow = min(lum(s.emissive) / max(lum(diffuse), 1.0 / 255.0), EMISSIVE_MAX);
     out.ambient = vec4<f32>(1.0, 0.0, glow / EMISSIVE_MAX, 1.0);
@@ -557,7 +580,7 @@ fn gbuffer(in: VsOut, front_facing: bool, cut: f32) -> GBufferOut {
     if (dropped(in, select(s.coverage, cut_coverage(in), cut >= CUTOUT_ALPHA), cut)) {
         discard;
     }
-    return words(s);
+    return words(s, in.world_pos);
 }
 
 @fragment
@@ -582,7 +605,7 @@ fn fs_gbuffer_decal(in: VsOut, @builtin(front_facing) front_facing: bool) -> GBu
     if (dropped(in, s.coverage * max3(m.opacity.xyz), BLEND_ALPHA)) {
         discard;
     }
-    var out = words(s);
+    var out = words(s, in.world_pos);
     out.albedo.a = m.opacity.x * s.coverage;
     out.normal.a = m.opacity.y * s.coverage;
     out.specular.a = m.opacity.z * s.coverage;
