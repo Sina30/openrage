@@ -209,6 +209,11 @@ fn noon() -> FrameLight {
             radiance(3000.0, 3000.0, 3500.0),
             radiance(2000.0, 2500.0, 3000.0),
         ],
+        // East a quarter of the way from its horizon to the transition colour, west beyond it.
+        dome_sides: [
+            radiance(3375.0, 3625.0, 4000.0),
+            radiance(1000.0, 2000.0, 4000.0),
+        ],
         fog: [[4000.0, 4000.0, 4000.0]; 4],
     }
 }
@@ -246,18 +251,18 @@ fn every_light_the_frame_takes_is_physical_times_the_exposure_and_the_frames_own
     assert!((5.0..15.0).contains(&(strength / 1.5)), "{strength}");
     assert_eq!(frame.get("light_dir_col_g"), Some(0.5 * 0.8));
 
-    // The sky lights from above at its irradiance by the cycle's intensity; the colour's largest part is one.
+    // The sky lights from above at its irradiance, and again by the cycle's intensity; the colour's largest part is one.
     let down = frame
         .get("light_natural_amb_down_intensity")
         .expect("worked out");
-    assert!((down - 16000.0 * 0.25 * lit).abs() < 1e-4, "{down}");
+    assert!((down - 16000.0 * 1.25 * lit).abs() < 1e-4, "{down}");
     assert_eq!(frame.get("light_natural_amb_down_col_b"), Some(1.0));
     assert_eq!(frame.get("light_natural_amb_down_col_r"), Some(0.25));
     // From below: a fifth of what reaches the ground, by the bounce's intensity; red is its largest part.
     let up = frame
         .get("light_natural_amb_up_intensity")
         .expect("worked out");
-    let reaching_r = 1.5 * 100_000.0 * 0.9 + 4000.0 * 0.25;
+    let reaching_r = 1.5 * 100_000.0 * 0.9 + 4000.0 * 1.25;
     assert!((up - 0.2 * 2.0 * reaching_r * lit).abs() < 1e-3, "{up}");
 }
 
@@ -273,11 +278,33 @@ fn the_dome_is_the_skys_radiance_exposed_and_given_as_a_root_the_frame_squares()
     // The zenith is bluer than the eastern horizon the sun whitens.
     let east_r = frame.get("sky_azimuth_east_col_r").expect("worked out");
     assert!(east_r > r);
-    // The sun's disc is its tint through the air, given as a root; its strength its illuminance exposed.
-    let sun_b = frame.get("sky_sun_disc_col_b").expect("worked out");
+    // The sun's glow is its tint through the air, given as a root; its strength its illuminance exposed as a light.
+    let sun_b = frame.get("sky_sun_col_b").expect("worked out");
     assert!((sun_b * sun_b - 0.6).abs() < 1e-6);
     let sun = frame.get("sky_sun_hdr").expect("worked out");
     assert!((sun - 100_000.0 * light.exposure * FRAME_DIFFUSE).abs() < 1e-3);
+    // The disc is a radiance, the illuminance times its multiplier exposed whole.
+    let frame = frame_keyframe(
+        &own(&[("sky_scattering_sun_disk_intensity_multiplier", 256.0)]),
+        &light,
+    );
+    let disc_b = frame.get("sky_sun_disc_col_b").expect("worked out");
+    let drawn = disc_b * disc_b * frame.get("sky_sun_hdr").expect("worked out");
+    let radiance = 0.6 * 100_000.0 * 256.0 * light.exposure;
+    assert!(
+        (drawn - radiance).abs() < 1e-4 * radiance,
+        "{drawn} {radiance}"
+    );
+    // The dome takes its transition colour whole at the height the transition radiance was taken at.
+    assert_eq!(
+        frame.get("sky_zenith_transition_position"),
+        Some(DOME_TRANSITION)
+    );
+    let east = frame
+        .get("sky_zenith_transition_east_blend")
+        .expect("worked out");
+    assert!((east - 0.25).abs() < 1e-6, "{east}");
+    assert_eq!(frame.get("sky_zenith_transition_west_blend"), Some(1.0));
 }
 
 #[test]

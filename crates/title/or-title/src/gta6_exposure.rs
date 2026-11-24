@@ -5,7 +5,7 @@
 use std::f32::consts::{PI, TAU};
 
 use or_io::gta5::data::timecycle::Keyframe;
-use or_io::gta6::timecycle::FrameLight;
+use or_io::gta6::timecycle::{FrameLight, DOME_TRANSITION};
 
 use crate::gta6_sky::Atmosphere;
 
@@ -279,6 +279,10 @@ pub fn light(
     };
     let under = level(lit.body[0], lit.body[1]);
     let opposite = [-under[0], -under[1], HORIZON];
+    let across = (1.0 - DOME_TRANSITION * DOME_TRANSITION).sqrt();
+    let [east, west, north, south] = [[across, 0.0], [-across, 0.0], [0.0, across], [0.0, -across]]
+        .map(|[x, y]| radiance([x, y, DOME_TRANSITION]));
+    let transition = [0, 1, 2].map(|c| (north[c] + south[c]) / 2.0);
     let light = FrameLight {
         exposure: stops.exp2(),
         fade: lit.fade,
@@ -289,13 +293,13 @@ pub fn light(
         towards_up: lit.towards[2],
         sky,
         dome: [
-            [0.0, 0.0, 1.0],
-            [0.7, 0.0, 0.7],
-            [1.0, 0.0, HORIZON],
-            [-1.0, 0.0, HORIZON],
-            [0.0, -1.0, HORIZON],
-        ]
-        .map(radiance),
+            radiance([0.0, 0.0, 1.0]),
+            transition,
+            radiance([1.0, 0.0, HORIZON]),
+            radiance([-1.0, 0.0, HORIZON]),
+            radiance([0.0, -1.0, HORIZON]),
+        ],
+        dome_sides: [east, west],
         fog: [under, [1.0, 0.0, HORIZON], opposite, [0.0, -1.0, HORIZON]].map(radiance),
     };
     (light, stops)

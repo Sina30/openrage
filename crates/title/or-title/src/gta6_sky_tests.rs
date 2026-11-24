@@ -88,6 +88,22 @@ fn the_ground_takes_less_of_the_skys_light_as_the_sun_goes_down() {
 }
 
 #[test]
+fn light_scattered_more_than_once_adds_a_third_to_a_clear_skys_light() {
+    let earth = Atmosphere::of(&Keyframe::default());
+    let mut once = Keyframe::default();
+    once.set("sky_new_intensity_multiscattering", 0.0);
+    let once = Atmosphere::of(&once);
+    let sun = [0.0, -0.5, 0.866];
+    let luminance = |c: [f32; 3]| 0.2125 * c[0] + 0.7154 * c[1] + 0.0721 * c[2];
+    let direct = luminance(earth.transmittance(sun[2])) * sun[2] as f32;
+    let share = |air: &Atmosphere| luminance(air.irradiance(sun, 1.0)) / direct;
+    // The further orders add about a third at a high sun, and the sky stays a small part of the sun's light.
+    let (once, all) = (share(&once), share(&earth));
+    assert!(all > 1.2 * once, "{once} {all}");
+    assert!((0.05..0.25).contains(&all), "{all}");
+}
+
+#[test]
 fn an_unstated_atmosphere_is_the_published_earth_one() {
     let air = Atmosphere::of(&Keyframe::default());
     assert_eq!((air.ground, air.top), (6360.0, 6460.0));

@@ -50,8 +50,11 @@ const FRAME_HANDOVER: f32 = 1.75;
 // ⚠ GTA V's frame, assumed: a grey card under the noon sun should show about 1.4 before the tone
 // curve. If it shows about 4.5, this is 1.
 pub const FRAME_DIFFUSE: f32 = std::f32::consts::FRAC_1_PI;
+/// The albedo of the ground the light bounces off, for the frame's light from below and the air's multiple scattering.
 // ponytail: a grey ground in place of the game's traced bounce light, which the frame has no pass for.
-const GROUND_ALBEDO: f32 = 0.2;
+pub const GROUND_ALBEDO: f32 = 0.2;
+/// The up part of the way at which the frame's dome takes its transition colour whole: low, where the sky's radiance bends.
+pub const DOME_TRANSITION: f32 = 0.25;
 /// The frame's units of fog: its density is per ten thousand metres and its falloff per thousand.
 const FRAME_FOG_DENSITY: f32 = 10_000.0;
 const FRAME_FOG_FALLOFF: f32 = 1_000.0;
@@ -404,6 +407,10 @@ const WORKED_OUT: &[&str] = &[
     "sky_azimuth_transition_col_b",
     "sky_azimuth_transition_col_inten",
     "sky_hdr",
+    "sky_zenith_transition_position",
+    "sky_zenith_transition_east_blend",
+    "sky_zenith_transition_west_blend",
+    "sky_zenith_blend_start",
     "sky_sun_col_r",
     "sky_sun_col_g",
     "sky_sun_col_b",
@@ -472,8 +479,10 @@ pub struct FrameLight {
     pub towards_up: f32,
     /// The sky's irradiance on the ground in lux, before the cycle's tints.
     pub sky: [f32; 3],
-    /// The sky's radiance in cd/m² at the zenith, half way down, and on the horizon east, west and south.
+    /// The sky's radiance in cd/m² at the zenith, north and south at [`DOME_TRANSITION`] up, and on the horizon east, west and south.
     pub dome: [[f32; 3]; 5],
+    /// The sky's radiance at [`DOME_TRANSITION`] up, east and west, which the dome reaches by blending its horizon towards its transition colour.
+    pub dome_sides: [[f32; 3]; 2],
     /// The sky's radiance in cd/m² on the horizon under the light, east, opposite the light and south.
     pub fog: [[f32; 3]; 4],
 }
@@ -527,9 +536,11 @@ pub fn frame_keyframe(own: &Keyframe, light: &FrameLight) -> Keyframe {
         rgb("sky_scattering_sky_col", 1.0),
         rgb("ambient_sky_color_mult", 1.0),
     );
+    // ⚠ Inferred: the game's traced bounce light brings the sky's own irradiance and its sky ambient
+    // adds `ambient_sky_intensity` of it again; the frame traces nothing, so it takes both.
     let sky = scaled(
         times(light.sky, sky_tint),
-        get("ambient_sky_intensity", 1.0),
+        1.0 + get("ambient_sky_intensity", 1.0),
     );
     let (colour, intensity) = split(scaled(sky, lit));
     set_rgb(&mut frame, "light_natural_amb_down_col", colour);
@@ -549,9 +560,33 @@ pub fn frame_keyframe(own: &Keyframe, light: &FrameLight) -> Keyframe {
         frame.set(&format!("{stem}_inten"), intensity);
     }
     frame.set("sky_hdr", 1.0);
+    // The frame's dome runs from the horizon to the transition colour, whole, at its height, then to the zenith.
+    // East and west, the dome's row at that height is its horizon blended towards the transition
+    // colour: by how far the sky there lies along the way between them.
+    frame.set("sky_zenith_transition_position", DOME_TRANSITION);
+    for (side, horizon, name) in [
+        (0, 2, "sky_zenith_transition_east_blend"),
+        (1, 3, "sky_zenith_transition_west_blend"),
+    ] {
+        let (h, t, at) = (light.dome[horizon], light.dome[1], light.dome_sides[side]);
+        let way: [f32; 3] = [0, 1, 2].map(|c| t[c] - h[c]);
+        let length = way.iter().map(|w| w * w).sum::<f32>();
+        let along = [0, 1, 2]
+            .map(|c| (at[c] - h[c]) * way[c])
+            .iter()
+            .sum::<f32>();
+        let blend = match length > 0.0 {
+            true => (along / length).clamp(0.0, 1.0),
+            false => 1.0,
+        };
+        frame.set(name, blend);
+    }
+    frame.set("sky_zenith_blend_start", 0.0);
     let sun = times(rgb("sky_scattering_sun_col", 1.0), light.sun_transmittance).map(f32::sqrt);
     set_rgb(&mut frame, "sky_sun_col", sun);
-    set_rgb(&mut frame, "sky_sun_disc_col", sun);
+    // The disc is the sun's light times the disc's own multiplier, a radiance: it takes the exposure whole.
+    let disc = get("sky_scattering_sun_disk_intensity_multiplier", 1.0) / FRAME_DIFFUSE;
+    set_rgb(&mut frame, "sky_sun_disc_col", sun.map(|c| c * disc.sqrt()));
     frame.set("sky_sun_hdr", light.sun_illuminance * lit);
     for name in ["sky_moon_iten", "sky_stars_iten"] {
         if let Some(value) = own.get(name) {
