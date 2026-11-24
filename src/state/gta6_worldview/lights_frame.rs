@@ -16,7 +16,7 @@ pub const MOST: usize = 2048;
 /// Every hour of the day: a level-of-detail list states none.
 const ALL_HOURS: u32 = 0x00FF_FFFF;
 /// The exponent the frame's passes fade a level-of-detail light by, whose lists state 1 for all.
-// ponytail: the exponent most placed lights state; the frame's curve is not GTA VI's, so one stand-in for the lists until the frame has GTA VI's window.
+// ponytail: one stand-in exponent for the lists, which state 1, until the frame fades a light by GTA VI's window.
 const LOD_FALLOFF: f32 = 8.0;
 /// A level-of-detail light stands for a placed light this near it, in metres.
 const SAME_PLACE: f32 = 0.02;
