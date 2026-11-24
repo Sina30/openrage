@@ -75,6 +75,7 @@ fn run_script(script: &Path, out: &Path) -> Result<(), String> {
         hovering: Vec::new(),
         held: false,
         failed: Vec::new(),
+        submitted: Default::default(),
     };
     for (number, line, step) in &steps {
         println!("> {line}");
@@ -109,6 +110,8 @@ struct Shell {
     /// The comparisons that failed so far, which fail the run at its end so that it judges every one.
     failed: Vec<String>,
     target: Option<(u32, u32, wgpu::Texture)>,
+    /// What the last frame took to record its viewports' passes, and to finish and submit them.
+    submitted: (std::time::Duration, std::time::Duration),
 }
 
 impl Shell {
@@ -491,7 +494,9 @@ impl Shell {
         let mut encoder = device.create_command_encoder(&Default::default());
         self.renderer
             .update_buffers(&device, &queue, &mut encoder, &primitives, &screen);
+        let recording = std::time::Instant::now();
         let dirty = self.bridge.end_frame(&mut encoder, state);
+        self.submitted.0 = recording.elapsed();
         if dirty || self.bridge.texture_id().is_none() {
             if let Some(previous) = self.bridge.texture_id() {
                 self.renderer.free_texture(&previous);
@@ -517,7 +522,9 @@ impl Shell {
             &primitives,
             &screen,
         );
+        let submitting = std::time::Instant::now();
         queue.submit(std::iter::once(encoder.finish()));
+        self.submitted.1 = submitting.elapsed();
         let saved = match capture {
             Some(path) => save_png(&device, &queue, target, w, h, path),
             None => Ok(()),

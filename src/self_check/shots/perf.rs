@@ -65,6 +65,8 @@ impl Shell {
         Ok(json!({
             "frame_ms": ms(frame),
             "refresh_ms": ms(cost.refresh),
+            "record_ms": ms(self.submitted.0),
+            "submit_ms": ms(self.submitted.1),
             "laid": cost.laid,
             "occlude_ms": ms(cost.occlude),
             "cull_ms": ms(cost.cull),
@@ -181,6 +183,8 @@ fn summary(frames: &[Value]) -> Value {
         "frames": frames.len(),
         "frame_ms": of("frame_ms", false),
         "refresh_ms": of("refresh_ms", false),
+        "record_ms": of("record_ms", false),
+        "submit_ms": of("submit_ms", false),
         "layout_ms": of("layout_ms", true),
         "cull_ms": of("cull_ms", true),
         "occlude_ms": of("occlude_ms", true),
