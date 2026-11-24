@@ -135,6 +135,8 @@ pub(super) struct Streamer {
     wanted: HashMap<u32, f32>,
     /// A map that did not read is not asked for again.
     failed: HashSet<u32>,
+    /// A map that read and holds nothing the forest draws is not wanted again.
+    empty: HashSet<u32>,
     /// Where the wanted maps were last worked out.
     streamed_at: Option<Vec3>,
     /// What of the game is switched on: a map it does not allow is not wanted.
@@ -215,6 +217,7 @@ impl Streamer {
             loaded: HashMap::new(),
             wanted: HashMap::new(),
             failed: HashSet::new(),
+            empty: HashSet::new(),
             streamed_at: None,
             enabled: Enabled::default(),
             hour: hour_of(NOON),
@@ -294,10 +297,15 @@ impl Streamer {
             }
             let (min, max) = boxes.entities;
             let away = eye.distance(eye.clamp(min, max));
-            self.wanted.insert(map.name, away);
             parents.extend(self.index.parents_of(map).iter().map(|p| (*p, away)));
+            // ⚠ A script-managed map is held back before an empty one is, so one that holds
+            // nothing is found empty only once it is read.
+            if !self.empty.contains(&map.name) {
+                self.wanted.insert(map.name, away);
+            }
         }
         // A wanted map's parents are wanted with it, and theirs.
+        let mut seen = HashSet::new();
         while let Some((name, away)) = parents.pop() {
             let Some(at) = self.index.map_named(name) else {
                 continue;
@@ -306,10 +314,12 @@ impl Streamer {
             // ⚠ A parent that is not switched on is no part of the world, but one that holds
             // nothing (`held` 3) is still a link to its own parents.
             let off = !self.enabled.allows(map) && map.held != 3;
-            if off || self.wanted.contains_key(&name) {
+            if off || self.wanted.contains_key(&name) || !seen.insert(name) {
                 continue;
             }
-            self.wanted.insert(name, away);
+            if !self.empty.contains(&name) {
+                self.wanted.insert(name, away);
+            }
             parents.extend(self.index.parents_of(map).iter().map(|p| (*p, away)));
         }
     }
@@ -317,6 +327,11 @@ impl Streamer {
     /// Take the map `name` in where it is still wanted; whether it was.
     fn insert(&mut self, name: u32, read: ReadMap) -> bool {
         if !self.wanted.contains_key(&name) {
+            return false;
+        }
+        if read.nodes.is_empty() {
+            self.empty.insert(name);
+            self.wanted.remove(&name);
             return false;
         }
         self.forest.insert(u64::from(name), read.nodes);
