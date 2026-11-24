@@ -88,8 +88,7 @@ pub(super) fn difference(shot: &RgbaImage, reference: &RgbaImage) -> Result<Diff
     })
 }
 
-/// Measure the shot `compare` names in `out` against its reference and save their difference
-/// beside it; an error once the mean is over the tolerance, and nothing to do with no reference.
+/// Measure the shot `compare` names in `out` against its reference and save their difference beside it: an error over the tolerance, and nothing to do with no reference.
 pub(super) fn run(compare: &Compare, out: &Path) -> Result<(), String> {
     let shot = out.join(format!("{}.png", compare.shot));
     if !shot.is_file() {
