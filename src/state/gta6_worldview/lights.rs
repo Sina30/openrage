@@ -416,7 +416,15 @@ impl Lights {
         }
         // ⚠ Worked out over every distant light of the maps loaded, which are many: only when the eye moves or the lamps change.
         if self.sprites.as_ref().is_none_or(|(at, _)| *at != view.eye) {
-            let lists = (self.loaded.values()).map(|m| (m.lod.distant.as_slice(), m.lod.category));
+            // A distant list's lights point the way the level-of-detail lights of the map that names it as parent do.
+            let ways: HashMap<u32, &[[f32; 3]]> = (self.loaded.values())
+                .filter(|m| m.parent != 0)
+                .map(|m| (m.parent, m.lod.direction.as_slice()))
+                .collect();
+            let lists = (self.loaded.iter()).map(|(name, m)| {
+                let way = ways.get(name).copied();
+                (m.lod.distant.as_slice(), m.lod.category, way)
+            });
             let sprites = lights_distant::sprites(lists, view.eye, &self.distant_reach);
             self.sprites = Some((view.eye, sprites.into()));
         }
