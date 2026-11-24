@@ -81,7 +81,10 @@ hours it states.
 - A parent that states how many children it has fades out as they fade in, taking what the most
   opaque of them leaves, once that many are loaded and while its own distance leaves it whole. It is
   held whole while a child that draws has no model on the device yet, so no hole opens while models
-  arrive. A prop list of the batch levels never fades out for its children: each list under it of
+  arrive; such a child is asked for even where its own children draw in its place. A parent fading
+  out for its children keeps the pixels their dither leaves, so a cross-fade leaves none bare. A
+  model counts as on the device only once the textures of its levels are there too, so no level
+  draws grey while they arrive. A prop list of the batch levels never fades out for its children: each list under it of
   the batch LOD level leaves out the instances it stands in for, all of them where it names none.
 - A node is whole within the distance it draws to and fades out over a band past it: 20 m for the
   high, orphan, first and second levels of detail, 25 m for the three farthest, 5 m for an orphan that
@@ -109,7 +112,9 @@ forest draws.
 
 Streaming and selection run on a thread of the world's own, which selects again when the camera
 has moved, a map came or went, a model did, or a fade is still under way. A frame reads the last
-selection and never waits for one.
+selection and never waits for one. A moving camera asks, after what is in range, for what its
+speed brings into range within a second. What the readers answered goes on the device soonest
+needed first, and they read no more than 512 MiB ahead of what frames take.
 
 ## Drawing
 
