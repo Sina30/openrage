@@ -214,7 +214,8 @@ fn a_models_vertex_packs_its_colours_and_coordinates_and_one_it_lacks_is_white_o
     let first = [[0.25, 0.5, 0.75, 1.0]; 4];
     let uv1 = [[0.5, 2.0]; 4];
     coloured(&mut vertices, (Some(&first), None), (Some(&uv1), None));
-    let packed = u32::from_le_bytes([64, 128, 191, 255]);
+    // The bytes as stored are blue, green, red and alpha
+    let packed = u32::from_le_bytes([191, 128, 64, 255]);
     assert!(vertices.iter().all(|v| v.colour[2].to_bits() == packed));
     assert!(vertices.iter().all(|v| v.colour[..2] == [0.5, 2.0]));
     assert!(vertices.iter().all(|v| v.depth_bias.to_bits() == u32::MAX));
@@ -230,7 +231,7 @@ fn a_models_vertex_packs_its_colours_and_coordinates_and_one_it_lacks_is_white_o
     assert_eq!(vertices[1].colour[..2], vertices[1].uv);
     assert_eq!(
         vertices[0].depth_bias.to_bits(),
-        u32::from_le_bytes([0, 128, 255, 51])
+        u32::from_le_bytes([255, 128, 0, 51])
     );
     // A list shorter than the mesh leaves the rest white
     assert_eq!(vertices[3].depth_bias.to_bits(), u32::MAX);
