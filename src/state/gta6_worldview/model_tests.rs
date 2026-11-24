@@ -161,6 +161,36 @@ fn a_mesh_takes_the_maps_and_the_bucket_of_its_own_shader_past_a_geometry_that_w
 }
 
 #[test]
+fn a_four_layer_mesh_takes_its_weights_from_colour_channel_25_and_every_mesh_its_second_coordinate()
+{
+    let four = or_io::gta6::hash::name_hash32(b"DiffuseTexture_layer0");
+    let shaders = vec![
+        shader(&[(DIFFUSE, Some(0xA))], &[]),
+        shader(&[(four, Some(0xB))], &[]),
+    ];
+    let painted = |shader: u16| {
+        let mut geometry = geometry(shader, true);
+        geometry.vertices.colours = vec![
+            (24, vec![[1.0, 0.0, 0.0, 1.0]; 3]),
+            (25, vec![[0.0, 0.0, 1.0, 1.0]; 3]),
+        ];
+        geometry.vertices.uvs = vec![(28, vec![[0.0, 0.0]; 3]), (29, vec![[0.5, 0.25]; 3])];
+        geometry
+    };
+    let levels = [level(vec![painted(0), painted(1)]), None, None, None];
+    let model = model_of(&drawable(shaders, levels, [FAR; 4]), &[0, 0], &|_| None);
+    let first = |mesh: usize| {
+        model.lods[0].meshes[mesh].vertices[0].colour[2]
+            .to_bits()
+            .to_le_bytes()
+    };
+    // The one-layer mesh's first colour is channel 24, the four-layer mesh's channel 25
+    assert_eq!(first(0), [255, 0, 0, 255]);
+    assert_eq!(first(1), [0, 0, 255, 255]);
+    assert_eq!(model.lods[0].meshes[1].vertices[0].colour[..2], [0.5, 0.25]);
+}
+
+#[test]
 fn the_bucket_is_the_draw_bucket_byte_under_its_batch_bit_and_a_water_mask_draws_nothing() {
     let of = |byte: u8| Bucket::of(byte, false);
     assert_eq!(of(0), Some(Bucket::Opaque));

@@ -65,7 +65,8 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
     let flags = flag(c.vertex_tint, WorldConstants::VERTEX_TINT)
         | flag(c.mask_is_alpha, WorldConstants::MASK_FROM_ALPHA)
         | flag(c.inv_control, WorldConstants::INVERT_CONTROL)
-        | flag(c.hard_light, WorldConstants::HARD_LIGHT);
+        | flag(c.hard_light, WorldConstants::HARD_LIGHT)
+        | WorldConstants::MODEL_VERTEX;
     let mut constants = WorldConstants {
         fresnel: c.fresnel,
         bumpiness: c.bumpiness,
@@ -78,6 +79,15 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
         vertex_tint_amount: c.vertex_tint_amount,
         control_filter: c.control_filter,
         opacity: c.decal_blend_opacity,
+        uv0_transform: c.uv0_transform,
+        uv1_transform: c.uv1_transform,
+        uv_sets: c.uv_sets,
+        uv_extra: [
+            c.lookup_uv_set,
+            0.0,
+            c.layer1_uv_scale[0],
+            c.layer1_uv_scale[1],
+        ],
         flags,
         palette_row: c.tint_palette_selector,
         translucency_as_tint_mask: c.translucency_as_tint_mask,
@@ -189,7 +199,8 @@ mod tests {
         assert_eq!(constants.emissive_view_power, 2.0);
         let wanted = WorldConstants::MASK_FROM_ALPHA
             | WorldConstants::INVERT_CONTROL
-            | WorldConstants::HARD_LIGHT;
+            | WorldConstants::HARD_LIGHT
+            | WorldConstants::MODEL_VERTEX;
         assert_eq!(constants.flags, wanted);
     }
 

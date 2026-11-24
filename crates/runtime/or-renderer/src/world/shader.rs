@@ -33,6 +33,10 @@ struct Constants {
     opacity: vec4<f32>,
     emissive_scale: vec4<f32>,
     emissive_power: vec4<f32>,
+    uv0_transform: vec4<f32>,
+    uv1_transform: vec4<f32>,
+    uv_sets: vec4<f32>,
+    uv_extra: vec4<f32>,
     flags: u32,
     palette_row: f32,
     translucency_as_tint_mask: f32,
@@ -82,12 +86,15 @@ const VERTEX_TINT: u32 = 1u;
 const MASK_FROM_ALPHA: u32 = 2u;
 const INVERT_CONTROL: u32 = 4u;
 const HARD_LIGHT: u32 = 8u;
+const MODEL_VERTEX: u32 = 16u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
     @location(1) normal:   vec3<f32>,
     @location(2) uv:       vec2<f32>,
-    @location(3) colour:   vec4<f32>,
+    // A model's vertex as `coloured` packs it: the second texture coordinate, then the first colour's four bytes and the third coordinate's two halves.
+    @location(3) uv1:      vec2<f32>,
+    @location(9) packed:   vec2<u32>,
     // The vertex's second colour, four bytes where the viewport's vertex keeps its depth bias.
     @location(4) colour1:  u32,
     @location(5) row0:     vec4<f32>,
@@ -106,6 +113,8 @@ struct VsOut {
     @location(4) @interpolate(flat) fade: f32,
     @location(5) colour1: vec4<f32>,
     @location(6) @interpolate(flat) tint: vec3<f32>,
+    @location(7) uv1: vec2<f32>,
+    @location(8) uv2: vec2<f32>,
 };
 
 fn placed(in: VsIn) -> vec3<f32> {
@@ -123,7 +132,16 @@ fn handed_on(in: VsIn, world: vec3<f32>) -> VsOut {
         dot(in.row2.xyz, in.normal),
     ));
     out.uv = in.uv;
-    out.colour = in.colour;
+    if ((m.flags & MODEL_VERTEX) != 0u) {
+        out.colour = unpack4x8unorm(in.packed.x);
+        out.uv1 = in.uv1;
+        out.uv2 = unpack2x16float(in.packed.y);
+    } else {
+        // A mesh the viewer builds keeps its colour's four floats as they are, and has one texture coordinate.
+        out.colour = vec4<f32>(in.uv1, bitcast<f32>(in.packed.x), bitcast<f32>(in.packed.y));
+        out.uv1 = in.uv;
+        out.uv2 = in.uv;
+    }
     out.colour1 = unpack4x8unorm(in.colour1);
     out.world_pos = world;
     out.fade = in.tint.a;
@@ -352,23 +370,41 @@ fn emissive_strength() -> f32 {
     return light.frame.y * select(mix(m.emissive_multiplier, m.emissive_night, light.frame.x), m.emissive_multiplier, m.emissive_night < 0.0);
 }
 
+// The texture coordinate of set 1, 2 or 3.
+fn coordinate_set(in: VsOut, which: f32) -> vec2<f32> {
+    return select(select(in.uv2, in.uv1, which == 2.0), in.uv, which == 1.0);
+}
+
+// Where a layer's maps are sampled: its set's coordinate, scaled and moved by that set's transform; the second layer of a two-layer material is scaled again.
+fn layer_uv(in: VsOut, layer: u32) -> vec2<f32> {
+    let first = m.uv_sets[layer] == 1.0;
+    let t = select(m.uv1_transform, m.uv0_transform, first);
+    let uv = select(in.uv1, in.uv, first) * t.xy + t.zw;
+    return select(uv, uv * m.uv_extra.zw, layer == 1u);
+}
+
 // ⚠ Every map is sampled and every derivative taken before anything is discarded, and in control flow every pixel shares.
 // ponytail: every slot is sampled whatever the family, fifteen samples a pixel, most of them of a one-texel stand-in; sample by family where the G-buffer pass's cost shows it.
 fn surface_of(in: VsOut, front_facing: bool) -> Surface {
     var maps: Maps;
-    maps.c0 = textureSample(layer0_colour, map_smp, in.uv);
-    maps.n0 = textureSample(layer0_normal, map_smp, in.uv);
-    maps.a0 = textureSample(layer0_a, map_smp, in.uv);
-    maps.c1 = textureSample(layer1_colour, map_smp, in.uv);
-    maps.n1 = textureSample(layer1_normal, map_smp, in.uv);
-    maps.a1 = textureSample(layer1_a, map_smp, in.uv);
-    maps.c2 = textureSample(layer2_colour, map_smp, in.uv);
-    maps.n2 = textureSample(layer2_normal, map_smp, in.uv);
-    maps.a2 = textureSample(layer2_a, map_smp, in.uv);
-    maps.c3 = textureSample(layer3_colour, map_smp, in.uv);
-    maps.n3 = textureSample(layer3_normal, map_smp, in.uv);
-    maps.a3 = textureSample(layer3_a, map_smp, in.uv);
-    maps.weights = textureSample(weights_map, map_smp, in.uv);
+    let uv0 = layer_uv(in, 0u);
+    let uv1 = layer_uv(in, 1u);
+    let uv2 = layer_uv(in, 2u);
+    let uv3 = layer_uv(in, 3u);
+    maps.c0 = textureSample(layer0_colour, map_smp, uv0);
+    maps.n0 = textureSample(layer0_normal, map_smp, uv0);
+    maps.a0 = textureSample(layer0_a, map_smp, uv0);
+    maps.c1 = textureSample(layer1_colour, map_smp, uv1);
+    maps.n1 = textureSample(layer1_normal, map_smp, uv1);
+    maps.a1 = textureSample(layer1_a, map_smp, uv1);
+    maps.c2 = textureSample(layer2_colour, map_smp, uv2);
+    maps.n2 = textureSample(layer2_normal, map_smp, uv2);
+    maps.a2 = textureSample(layer2_a, map_smp, uv2);
+    // Material B of the first layers is sampled where its layer is, and the emissive map by the first coordinate
+    maps.c3 = textureSample(layer3_colour, map_smp, select(uv0, uv3, m.family.x == FOUR_LAYER));
+    maps.n3 = textureSample(layer3_normal, map_smp, select(uv1, uv3, m.family.x == FOUR_LAYER));
+    maps.a3 = textureSample(layer3_a, map_smp, select(in.uv, uv3, m.family.x == FOUR_LAYER));
+    maps.weights = textureSample(weights_map, map_smp, coordinate_set(in, m.uv_extra.x));
     maps.tint = textureSample(tint_map, map_smp, in.uv);
     maps.second = textureSample(second_map, map_smp, in.uv);
     // Culling is off, so a face seen from behind is shaded by the normal turned towards the viewer.

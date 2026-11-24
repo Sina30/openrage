@@ -197,23 +197,37 @@ fn the_world_program_is_valid_and_reads_a_materials_constants_where_the_renderer
     for (name, offset) in fields {
         assert_eq!(at(name), 16 + offset as u32, "{name}");
     }
-    // The family, thirteen vectors and fifteen scalars
-    assert_eq!(members.len(), 29);
+    assert_eq!(
+        at("uv_extra"),
+        16 + std::mem::offset_of!(WorldConstants, uv_extra) as u32
+    );
+    // The family, seventeen vectors and fifteen scalars
+    assert_eq!(members.len(), 33);
     // The frame's light: four vectors and the night's
     assert_eq!(declared("Light").1, 80);
 }
 
 #[test]
-fn a_vertex_keeps_its_second_colour_in_the_bits_of_its_depth_bias_and_one_it_lacks_is_white() {
+fn a_models_vertex_packs_its_colours_and_coordinates_and_one_it_lacks_is_white_or_its_first() {
     assert_eq!(colour1([1, 2, 3, 4]).to_bits(), 0x0403_0201);
     let mut vertices = corners([0.0, 0.0], 1.0);
     let first = [[0.25, 0.5, 0.75, 1.0]; 4];
-    coloured(&mut vertices, Some(&first), None);
-    assert!(vertices.iter().all(|v| v.colour == first[0]));
+    let uv1 = [[0.5, 2.0]; 4];
+    coloured(&mut vertices, (Some(&first), None), (Some(&uv1), None));
+    let packed = u32::from_le_bytes([64, 128, 191, 255]);
+    assert!(vertices.iter().all(|v| v.colour[2].to_bits() == packed));
+    assert!(vertices.iter().all(|v| v.colour[..2] == [0.5, 2.0]));
     assert!(vertices.iter().all(|v| v.depth_bias.to_bits() == u32::MAX));
+    // No third coordinate: the first, as two halves
+    let [u, v] = vertices[2].uv.map(or_io::half::f32_to_half);
+    assert_eq!(
+        vertices[2].colour[3].to_bits(),
+        u32::from(u) | u32::from(v) << 16
+    );
     let second = [[0.0, 0.5, 1.0, 0.2]; 3];
-    coloured(&mut vertices, None, Some(&second));
-    assert_eq!(vertices[0].colour, [1.0; 4]);
+    coloured(&mut vertices, (None, Some(&second)), (None, None));
+    assert_eq!(vertices[0].colour[2].to_bits(), u32::MAX);
+    assert_eq!(vertices[1].colour[..2], vertices[1].uv);
     assert_eq!(
         vertices[0].depth_bias.to_bits(),
         u32::from_le_bytes([0, 128, 255, 51])
@@ -636,7 +650,11 @@ fn coloured_square(
     material: WorldMaterial,
 ) -> Arc<WorldMesh> {
     let mut vertices = corners([0.0, 0.0], 0.5);
-    coloured(&mut vertices, Some(&[first; 4]), Some(&[second; 4]));
+    // A material not of a model reads the colour as it is and the second colour from the depth bias
+    for vertex in &mut vertices {
+        vertex.colour = first;
+        vertex.depth_bias = colour1(second.map(|c| (c * 255.0).round() as u8));
+    }
     Arc::new(WorldMesh::new(device, &vertices, &SQUARE, material))
 }
 

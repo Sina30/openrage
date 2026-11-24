@@ -247,6 +247,41 @@ fn a_four_layer_materials_constants_are_read_per_layer() {
 }
 
 #[test]
+fn a_layers_coordinate_set_and_transform_are_read_whether_stated_as_floats_or_integers() {
+    let four: [(u32, &[f32]); 4] = [
+        (0x4344_D2CC, &[128.0, 64.0, 0.5, 0.25]),
+        (0x9ECA_AA1E, &[2.0, 2.0, 0.0, 0.0]),
+        (h("uvSet"), &[1.0, 2.0, 1.0, 2.0]),
+        (h("lookupUVSet"), &[3.0]),
+    ];
+    let records = [(h("DiffuseTexture_layer0"), Some(0x100))];
+    let c = of(&shader(&records, &four), 0).constants;
+    assert_eq!(c.uv0_transform, [128.0, 64.0, 0.5, 0.25]);
+    assert_eq!(c.uv1_transform, [2.0, 2.0, 0.0, 0.0]);
+    assert_eq!(c.uv_sets, [1.0, 2.0, 1.0, 2.0]);
+    assert_eq!(c.lookup_uv_set, 3.0);
+    // A two-layer material states its sets as integers, its control's set under its own name
+    let mut two = shader(&two_layer(), &[(h("lyr1UVScale"), &[2.0, 3.0])]);
+    for (name, set) in [("lyr0UVSet", 2u32), ("lyr1UVSet", 1), ("controlUVSet", 2)] {
+        two.parameters.push(Parameter {
+            hash: h(name),
+            value: ParameterValue::Constant {
+                buffer: 0,
+                offset: 0,
+                words: vec![set],
+            },
+        });
+    }
+    let c = of(&two, 0).constants;
+    assert_eq!(c.uv_sets, [2.0, 1.0, 1.0, 1.0]);
+    assert_eq!((c.lookup_uv_set, c.layer1_uv_scale), (2.0, [2.0, 3.0]));
+    // A material that states none samples every map by its first coordinate, untransformed
+    let d = Constants::default();
+    assert_eq!((d.uv_sets, d.lookup_uv_set), ([1.0; 4], 1.0));
+    assert_eq!(d.uv0_transform, [1.0, 1.0, 0.0, 0.0]);
+}
+
+#[test]
 fn a_two_layer_materials_constants_go_to_their_own_layer() {
     let constants: [(u32, &[f32]); 12] = [
         (h("lyr0Fresnel"), &[0.1]),

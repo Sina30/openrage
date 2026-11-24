@@ -354,9 +354,10 @@ impl World {
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
         });
+        // The vertex stage reads the family: a mesh the viewer builds keeps its colour as it is.
         entries.push(wgpu::BindGroupLayoutEntry {
             binding: WORLD_MAPS as u32 + 1,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,

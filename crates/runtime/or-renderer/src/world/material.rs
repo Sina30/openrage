@@ -97,6 +97,13 @@ pub struct WorldConstants {
     pub opacity: [f32; 4],
     pub emissive_scale: [f32; 4],
     pub emissive_power: [f32; 4],
+    /// The scale and offset a layer's texture coordinate takes from the first and from the second set.
+    pub uv0_transform: [f32; 4],
+    pub uv1_transform: [f32; 4],
+    /// By layer, the set its maps are sampled by: 1 the first, 2 the second.
+    pub uv_sets: [f32; 4],
+    /// The set the weights map is sampled by (1, 2 or 3), nought, and the second layer's scale of a two-layer material.
+    pub uv_extra: [f32; 4],
     pub flags: u32,
     /// The row of the palette, which the instance's own tint states where it states one.
     pub palette_row: f32,
@@ -126,6 +133,8 @@ impl WorldConstants {
     pub const INVERT_CONTROL: u32 = 4;
     /// The dirt is laid over as hard light.
     pub const HARD_LIGHT: u32 = 8;
+    /// The meshes are a model's, their vertices packed by [`coloured`].
+    pub const MODEL_VERTEX: u32 = 16;
 }
 
 impl Default for WorldConstants {
@@ -144,6 +153,10 @@ impl Default for WorldConstants {
             opacity: [1.0; 4],
             emissive_scale: [1.0; 4],
             emissive_power: [1.0; 4],
+            uv0_transform: [1.0, 1.0, 0.0, 0.0],
+            uv1_transform: [1.0, 1.0, 0.0, 0.0],
+            uv_sets: [1.0; 4],
+            uv_extra: [1.0, 0.0, 1.0, 1.0],
             flags: Self::VERTEX_TINT | Self::MASK_FROM_ALPHA,
             palette_row: 0.0,
             translucency_as_tint_mask: 0.0,
@@ -171,24 +184,32 @@ pub struct WorldSurface<'a> {
     pub constants: WorldConstants,
 }
 
-/// `rgba` as the bits of a vertex's depth bias, which the world's shader reads as the vertex's second colour.
+/// `rgba` as the bits of a float of a vertex, which the world's shader reads as a colour.
 pub fn colour1(rgba: [u8; 4]) -> f32 {
     f32::from_bits(u32::from_le_bytes(rgba))
 }
 
-/// Give each of `vertices` its first colour and, in the bits of its depth bias, its second, each white where the mesh has none.
+/// Give each of `vertices` of a model its two colours, each white where the mesh has none, and its second and third texture coordinates, each its first where the mesh has none.
 pub fn coloured(
     vertices: &mut [MeshVertex],
-    first: Option<&[[f32; 4]]>,
-    second: Option<&[[f32; 4]]>,
+    (first, second): (Option<&[[f32; 4]]>, Option<&[[f32; 4]]>),
+    (uv1, uv2): (Option<&[[f32; 2]]>, Option<&[[f32; 2]]>),
 ) {
+    // ⚠ A model's vertex keeps the second coordinate in the first two floats of its colour, the first colour in the bits of the third, the third coordinate as two halves in the bits of the fourth, and the second colour in the bits of its depth bias, as a material of [`WorldConstants::MODEL_VERTEX`] reads it.
     let at = |colours: Option<&[[f32; 4]]>, index: usize| {
-        (colours.and_then(|colours| colours.get(index)).copied()).unwrap_or([1.0; 4])
+        let colour = colours.and_then(|colours| colours.get(index)).copied();
+        colour
+            .unwrap_or([1.0; 4])
+            .map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8)
     };
     for (index, vertex) in vertices.iter_mut().enumerate() {
-        vertex.colour = at(first, index);
-        let bytes = at(second, index).map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
-        vertex.depth_bias = colour1(bytes);
+        let uv = |set: Option<&[[f32; 2]]>| set.and_then(|s| s.get(index)).copied();
+        let [u1, v1] = uv(uv1).unwrap_or(vertex.uv);
+        let [u2, v2] = uv(uv2).unwrap_or(vertex.uv);
+        let halves =
+            u32::from(or_io::half::f32_to_half(u2)) | u32::from(or_io::half::f32_to_half(v2)) << 16;
+        vertex.colour = [u1, v1, colour1(at(first, index)), f32::from_bits(halves)];
+        vertex.depth_bias = colour1(at(second, index));
     }
 }
 

@@ -83,6 +83,15 @@ pub struct Constants {
     /// A decal's opacity into colour, normal, smoothness and specular, and ambient.
     pub decal_blend_opacity: [f32; 4],
     pub gtintensity: f32,
+    /// A four-layer material's scale and offset of the first and of the second texture coordinate.
+    pub uv0_transform: [f32; 4],
+    pub uv1_transform: [f32; 4],
+    /// By layer, the coordinate set its maps are sampled by: 1 the first, 2 the second.
+    pub uv_sets: [f32; 4],
+    /// The set the lookup or control map is sampled by: 1, 2 or 3.
+    pub lookup_uv_set: f32,
+    /// A two-layer material's scale of its second layer's coordinate.
+    pub layer1_uv_scale: [f32; 2],
 }
 
 impl Default for Constants {
@@ -109,6 +118,11 @@ impl Default for Constants {
             hard_light: false,
             decal_blend_opacity: [1.0; 4],
             gtintensity: 0.0,
+            uv0_transform: [1.0, 1.0, 0.0, 0.0],
+            uv1_transform: [1.0, 1.0, 0.0, 0.0],
+            uv_sets: [1.0; 4],
+            lookup_uv_set: 1.0,
+            layer1_uv_scale: [1.0; 2],
         }
     }
 }
@@ -270,6 +284,12 @@ const DECAL_OPACITY: [u32; 4] = [
     name_hash32(b"DecalBlendOpacityGBuffer3"),
 ];
 const GRASS_TINT: u32 = name_hash32(b"gtintensity");
+const UV0_TRANSFORM: u32 = 0x4344_D2CC;
+const UV1_TRANSFORM: u32 = 0x9ECA_AA1E;
+const UV_SETS: u32 = name_hash32(b"uvSet");
+const LAYER_UV_SETS: [u32; 2] = [name_hash32(b"lyr0UVSet"), name_hash32(b"lyr1UVSet")];
+const LOOKUP_UV_SET: [u32; 2] = [name_hash32(b"lookupUVSet"), name_hash32(b"controlUVSet")];
+const LAYER1_UV_SCALE: u32 = name_hash32(b"lyr1UVScale");
 
 /// A shader's records and constants, by the hash its drawable states for each.
 struct Records<'a>(&'a Shader);
@@ -334,6 +354,18 @@ impl Records<'_> {
         self.floats(hash, [default])[0]
     }
 
+    /// The coordinate sets of the constant of `hash` over `default`, each stated as an integer or a float.
+    fn sets<const N: usize>(&self, hash: u32, default: [f32; N]) -> [f32; N] {
+        let mut out = default;
+        for (slot, word) in out.iter_mut().zip(self.words(hash).unwrap_or_default()) {
+            *slot = match *word {
+                small @ 0..=0xFF => small as f32,
+                bits => f32::from_bits(bits),
+            };
+        }
+        out
+    }
+
     fn flag(&self, hash: u32, default: bool) -> bool {
         self.words(hash)
             .and_then(|words| words.first())
@@ -366,7 +398,18 @@ fn constants_of(r: &Records) -> Constants {
         hard_light: r.flag(HARD_LIGHT, d.hard_light),
         decal_blend_opacity: DECAL_OPACITY.map(|hash| r.float(hash, 1.0)),
         gtintensity: r.float(GRASS_TINT, d.gtintensity),
+        uv0_transform: r.floats(UV0_TRANSFORM, d.uv0_transform),
+        uv1_transform: r.floats(UV1_TRANSFORM, d.uv1_transform),
+        uv_sets: r.sets(UV_SETS, d.uv_sets),
+        lookup_uv_set: r.sets(
+            LOOKUP_UV_SET[1],
+            r.sets(LOOKUP_UV_SET[0], [d.lookup_uv_set]),
+        )[0],
+        layer1_uv_scale: r.floats(LAYER1_UV_SCALE, d.layer1_uv_scale),
     };
+    for (set, hash) in c.uv_sets.iter_mut().zip(LAYER_UV_SETS) {
+        *set = r.sets(hash, [*set])[0];
+    }
     // A two-layer material states each layer's own under a name of its own.
     let per_layer = [
         (&mut c.fresnel, LAYER_FRESNEL),

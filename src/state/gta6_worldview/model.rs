@@ -116,14 +116,23 @@ pub(super) fn model_of(
             .filter(|(mesh, _)| !mesh.vertices.is_empty() && !mesh.indices.is_empty())
             .filter_map(|(mut mesh, geometry)| {
                 let (material, bucket) = materials.get(usize::from(geometry.shader))?.as_ref()?;
-                // The first colour is channel 24 and the second 25: the palette column, the layer weights, the tint and the glow
+                // The first colour is channel 24 and the second 25: the palette column, the coverage, the tint and the glow; a four-layer mesh keeps its layer weights in 25 and its tint in 24, and grass its tint in 24, which their effects read as the tint they take
                 let colour = |channel: u8| {
                     let mut colours = geometry.vertices.colours.iter();
                     colours
                         .find(|(c, _)| *c == channel)
                         .map(|(_, values)| values.as_slice())
                 };
-                or_renderer::world::coloured(&mut mesh.vertices, colour(24), colour(25));
+                let uvs = |channel: u8| {
+                    let mut uvs = geometry.vertices.uvs.iter();
+                    uvs.find(|(c, _)| *c == channel)
+                        .map(|(_, values)| values.as_slice())
+                };
+                let colours = match matches!(material.family, Family::FourLayer | Family::Grass) {
+                    true => (colour(25), colour(24)),
+                    false => (colour(24), colour(25)),
+                };
+                or_renderer::world::coloured(&mut mesh.vertices, colours, (uvs(29), uvs(30)));
                 Some(CpuMesh {
                     vertices: mesh.vertices,
                     indices: mesh.indices,

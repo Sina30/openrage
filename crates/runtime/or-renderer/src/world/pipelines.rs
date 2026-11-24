@@ -10,12 +10,13 @@ use crate::viewport::MeshVertex;
 use super::shader::WORLD_SHADER;
 use super::{WorldBucket, WorldInstance};
 
-/// A [`MeshVertex`] as the world reads it: the viewport's own attributes, but for the depth bias, whose four bytes are the vertex's second colour.
-const WORLD_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+/// A [`MeshVertex`] as the world reads it, as [`super::coloured`] packs it: the colour's four floats as the second texture coordinate and two words, and the depth bias's four bytes as the second colour.
+const WORLD_VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
     0 => Float32x3,
     1 => Float32x3,
     2 => Float32x2,
-    3 => Float32x4,
+    3 => Float32x2,
+    9 => Uint32x2,
     4 => Uint32,
 ];
 
