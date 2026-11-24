@@ -259,12 +259,7 @@ impl WorldIndex {
         &self.groups
     }
 
-    /// The ids of the groups the world-state data of every mode switches on at `hour`.
-    pub fn default_on(&self, hour: f32) -> Vec<u32> {
-        self.default_on_in(hour, 0b111)
-    }
-
-    /// The same under the selectors of the modes `modes` alone, as [`Enabled::modes`] states them.
+    /// The ids of the groups the world-state data switches on at `hour` under the selectors of the modes `modes`, as [`Enabled::modes`] states them.
     pub fn default_on_in(&self, hour: f32, modes: u8) -> Vec<u32> {
         // A NaN hour is midnight.
         let bit = 1 << (hour.rem_euclid(24.0) as u32).min(23);

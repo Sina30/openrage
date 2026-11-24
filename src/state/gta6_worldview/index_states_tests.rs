@@ -104,7 +104,7 @@ fn the_index_says_which_groups_are_on_at_an_hour_and_keeps_their_words() {
     assert_eq!(index.default_on_in(12.0, 1), [100]);
     assert_eq!(index.default_on_in(23.5, 1), [200]);
     assert_eq!(index.default_on_in(12.0, 3), [300]);
-    assert_eq!(index.default_on(12.0), [300]);
+    assert_eq!(index.default_on_in(12.0, 0b111), [300]);
     // An hour past the day comes round again.
     assert_eq!(index.default_on_in(36.0, 1), [100]);
     assert_eq!(index.default_on_in(-1.0, 1), [200]);
