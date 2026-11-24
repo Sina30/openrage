@@ -149,14 +149,16 @@ fn numbers(count: usize) -> Vec<f32> {
 fn the_buffer_drawn_a_band_on_each_core_is_the_one_drawn_whole() {
     // Triangles over several bands, past the raster's edges and through one another.
     let n = numbers(900 * 3);
-    let flat: Vec<[Vec3; 3]> = (n.chunks_exact(9))
+    let flat: Vec<[Vec3; 3]> = (n.as_chunks::<9>().0.iter())
         .map(|t| {
             let point = |k: usize| Vec3::new(t[k] * 160.0 - 16.0, t[k + 1] * 90.0 - 9.0, t[k + 2]);
             [point(0), point(3), point(6)]
         })
         .collect();
-    let mut banded = Occlusion::default();
-    banded.corners = vec![0.0; CORNERS];
+    let mut banded = Occlusion {
+        corners: vec![0.0; CORNERS],
+        ..Occlusion::default()
+    };
     banded.raster(&flat);
     let mut whole = vec![0.0; CORNERS];
     for triangle in &flat {
