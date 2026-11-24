@@ -495,10 +495,10 @@ pub fn world_archives(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<u32> {
     found
 }
 
-/// The nested game-shape archives the packs register, each with its pack's mode, the caller's index of the archive that lists it, and its entry there.
+/// The nested game-shape archives the packs register, each with its pack's mode, the caller's index of the archive that lists it, its entry there and its registered path with no device or extension.
 // ponytail: known by the folder its registered path names, as a metadata archive is by its name.
-pub fn game_shapes(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<(Mode, u32, Entry)> {
-    let mut found: Vec<(Mode, u32, Entry)> = Vec::new();
+pub fn game_shapes(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<(Mode, u32, Entry, String)> {
+    let mut found: Vec<(Mode, u32, Entry, String)> = Vec::new();
     for pack in packs {
         for file in pack.sets.iter().flat_map(|set| &set.files) {
             let (bare, extension) = split_extension(entry_path(&file.filename));
@@ -508,8 +508,8 @@ pub fn game_shapes(packs: &[Pack], tables: &[Listed<'_>]) -> Vec<(Mode, u32, Ent
             else {
                 continue;
             };
-            if !(found.iter()).any(|(_, a, e)| *a == archive && e.offset == entry.offset) {
-                found.push((pack.mode, archive, *entry));
+            if !(found.iter()).any(|(_, a, e, _)| *a == archive && e.offset == entry.offset) {
+                found.push((pack.mode, archive, *entry, bare.to_owned()));
             }
         }
     }

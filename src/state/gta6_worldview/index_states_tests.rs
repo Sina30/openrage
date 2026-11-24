@@ -75,6 +75,36 @@ fn a_group_is_on_in_the_hours_the_selectors_of_the_modes_on_pick_it() {
     assert!(rows.iter().all(|r| r.hours[0] == 0), "no mode, no switch");
 }
 
+#[test]
+fn only_the_layers_the_level_loads_switch_at_rest() {
+    let body = |layer| WorldState {
+        layer,
+        selectors: vec![door()],
+    };
+    // 1 the level loads, 2 a script loads, 3 no manifest names.
+    let layers = [(1, true), (2, false)];
+    let kept: Vec<u32> = (loaded_at_rest(vec![body(1), body(2), body(3)], &layers).iter())
+        .map(|s| s.layer)
+        .collect();
+    assert_eq!(kept, [1, 3]);
+}
+
+#[test]
+fn a_new_game_settles_the_player_conditions() {
+    let rule = |condition| Selector {
+        rules: vec![Rule {
+            config: 20,
+            condition,
+        }],
+        ..door()
+    };
+    // A rule that holds for a new game picks; one that does not leaves the default.
+    let wanted = Condition::NewGame(false);
+    let not_wanted = Condition::Not(Box::new(Condition::NewGame(false)));
+    assert_eq!(rule(wanted).pick(12).map(|c| c.key), Some(10));
+    assert_eq!(rule(not_wanted).pick(12).map(|c| c.key), Some(20));
+}
+
 /// A script-managed map of the group `group`.
 fn managed(name: u32, group: u32) -> MapRow {
     MapRow {

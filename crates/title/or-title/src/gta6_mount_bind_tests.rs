@@ -270,12 +270,30 @@ fn a_mode_s_game_shapes_are_the_archives_its_pack_registers_under_that_folder() 
             table: &tale,
         },
     ];
-    let mut found: Vec<(Mode, u32, u64)> = (game_shapes(&registry.packs, &tables).into_iter())
-        .map(|(mode, archive, entry)| (mode, archive, entry.offset))
-        .collect();
-    found.sort_by_key(|(_, archive, _)| *archive);
-    // One archive named twice is found once.
-    assert_eq!(found, [(Mode::Base, 0, 0x1000), (Mode::Story, 1, 0x3000)]);
+    let mut found: Vec<(Mode, u32, u64, String)> = (game_shapes(&registry.packs, &tables)
+        .into_iter())
+    .map(|(mode, archive, entry, path)| (mode, archive, entry.offset, path.to_lowercase()))
+    .collect();
+    found.sort_by_key(|(_, archive, _, _)| *archive);
+    // One archive named twice is found once, with the path it is registered at.
+    let path = |p: &str| p.to_owned();
+    assert_eq!(
+        found,
+        [
+            (
+                Mode::Base,
+                0,
+                0x1000,
+                path("levels/town/gameshapes/towncommon")
+            ),
+            (
+                Mode::Story,
+                1,
+                0x3000,
+                path("levels/town/gameshapes/townstory")
+            )
+        ]
+    );
     assert!(game_shapes(&registry.packs, &[]).is_empty());
 }
 

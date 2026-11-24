@@ -16,6 +16,15 @@ use crate::meta::{MetaInstance, Value};
 
 /// The root class of a world-state body.
 pub const WORLD_STATE: u32 = 0xD52B_2D2F;
+/// The root class of a game-shape archive's layer manifest.
+pub const LAYER_MANIFEST: u32 = 0xB00F_FAFC;
+/// A world-state body's layer: the hash of the layer's name.
+const BODY_LAYER: u32 = 0x1957_9573;
+const LAYERS: u32 = lit(b"Layers");
+/// A layer's name: the hash a body states as its layer.
+const LAYER_NAME: u32 = lit(b"Name");
+/// Set on a layer the level loads; clear on one a script or a system loads when it asks.
+const LAYER_LOADED: u32 = 0xB012_DEBA;
 const NODES: u32 = lit(b"Nodes");
 const COMPONENTS: u32 = lit(b"Components");
 const SELECTOR_COMPONENT: u32 = 0x13D6_866D;
@@ -43,6 +52,13 @@ const OR: u32 = lit(b"CAIConditionOr");
 const TRUE: u32 = lit(b"CAIConditionTrue");
 const RAINING: u32 = lit(b"CAIConditionRaining");
 const RAIN_AMOUNT: u32 = lit(b"RainAmount");
+const PED_WANTED: u32 = lit(b"CAIConditionPedWanted");
+const PED_WANTED_LEVEL: u32 = lit(b"CAIConditionPedWantedLevel");
+const LOWER_BOUND: u32 = lit(b"LowerBound");
+const UPPER_BOUND: u32 = lit(b"UpperBound");
+const ITEM_UNLOCKED: u32 = lit(b"CAIConditionIsItemUnlocked");
+const HAS_ITEM: u32 = lit(b"CAIConditionHasInventoryItem");
+const MIN_ITEM_COUNT: u32 = lit(b"MinItemCount");
 const START_HOUR: u32 = lit(b"startHour");
 const START_MINUTE: u32 = lit(b"startMinute");
 const END_HOUR: u32 = lit(b"endHour");
@@ -55,6 +71,8 @@ pub enum WorldStateError {
     Meta(#[from] crate::meta::MetaError),
     #[error("the root structure {0:#010X} is not a world-state body (hash_D52B2D2F)")]
     NotWorldState(u32),
+    #[error("the root structure {0:#010X} is not a layer manifest (hash_B00FFAFC)")]
+    NotLayerManifest(u32),
     #[error("the world-state body is broken: {0}")]
     Broken(&'static str),
 }
@@ -62,6 +80,8 @@ pub enum WorldStateError {
 /// The selectors of one world-state body, every node's in order.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorldState {
+    /// The hash of the name of the layer that holds the body.
+    pub layer: u32,
     pub selectors: Vec<Selector>,
 }
 
@@ -110,6 +130,8 @@ pub enum Condition {
     Or(Vec<Condition>),
     True,
     Raining(f32),
+    /// A condition on the player that a new game settles: no wanted level, nothing unlocked or held.
+    NewGame(bool),
     /// A class this does not evaluate, by the name the value tree gives it.
     Other(String),
 }
@@ -146,6 +168,7 @@ impl Condition {
             }
             Self::True => true,
             Self::Raining(_) => false,
+            Self::NewGame(held) => *held,
             Self::Other(_) => return None,
         })
     }
@@ -230,8 +253,35 @@ impl WorldState {
                 }
             }
         }
-        Ok(Self { selectors })
+        Ok(Self {
+            layer: tree.get(&name(BODY_LAYER)).and_then(key32).unwrap_or(0),
+            selectors,
+        })
     }
+}
+
+/// Each layer of the layer manifest `bytes`: the hash of its name, and whether the level loads it.
+pub fn layers_loaded(bytes: &[u8]) -> Result<Vec<(u32, bool)>, WorldStateError> {
+    let model = table_form::model_of(bytes)?;
+    let root = (model.block(model.root_block_id as i32)).map_or(0, |b| b.data_type);
+    if root != LAYER_MANIFEST {
+        return Err(WorldStateError::NotLayerManifest(root));
+    }
+    let tree = table_form::decode(&model)?;
+    let Some(Value::Array(layers)) = tree.get(&name(LAYERS)) else {
+        return Err(WorldStateError::Broken("its layers are not an array"));
+    };
+    Ok((layers.iter().filter_map(object))
+        .filter_map(|layer| {
+            let loaded = match layer.get(&name(LAYER_LOADED)) {
+                Some(Value::Bool(b)) => *b,
+                Some(Value::UInt(u)) => *u != 0,
+                Some(Value::Int(i)) => *i != 0,
+                _ => false,
+            };
+            Some((layer.get(&name(LAYER_NAME)).and_then(key32)?, loaded))
+        })
+        .collect())
 }
 
 /// What the value tree names a member or class of hash `hash` by.
@@ -320,9 +370,21 @@ fn rules_of(set: &MetaInstance) -> Vec<Rule> {
 }
 
 fn condition_of(c: &MetaInstance) -> Condition {
-    let class = [TIME_OF_DAY, TIME_WITH_MINUTES, NOT, AND, OR, TRUE, RAINING]
-        .into_iter()
-        .find(|class| c.type_name == name(*class));
+    let class = [
+        TIME_OF_DAY,
+        TIME_WITH_MINUTES,
+        NOT,
+        AND,
+        OR,
+        TRUE,
+        RAINING,
+        PED_WANTED,
+        PED_WANTED_LEVEL,
+        ITEM_UNLOCKED,
+        HAS_ITEM,
+    ]
+    .into_iter()
+    .find(|class| c.type_name == name(*class));
     let all = || {
         array(c, CONDITIONS)
             .iter()
@@ -349,6 +411,12 @@ fn condition_of(c: &MetaInstance) -> Condition {
             Some(Value::Float(v)) => *v as f32,
             _ => 0.0,
         }),
+        // A new game: wanted level nought, nothing unlocked, no item held.
+        Some(PED_WANTED | ITEM_UNLOCKED) => Condition::NewGame(false),
+        Some(PED_WANTED_LEVEL) => {
+            Condition::NewGame(number(c, LOWER_BOUND) <= 0 && 0 <= number(c, UPPER_BOUND))
+        }
+        Some(HAS_ITEM) => Condition::NewGame(number(c, MIN_ITEM_COUNT) <= 0),
         _ => Condition::Other(c.type_name.clone()),
     }
 }
