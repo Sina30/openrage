@@ -76,8 +76,31 @@ fn a_map_types_body_whose_pointers_lead_nowhere_gives_no_hours() {
 fn a_map_s_group_is_the_word_at_its_place_in_the_root() {
     let mut root = vec![0u8; 0x100];
     root[0x7C..0x80].copy_from_slice(&0xABCD_1234u32.to_le_bytes());
+    root[0x48..0x50].copy_from_slice(&0x0123_4567_89AB_CDEFu64.to_le_bytes());
     let blocks = vec![block(map::C_MAP_DATA, vec![0; 4]), block(0, root)];
     assert_eq!(group_in(&blocks, 2), Some(0xABCD_1234));
     assert_eq!(group_in(&blocks, 1), None, "a root shorter than the member");
     assert_eq!(group_in(&blocks, 3), None);
+    assert_eq!(word_in(&blocks, 2), Some(0x0123_4567_89AB_CDEF));
+    assert_eq!(word_in(&blocks, 1), None);
+}
+
+#[test]
+fn an_archetype_s_load_flags_are_the_low_half_where_its_class_states_them() {
+    let mut body = types_body(0);
+    let flags = 0x0001_0081u64 | 1 << 40;
+    body[2].data[0x30..0x38].copy_from_slice(&flags.to_le_bytes());
+    body[2].data[0xC0 + 0x30..0xC0 + 0x38].copy_from_slice(&1u64.to_le_bytes());
+    body[3].data[0x10 + 0x30..0x10 + 0x38].copy_from_slice(&0x80u64.to_le_bytes());
+    let base = lit(b"CBaseArchetypeDef");
+    assert_eq!(
+        load_flags_in(&body, 1, &|class| class == base || class == TIME_ARCHETYPE),
+        Some(vec![0x0001_0081, 0x80, 1])
+    );
+    // A class whose table puts them elsewhere reads as none.
+    assert_eq!(
+        load_flags_in(&body, 1, &|class| class == base),
+        Some(vec![0x0001_0081, 0, 1])
+    );
+    assert_eq!(load_flags_in(&body, 0, &|_| true), None, "no root");
 }
