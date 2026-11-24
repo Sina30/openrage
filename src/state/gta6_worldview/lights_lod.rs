@@ -2,7 +2,8 @@
 //! (`LODLightsSOA`), its distant lights (`DistantLODLightsSOA`) and its reflection probes.
 //!
 //! ⚠ A map of level-of-detail lights states how far each light reaches and no place: the lights
-//! stand, one for one, at the positions of the distant lights of the map its `parent` names.
+//! stand, one for one, at the positions of the distant lights of the map its `parent` names. No
+//! list states the hours a light is lit in.
 // ponytail: this reads bytes and belongs beside the map reader in or-io; it is here because the
 // track that wrote it owned no file there.
 
@@ -16,33 +17,52 @@ const DISTANT_LIGHT: u32 = lit(b"CDistantLODLight");
 const PROBES_AT: usize = 0x190;
 const LOD_AT: usize = 0x1F0;
 const DISTANT_AT: usize = 0x290;
+/// Where the distant lights state the size class of the whole list, a `u16`.
+const CATEGORY_AT: usize = 0x130;
 const MAP_DATA_SIZE: usize = 0x460;
 const PROBE_SIZE: usize = 0x60;
 const STRUCT: u8 = 0x05;
 const ARRAY: u8 = 0x52;
 
-/// Each member this reads, where its class holds it and its type code, which a body's own table must agree with.
-const LAYOUT: &[(u32, &str, &[u8], usize, u8)] = &[
+/// Each member this reads, where its class holds it and its type code, which a body's own table must agree with; `None` takes any code.
+const LAYOUT: &[(u32, &str, &[u8], usize, Option<u8>)] = &[
     (
         C_MAP_DATA,
         "CMapData",
         b"reflectionProbeData",
         PROBES_AT,
-        ARRAY,
+        Some(ARRAY),
     ),
-    (C_MAP_DATA, "CMapData", b"LODLightsSOA", LOD_AT, STRUCT),
+    (C_MAP_DATA, "CMapData", b"LODLightsSOA", LOD_AT, Some(STRUCT)),
     (
         C_MAP_DATA,
         "CMapData",
         b"DistantLODLightsSOA",
         DISTANT_AT,
-        STRUCT,
+        Some(STRUCT),
     ),
-    (LOD_LIGHT, "CLODLight", b"falloff", 0x10, ARRAY),
-    (LOD_LIGHT, "CLODLight", b"falloffExponent", 0x20, ARRAY),
-    (DISTANT_LIGHT, "CDistantLODLight", b"position", 0x00, ARRAY),
-    (DISTANT_LIGHT, "CDistantLODLight", b"RGB", 0x10, ARRAY),
-    (DISTANT_LIGHT, "CDistantLODLight", b"intensity", 0x20, ARRAY),
+    (LOD_LIGHT, "CLODLight", b"direction", 0x00, Some(ARRAY)),
+    (LOD_LIGHT, "CLODLight", b"falloff", 0x10, Some(ARRAY)),
+    (LOD_LIGHT, "CLODLight", b"falloffExponent", 0x20, Some(ARRAY)),
+    (LOD_LIGHT, "CLODLight", b"coneInnerAngle", 0x40, Some(ARRAY)),
+    (
+        LOD_LIGHT,
+        "CLODLight",
+        b"coneOuterAngleOrCapExt",
+        0x50,
+        Some(ARRAY),
+    ),
+    (DISTANT_LIGHT, "CDistantLODLight", b"position", 0x00, Some(ARRAY)),
+    (DISTANT_LIGHT, "CDistantLODLight", b"RGB", 0x10, Some(ARRAY)),
+    (DISTANT_LIGHT, "CDistantLODLight", b"intensity", 0x20, Some(ARRAY)),
+    (DISTANT_LIGHT, "CDistantLODLight", b"lightType", 0x90, Some(ARRAY)),
+    (
+        DISTANT_LIGHT,
+        "CDistantLODLight",
+        b"category",
+        CATEGORY_AT,
+        None,
+    ),
 ];
 
 /// Why the lists of a map body do not read.
@@ -50,34 +70,42 @@ const LAYOUT: &[(u32, &str, &[u8], usize, u8)] = &[
 pub enum LodError {
     #[error("the body is no CMapData")]
     NotAMap,
-    #[error("the body declares {class} with `{member}` elsewhere than at {offset:#X} with type {code:#04X}")]
+    #[error("the body declares {class} with `{member}` elsewhere than at {offset:#X} or with another type")]
     Layout {
         class: &'static str,
         member: String,
         offset: usize,
-        code: u8,
     },
     #[error("the map's {what} is broken: {why}")]
     Broken { what: &'static str, why: String },
 }
 
-/// One distant light: where it stands, its colour and how strong it is.
+/// One distant light: where it stands, its colour, how strong it is and its type.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Distant {
     pub position: [f32; 3],
-    /// Red, green and blue.
-    // ⚠ The order of the bytes is GTA V's (blue lowest), not measured on this build.
+    /// Red, green and blue: the bytes 0, 1 and 2 of the word.
     pub rgb: [u8; 3],
     pub intensity: f32,
+    /// 1 point, 2 spot, 4 capsule, 32 area.
+    pub light_type: u8,
 }
 
 /// The lists of one map body.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MapLod {
+    /// The way each level-of-detail light points, in the world.
+    pub direction: Vec<[f32; 3]>,
     /// How far each level-of-detail light reaches, in metres.
     pub falloff: Vec<f32>,
     pub falloff_exponent: Vec<f32>,
+    /// A spot's inner half angle, 255 for 180 degrees.
+    pub cone_inner: Vec<u8>,
+    /// A spot's outer half angle as the inner, or a capsule's length, 255 for 140 metres.
+    pub cone_outer: Vec<u8>,
     pub distant: Vec<Distant>,
+    /// The size class of the distant lights: 0 small, 1 medium, 2 large.
+    pub category: u16,
     /// How many reflection probes the map holds; nothing draws them.
     pub probes: usize,
 }
@@ -134,25 +162,29 @@ pub fn read(model: &RbmModel) -> Result<MapLod, LodError> {
         let fits = (declared.entries.iter()).any(|e| {
             e.name_hash == lit(member)
                 && e.offset as usize == offset
-                && e.data_type.to_byte() == code
+                && code.is_none_or(|code| e.data_type.to_byte() == code)
         });
         if !fits {
             return Err(LodError::Layout {
                 class: name,
                 member: String::from_utf8_lossy(member).into_owned(),
                 offset,
-                code,
             });
         }
     }
     let root = &root.data;
+    let lod = |at: usize, stride: usize, what| elements(model, root, LOD_AT + at, stride, what);
     let float = |at: usize, what| -> Result<Vec<f32>, LodError> {
-        Ok(elements(model, root, LOD_AT + at, 4, what)?
-            .map(|e| floats::<1>(e)[0])
-            .collect())
+        Ok(lod(at, 4, what)?.map(|e| floats::<1>(e)[0]).collect())
     };
+    let bytes = |at: usize, what| -> Result<Vec<u8>, LodError> {
+        Ok(lod(at, 1, what)?.map(|e| e[0]).collect())
+    };
+    let direction: Vec<[f32; 3]> = lod(0x00, 12, "direction")?.map(floats).collect();
     let (falloff, falloff_exponent) = (float(0x10, "falloff")?, float(0x20, "falloffExponent")?);
-    if falloff.len() != falloff_exponent.len() {
+    let (cone_inner, cone_outer) = (bytes(0x40, "coneInnerAngle")?, bytes(0x50, "coneOuterAngleOrCapExt")?);
+    let n = falloff.len();
+    if [direction.len(), falloff_exponent.len(), cone_inner.len(), cone_outer.len()] != [n; 4] {
         return Err(broken(
             "level-of-detail lights",
             "its lists are not as long",
@@ -162,26 +194,35 @@ pub fn read(model: &RbmModel) -> Result<MapLod, LodError> {
         elements(model, root, DISTANT_AT + member, stride, what)
     };
     let (position, rgb) = (at(0x00, 12, "position")?, at(0x10, 4, "RGB")?);
-    let intensity = at(0x20, 4, "intensity")?;
-    if [rgb.len(), intensity.len()] != [position.len(); 2] {
+    let (intensity, light_type) = (at(0x20, 4, "intensity")?, at(0x90, 1, "lightType")?);
+    if [rgb.len(), intensity.len(), light_type.len()] != [position.len(); 3] {
         return Err(broken("distant lights", "its lists are not as long"));
     }
-    let distant: Vec<Distant> = (position.zip(rgb).zip(intensity))
-        .map(|((position, rgb), intensity)| Distant {
+    let distant: Vec<Distant> = (position.zip(rgb).zip(intensity).zip(light_type))
+        .map(|(((position, rgb), intensity), light_type)| Distant {
             position: floats(position),
-            rgb: [rgb[2], rgb[1], rgb[0]],
+            rgb: [rgb[0], rgb[1], rgb[2]],
             intensity: floats::<1>(intensity)[0],
+            light_type: light_type[0],
         })
         .collect();
     let finite = |d: &Distant| d.position.iter().all(|x| x.is_finite());
     if !distant.iter().all(finite) {
         return Err(broken("distant lights", "a position is no number"));
     }
+    let category = u16::from_le_bytes([
+        root[DISTANT_AT + CATEGORY_AT],
+        root[DISTANT_AT + CATEGORY_AT + 1],
+    ]);
     let probes = elements(model, root, PROBES_AT, PROBE_SIZE, "reflection probes")?.len();
     Ok(MapLod {
+        direction,
         falloff,
         falloff_exponent,
+        cone_inner,
+        cone_outer,
         distant,
+        category,
         probes,
     })
 }
@@ -201,22 +242,29 @@ pub(super) mod tests {
         values.iter().flat_map(|v| v.to_le_bytes()).collect()
     }
 
-    /// A map body of `falloff` level-of-detail lights and of distant lights (position, RGB word, intensity).
+    /// A map body of `falloff` level-of-detail lights pointing down with cones of 64 and 128, and
+    /// of distant lights (position, RGB word, intensity) of type 2 and category 1.
     // ⚠ The model declares no class: an entry of a class table cannot be made outside or-io, so
     // the refusal of a body that declares a list elsewhere is not tested here.
     pub(in super::super) fn model(falloff: &[f32], distant: &[([f32; 3], u32, f32)]) -> RbmModel {
         let mut root = vec![0u8; MAP_DATA_SIZE];
-        let n = falloff.len() as u16;
-        header(&mut root, LOD_AT + 0x10, 2, n);
-        header(&mut root, LOD_AT + 0x20, 3, n);
-        let m = distant.len() as u16;
-        for (k, member) in [0x00, 0x10, 0x20].into_iter().enumerate() {
-            header(&mut root, DISTANT_AT + member, 4 + k as u64, m);
+        let n = falloff.len();
+        let lod = [(0x00, 2), (0x10, 3), (0x20, 4), (0x40, 5), (0x50, 6)];
+        for (member, block) in lod {
+            header(&mut root, LOD_AT + member, block, n as u16);
         }
+        let m = distant.len() as u16;
+        for (k, member) in [0x00, 0x10, 0x20, 0x90].into_iter().enumerate() {
+            header(&mut root, DISTANT_AT + member, 7 + k as u64, m);
+        }
+        root[DISTANT_AT + CATEGORY_AT] = 1;
         let blocks: Vec<(u32, Vec<u8>)> = vec![
             (C_MAP_DATA, root),
+            (0, bytes(&[0.0, 0.0, -1.0].repeat(n))),
             (0x21, bytes(falloff)),
-            (0x21, bytes(&vec![1.0; falloff.len()])),
+            (0x21, bytes(&vec![1.0; n])),
+            (0x11, vec![64; n]),
+            (0x11, vec![128; n]),
             (0, distant.iter().flat_map(|d| bytes(&d.0)).collect()),
             (
                 0x15,
@@ -226,6 +274,7 @@ pub(super) mod tests {
                 0x21,
                 distant.iter().flat_map(|d| d.2.to_le_bytes()).collect(),
             ),
+            (0x11, vec![2; distant.len()]),
         ];
         RbmModel {
             classes: Default::default(),
@@ -252,18 +301,31 @@ pub(super) mod tests {
         .expect("a map body");
         assert_eq!(lists.falloff, [3.0, 10.0]);
         assert_eq!(lists.falloff_exponent, [1.0, 1.0]);
-        assert_eq!(lists.distant.len(), 1);
+        assert_eq!(lists.direction, [[0.0, 0.0, -1.0]; 2]);
+        assert_eq!((lists.cone_inner, lists.cone_outer), (vec![64; 2], vec![128; 2]));
+        assert_eq!((lists.distant.len(), lists.category), (1, 1));
         let light = lists.distant[0];
         assert_eq!(light.position, [1.0, 2.0, 3.0]);
-        assert_eq!((light.rgb, light.intensity), ([0x10, 0x20, 0x30], 80.0));
+        assert_eq!(
+            (light.rgb, light.intensity, light.light_type),
+            ([0x30, 0x20, 0x10], 80.0, 2),
+            "red is the lowest byte"
+        );
         assert_eq!(lists.probes, 0);
-        assert_eq!(read(&model(&[], &[])), Ok(MapLod::default()));
+        let empty = read(&model(&[], &[])).expect("a map body");
+        assert_eq!(
+            empty,
+            MapLod {
+                category: 1,
+                ..MapLod::default()
+            }
+        );
     }
 
     #[test]
     fn a_list_past_its_block_lists_of_two_lengths_and_another_root_are_refused() {
         let mut long = model(&[3.0], &[]);
-        header(&mut long.data_blocks[0].data, LOD_AT + 0x10, 2, 9);
+        header(&mut long.data_blocks[0].data, LOD_AT + 0x10, 3, 9);
         let past = read(&long);
         assert!(
             matches!(
@@ -276,7 +338,7 @@ pub(super) mod tests {
             "{past:?}"
         );
         let mut uneven = model(&[3.0, 4.0], &[]);
-        header(&mut uneven.data_blocks[0].data, LOD_AT + 0x20, 3, 1);
+        header(&mut uneven.data_blocks[0].data, LOD_AT + 0x40, 5, 1);
         let lists = read(&uneven);
         assert!(matches!(&lists, Err(LodError::Broken { .. })), "{lists:?}");
         let mut other = model(&[], &[]);
