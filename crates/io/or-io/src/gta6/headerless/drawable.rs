@@ -135,8 +135,7 @@ pub fn stated_model_name(virtual_section: &[u8]) -> Result<String> {
     })
 }
 
-/// The draw bucket byte each shader states at +0x39: of the drawable a body of `signature` is, of
-/// the one a fragment holds, or of the entry of code `entry` of a dictionary.
+/// The draw bucket byte at +0x39 of each shader of the drawable a body, its fragment or its dictionary entry `entry` holds.
 pub fn shader_buckets(
     signature: crate::container::rpf::Rpf9Signature,
     virtual_section: &[u8],
@@ -154,15 +153,8 @@ pub fn shader_buckets(
                 })?,
             _ => return Err(HeaderlessError::NoLayout(signature)),
         };
-        let group = v.to("shader group", at + 0x10)?;
-        let count = usize::from(v.u16("shader count", group + 0x18)?);
-        let shaders = match count {
-            0 => 0,
-            _ => v.to("shaders", group + 0x10)?,
-        };
-        v.array("shaders", shaders, count, 8)?;
-        (0..count)
-            .map(|i| v.u8("shader's draw bucket", v.to("shader", shaders + 8 * i)? + 0x39))
+        (shader_pointers(v, at)?.into_iter())
+            .map(|p| v.u8("shader's draw bucket", p + 0x39))
             .collect()
     })
 }
@@ -284,6 +276,12 @@ pub(super) struct Places {
 
 /// The shaders of the drawable whose root is at `at`, each with where its values lie.
 pub(super) fn shaders_at(v: Bytes, at: usize) -> Result<Vec<(Shader, Places)>> {
+    shader_pointers(v, at)?.into_iter().map(|p| shader(v, p)).collect()
+}
+
+/// Where each shader of the drawable root at `at` lies: its group at 0x10, the group's count at
+/// +0x18 and its pointers at +0x10.
+fn shader_pointers(v: Bytes, at: usize) -> Result<Vec<usize>> {
     let group = v.to("shader group", at + 0x10)?;
     let shader_count = v.u16("shader count", group + 0x18)?;
     let shaders_at = match shader_count {
@@ -292,7 +290,7 @@ pub(super) fn shaders_at(v: Bytes, at: usize) -> Result<Vec<(Shader, Places)>> {
     };
     v.array("shaders", shaders_at, shader_count.into(), 8)?;
     (0..usize::from(shader_count))
-        .map(|i| shader(v, v.to("shader", shaders_at + 8 * i)?))
+        .map(|i| v.to("shader", shaders_at + 8 * i))
         .collect()
 }
 
