@@ -8,6 +8,7 @@
 
 use std::collections::HashSet;
 
+use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::hash_index::default_hash_index;
 use crate::meta::binary::pso::table_form;
 use crate::meta::binary::rbm::schema::RbmModel;
@@ -15,13 +16,13 @@ use crate::meta::{MetaInstance, Value};
 
 /// The root class of a world-state body.
 pub const WORLD_STATE: u32 = 0xD52B_2D2F;
-const NODES: u32 = 0x2FEE_A5D2;
-const COMPONENTS: u32 = 0x183B_01C0;
+const NODES: u32 = lit(b"Nodes");
+const COMPONENTS: u32 = lit(b"Components");
 const SELECTOR_COMPONENT: u32 = 0x13D6_866D;
-const SELECTORS: u32 = 0x3152_23C5;
-const DEFAULT_CONFIG: u32 = 0x957A_A8CE;
-const CONFIGS: u32 = 0x4FBF_409B;
-const CHANGES: u32 = 0x6752_4B05;
+const SELECTORS: u32 = lit(b"Selectors");
+const DEFAULT_CONFIG: u32 = lit(b"DefaultConfig");
+const CONFIGS: u32 = lit(b"Configs");
+const CHANGES: u32 = lit(b"Changes");
 /// The on, off and state-2 lists of the two change classes: words, and pairs of words.
 const WORD_LISTS: [u32; 3] = [0x2699_5CF4, 0xC8BD_754A, 0x07DD_7D6D];
 const PAIR_LISTS: [u32; 3] = [0x8105_B9F3, 0x67F6_A736, 0x666D_D869];
@@ -30,21 +31,22 @@ const PAIR_WORD: u32 = 0xE255_4B92;
 const RULE_COMPONENT: u32 = 0x8740_CA71;
 const RULE_SETS: u32 = 0xA646_5A62;
 const RULE_SELECTOR: u32 = 0xAABB_E900;
-const RULES: u32 = 0xAD61_EF62;
-const RULE_CONFIG: u32 = 0xB442_A806;
-const CONDITION: u32 = 0x86C3_D806;
-const CONDITIONS: u32 = 0x93D3_8DD9;
-const TIME_OF_DAY: u32 = 0xCFB3_31ED;
-const TIME_WITH_MINUTES: u32 = 0xB889_B2B5;
-const NOT: u32 = 0xE546_D5AA;
-const AND: u32 = 0x8E25_5350;
-const OR: u32 = 0x9C84_59C4;
-const TRUE: u32 = 0x87DF_91EC;
-const RAINING: u32 = 0x61BE_1EE7;
-const START_HOUR: u32 = 0x2543_DC07;
-const START_MINUTE: u32 = 0x8620_E2E0;
-const END_HOUR: u32 = 0x16AF_8FB2;
-const END_MINUTE: u32 = 0x2307_DDE9;
+const RULES: u32 = lit(b"Rules");
+const RULE_CONFIG: u32 = lit(b"Config");
+const CONDITION: u32 = lit(b"Condition");
+const CONDITIONS: u32 = lit(b"Conditions");
+const TIME_OF_DAY: u32 = lit(b"CAIConditionTimeOfDay");
+const TIME_WITH_MINUTES: u32 = lit(b"CAIConditionTimeOfDayWithMinutes");
+const NOT: u32 = lit(b"CAIConditionNot");
+const AND: u32 = lit(b"CAIConditionAnd");
+const OR: u32 = lit(b"CAIConditionOr");
+const TRUE: u32 = lit(b"CAIConditionTrue");
+const RAINING: u32 = lit(b"CAIConditionRaining");
+const RAIN_AMOUNT: u32 = lit(b"RainAmount");
+const START_HOUR: u32 = lit(b"startHour");
+const START_MINUTE: u32 = lit(b"startMinute");
+const END_HOUR: u32 = lit(b"endHour");
+const END_MINUTE: u32 = lit(b"endMinute");
 
 /// Why a body is not a world-state body.
 #[derive(Debug, thiserror::Error)]
@@ -343,7 +345,7 @@ fn condition_of(c: &MetaInstance) -> Condition {
         Some(AND) => Condition::And(all()),
         Some(OR) => Condition::Or(all()),
         Some(TRUE) => Condition::True,
-        Some(RAINING) => Condition::Raining(match c.get(&name(0x13AB_01F7)) {
+        Some(RAINING) => Condition::Raining(match c.get(&name(RAIN_AMOUNT)) {
             Some(Value::Float(v)) => *v as f32,
             _ => 0.0,
         }),
