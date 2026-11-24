@@ -151,7 +151,7 @@ impl WaterData {
             .and_then(|len| at.checked_add(len))
             .and_then(|end| block.data.get(at..end))
             .ok_or_else(|| broken(format!("{count} quads run past their block")))?;
-        let quads = (bytes.chunks_exact(QUAD_SIZE))
+        let quads = (bytes.as_chunks::<QUAD_SIZE>().0.iter())
             .map(|q| {
                 let s16 = |at: usize| i16::from_le_bytes([q[at], q[at + 1]]);
                 WaterQuad {
