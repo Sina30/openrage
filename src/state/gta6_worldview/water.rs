@@ -120,11 +120,13 @@ impl Seen {
     /// The waves of the surface about `x`, `y` at the hour and weather it was seen in: the preset set up nearest, at the day's Beaufort number.
     pub fn waves(&self, x: f32, y: f32) -> [[f32; 4]; or_renderer::world::water::WAVES] {
         let moment = (self.day.as_ref()).and_then(|d| d.moment(self.hour, self.weather, self.y));
-        let beaufort = moment.and_then(|m| m.own.get("water_ocean_beaufort_scale"));
+        let beaufort = (moment.as_ref()).and_then(|m| m.own.get("water_ocean_beaufort_scale"));
+        let fetch = moment.and_then(|m| m.own.get("water_ocean_fetch"));
         let preset = self.presets.as_ref().and_then(|p| p.nearest(x, y));
         waves::waves(
             preset,
             beaufort.unwrap_or(0.0),
+            fetch,
             f64::from(self.hour) * 3600.0,
         )
     }
