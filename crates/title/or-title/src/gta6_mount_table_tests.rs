@@ -175,7 +175,7 @@ fn an_entry_is_found_by_the_hash_of_its_path_with_every_column_it_states() {
         let resource = table.find("town/ai/carparks").expect("the resource");
         assert_eq!((resource.kind, resource.chunks), (KIND_RESOURCE, 4));
         assert!(table.find("town/docks_metadata.rpf").is_none());
-        assert_eq!(table.by_word(0), None);
+        assert!(table.by_word(0).is_empty());
     }
 }
 
@@ -194,6 +194,32 @@ fn a_registered_file_names_its_entry_with_no_device_and_no_extension_first() {
     assert_eq!(entry_path("data/a.meta"), "data/a.meta");
     assert_eq!(split_extension("a.b/c_d.rpf"), ("a.b/c_d", "rpf"));
     assert_eq!(split_extension("a.b/c_d"), ("a.b/c_d", ""));
+}
+
+#[test]
+fn a_nested_archive_and_a_resource_of_one_name_are_told_apart_by_kind() {
+    let mut made = made_up();
+    made.push(Made {
+        path: "town/ai/carparks",
+        kind: KIND_ARCHIVE,
+        at: 0x10,
+        named: false,
+        chunks: None,
+        ..FILE
+    });
+    let table = Table::of(&table_of(&made, 1)).expect("a table");
+    assert_eq!(table.by_word(name_hash64(b"town/ai/carparks")).len(), 2);
+    // By its path alone the resource is meant; a registered archive is the archive.
+    let offset = |entry: Option<&Entry>| entry.map(|e| e.offset);
+    assert_eq!(offset(table.find("town/ai/carparks")), Some(0x400));
+    assert_eq!(offset(table.find_archive("town/ai/carparks")), Some(0x100));
+    let registered = |name: &str| offset(table.find_registered(name));
+    assert_eq!(registered("platform:/town/ai/carparks.rpf"), Some(0x100));
+    assert_eq!(registered("platform:/town/ai/carparks"), Some(0x400));
+    // With no file or resource of the name, the path alone finds the archive.
+    assert_eq!(offset(table.find("town/docks_metadata")), Some(0x10000));
+    assert_eq!(registered("platform:/town/docks_metadata"), None);
+    assert_eq!(offset(table.find_archive("changesets/ccs_town.meta")), None);
 }
 
 #[test]

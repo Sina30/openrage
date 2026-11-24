@@ -1,6 +1,6 @@
 //! The entries a decrypted table of a GTA VI archive lists, by name. An entry is named by the
 //! 64-bit hash of its path inside the archive: with its extension for a plain file, without one
-//! for a resource or a nested archive.
+//! for a resource or a nested archive, so that a nested archive and a resource may share a name.
 //!
 //! ⚠ A key snapshot deciphers a top-level archive's table alone: a nested archive's own table and
 //! a ciphered entry's bytes stay closed.
@@ -251,7 +251,7 @@ impl Table {
         let mut bytes = head.to_vec();
         bytes.resize(end as usize, 0);
         file.read_exact(&mut bytes[8..])?;
-        let toc = Rpf9Toc::decrypt(&bytes, keys).map_err(io::Error::other)?;
+        let toc = Rpf9Toc::decrypt(&bytes, keys).map_err(|e| io::Error::other(e.to_string()))?;
         Self::of(&toc).map_err(io::Error::other)
     }
 
@@ -259,25 +259,33 @@ impl Table {
         &self.entries
     }
 
-    /// The entry whose path hashes to `word`.
-    pub fn by_word(&self, word: u64) -> Option<&Entry> {
-        let at = self.entries.partition_point(|e| e.word < word);
-        self.entries.get(at).filter(|e| e.word == word)
+    /// The entries whose path hashes to `word`: one, or a nested archive and a resource of one name.
+    pub fn by_word(&self, word: u64) -> &[Entry] {
+        let from = self.entries.partition_point(|e| e.word < word);
+        let to = self.entries.partition_point(|e| e.word <= word);
+        &self.entries[from..to]
     }
 
-    /// The entry of the path `path` inside the archive, in any case: with its extension for a plain file, without one for a resource or a nested archive.
+    /// The file or the resource of the path `path` inside the archive, in any case, and the nested archive of that name where there is neither: with its extension for a plain file, without one for a resource or a nested archive.
     pub fn find(&self, path: &str) -> Option<&Entry> {
-        self.by_word(name_hash64(path.as_bytes()))
+        let named = self.by_word(name_hash64(path.as_bytes()));
+        (named.iter().find(|e| e.kind != KIND_ARCHIVE)).or(named.first())
     }
 
-    /// The entry a registered file names: its path with no device, as a resource or a nested archive is named and then as a plain file is.
+    /// The nested archive of the path `path` inside the archive, with no extension, in any case.
+    pub fn find_archive(&self, path: &str) -> Option<&Entry> {
+        (self.by_word(name_hash64(path.as_bytes())).iter()).find(|e| e.kind == KIND_ARCHIVE)
+    }
+
+    /// The entry a registered file names by its path with no device: the nested archive for an archive, else the entry named as a resource is and then as a plain file is.
     pub fn find_registered(&self, filename: &str) -> Option<&Entry> {
         let path = entry_path(filename);
         let (bare, extension) = split_extension(path);
-        (!extension.is_empty())
-            .then(|| self.find(bare))
-            .flatten()
-            .or_else(|| self.find(path))
+        if extension.eq_ignore_ascii_case("rpf") {
+            return self.find_archive(bare);
+        }
+        let other = |path| self.find(path).filter(|e| e.kind != KIND_ARCHIVE);
+        other(bare).or_else(|| other(path))
     }
 }
 
