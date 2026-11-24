@@ -835,3 +835,29 @@ fn a_chain_of_parents_far_deeper_than_the_levels_is_selected_and_never_overflows
     .expect("the selection ends");
     assert!(chosen > 0);
 }
+
+#[test]
+fn parents_that_name_each_other_round_a_loop_of_maps_are_drawn_from_the_farthest_of_them() {
+    // Map 1's node names map 2's as its parent and map 2's names map 1's; a child hangs under map 2's.
+    let mut forest = Forest::new();
+    forest.insert(1, vec![entity([0.0; 3], 500.0, 100.0, Some((2, 0)))]);
+    forest.insert(
+        2,
+        vec![
+            entity([0.0; 3], 900.0, 100.0, Some((1, 0))),
+            entity([0.0; 3], 100.0, 0.0, Some((2, 0))),
+        ],
+    );
+    let far = forest.select(&along(300.0), &all_ready);
+    assert_eq!(
+        ids(&far),
+        vec![(2, 0)],
+        "the farthest of the loop stands as its root"
+    );
+    let near = forest.select(&along(0.0), &all_ready);
+    let near = ids(&near);
+    assert!(
+        near.contains(&(1, 0)) && near.contains(&(2, 1)),
+        "what hangs under it draws: {near:?}"
+    );
+}

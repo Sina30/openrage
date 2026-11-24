@@ -496,15 +496,20 @@ impl Forest {
                         .then(|| links.base[slot] + p.node)
                 });
                 // A node that names itself, or a parent not loaded, stands as a root.
-                match parent.filter(|p| *p as usize != at) {
-                    Some(parent) => {
-                        links.parent[at] = parent;
-                        links.next_sibling[at] = links.first_child[parent as usize];
-                        links.first_child[parent as usize] = at as u32;
-                    }
-                    None => links.roots.push(at as u32),
+                if let Some(parent) = parent.filter(|p| *p as usize != at) {
+                    links.parent[at] = parent;
                 }
                 at += 1;
+            }
+        }
+        self.cut_loops(&mut links);
+        for at in 0..count {
+            match links.parent[at] {
+                NONE => links.roots.push(at as u32),
+                parent => {
+                    links.next_sibling[at] = links.first_child[parent as usize];
+                    links.first_child[parent as usize] = at as u32;
+                }
             }
         }
         links.cut_deeper_than(DEEPEST);
@@ -531,6 +536,37 @@ impl Forest {
         }
         self.links = links;
         self.stale = false;
+    }
+
+    /// Make a root of the node that draws farthest in each loop of the links' parents: a loop
+    /// reaches no root, and nothing in or under it would draw.
+    // ⚠ A parent is named by a map's own bytes, so maps can name each other round a loop.
+    fn cut_loops(&self, links: &mut Links) {
+        // 0 not walked yet, 1 on the walk under way, 2 walked.
+        let mut state = vec![0u8; links.parent.len()];
+        let mut walk = Vec::new();
+        for start in 0..links.parent.len() {
+            let mut at = start as u32;
+            while at != NONE && state[at as usize] == 0 {
+                state[at as usize] = 1;
+                walk.push(at);
+                at = links.parent[at as usize];
+            }
+            if at != NONE && state[at as usize] == 1 {
+                let dist = |k: u32| self.node_at(links, k as usize).lod_dist;
+                let (mut root, mut on) = (at, links.parent[at as usize]);
+                while on != at {
+                    if dist(on) > dist(root) {
+                        root = on;
+                    }
+                    on = links.parent[on as usize];
+                }
+                links.parent[root as usize] = NONE;
+            }
+            for k in walk.drain(..) {
+                state[k as usize] = 2;
+            }
+        }
     }
 
     fn node_at(&self, links: &Links, at: usize) -> &Node {
