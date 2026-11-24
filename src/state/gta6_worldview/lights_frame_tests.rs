@@ -14,6 +14,7 @@ fn light(kind: LightKind, x: f32, hours: u32) -> Light {
         cone_inner: 20.0,
         cone_outer: 40.0,
         length: 4.0,
+        corona: [0.0; 3],
     }
 }
 
@@ -263,4 +264,11 @@ fn a_light_that_states_no_exponent_reaches_the_frame_with_one_above_nought() {
     for falloff in falloffs {
         assert!(falloff > 0.0);
     }
+}
+
+#[test]
+fn a_light_that_only_draws_a_corona_lights_nothing() {
+    let mut corona = placed(LightKind::Point, 5.0, ALL_HOURS);
+    corona.light.flags = or_io::gta6::map::light_ext::CORONA_ONLY;
+    assert_eq!(frame_lights(&[corona], Vec3::ZERO, 12.0, 1.0, 8).lights, 0);
 }

@@ -18,6 +18,8 @@ fn light_bytes(light_type: u8, flags: u32) -> Vec<u8> {
     put(&mut l, 0x140, &flags.to_le_bytes());
     put(&mut l, 0x144, &0x00E0_007Fu32.to_le_bytes());
     put_floats(&mut l, 0x148, &[12.0, 8.0]);
+    put_floats(&mut l, 0x168, &[0.75]);
+    put_floats(&mut l, 0x174, &[2.0, 0.1]);
     put_floats(&mut l, 0x1A0, &[1.0, 0.0, 0.0]);
     put_floats(&mut l, 0x1B8, &[20.0, 40.0]);
     put_floats(&mut l, 0x1DC, &[3.0, 0.5, 0.5]);
@@ -62,30 +64,31 @@ fn lit_types() -> RbmModel {
 #[test]
 fn an_archetype_s_lights_stand_at_the_effect_s_offset_plus_their_root_offset_by_its_word() {
     let lights = archetype_lights(&lit_types()).expect("it reads");
-    assert_eq!(
-        lights.len(),
-        1,
-        "the archetype with no light, and the corona, give none"
-    );
+    assert_eq!(lights.len(), 1, "the archetype with no light gives none");
     let (word, held) = &lights[0];
     assert_eq!(*word, 0xA1);
-    assert_eq!(
-        held.as_slice(),
-        [Light {
-            kind: LightKind::Spot,
-            position: [1.5, 2.25, 3.125],
-            direction: [1.0, 0.0, 0.0],
-            colour: [1.0, 0.0, 0.2],
-            intensity: 25.0,
-            radius: 12.0,
-            falloff_exponent: 8.0,
-            hours: 0x00E0_007F,
-            flags: 0,
-            cone_inner: 20.0,
-            cone_outer: 40.0,
-            length: 3.0,
-        }]
-    );
+    let spot = Light {
+        kind: LightKind::Spot,
+        position: [1.5, 2.25, 3.125],
+        direction: [1.0, 0.0, 0.0],
+        colour: [1.0, 0.0, 0.2],
+        intensity: 25.0,
+        radius: 12.0,
+        falloff_exponent: 8.0,
+        hours: 0x00E0_007F,
+        flags: 0,
+        cone_inner: 20.0,
+        cone_outer: 40.0,
+        length: 3.0,
+        corona: [0.75, 2.0, 0.1],
+    };
+    let corona = Light {
+        kind: LightKind::Point,
+        flags: CORONA_ONLY,
+        ..spot
+    };
+    assert_eq!(held.as_slice(), [spot, corona]);
+    assert!(held[0].lights_around() && !held[1].lights_around());
     assert!(held[0].lit_at(0) && held[0].lit_at(6) && !held[0].lit_at(7) && held[0].lit_at(21));
     assert!(!held[0].lit_at(24));
 }

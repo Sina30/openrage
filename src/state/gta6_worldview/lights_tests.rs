@@ -24,6 +24,7 @@ fn placed_at(x: f32) -> Lamp {
             cone_inner: 0.0,
             cone_outer: 0.0,
             length: 0.0,
+            corona: [0.0; 3],
         },
         reach: None,
     }

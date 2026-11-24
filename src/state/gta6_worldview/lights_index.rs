@@ -23,6 +23,9 @@ pub struct LightRow {
     pub cone_inner: f32,
     pub cone_outer: f32,
     pub length: f32,
+    pub flags: u32,
+    /// The corona's size, intensity and pull toward the eye.
+    pub corona: [f32; 3],
     pub pad: u32,
 }
 
@@ -50,6 +53,8 @@ impl LightRow {
             cone_inner: light.cone_inner,
             cone_outer: light.cone_outer,
             length: light.length,
+            flags: light.flags,
+            corona: light.corona,
             pad: 0,
         }
     }
@@ -66,10 +71,11 @@ impl LightRow {
             radius: self.radius,
             falloff_exponent: self.falloff_exponent,
             hours: self.hours,
-            flags: 0,
+            flags: self.flags,
             cone_inner: self.cone_inner,
             cone_outer: self.cone_outer,
             length: self.length,
+            corona: self.corona,
         })
     }
 }
@@ -146,10 +152,11 @@ mod tests {
             radius: 8.0,
             falloff_exponent: 6.0,
             hours: 0x00E0_007F,
-            flags: 0,
+            flags: 1 << 15,
             cone_inner: 10.0,
             cone_outer: 30.0,
             length: 4.0,
+            corona: [0.5, 2.0, 0.1],
         };
         let kept = LightRow::of(1, &light);
         assert_eq!((kept.archetype, kept.light_type), (1, 4));
@@ -162,7 +169,7 @@ mod tests {
             .light(),
             None
         );
-        assert_eq!(std::mem::size_of::<LightRow>(), 80);
+        assert_eq!(std::mem::size_of::<LightRow>(), 96);
     }
 
     #[test]

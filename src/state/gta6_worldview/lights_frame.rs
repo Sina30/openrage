@@ -120,6 +120,7 @@ pub fn lod_lamps(lod: &MapLod, parent: &MapLod, reach: &LodReach) -> Vec<Lamp> {
                         LightKind::Capsule => f32::from(outer) * 140.0 / 255.0,
                         _ => 0.0,
                     },
+                    corona: [0.0; 3],
                 },
                 reach: Some(reach),
             })
@@ -272,6 +273,9 @@ pub fn frame_lights<'a>(
     let mut lit: Vec<(f32, Light, f32)> = (lamps.into_iter())
         .filter_map(|lamp| {
             let l = lamp.light;
+            if !l.lights_around() {
+                return None;
+            }
             let distance = Vec3::from(l.position).distance(eye);
             let reach = reach_strength(lamp.reach, distance);
             let intensity = l.intensity * scale * hour_strength(l.hours, hour) * reach;

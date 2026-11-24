@@ -56,15 +56,14 @@ pub struct Light {
     pub cone_outer: f32,
     /// A capsule's length along its direction, in metres.
     pub length: f32,
+    /// The glow of its source: its size in metres, its intensity and how far it is pulled toward the eye; a size of nought draws none.
+    pub corona: [f32; 3],
 }
 
 impl Light {
-    /// `light` of `effect` in the space of what owns it; `None` for a type no frame draws, or a light that only draws a corona.
+    /// `light` of `effect` in the space of what owns it; `None` for a type no frame draws.
     pub fn of(effect: &LightEffect, light: &LightAttr) -> Option<Self> {
         let kind = LightKind::of(light.light_type)?;
-        if light.flags & CORONA_ONLY != 0 {
-            return None;
-        }
         Some(Self {
             kind,
             position: [0, 1, 2].map(|i| effect.offset_position[i] + light.hash_30eca388[i]),
@@ -78,7 +77,17 @@ impl Light {
             cone_inner: light.cone_inner_angle,
             cone_outer: light.cone_outer_angle,
             length: light.extents[0],
+            corona: [
+                light.corona_size,
+                light.corona_intensity,
+                light.corona_z_bias,
+            ],
         })
+    }
+
+    /// Whether it lights what stands around it, which a light that only draws a corona does not.
+    pub fn lights_around(&self) -> bool {
+        self.flags & CORONA_ONLY == 0
     }
 
     /// This light in the space `pose` stands in: its place scaled, turned and moved, its direction turned.
