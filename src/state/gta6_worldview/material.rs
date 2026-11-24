@@ -346,10 +346,15 @@ fn constants_of(r: &Records) -> Constants {
         gtintensity: r.float(GRASS_TINT, d.gtintensity),
     };
     // A two-layer material states each layer's own under a name of its own.
-    for layer in 0..2 {
-        c.fresnel[layer] = r.float(LAYER_FRESNEL[layer], c.fresnel[layer]);
-        c.bumpiness[layer] = r.float(LAYER_BUMPINESS[layer], c.bumpiness[layer]);
-        c.palette_tint[layer] = r.float(LAYER_TINT[layer], c.palette_tint[layer]);
+    let per_layer = [
+        (&mut c.fresnel, LAYER_FRESNEL),
+        (&mut c.bumpiness, LAYER_BUMPINESS),
+        (&mut c.palette_tint, LAYER_TINT),
+    ];
+    for (values, hashes) in per_layer {
+        for (value, hash) in values.iter_mut().zip(hashes) {
+            *value = r.float(hash, *value);
+        }
     }
     c
 }
