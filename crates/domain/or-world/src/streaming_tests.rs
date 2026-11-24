@@ -17,6 +17,9 @@ fn entity(at: [f32; 3], lod_dist: f32, child_lod_dist: f32, parent: Option<(u64,
             Some(_) => Level::Hd,
             None => Level::Lod,
         },
+        kind: Kind::Entity,
+        category: Category::Other,
+        radius: 0.0,
     }
 }
 
@@ -30,7 +33,23 @@ fn list(min: [f32; 3], max: [f32; 3], lod_dist: f32, parent: Option<(u64, u32)>)
         parent: parent.map(|(map, node)| ParentRef { map, node }),
         instance: None,
         level: Level::Lod,
+        kind: Kind::Props,
+        category: Category::Other,
+        radius: (max - min).length() / 2.0,
     }
+}
+
+/// `node` of the level `level`.
+fn leveled(mut node: Node, level: Level) -> Node {
+    node.level = level;
+    node
+}
+
+/// A forest of one node at the origin of the level `level` that draws to 100 m.
+fn lone(level: Level) -> Forest {
+    let mut forest = Forest::new();
+    forest.insert(1, vec![leveled(entity([0.0; 3], 100.0, 0.0, None), level)]);
+    forest
 }
 
 /// Every node ready but those named, which are loading.
@@ -261,54 +280,189 @@ fn children_about_to_arrive() -> Forest {
 }
 
 #[test]
-fn what_comes_ready_in_view_fades_in_by_time_and_holds_its_parent_whole() {
+fn children_that_come_ready_draw_whole_at_once_and_their_parent_gives_way_at_once() {
     let mut forest = children_about_to_arrive();
-    let frame = View {
-        dt: 0.033,
-        ..along(70.0)
-    };
-    let step = 32.0 / 255.0;
-    for k in 1..=7 {
-        let drawn = forest.select(&frame, &all_ready);
-        assert!(close(fade(&drawn, (2, 0)), step * k as f32), "step {k}");
-        assert!(close(fade(&drawn, (2, 1)), step * k as f32), "step {k}");
-        // 70 m from it the parent has given way, and is held whole until its children are.
-        assert!(close(fade(&drawn, (1, 0)), 1.0), "step {k}");
-        assert!(drawn.fading);
+    // The camera has not moved: a node with a parent still does not fade in by time.
+    let drawn = forest.select(&along(70.0), &all_ready);
+    assert_eq!(ids(&drawn), vec![(2, 0), (2, 1)]);
+    assert!(close(fade(&drawn, (2, 0)), 1.0) && close(fade(&drawn, (2, 1)), 1.0));
+    assert!(!drawn.fading);
+}
+
+#[test]
+fn a_far_node_with_no_parent_fades_in_a_step_a_selection_and_one_of_the_high_level_at_once() {
+    let waiting = [(1, 0)];
+    let mut far = lone(Level::Lod);
+    assert!(far.select(&along(50.0), &loading(&waiting)).drawn.is_empty());
+    for k in 1..=4 {
+        let drawn = far.select(&along(50.0), &all_ready);
+        assert!(close(fade(&drawn, (1, 0)), 51.0 / 255.0 * k as f32), "step {k}");
+        assert!(drawn.fading, "step {k}");
     }
-    let whole = forest.select(&frame, &all_ready);
-    assert_eq!(ids(&whole), vec![(2, 0), (2, 1)]);
-    assert!(close(fade(&whole, (2, 0)), 1.0) && !whole.fading);
+    let whole = far.select(&along(50.0), &all_ready);
+    assert!(close(fade(&whole, (1, 0)), 1.0) && !whole.fading);
+    // Every far level does; the high level and an orphan never do.
+    for (level, first) in [
+        (Level::Slod1, 0.2),
+        (Level::Slod4, 0.2),
+        (Level::Hd, 1.0),
+        (Level::OrphanHd, 1.0),
+    ] {
+        let mut forest = lone(level);
+        forest.select(&along(50.0), &loading(&waiting));
+        let drawn = forest.select(&along(50.0), &all_ready);
+        assert!(close(fade(&drawn, (1, 0)), first), "{level:?}");
+    }
+}
+
+/// How opaque a far node with no parent draws at its first selection for `view` after one at
+/// 50 m along the first axis that waited for it.
+fn first_step(view: View) -> f32 {
+    let mut forest = lone(Level::Lod);
+    forest.select(&along(50.0), &loading(&[(1, 0)]));
+    fade(&forest.select(&view, &all_ready), (1, 0))
 }
 
 #[test]
-fn a_fade_in_time_starts_by_one_step_however_long_ago_the_last_selection_was() {
-    let mut forest = children_about_to_arrive();
-    let late = View {
-        dt: 10.0,
-        ..along(70.0)
+fn a_jump_a_fast_camera_or_a_change_of_scale_ends_every_fade_in_time() {
+    assert!(close(first_step(along(55.0)), 0.2), "5 m is no jump");
+    assert!(close(first_step(along(56.0)), 1.0), "6 m is");
+    let moving = |speed: f32| View {
+        velocity: Vec3::new(0.0, speed, 0.0),
+        ..along(50.0)
     };
-    let drawn = forest.select(&late, &all_ready);
-    assert!(close(fade(&drawn, (2, 0)), 32.0 / 255.0) && drawn.fading);
+    assert!(close(first_step(moving(FADE_MAX_SPEED)), 0.2));
+    assert!(close(first_step(moving(FADE_MAX_SPEED + 1.0)), 1.0));
+    let scaled = |scale: f32| View::at(Vec3::new(50.0, 0.0, 0.0), scale);
+    assert!(close(first_step(scaled(1.0005)), 0.2));
+    assert!(close(first_step(scaled(1.01)), 1.0));
+    // A first selection is a cut too.
+    assert!(close(
+        fade(&lone(Level::Lod).select(&along(50.0), &all_ready), (1, 0)),
+        1.0
+    ));
 }
 
 #[test]
-fn nothing_fades_in_time_for_a_camera_at_rest_in_time_or_faster_than_the_limit() {
-    // No time has passed: what is ready is there at once.
-    let mut forest = children_about_to_arrive();
-    let at_once = forest.select(&along(70.0), &all_ready);
-    assert_eq!(ids(&at_once), vec![(2, 0), (2, 1)]);
-    assert!(close(fade(&at_once, (2, 0)), 1.0) && !at_once.fading);
-    // Faster than the limit a model pops in.
-    let mut forest = children_about_to_arrive();
-    let fast = View {
-        dt: 0.033,
-        velocity: Vec3::new(FADE_MAX_SPEED + 1.0, 0.0, 0.0),
-        ..along(70.0)
+fn each_level_fades_out_over_its_own_band() {
+    // 10 m past a distance of 100 m: half of a band of 20 m, three fifths of one of 25 m.
+    for (level, at_110) in [
+        (Level::Hd, 0.5),
+        (Level::Lod, 0.5),
+        (Level::Slod1, 0.5),
+        (Level::Slod2, 0.6),
+        (Level::Slod3, 0.6),
+        (Level::OrphanHd, 0.5),
+        (Level::Slod4, 0.6),
+    ] {
+        let mut forest = lone(level);
+        let drawn = forest.select(&along(110.0), &all_ready);
+        assert!(close(fade(&drawn, (1, 0)), at_110), "{level:?}");
+        assert!(close(
+            fade(&forest.select(&along(100.0), &all_ready), (1, 0)),
+            1.0
+        ));
+    }
+}
+
+#[test]
+fn a_parent_fades_down_its_children_s_band_short_of_their_distance() {
+    // Children of a band of 25 m: they draw from 125 m, whole from 100 m; the parent is whole
+    // to 95 m and gone at 75 m.
+    let mut forest = Forest::new();
+    let parent = leveled(entity([0.0; 3], 5000.0, 100.0, None), Level::Slod3);
+    forest.insert(1, vec![parent]);
+    let child = entity([1.0, 0.0, 0.0], 40.0, 0.0, Some((1, 0)));
+    forest.insert(2, vec![leveled(child, Level::Slod2)]);
+    for (away, parent, child) in [
+        (122.0, 1.0, 0.12),
+        (110.0, 1.0, 0.6),
+        (95.0, 1.0, 1.0),
+        (85.0, 0.5, 1.0),
+        (75.0, 0.0, 1.0),
+    ] {
+        let drawn = forest.select(&along(away), &all_ready);
+        assert!(close(fade(&drawn, (1, 0)), parent), "the parent at {away}");
+        assert!(close(fade(&drawn, (2, 0)), child), "the child at {away}");
+    }
+}
+
+#[test]
+fn an_archetype_s_category_takes_the_place_of_its_scale_and_keeps_its_radius_whole() {
+    let node = |category: Category, level: Level| Node {
+        category,
+        radius: 10.0,
+        ..leveled(entity([0.0; 3], 110.0, 0.0, None), level)
     };
-    let popped = forest.select(&fast, &all_ready);
-    assert_eq!(ids(&popped), vec![(2, 0), (2, 1)]);
-    assert!(close(fade(&popped, (2, 0)), 1.0) && !popped.fading);
+    let at_rest = View::at(Vec3::ZERO, 1.0);
+    let reach = |node: Node, view: &View| node.scaled(110.0, view);
+    assert!(close(reach(node(Category::Other, Level::Hd), &at_rest), 110.0));
+    // Half of what lies past the radius of 10 m.
+    assert!(close(reach(node(Category::Terrain, Level::Hd), &at_rest), 60.0));
+    assert!(close(reach(node(Category::Terrain, Level::OrphanHd), &at_rest), 100.0));
+    assert!(close(reach(node(Category::Environment, Level::Lod), &at_rest), 70.0));
+    assert!(close(reach(node(Category::Vegetation, Level::Hd), &at_rest), 110.0));
+    // The level's scale multiplies the category's; from 1 on the whole distance stretches.
+    let mut twice = at_rest;
+    twice.scales[Level::Hd as usize] = 2.0;
+    assert!(close(reach(node(Category::Terrain, Level::Hd), &twice), 110.0));
+    twice.scales[Level::Hd as usize] = 4.0;
+    assert!(close(reach(node(Category::Terrain, Level::Hd), &twice), 220.0));
+    // And a selection draws by it: the terrain node is half gone 10 m past its 60 m.
+    let mut forest = Forest::new();
+    forest.insert(1, vec![node(Category::Terrain, Level::Hd)]);
+    assert!(close(
+        fade(&forest.select(&along(70.0), &all_ready), (1, 0)),
+        0.5
+    ));
+}
+
+#[test]
+fn a_grass_list_draws_short_of_what_it_states_and_a_prop_list_never_does() {
+    let of = |kind: Kind, category: Category| Node {
+        kind,
+        category,
+        radius: 10.0,
+        ..list([0.0; 3], [1.0; 3], 110.0, None)
+    };
+    let at_rest = View::at(Vec3::ZERO, 1.0);
+    let grass = of(Kind::Grass, Category::Other);
+    assert!(close(grass.scale(&at_rest), 0.8));
+    assert!(close(grass.scaled(110.0, &at_rest), 90.0));
+    // A category of its archetype takes the grass scale's place.
+    assert!(close(of(Kind::Grass, Category::Vegetation).scaled(110.0, &at_rest), 110.0));
+    // The level's scale shortens an entity and leaves a prop list as it states.
+    let half = View::at(Vec3::ZERO, 0.5);
+    assert!(close(of(Kind::Props, Category::Other).scaled(110.0, &half), 110.0));
+    assert!(close(of(Kind::Entity, Category::Other).scaled(110.0, &half), 60.0));
+    assert!(close(of(Kind::Props, Category::Other).scaled(110.0, &View::at(Vec3::ZERO, 2.0)), 220.0));
+}
+
+#[test]
+fn an_archetype_s_load_flags_give_its_category_the_last_named_bit_winning() {
+    for (flags, category) in [
+        (0, Category::Other),
+        (1 << 1, Category::Other),
+        (1 << 16, Category::Vegetation),
+        (1, Category::Terrain),
+        (1 << 7, Category::Environment),
+        (1 | 1 << 16, Category::Terrain),
+        (1 | 1 << 7, Category::Environment),
+        (1 << 7 | 1 << 16, Category::Environment),
+    ] {
+        assert_eq!(Category::of(flags), category, "{flags:#x}");
+    }
+}
+
+#[test]
+fn a_camera_narrower_than_forty_five_degrees_draws_farther() {
+    assert!(close(camera_scale(60f32.to_radians()), 1.0));
+    assert!(close(camera_scale(45f32.to_radians()), 1.0));
+    assert!(close(camera_scale(90f32.to_radians()), 1.0));
+    // tan 22.5° / tan 15°.
+    let expected = (22.5f32).to_radians().tan() / (15f32).to_radians().tan();
+    assert!(close(camera_scale(30f32.to_radians()), expected));
+    assert!(expected > 1.5);
 }
 
 #[test]
@@ -438,7 +592,7 @@ fn a_map_streams_in_within_fifty_metres_of_the_box_it_streams_by() {
 }
 
 #[test]
-fn a_map_of_the_high_tier_is_not_asked_for_at_speed() {
+fn a_map_of_every_tier_is_asked_for_at_any_speed() {
     assert_eq!(Tier::of(0x1), Tier::High);
     assert_eq!(Tier::of(0x401), Tier::HighCritical);
     assert_eq!(Tier::of(0x201), Tier::HighCritical);
@@ -453,10 +607,7 @@ fn a_map_of_the_high_tier_is_not_asked_for_at_speed() {
         velocity: Vec3::new(0.0, speed, 0.0),
         ..along(0.0)
     };
-    assert!(map.wanted(&moving(HD_MAX_SPEED - 1.0), 0x1));
-    assert!(!map.wanted(&moving(HD_MAX_SPEED), 0x1));
-    // The other tiers stream in at any speed.
-    for flags in [0x401, 0x2, 0x4] {
-        assert!(map.wanted(&moving(300.0), flags));
+    for flags in [0x1, 0x401, 0x2, 0x4] {
+        assert!(map.wanted(&moving(300.0), flags), "{flags:#x}");
     }
 }

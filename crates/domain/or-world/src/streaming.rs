@@ -1,7 +1,7 @@
 //! Which maps a camera streams in, and which nodes of the loaded maps' level-of-detail forest draw
 //! and how opaque: a parent and its children cross-fade by the distance to the parent, a parent is
-//! held while a child is not ready, what comes into view fades in by time, and an instance of a
-//! list is left out while the entity that stands in for it draws.
+//! held while a child is not ready, a far node with no parent fades in a step a selection, and an
+//! instance of a list is left out while the entity that stands in for it draws.
 //!
 //! ⚠ A child is judged by the distance to its **parent's** position, never its own, so the
 //! children of one parent appear and go together.
@@ -12,18 +12,74 @@ use glam::Vec3;
 
 /// How far past its box a map streams in, in metres.
 pub const PRESTREAM: f32 = 50.0;
-/// The band past the distance a node draws to over which it fades out, in metres.
+/// The band inside its children's distance over which a parent fades down, in metres.
 pub const FADE: f32 = 20.0;
-/// The band of an orphan that draws no farther than [`FADE`], in metres.
+/// The band past the distance a node draws to over which it fades out, by `Level as usize`, in metres.
+pub const FADE_BAND: [f32; Level::COUNT] = [20.0, 20.0, 20.0, 25.0, 25.0, 20.0, 25.0];
+/// The band of an orphan that states no farther than [`SMALL`], in metres.
 pub const FADE_SMALL: f32 = 5.0;
-/// How much of a fade in time one second covers: 32 parts of 255 each step.
-pub const FADE_RATE: f32 = 32.0 / 255.0 / STEP;
+/// The farthest an orphan states and still fades over [`FADE_SMALL`], in metres.
+const SMALL: f32 = 20.0;
+/// How much a fade in time gains in one selection, however long since the last.
+pub const FADE_STEP: f32 = 51.0 / 255.0;
 /// Faster than this nothing fades in time, in metres a second.
 pub const FADE_MAX_SPEED: f32 = 80.0;
-/// From this speed on a camera asks for no map of the high tier, in metres a second.
-pub const HD_MAX_SPEED: f32 = 40.0;
-/// The longest step a fade in time takes in one selection, in seconds.
-const STEP: f32 = 0.033;
+/// A camera that moved farther than this since the last selection ends every fade in time, in metres.
+pub const FADE_MAX_MOVE: f32 = 5.0;
+/// A level's scale that changed by this much since the last selection ends every fade in time.
+const SCALE_CHANGE: f32 = 0.001;
+/// What a terrain archetype's distance is scaled by before its level's scale, by `Level as usize`.
+pub const TERRAIN: [f32; Level::COUNT] = [0.5, 0.8, 0.8, 0.8, 0.8, 0.9, 1.0];
+/// What an environment archetype's distance is scaled by before its level's scale, by `Level as usize`.
+pub const ENVIRONMENT: [f32; Level::COUNT] = [0.8, 0.6, 0.5, 0.5, 0.85, 0.8, 1.0];
+/// What a vegetation archetype's distance is scaled by before its level's scale.
+pub const VEGETATION: f32 = 1.0;
+/// What a grass list of plain instances is scaled by before its level's scale.
+pub const GRASS: f32 = 0.8;
+
+/// What a camera's vertical field of view `fov_y`, in radians, multiplies every distance by: 1 at 45° or wider.
+pub fn camera_scale(fov_y: f32) -> f32 {
+    (std::f32::consts::FRAC_PI_8.tan() / (fov_y / 2.0).tan()).max(1.0)
+}
+
+/// What an archetype's own load flags make of the scale of its distance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Category {
+    #[default]
+    Other,
+    Vegetation,
+    Terrain,
+    Environment,
+}
+
+impl Category {
+    /// The category of an archetype of the load flags `load_flags`: of bits 16, 0 and 7 the last set wins.
+    pub fn of(load_flags: u32) -> Self {
+        let mut category = Self::Other;
+        for (bit, then) in [
+            (16, Self::Vegetation),
+            (0, Self::Terrain),
+            (7, Self::Environment),
+        ] {
+            if load_flags & (1 << bit) != 0 {
+                category = then;
+            }
+        }
+        category
+    }
+}
+
+/// What a node is, as far as the scale of its distance goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Kind {
+    /// An entity, or a list of far stand-ins.
+    #[default]
+    Entity,
+    /// A prop list: its level's scale never shortens it.
+    Props,
+    /// A grass list of plain instances.
+    Grass,
+}
 
 /// A node's level of detail, numbered as a map states it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -62,20 +118,17 @@ pub struct View {
     pub eye: Vec3,
     /// Metres a second.
     pub velocity: Vec3,
-    /// What the distances of each level are multiplied by, by `Level as usize`.
+    /// What the distances of each level are multiplied by, by `Level as usize`: the camera's scale times the level's own.
     pub scales: [f32; Level::COUNT],
-    /// Seconds since the selection before this one; 0 ends every fade in time at once.
-    pub dt: f32,
 }
 
 impl View {
-    /// A camera at rest at `eye`, every level scaled by `scale`, every fade in time ended.
+    /// A camera at rest at `eye`, every level scaled by `scale`.
     pub fn at(eye: Vec3, scale: f32) -> Self {
         Self {
             eye,
             velocity: Vec3::ZERO,
             scales: [scale; Level::COUNT],
-            dt: 0.0,
         }
     }
 }
@@ -90,7 +143,6 @@ pub enum Tier {
 }
 
 /// How far past its box a map of each tier streams in, by `Tier as usize`, in metres.
-// One range a tier is the engine's shape; that the four are equal is not established for GTA VI.
 const TIER_PRESTREAM: [f32; 4] = [PRESTREAM; 4];
 
 impl Tier {
@@ -121,14 +173,9 @@ pub struct MapBox {
 }
 
 impl MapBox {
-    /// Whether a camera streams the map in; `content_flags` are the map's own.
+    /// Whether a camera streams the map in, at any speed; `content_flags` are the map's own.
     pub fn wanted(&self, view: &View, content_flags: u32) -> bool {
-        let tier = Tier::of(content_flags);
-        // ⚠ The high tier alone is held back at speed: a critical map still streams in.
-        if tier == Tier::High && view.velocity.length() >= HD_MAX_SPEED {
-            return false;
-        }
-        self.within(view.eye, TIER_PRESTREAM[tier as usize])
+        self.within(view.eye, TIER_PRESTREAM[Tier::of(content_flags) as usize])
     }
 
     /// Whether a camera at rest at `at` streams in a map of no stated tier.
@@ -175,6 +222,39 @@ pub struct Node {
     /// The instance of its parent list it stands in for, where its parent is a list and it names one.
     pub instance: Option<u32>,
     pub level: Level,
+    pub kind: Kind,
+    /// Its archetype's.
+    pub category: Category,
+    /// What a scale below 1 leaves of its distance, in metres: a list's half diagonal, an entity's sphere.
+    pub radius: f32,
+}
+
+impl Node {
+    /// What its distances are multiplied by for `view`.
+    pub fn scale(&self, view: &View) -> f32 {
+        let level = self.level as usize;
+        // ⚠ A later rule replaces an earlier one, never multiplies it.
+        let own = match self.category {
+            Category::Vegetation => VEGETATION,
+            Category::Terrain => TERRAIN[level],
+            Category::Environment => ENVIRONMENT[level],
+            Category::Other if self.kind == Kind::Grass => GRASS,
+            Category::Other => 1.0,
+        };
+        let map = view.scales[level];
+        own * match self.kind {
+            Kind::Props => map.max(1.0),
+            _ => map,
+        }
+    }
+
+    /// How far it draws whole for `view` where it states `dist`: a scale below 1 shortens no more than what lies past its radius.
+    pub fn scaled(&self, dist: f32, view: &View) -> f32 {
+        match self.scale(view) {
+            s if s < 1.0 => self.radius + s * (dist - self.radius),
+            s => s * dist,
+        }
+    }
 }
 
 /// Where a node's model stands.
@@ -250,8 +330,9 @@ struct Links {
     range: Vec<f32>,
     /// Within this a node's children draw in its place: its own, else the farthest of its children's.
     child_range: Vec<f32>,
-    /// The level of the children that stand in for the whole of each node, which scales `child_range`.
-    child_level: Vec<Level>,
+    /// A child that stands in for the whole of each node, whose scale and band `child_range` takes.
+    // ponytail: the last such child speaks for all; children of mixed levels or categories under one parent are scaled as that one.
+    child_of: Vec<u32>,
     roots: Vec<u32>,
 }
 
@@ -272,6 +353,8 @@ pub struct Forest {
     stale: bool,
     /// Whether each node gives way to its children this selection: 0 not yet known, 1 yes, 2 no.
     yields: Vec<u8>,
+    /// Where the camera stood at the last selection, and the scales it had.
+    last: Option<(Vec3, [f32; Level::COUNT])>,
 }
 
 impl Forest {
@@ -355,13 +438,12 @@ impl Forest {
         links.next_sibling = vec![NONE; count];
         links.range = Vec::with_capacity(count);
         links.child_range = Vec::with_capacity(count);
-        links.child_level = Vec::with_capacity(count);
+        links.child_of = vec![NONE; count];
         for (slot, map) in self.maps.iter().enumerate() {
             for node in &map.nodes {
                 links.slot.push(slot as u32);
                 links.range.push(node.lod_dist);
                 links.child_range.push(node.child_lod_dist);
-                links.child_level.push(node.level);
             }
         }
         let mut at = 0usize;
@@ -392,7 +474,7 @@ impl Forest {
             if parent == NONE || node.instance.is_some() {
                 continue;
             }
-            links.child_level[parent as usize] = node.level;
+            links.child_of[parent as usize] = child as u32;
             let stated = self.node_at(&links, parent as usize).child_lod_dist;
             if stated > 0.0 {
                 links.range[child] = stated;
@@ -426,13 +508,18 @@ impl Forest {
             std::mem::swap(&mut map.was, &mut map.now);
             map.now.fill(0.0);
         }
-        // ⚠ The step is capped: a selection made long after the last one starts a fade, it does
-        // not end it.
-        let timed = view.dt > 0.0 && view.velocity.length() <= FADE_MAX_SPEED;
+        // A first selection, a jump, a fast camera or a change of scale is a cut: what the
+        // distances allow is there at once.
+        let steady = self.last.is_some_and(|(eye, scales)| {
+            eye.distance(view.eye) <= FADE_MAX_MOVE
+                && (scales.iter().zip(&view.scales)).all(|(a, b)| (a - b).abs() < SCALE_CHANGE)
+        });
+        let timed = steady && view.velocity.length() <= FADE_MAX_SPEED;
+        self.last = Some((view.eye, view.scales));
         let mut pass = Pass {
             forest: self,
             view,
-            step: timed.then(|| FADE_RATE * view.dt.min(STEP)),
+            timed,
             state,
             out: Selection::default(),
         };
@@ -447,8 +534,8 @@ impl Forest {
 struct Pass<'a> {
     forest: &'a mut Forest,
     view: &'a View,
-    /// How much a fade in time gains this selection; `None` where nothing fades in time.
-    step: Option<f32>,
+    /// Whether anything fades in time this selection.
+    timed: bool,
     state: &'a dyn Fn(NodeId) -> NodeState,
     out: Selection,
 }
@@ -475,24 +562,43 @@ impl Pass<'_> {
         self.away(if whole_child { parent } else { at })
     }
 
-    /// How far node `at` draws whole, by the scale of its level.
+    /// How far node `at` draws whole, by its scale.
     fn reach(&self, at: u32) -> f32 {
-        self.forest.links.range[at as usize] * self.view.scales[self.node(at).level as usize]
+        (self.node(at)).scaled(self.forest.links.range[at as usize], self.view)
     }
 
-    /// The distance within which the children of node `at` draw whole, by the scale of their level.
+    /// The distance within which the children of node `at` draw whole, by their scale.
     fn child_reach(&self, at: u32) -> f32 {
         let links = &self.forest.links;
-        links.child_range[at as usize] * self.view.scales[links.child_level[at as usize] as usize]
+        let range = links.child_range[at as usize];
+        match links.child_of[at as usize] {
+            NONE => range,
+            child => self.node(child).scaled(range, self.view),
+        }
+    }
+
+    /// The band past its distance over which node `at` fades out.
+    fn band(&self, at: u32) -> f32 {
+        let level = self.node(at).level;
+        // ⚠ The short band is picked by the distance the node states, before any scale.
+        match level == Level::OrphanHd && self.forest.links.range[at as usize] <= SMALL {
+            true => FADE_SMALL,
+            false => FADE_BAND[level as usize],
+        }
+    }
+
+    /// The band the children of node `at` fade out over.
+    fn child_band(&self, at: u32) -> f32 {
+        match self.forest.links.child_of[at as usize] {
+            NONE => FADE,
+            child => self.band(child),
+        }
     }
 
     /// How opaque the distance alone makes node `at`: whole within the distance it draws to, and
-    /// gone a band past it.
+    /// gone its band past it.
     fn by_distance(&self, at: u32) -> f32 {
-        // ⚠ The band is picked by the distance the node states, before any scale.
-        let small =
-            self.node(at).level == Level::OrphanHd && self.forest.links.range[at as usize] <= FADE;
-        let band = if small { FADE_SMALL } else { FADE };
+        let band = self.band(at);
         ((self.reach(at) + band - self.judged(at)) / band).clamp(0.0, 1.0)
     }
 
@@ -514,7 +620,7 @@ impl Pass<'_> {
             _ => {}
         }
         let complete = self.forest.maps[self.forest.links.slot[at as usize] as usize].complete;
-        let near = self.away(at) <= self.child_reach(at) + FADE;
+        let near = self.away(at) <= self.child_reach(at) + self.child_band(at);
         let (mut any, mut ready) = (false, true);
         let mut child = if near { self.first_child(at) } else { NONE };
         // Every child is asked, so that each one still loading is waited for.
@@ -545,10 +651,11 @@ impl Pass<'_> {
         }
     }
 
-    /// Whether node `at` fades in by time: one of the high level, an orphan, or one with no parent.
+    /// Whether node `at` fades in by time: one with no parent that is neither of the high level
+    /// nor an orphan.
     fn fades_in_time(&self, at: u32) -> bool {
-        matches!(self.node(at).level, Level::Hd | Level::OrphanHd)
-            || self.forest.links.parent[at as usize] == NONE
+        !matches!(self.node(at).level, Level::Hd | Level::OrphanHd)
+            && self.forest.links.parent[at as usize] == NONE
     }
 
     /// How opaque node `at` draws now where `target` is what the distances allow: what drew less
@@ -556,38 +663,36 @@ impl Pass<'_> {
     fn settle(&mut self, at: u32, target: f32) -> f32 {
         let (slot, node) = self.forest.links.place(at as usize);
         let was = self.forest.maps[slot].was[node];
-        let step = (self.step).filter(|_| target > was && self.fades_in_time(at));
-        let fade = step.map_or(target, |step| (was + step).min(target));
+        let fade = match self.timed && target > was && self.fades_in_time(at) {
+            true => (was + FADE_STEP).min(target),
+            false => target,
+        };
         self.out.fading |= fade < target;
         self.forest.maps[slot].now[node] = fade;
         fade
     }
 
-    /// Draw node `at`, whose parent has given way to it or which has none; whether it still fades
-    /// in by time where the distance alone draws it whole.
-    fn draw(&mut self, at: u32) -> bool {
-        let whole = self.by_distance(at);
-        if whole <= 0.0 {
-            return false;
+    /// Draw node `at`, whose parent has given way to it or which has none.
+    fn draw(&mut self, at: u32) {
+        let mut target = self.by_distance(at);
+        if target <= 0.0 {
+            return;
         }
-        let mut target = whole;
+        // ⚠ A parent is held whole for a child that is not ready, never for one that fades in.
         if self.yields(at) {
-            let mut held = false;
             let mut child = self.first_child(at);
             while child != NONE {
                 if self.node(child).instance.is_none() {
-                    held |= self.draw(child);
+                    self.draw(child);
                 }
                 child = self.next_sibling(child);
             }
-            // Its children draw whole from their distance inwards and it fades out over the band
-            // inside that; while one of them still fades in by time it stays whole.
-            if !held {
-                let inside = self.child_reach(at) - self.away(at);
-                target *= (1.0 - inside / FADE).clamp(0.0, 1.0);
-            }
+            // It is whole until its children's band short of the band past their distance, and
+            // gone [`FADE`] nearer.
+            let inside = self.child_reach(at) + FADE - self.child_band(at) - self.away(at);
+            target *= (1.0 - inside / FADE).clamp(0.0, 1.0);
             if target <= 0.0 {
-                return false;
+                return;
             }
         }
         let id = self.forest.id_of(at);
@@ -595,16 +700,15 @@ impl Pass<'_> {
             NodeState::Ready => {}
             NodeState::Loading => {
                 self.out.wanted.push(id);
-                return false;
+                return;
             }
-            NodeState::Absent => return false,
+            NodeState::Absent => return,
         }
         let fade = self.settle(at, target);
         match self.node(at).extent {
             Extent::Box(..) => self.draw_list(at, id, fade),
             Extent::Point => self.out.drawn.push(NodeDraw { node: id, fade }),
         }
-        whole >= 1.0 && fade < target
     }
 
     /// Whether the entity `at`, which stands in for one instance of a list, is within the distance
