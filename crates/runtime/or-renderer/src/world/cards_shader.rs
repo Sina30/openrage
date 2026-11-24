@@ -34,7 +34,6 @@ struct Species {
 const NO_SLOT: u32 = 0xffffffffu;
 // A grid of 8 by 8 frames a species, and 2 by 2 species a layer.
 const GRID: f32 = 8.0;
-const CUTOUT_ALPHA: f32 = 0.5;
 const FRESNEL: f32 = 0.98;
 
 struct VsOut {
@@ -49,6 +48,8 @@ struct VsOut {
     @location(5) @interpolate(flat) frames: vec3<u32>,
     @location(6) @interpolate(flat) weights: vec3<f32>,
     @location(7) @interpolate(flat) slot: u32,
+    // What moves the card's dither: the place of its record.
+    @location(8) @interpolate(flat) seed: u32,
 };
 
 fn byte_of(word: u32, at: u32) -> f32 {
@@ -191,6 +192,7 @@ fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
         return hidden();
     }
     var out = cornered(c, vertex, normalize(eye - c.pivot));
+    out.seed = instance;
     out.clip_pos = camera.view_proj * vec4<f32>(out.world_pos, 1.0);
     return out;
 }
@@ -209,6 +211,7 @@ fn vs_cast(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
         return hidden();
     }
     var out = cornered(c, vertex, -light_travel());
+    out.seed = instance;
     out.clip_pos = camera.view_proj * vec4<f32>(out.world_pos, 1.0);
     // What stands between the sun and the near side of the tile still casts: it is laid on that side instead of clipped by it.
     out.clip_pos.z = max(out.clip_pos.z, 0.0);
@@ -247,10 +250,9 @@ fn frame_texel(in: VsOut, ray: vec3<f32>, frame: u32, weight: f32) -> vec4<f32> 
     let inside = all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0));
     let quadrant = vec2<f32>(f32(in.slot & 1u), f32((in.slot >> 1u) & 1u));
     let at = (quadrant + (vec2<f32>(cell) + clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0))) / GRID) * 0.5;
+    // The atlas holds the share of each texel the model covers, at every level: a far card is as airy as its crown.
     let texel = textureSample(atlas, atlas_smp, at, in.slot >> 2u);
-    // ⚠ Coverage from the first level: the smaller ones average a crown's gaps under the cut, and a far card would draw nothing.
-    let covered = textureSampleLevel(atlas, atlas_smp, at, in.slot >> 2u, 0.0).a;
-    return vec4<f32>(texel.rgb, covered * weight * select(0.0, 1.0, inside));
+    return vec4<f32>(texel.rgb, texel.a * weight * select(0.0, 1.0, inside));
 }
 
 // The three frames blended by their weights: the linear colour, and the coverage.
@@ -264,8 +266,10 @@ fn blended(in: VsOut, ray: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(colour, coverage);
 }
 
+// A pixel is kept as often as the share the model covers there, by the list's fade; each card's dither is moved by its own place, so that cards one behind another cover as two crowns would.
 fn dropped(in: VsOut, coverage: f32) -> bool {
-    return coverage < CUTOUT_ALPHA || in.half_size.z < dither(in.clip_pos.xy);
+    let moved = vec2<f32>(f32(in.seed & 3u), f32((in.seed >> 2u) & 3u));
+    return coverage * in.half_size.z < dither(in.clip_pos.xy + moved);
 }
 
 // A card has no normal map: its normal bows out from its pivot towards the viewer, as a sphere's would.

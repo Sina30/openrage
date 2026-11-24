@@ -16,6 +16,11 @@ use super::{frame_axes, frame_direction, CardMesh, CARD_FRAMES};
 pub(super) const SIDE: u32 = 512;
 /// The side of one frame, in texels of the atlas's first level.
 const CELL: u32 = SIDE / 2 / CARD_FRAMES;
+/// How many texels a side of the bake one texel of the atlas's first level is the mean of: a cutout is cut texel by texel of the bake, as a model is pixel by pixel, and the atlas keeps the share that is covered.
+const SUPERSAMPLE: u32 = 4;
+/// The side of the picture one species is baked into, and its levels down to the atlas's size.
+const BAKED_SIDE: u32 = SIDE / 2 * SUPERSAMPLE;
+const BAKED_LEVELS: u32 = SUPERSAMPLE.ilog2() + 1;
 /// The levels of the atlas: the least has frames four texels a side.
 pub(super) const LEVELS: u32 = 4;
 /// The atlas holds linear colour stored as sRGB, with its coverage in alpha.
@@ -109,7 +114,8 @@ pub(super) struct Bake {
     views: wgpu::Buffer,
     view_group: wgpu::BindGroup,
     stride: u64,
-    depth: Option<wgpu::TextureView>,
+    /// The supersampled picture a species is baked into, made the first time one is, and its depth.
+    baked: Option<(wgpu::Texture, wgpu::TextureView)>,
     texture: wgpu::Texture,
     view: wgpu::TextureView,
 }
@@ -302,7 +308,7 @@ impl Bake {
             views,
             view_group,
             stride,
-            depth: None,
+            baked: None,
             view: every_layer(&texture),
             texture,
         }
@@ -340,8 +346,7 @@ impl Bake {
         self.texture = texture;
     }
 
-    /// Draw `meshes` into the 64 frames of `slot`, each seen along its frame's way from twice the radius off, then make the layer's smaller levels again; false where the slot is past what the device holds or the sphere has no size.
-    // ponytail: a slot is baked once; baking one again draws over what it held without clearing it.
+    /// Draw `meshes` into the 64 frames of `slot`, each seen along its frame's way from twice the radius off into a picture four times as fine, halved down into the slot, then make the layer's smaller levels again; false where the slot is past what the device holds or the sphere has no size.
     pub(super) fn bake(
         &mut self,
         device: &wgpu::Device,
@@ -370,42 +375,27 @@ impl Bake {
             views[at..at + VIEW_BYTES as usize].copy_from_slice(bytemuck::cast_slice(&camera));
         }
         queue.write_buffer(&self.views, 0, &views);
-        let depth = self.depth.get_or_insert_with(|| {
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("viewport-cards-bake-depth"),
-                size: wgpu::Extent3d {
-                    width: SIDE,
-                    height: SIDE,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            });
-            texture.create_view(&Default::default())
-        });
+        let (baked, depth) = self.baked.get_or_insert_with(|| baked_texture(device));
+        let baked = baked.clone();
+        let depth = depth.clone();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewport-cards-bake"),
         });
-        let target = level_of(&self.texture, layer, 0);
         {
+            let target = level_of(&baked, 0, 0);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("viewport-cards-bake-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &target,
                     depth_slice: None,
                     resolve_target: None,
-                    // The layer's other species are kept
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth,
+                    view: &depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Discard,
@@ -416,12 +406,11 @@ impl Bake {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            let (across, down) = (slot & 1, (slot >> 1) & 1);
+            let side = CELL * SUPERSAMPLE;
             for frame in 0..FRAMES {
-                let col = across * CARD_FRAMES + frame % CARD_FRAMES;
-                let row = down * CARD_FRAMES + frame / CARD_FRAMES;
-                let (x, y, side) = ((col * CELL) as f32, (row * CELL) as f32, CELL as f32);
-                pass.set_viewport(x, y, side, side, 0.0, 1.0);
+                let (col, row) = (frame % CARD_FRAMES, frame / CARD_FRAMES);
+                let (x, y) = ((col * side) as f32, (row * side) as f32);
+                pass.set_viewport(x, y, side as f32, side as f32, 0.0, 1.0);
                 let offset = (u64::from(frame) * self.stride) as wgpu::DynamicOffset;
                 pass.set_bind_group(0, &self.view_group, &[offset]);
                 pass.set_bind_group(2, &self.light_group, &[]);
@@ -439,38 +428,104 @@ impl Bake {
                 }
             }
         }
+        // The bake halved down to the atlas's size, each texel the share of its own that is covered
+        for level in 1..BAKED_LEVELS {
+            self.halve(device, &mut encoder, (&baked, 0), level);
+        }
+        let side = SIDE / 2;
+        encoder.copy_texture_to_texture(
+            whole_level(&baked, BAKED_LEVELS - 1),
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: (slot & 1) * side,
+                    y: ((slot >> 1) & 1) * side,
+                    z: layer,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: side,
+                height: side,
+                depth_or_array_layers: 1,
+            },
+        );
         for level in 1..LEVELS {
-            let above = level_of(&self.texture, layer, level - 1);
-            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("viewport-cards-level-bg"),
-                layout: &self.level_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&above),
-                }],
-            });
-            let below = level_of(&self.texture, layer, level);
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("viewport-cards-level-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &below,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.halve);
-            pass.set_bind_group(0, &group, &[]);
-            pass.draw(0..3, 0..1);
+            self.halve(device, &mut encoder, (&self.texture, layer), level);
         }
         queue.submit([encoder.finish()]);
         true
     }
+
+    /// Make level `level` of layer `layer` of `texture` from the level above it.
+    fn halve(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        (texture, layer): (&wgpu::Texture, u32),
+        level: u32,
+    ) {
+        let above = level_of(texture, layer, level - 1);
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("viewport-cards-level-bg"),
+            layout: &self.level_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&above),
+            }],
+        });
+        let below = level_of(texture, layer, level);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("viewport-cards-level-pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &below,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.halve);
+        pass.set_bind_group(0, &group, &[]);
+        pass.draw(0..3, 0..1);
+    }
+}
+
+/// The picture one species is baked into, its levels down to the atlas's size, and its depth.
+fn baked_texture(device: &wgpu::Device) -> (wgpu::Texture, wgpu::TextureView) {
+    let size = wgpu::Extent3d {
+        width: BAKED_SIDE,
+        height: BAKED_SIDE,
+        depth_or_array_layers: 1,
+    };
+    let colour = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("viewport-cards-baked"),
+        size,
+        mip_level_count: BAKED_LEVELS,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let depth = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("viewport-cards-bake-depth"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: DEPTH,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    (colour, depth.create_view(&Default::default()))
 }

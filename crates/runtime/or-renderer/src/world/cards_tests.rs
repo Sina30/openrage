@@ -408,3 +408,120 @@ fn a_card_draws_its_species_baked_frames_only_once_baked_and_while_its_list_fade
         "the device accepted every draw"
     );
 }
+
+/// A square of `half` lying flat at the origin, its texture coordinates running across it from corner to corner, of model-packed vertices.
+fn model_square(device: &wgpu::Device, half: f32) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+    let mut vertices: Vec<MeshVertex> = (0..4)
+        .map(|at| {
+            let (u, v) = ((at & 1) as f32, (at >> 1) as f32);
+            let corner = [(2.0 * u - 1.0) * half, (2.0 * v - 1.0) * half, 0.0];
+            MeshVertex::new_coloured(corner, [0.0, 0.0, 1.0], [u, v], [1.0; 4])
+        })
+        .collect();
+    crate::world::coloured(&mut vertices, (Some(&[[1.0; 4]; 4]), None), (None, None));
+    let indices: [u32; 6] = [0, 1, 3, 0, 3, 2];
+    let buffer = |label, contents: &[u8], usage| {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(label),
+            contents,
+            usage,
+        })
+    };
+    (
+        buffer(
+            "square-vertices",
+            bytemuck::cast_slice(&vertices),
+            wgpu::BufferUsages::VERTEX,
+        ),
+        buffer(
+            "square-indices",
+            bytemuck::cast_slice(&indices),
+            wgpu::BufferUsages::INDEX,
+        ),
+        6,
+    )
+}
+
+#[cfg_attr(
+    not(feature = "gpu-tests"),
+    ignore = "needs a GPU adapter: acquisition can hang, not just fail"
+)]
+#[test]
+fn a_card_covers_the_share_of_its_crown_its_model_covers_where_the_leaves_are_finer_than_a_frame() {
+    let test = "a_card_covers_the_share";
+    let Some((device, queue)) = gpu(test) else {
+        return;
+    };
+    let mut renderer =
+        ViewportRenderer::new(&device, &queue, wgpu::TextureFormat::Rgba8Unorm, SIZE, SIZE);
+    renderer.set_background(BACKGROUND);
+    // Looking down on a square seen from above, which a frame looks at whole
+    let camera = OrbitCamera {
+        distance: 6.0,
+        pitch: 1.5,
+        ..OrbitCamera::default()
+    };
+    // Leaves strewn over seven tenths of the square, each finer than a texel of a frame
+    let side = 256u32;
+    let mut seed = 0x2545_f491u32;
+    let strewn: Vec<u8> = (0..side * side)
+        .flat_map(|_| {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            [
+                255,
+                0,
+                0,
+                if seed >> 8 < (0.7 * f64::from(1u32 << 24)) as u32 {
+                    255
+                } else {
+                    0
+                },
+            ]
+        })
+        .collect();
+    let leaves =
+        crate::game_shaders::stand_in::uploaded_view(&device, &queue, side, side, &strewn, false);
+    let red = crate::game_shaders::stand_in::constant_view(&device, &queue, [1.0, 0.0, 0.0, 1.0]);
+    let (vertices, indices, count) = model_square(&device, 1.0);
+    let radius = 2f32.sqrt();
+    let reds = |renderer: &mut ViewportRenderer, slot: u32, map: &wgpu::TextureView| {
+        let mesh = CardMesh {
+            vertices: &vertices,
+            indices: &indices,
+            base_vertex: 0,
+            first_index: 0,
+            index_count: count,
+            material: model_material(renderer, &device, map, None, WorldBucket::Cutout),
+        };
+        assert!(renderer.bake_card_slot(&device, &queue, slot, [0.0; 3], radius, &[mesh]));
+        let species = CardSpecies {
+            centre: [0.0; 3],
+            radius,
+            slot: Some(slot),
+        };
+        renderer.set_card_species(&device, &queue, &[species]);
+        renderer.set_card_lists(&device, &queue, &[list(&[record(0)], 1.0)]);
+        renderer.show_card_lists(&[0]);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        renderer.render(&mut encoder, &queue, &camera, ShadingMode::Material);
+        queue.submit([encoder.finish()]);
+        let read = read_back(
+            &device,
+            &queue,
+            renderer.colour_texture(),
+            renderer.colour_format,
+            SIZE,
+        );
+        (read.bytes.as_chunks::<4>().0.iter())
+            .filter(|p| u16::from(p[0]) > 2 * u16::from(p[1].max(p[2])) && p[0] > 40)
+            .count()
+    };
+    let whole = reds(&mut renderer, 0, &red);
+    let share = reds(&mut renderer, 1, &leaves) as f32 / whole as f32;
+    assert!(whole > 100, "{whole}");
+    // A frame cut texel by texel and blended under a cut covers more: 0.82 of it
+    assert!(
+        share > 0.62 && share < 0.78,
+        "the card covers {share} of the square, its leaves 0.7"
+    );
+}
