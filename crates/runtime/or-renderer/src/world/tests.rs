@@ -1195,6 +1195,8 @@ fn a_decal_blends_each_word_of_the_g_buffer_by_its_own_opacity_and_leaves_the_am
         let maps = [
             (slot::colour(0), one([0, 255, 0, 255])),
             (slot::normal(0), one([204, 128, 255, 255])),
+            // A mirror, so its specular word differs from the rough surface's under it
+            (slot::material_a(0), one([0, 0, 0, 0])),
         ];
         let constants = WorldConstants {
             opacity,
@@ -1211,11 +1213,15 @@ fn a_decal_blends_each_word_of_the_g_buffer_by_its_own_opacity_and_leaves_the_am
         ];
         shade(&device, &queue, &mut renderer, &meshes).0
     };
-    // Its colour whole and its normal not at all
+    // Its colour whole, its normal not at all, and its specular word half over the surface's, whose alpha it keeps
     let targets = drawn(colour_only);
     assert!(near(targets[0], [0, 255, 0, 255], 2), "{targets:?}");
     assert!(near(targets[1], [127, 127, 255, 0], 1), "{targets:?}");
-    assert!(near(targets[2], specular_word(0.0, 0.04), 1), "{targets:?}");
+    let (mirror, rough) = (specular_word(1.0, 0.04), specular_word(0.0, 0.04));
+    let mut half: [u8; 4] =
+        std::array::from_fn(|c| ((u16::from(mirror[c]) + u16::from(rough[c])) / 2) as u8);
+    half[3] = 255;
+    assert!(near(targets[2], half, 2), "{targets:?}");
     assert!(near(targets[3], [255, 0, 0, 255], 1), "{targets:?}");
     // Its normal whole and its colour not at all: the surface's colour, the decal's lean
     let targets = drawn(normal_only);
