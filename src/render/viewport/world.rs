@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3;
-use or_renderer::world::{slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
+use or_renderer::world::{WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS};
 use or_renderer::{Frustum, ShadingMode, WorldBucket, WorldDraw, WorldMaterial, WorldMesh};
 
 use super::RenderBridge;
@@ -631,14 +631,7 @@ impl RenderBridge {
             }
             if (material.made.as_ref()).is_none_or(|(_, made_with)| *made_with != with) {
                 // A colour map that is not on the device is a mid grey; a slot that names none samples the renderer's own stand-in.
-                // A material that names no colour map is coloured by its palette where it names one, else by its instance's tint alone, as a region-tint prop list is
-                let unnamed = material.maps[slot::colour(0)].is_none()
-                    && material.maps[slot::TINT].is_none()
-                    && material.family != WorldFamily::FourLayer;
-                let mut constants = material.constants;
-                if unnamed {
-                    constants.flags |= WorldConstants::INSTANCE_COLOUR;
-                }
+                let constants = material.constants;
                 let maps = std::array::from_fn(|at| {
                     let key = material.maps[at]?;
                     let view = (world.palettes.get(&key)).or(world.textures.of(key).1);

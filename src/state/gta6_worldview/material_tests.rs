@@ -477,3 +477,31 @@ fn a_tree_is_foliage_by_the_wind_thresholds_its_effect_states_and_a_plain_materi
     assert!(of(&tree, 0).constants.foliage);
     assert!(!of(&shader(&one_layer(), &[]), 0).constants.foliage);
 }
+
+#[test]
+fn only_the_region_tint_effects_take_their_colour_from_the_instance_and_one_lays_the_vertex_over_it(
+) {
+    // A region-tint list's material names material B alone, as a material of any effect may
+    let records = [(h("SpecularTex2"), Some(0xA2))];
+    let with = |effect: &str| {
+        let shader = Shader {
+            name_hash: h(effect),
+            ..shader(&records, &[])
+        };
+        of(&shader, 0).constants.region_tint
+    };
+    assert_eq!(
+        with("prop_batch_slod_regiontint"),
+        Some(RegionTint::Instance)
+    );
+    assert_eq!(
+        with("prop_batch_slod_regiontint_cpv"),
+        Some(RegionTint::OverInstance)
+    );
+    assert_eq!(
+        with("signs"),
+        None,
+        "a material naming no colour of another effect"
+    );
+    assert_eq!(with("prop_batch"), None);
+}

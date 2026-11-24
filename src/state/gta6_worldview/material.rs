@@ -98,7 +98,22 @@ pub struct Constants {
     pub tint_multiplies: bool,
     /// A tree's leaves and bark: its material A's red is one less its translucency, not a metalness.
     pub foliage: bool,
+    /// The colour of a region-tint prop list's material, which names no map of it.
+    pub region_tint: Option<RegionTint>,
 }
+
+/// Where a region-tint prop list's colour comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionTint {
+    /// Its instance's tint.
+    Instance,
+    /// The vertex's colour over its instance's tint, as far as the vertex's alpha.
+    OverInstance,
+}
+
+/// The effects whose colour is their instance's tint, and the one that lays the vertex's colour over it.
+const REGION_TINT: u32 = name_hash32(b"prop_batch_slod_regiontint");
+const REGION_TINT_BY_VERTEX: u32 = name_hash32(b"prop_batch_slod_regiontint_cpv");
 
 impl Default for Constants {
     fn default() -> Self {
@@ -132,6 +147,7 @@ impl Default for Constants {
             ground_heights: None,
             tint_multiplies: false,
             foliage: false,
+            region_tint: None,
         }
     }
 }
@@ -426,6 +442,11 @@ fn constants_of(r: &Records) -> Constants {
             .then(|| [r.float(GROUND_LOW, 0.0), r.float(GROUND_HIGH, 1.0)]),
         tint_multiplies: r.flag(TINT_MULTIPLIES, d.tint_multiplies),
         foliage: r.words(TREE_WIND).is_some(),
+        region_tint: match r.0.name_hash {
+            REGION_TINT => Some(RegionTint::Instance),
+            REGION_TINT_BY_VERTEX => Some(RegionTint::OverInstance),
+            _ => None,
+        },
     };
     for (set, hash) in c.uv_sets.iter_mut().zip(LAYER_UV_SETS) {
         *set = r.sets(hash, [*set])[0];

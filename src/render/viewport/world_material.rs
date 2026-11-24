@@ -2,7 +2,7 @@
 
 use or_renderer::world::{slot, WorldConstants, WorldFamily, WORLD_MAPS};
 
-use crate::state::gta6_world::worldview::{CpuMaterial, Family};
+use crate::state::gta6_world::worldview::{CpuMaterial, Family, RegionTint};
 
 /// The renderer's family of `family`; a water mask is never drawn, and is shaded as standard where one is.
 pub(super) fn family_of(family: Family) -> WorldFamily {
@@ -67,6 +67,11 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
         | flag(c.inv_control, WorldConstants::INVERT_CONTROL)
         | flag(c.hard_light, WorldConstants::HARD_LIGHT)
         | flag(c.foliage, WorldConstants::FOLIAGE)
+        | flag(c.region_tint.is_some(), WorldConstants::INSTANCE_COLOUR)
+        | flag(
+            c.region_tint == Some(RegionTint::OverInstance),
+            WorldConstants::VERTEX_OVER_TINT,
+        )
         | WorldConstants::MODEL_VERTEX;
     let mut constants = WorldConstants {
         fresnel: c.fresnel,
@@ -249,6 +254,30 @@ mod tests {
             constants_of(&CpuMaterial::default()).flags & WorldConstants::FOLIAGE,
             0
         );
+    }
+
+    #[test]
+    fn a_region_tint_material_hands_the_shader_the_instance_s_colour_and_whether_the_vertex_lies_over_it(
+    ) {
+        let with = |region_tint| {
+            let material = CpuMaterial {
+                constants: Constants {
+                    region_tint,
+                    ..Constants::default()
+                },
+                ..CpuMaterial::default()
+            };
+            let flags = constants_of(&material).flags;
+            let own = WorldConstants::INSTANCE_COLOUR;
+            (
+                flags & own != 0,
+                flags & WorldConstants::VERTEX_OVER_TINT != 0,
+            )
+        };
+        assert_eq!(with(Some(RegionTint::Instance)), (true, false));
+        assert_eq!(with(Some(RegionTint::OverInstance)), (true, true));
+        // A material that names no colour map of any other effect keeps its instance's tint off
+        assert_eq!(with(None), (false, false));
     }
 
     #[test]

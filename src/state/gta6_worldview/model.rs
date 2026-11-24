@@ -18,7 +18,7 @@ mod material;
 use material::{material_of, GLOW, PALETTE};
 #[cfg(test)]
 pub use material::{Constants, Emissive, Layer};
-pub use material::{CpuMaterial, Family};
+pub use material::{CpuMaterial, Family, RegionTint};
 
 /// The bytes a model's body is read to.
 const BODY_LIMIT: u64 = 512 << 20;

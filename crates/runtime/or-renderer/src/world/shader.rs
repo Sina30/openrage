@@ -91,6 +91,7 @@ const INSTANCE_COLOUR: u32 = 32u;
 const GROUND_BLEND: u32 = 64u;
 const TINT_MULTIPLY: u32 = 128u;
 const FOLIAGE: u32 = 256u;
+const VERTEX_OVER_TINT: u32 = 512u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
@@ -467,8 +468,14 @@ fn surface_of(in: VsOut, front_facing: bool) -> Surface {
         } else {
             lean = one_layer(&s, maps, in, tint);
         }
-        // A game model's instance tint colours only a material that names no colour of its own: a prop list's tint is no part of a mapped material's colour.
-        if (family != GRASS && ((m.flags & MODEL_VERTEX) == 0u || (m.flags & INSTANCE_COLOUR) != 0u)) {
+        // A game model's instance tint colours only a region-tint material, which is its colour, or the vertex's colour over it as far as the vertex's alpha: a prop list's tint is no part of a mapped material's colour.
+        if ((m.flags & INSTANCE_COLOUR) != 0u) {
+            let over = (m.flags & VERTEX_OVER_TINT) != 0u;
+            s.albedo = s.albedo * mix(in.tint, in.colour.rgb, select(0.0, in.colour.a, over));
+            if (over) {
+                s.coverage = maps.c0.a;
+            }
+        } else if (family != GRASS && (m.flags & MODEL_VERTEX) == 0u) {
             s.albedo = s.albedo * in.tint;
         }
         let dielectric = 0.04 * (1.0 + m.specular_fresnel) * reach(s.albedo * (1.0 - s.metal));

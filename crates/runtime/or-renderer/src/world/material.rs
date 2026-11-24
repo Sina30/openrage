@@ -135,7 +135,7 @@ impl WorldConstants {
     pub const HARD_LIGHT: u32 = 8;
     /// The meshes are a model's, their vertices packed by [`coloured`].
     pub const MODEL_VERTEX: u32 = 16;
-    /// The albedo is the instance's tint: the material names no colour map and no palette, as a region-tint prop list's.
+    /// The albedo is the instance's tint, as a region-tint prop list's.
     pub const INSTANCE_COLOUR: u32 = 32;
     /// A ground decal: it shows where its material A's blue, between the first height bias and scale, outweighs the vertex's share, and takes its tint as its tint blend says.
     pub const GROUND_BLEND: u32 = 64;
@@ -143,6 +143,8 @@ impl WorldConstants {
     pub const TINT_MULTIPLY: u32 = 128;
     /// A tree's leaves and bark: no metal, and the lighting's translucent material, which lights the side turned from the sun.
     pub const FOLIAGE: u32 = 256;
+    /// With [`Self::INSTANCE_COLOUR`], the vertex's first colour lies over the instance's tint as far as its alpha, which is then no coverage.
+    pub const VERTEX_OVER_TINT: u32 = 512;
 }
 
 impl Default for WorldConstants {
