@@ -14,6 +14,8 @@ use crate::state::drivers::WeatherState;
 const ARCHIVE: &str = "common.rpf";
 /// How far into the moon's cycle the first day stands: near its full, as the GTA V day has it.
 const NEAR_FULL_MOON: f32 = 13.0;
+/// What a light is scaled by while no GTA VI day is read and the frame keeps its own day.
+const NO_DAY_LIGHT_SCALE: f32 = 0.1;
 
 type Read = Arc<OnceLock<Arc<DayTables>>>;
 
@@ -68,20 +70,9 @@ pub fn day_of(
     weather: WeatherState,
     y: f32,
 ) -> Option<Day> {
-    lit_day(tables, hour, days, weather, y).map(|(day, _)| day)
-}
-
-/// The day as [`day_of`] gives it, and what a light the game states in its own unit is multiplied by to be the frame's: the moment's exposure over pi.
-pub fn lit_day(
-    tables: &DayTables,
-    hour: f32,
-    days: f32,
-    weather: WeatherState,
-    y: f32,
-) -> Option<(Day, f32)> {
     let moment = tables.moment(hour, weather_name(weather), y)?;
     let visual = &tables.visual_settings;
-    let day = Day {
+    Some(Day {
         keyframe: moment.keyframe,
         table: moment.table,
         hours: moment.frame_hours,
@@ -103,8 +94,13 @@ pub fn lit_day(
                 false => visual.get_f32(name, default),
             },
         ),
-    };
-    Some((day, moment.light_scale))
+    })
+}
+
+/// What a light the game states in its own unit is multiplied by to be the frame's at `hour` in `weather` for a camera `y` metres north: the moment's exposure over pi, and the old stand-in where no GTA VI day is read.
+pub fn light_scale(tables: Option<&DayTables>, hour: f32, weather: WeatherState, y: f32) -> f32 {
+    (tables.and_then(|tables| tables.moment(hour, weather_name(weather), y)))
+        .map_or(NO_DAY_LIGHT_SCALE, |moment| moment.light_scale)
 }
 
 #[cfg(test)]
@@ -169,13 +165,19 @@ mod tests {
             near: 0.1,
         };
         for hour in [13.45f32, 1.0] {
-            let (day, scale) =
-                lit_day(&tables, hour, 0.0, WeatherState::Clear, 0.0).expect("a day");
+            let day = day_of(&tables, hour, 0.0, WeatherState::Clear, 0.0).expect("a day");
             assert_eq!(day.tone(&day.lighting(&view)).stops, 0.0, "at {hour}");
             let moment = tables.moment(hour, "Sunny", 0.0).expect("a moment");
+            let scale = light_scale(Some(&tables), hour, WeatherState::Clear, 0.0);
             assert_eq!(scale, moment.light_scale);
-            assert!(scale > 0.0);
+            let exposed = moment.stops.exp2() / std::f32::consts::PI;
+            assert!(
+                (scale - exposed).abs() <= 1e-6 * exposed,
+                "{scale} {exposed}"
+            );
         }
+        let none = light_scale(None, 12.0, WeatherState::Clear, 0.0);
+        assert_eq!(none, NO_DAY_LIGHT_SCALE);
     }
 
     #[test]
