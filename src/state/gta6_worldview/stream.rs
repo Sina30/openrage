@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_world::streaming::{Forest, NodeId, NodeState, View};
+use or_world::streaming::{Forest, Level, NodeId, NodeState, View};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -165,7 +165,10 @@ impl Streamer {
                 };
                 let (virtual_section, physical) = resource.sections(&bytes);
                 let map = or_io::gta6::map::stream::open(virtual_section, physical).ok()?;
-                Some(read_map(&shared, &map))
+                let mut read = read_map(&shared, &map);
+                read.loaded.interiors =
+                    super::interior::read_placed(&shared, files, &map, virtual_section, physical);
+                Some(read)
             },
         );
         Self {
@@ -375,7 +378,33 @@ impl Streamer {
             let nearest = waited.entry(model).or_insert(away);
             *nearest = nearest.min(away);
         }
-        out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
+        // The contents of each interior the camera is near: a chunk an interior.
+        for map in loaded.values() {
+            for interior in &map.interiors {
+                let from = out.instances.len();
+                interior.each(eye, view.scales[Level::Hd as usize], |child, away| {
+                    match ready(child.model) {
+                        Some(true) => {
+                            let model = models.ix(child.model);
+                            (out.instances).push(Instance {
+                                model,
+                                rows: child.rows,
+                                centre: child.centre,
+                                radius: child.radius,
+                                fade: 1.0,
+                            });
+                        }
+                        Some(false) => {
+                            let nearest = waited.entry(child.model).or_insert(away);
+                            *nearest = nearest.min(away);
+                        }
+                        None => {}
+                    }
+                });
+                close(&mut out, from);
+            }
+        }
+        out.wanted =(waited.into_iter().map(|(model, away)| (away, model))).collect();
         out.models = models.list;
         self.streaming.drawn = out.instances.len();
         out.streaming = self.streaming;

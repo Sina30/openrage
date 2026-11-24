@@ -134,6 +134,8 @@ pub(super) struct Loaded {
     pub(super) entities: Vec<Rows>,
     /// The prop lists, then the grass lists.
     pub(super) lists: Vec<List>,
+    /// The interiors the map places, each with its contents in the world.
+    pub(super) interiors: Vec<super::super::interior::Placed>,
 }
 
 /// What a worker read of a map: its nodes for the forest, and what draws at each.
@@ -220,7 +222,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             instance,
             level: Level::from_raw(e.lod_level),
         });
-        // ⚠ An interior's contents stand in its own space, which nothing here places: it draws nothing.
+        // An interior has no model of its own: its contents are placed by `interior::read_placed`.
         drawn.push(Drawn {
             model: what.model.filter(|_| !e.interior),
             ..what
@@ -293,6 +295,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
             drawn,
             entities,
             lists,
+            interiors: Vec::new(),
         },
     }
 }
