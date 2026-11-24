@@ -28,12 +28,20 @@ impl RoomBox {
     }
 }
 
-/// A portal between two rooms, with its four corners in the interior's space.
+/// A portal between two rooms, with its four corners in the interior's space and its flags.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Opening {
     pub(super) rooms: [u32; 2],
     pub(super) corners: [Vec3; 4],
+    pub(super) flags: u32,
 }
+
+// ⚠ GTA V's bits, which the build's portals match in kind: every portal with 4 (778 of them also
+// 128, 256 and 1024, GTA V's mirror bits) and every portal with 2 joins its room to room 0.
+/// A portal's flag: it is a mirror, no opening.
+const MIRROR: u32 = 4;
+/// A portal's flag: it opens on another interior, not on the sky.
+const LINK: u32 = 2;
 
 /// What a camera sees of an interior: by room and by portal.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -123,6 +131,11 @@ impl Walk<'_> {
                 [a, b] if b == room && a != room => a,
                 _ => continue,
             };
+            // A mirror is seen in the room it hangs in, and nothing is seen through it.
+            if portal.flags & MIRROR != 0 {
+                self.seen.portals[k] = true;
+                continue;
+            }
             if self.path.contains(&other) {
                 continue;
             }
@@ -204,9 +217,9 @@ pub(super) fn ambient_of(rooms: &[RoomBox], portals: &[Opening], room: u32, p: V
     let Some(of) = rooms.get(room as usize).filter(|_| room != 0) else {
         return or_renderer::OUTDOORS;
     };
-    let outward = portals
-        .iter()
-        .filter(|o| o.rooms.contains(&room) && o.rooms.contains(&0));
+    let outward = portals.iter().filter(|o| {
+        o.rooms.contains(&room) && o.rooms.contains(&0) && o.flags & (MIRROR | LINK) == 0
+    });
     let (mut window, mut near) = (0.0, 0.0);
     for o in outward {
         let c = &o.corners;

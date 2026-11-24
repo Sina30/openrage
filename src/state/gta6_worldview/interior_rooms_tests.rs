@@ -16,6 +16,7 @@ fn row() -> (Vec<RoomBox>, Vec<Opening>, Vec3) {
             Vec3::new(x, y[1], 2.0),
             Vec3::new(x, y[0], 2.0),
         ],
+        flags: 0,
     };
     let rooms = vec![
         room(0.0, 12.0),
@@ -92,6 +93,24 @@ fn inside_the_sky_s_ambient_light_comes_in_through_the_openings_to_the_outside_a
     assert_eq!(at(2, [4.0, 0.0, 1.0]), [0.0, 0.0]);
     // What stands in room 0 stands outdoors.
     assert_eq!(at(0, [1.0, 0.0, 1.0]), or_renderer::OUTDOORS);
+    // A mirror on the front, or a link to another interior, lets in none of the sky's.
+    for flags in [MIRROR, LINK] {
+        let mut shut = portals.clone();
+        shut[0].flags = flags;
+        assert_eq!(
+            ambient_of(&rooms, &shut, 1, Vec3::new(0.0, 0.0, 1.0)),
+            [0.0, 0.0]
+        );
+    }
+}
+
+#[test]
+fn a_mirror_is_seen_and_nothing_is_seen_through_it() {
+    let (rooms, mut portals, middle) = row();
+    portals[1].flags = MIRROR;
+    let seen = seen(&rooms, &portals, middle, Vec3::new(1.0, 0.0, 1.0));
+    assert_eq!(seen.rooms, [true, true, false, false]);
+    assert_eq!(seen.portals, [true, true, false]);
 }
 
 #[test]

@@ -135,6 +135,7 @@ pub(super) fn place(
         .map(|p| Opening {
             rooms: [p.room_from, p.room_to],
             corners: p.corners.map(Vec3::from),
+            flags: p.flags,
         })
         .collect();
     let rooms: Vec<RoomBox> = (interior.rooms.iter())
