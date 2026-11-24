@@ -16600,3 +16600,72 @@ msgstr "월드 보기"
 
 msgid "{textures} textures on the device, {unread} not read, {waiting} waited for"
 msgstr "그래픽 카드의 텍스처 {textures}개, 읽지 못한 것 {unread}개, {waiting}개 대기 중"
+
+msgid "Lights of {maps} maps: {placed} placed, {lod} level-of-detail, {distant} distant, {probes} reflection probes; {drawn} drawn"
+msgstr "맵 {maps}개의 조명: 배치 {placed}개, 세부 수준(LOD) {lod}개, 원거리 {distant}개, 반사 프로브 {probes}개, 그려진 것 {drawn}개"
+
+msgid "Capture"
+msgstr "캡처"
+
+msgid "Clean frame"
+msgstr "깨끗한 프레임"
+
+msgid "Draw the world alone over the whole window, with no line and no panel over it; Escape brings them back"
+msgstr "선과 패널 없이 창 전체에 월드만 그리기, Esc로 다시 표시"
+
+msgid "Copy the camera"
+msgstr "카메라 복사"
+
+msgid "Copy where the camera stands and looks, as a line a shots script reads and the field below takes"
+msgstr "카메라가 서 있는 위치와 보는 방향을 샷 스크립트가 읽고 아래 필드가 받는 한 줄로 복사"
+
+msgid "Paste a camera line, then press Enter"
+msgstr "카메라 줄을 붙여 넣은 다음 Enter를 누르십시오"
+
+msgid "A camera line to jump to"
+msgstr "이동할 카메라 줄"
+
+msgid "That is not a camera line: copy one with Copy the camera"
+msgstr "카메라 줄이 아닙니다: “카메라 복사”로 복사하십시오"
+
+msgid "Time and modes"
+msgstr "시간과 모드"
+
+msgid "Hour"
+msgstr "시각"
+
+msgid "The hour of the day: what is placed for some hours draws inside them, and the world is lit by its day at that hour"
+msgstr "하루 중 시각: 특정 시간에 배치된 것은 그 시간 안에 그려지고, 월드는 그 시각의 하루 빛으로 조명됩니다"
+
+msgid "Story pack"
+msgstr "스토리 팩"
+
+msgid "Stream the maps the story pack adds"
+msgstr "스토리 팩이 추가하는 맵 스트리밍"
+
+msgid "Shared minigames"
+msgstr "공유 미니게임"
+
+msgid "Stream the maps the shared minigames add"
+msgstr "공유 미니게임이 추가하는 맵 스트리밍"
+
+msgid "The index holds no script-managed group"
+msgstr "인덱스에 스크립트로 관리되는 그룹이 없습니다"
+
+msgid "Script-managed groups: {on} of {groups} on"
+msgstr "스크립트로 관리되는 그룹: {groups}개 중 {on}개 켜짐"
+
+msgid "Nothing says which are on at rest: a group ticked streams its maps in"
+msgstr "기본적으로 어떤 것이 켜져 있는지 알려 주는 것이 없습니다: 선택한 그룹은 그 맵을 스트리밍합니다"
+
+msgid "{name}, {maps} maps"
+msgstr "{name}, 맵 {maps}개"
+
+msgid "{story} maps are the story pack's and {minigames} the shared minigames'; {groups} script-managed groups"
+msgstr "스토리 팩의 맵 {story}개, 공유 미니게임의 맵 {minigames}개, 스크립트로 관리되는 그룹 {groups}개"
+
+msgid "Bound by block maps: no key snapshot was found"
+msgstr "블록 맵으로 연결: 키 스냅샷을 찾지 못했습니다"
+
+msgid "Bound by the archives' tables; {ciphered} of the level's change sets are ciphered"
+msgstr "아카이브 테이블로 연결, 레벨의 변경 집합 중 {ciphered}개가 암호화됨"
