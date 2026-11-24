@@ -19,7 +19,7 @@ use super::screen::{vertex_inputs, ScreenError, ScreenPass, Space};
 const INSTANCED: usize = 27;
 
 /// How many lights of a kind are drawn at once.
-pub const MOST: usize = 64;
+pub const MOST: usize = 2048;
 
 /// How many times each side of the octahedron the sphere is cut into: the volume of a light is that much of a sphere.
 const CUTS: u32 = 3;
