@@ -76,9 +76,9 @@ impl Pose {
             let number = word.parse::<f32>().ok().filter(|n| n.is_finite());
             numbers.push(number.ok_or_else(|| format!("`{word}` is not a number"))?);
         }
-        let (x, y, z, yaw, pitch, fov) = match numbers.as_slice() {
-            &[x, y, z, yaw, pitch] => (x, y, z, yaw, pitch, None),
-            &[x, y, z, yaw, pitch, fov] => (x, y, z, yaw, pitch, Some(fov)),
+        let (x, y, z, yaw, pitch, fov) = match numbers[..] {
+            [x, y, z, yaw, pitch] => (x, y, z, yaw, pitch, None),
+            [x, y, z, yaw, pitch, fov] => (x, y, z, yaw, pitch, Some(fov)),
             _ => {
                 return Err(format!(
                     "a camera is X Y Z YAW PITCH and an optional field of view, found {} number(s)",
