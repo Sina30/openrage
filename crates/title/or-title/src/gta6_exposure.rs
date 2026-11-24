@@ -73,6 +73,8 @@ pub struct ExposureSettings {
     /// The least and the most stops a second adaptation moves by.
     pub min_step: f32,
     pub max_step: f32,
+    /// How fast adaptation closes on its target where a keyframe states no step multiplier of its own.
+    pub step_mult: f32,
 }
 
 impl ExposureSettings {
@@ -83,6 +85,7 @@ impl ExposureSettings {
             blend: Curve::of(get, "Exposure.curve.blend."),
             min_step: get("Adaptation.min.step.size", 0.15),
             max_step: get("Adaptation.max.step.size", 15.0),
+            step_mult: get("Adaptation.step.size.mult", 9.0),
         }
     }
 }
@@ -153,7 +156,7 @@ pub fn adapt(
     if difference == 0.0 || seconds <= 0.0 {
         return target;
     }
-    let mult = k.get_or("postfx_exposure_adaption_step_mult", 1.0);
+    let mult = k.get_or("postfx_exposure_adaption_step_mult", settings.step_mult);
     let rate = (difference.abs() * (seconds * mult).clamp(0.0, 1.0) / seconds)
         .max(settings.min_step.min(settings.max_step))
         .min(settings.max_step);

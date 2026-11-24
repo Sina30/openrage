@@ -24,6 +24,7 @@ fn settings() -> ExposureSettings {
         },
         min_step: 0.2,
         max_step: 10.0,
+        step_mult: 1.0,
     }
 }
 
@@ -74,7 +75,10 @@ fn the_settings_are_read_by_the_curves_names_and_the_steps_keep_their_defaults()
     assert_eq!(read.curve.scale, -2.0);
     assert_eq!(read.blend.vertical_offset, 4.0);
     assert_eq!(read.curve.vertical_offset, 0.0);
-    assert_eq!((read.min_step, read.max_step), (0.15, 15.0));
+    assert_eq!(
+        (read.min_step, read.max_step, read.step_mult),
+        (0.15, 15.0, 9.0)
+    );
 }
 
 #[test]
