@@ -60,14 +60,22 @@ fn words(w: &[u64]) -> Vec<u8> {
 
 /// A counted array `{u32 count, u32 capacity, u64 pointer}` at `at`.
 fn counted(buf: &mut [u8], at: usize, count: u32, pointer: u64) {
-    put(buf, at, &[count.to_le_bytes(), count.to_le_bytes()].concat());
+    put(
+        buf,
+        at,
+        &[count.to_le_bytes(), count.to_le_bytes()].concat(),
+    );
     put(buf, at + 8, &pointer.to_le_bytes());
 }
 
 /// An array `{u64 pointer, u16 count, u16 capacity, u32}` at `at`.
 fn array_at(buf: &mut [u8], at: usize, count: u16, pointer: u64) {
     put(buf, at, &pointer.to_le_bytes());
-    put(buf, at + 8, &[count.to_le_bytes(), count.to_le_bytes()].concat());
+    put(
+        buf,
+        at + 8,
+        &[count.to_le_bytes(), count.to_le_bytes()].concat(),
+    );
 }
 
 /// A grouped hash map's header `{u32 groups, u32 count, u64 pointer}` at `at`.
@@ -103,7 +111,11 @@ fn classes() -> HashMap<u32, RbmClass> {
         &[(START_HOUR, 0x10, 0x14, 0, 0), (END_HOUR, 0x14, 0x14, 0, 0)],
     );
     [
-        class(WORLD_STATE, 0x20, &[(NODES, 0x10, 0x5C, 1, 0), info(0x07, 0)]),
+        class(
+            WORLD_STATE,
+            0x20,
+            &[(NODES, 0x10, 0x5C, 1, 0), info(0x07, 0)],
+        ),
         class(NODE, 0xE0, &[(COMPONENTS, 0x20, 0x5C, 1, 0), info(0x07, 0)]),
         class(
             SELECTOR_COMPONENT,
@@ -148,16 +160,16 @@ fn classes() -> HashMap<u32, RbmClass> {
         class(
             RULE,
             0x10,
-            &[(RULE_CONFIG, 0x00, 0x4A, 0, 0), (CONDITION, 0x08, 0x07, 0, 0)],
+            &[
+                (RULE_CONFIG, 0x00, 0x4A, 0, 0),
+                (CONDITION, 0x08, 0x07, 0, 0),
+            ],
         ),
         time,
         class(
             PAIR,
             16,
-            &[
-                (lit(b"Key"), 0, 0x4A, 0, 0),
-                (lit(b"Item"), 8, 0x07, 0, 0),
-            ],
+            &[(lit(b"Key"), 0, 0x4A, 0, 0), (lit(b"Item"), 8, 0x07, 0, 0)],
         ),
         class(GROUP, 16 + 16 * 16, &groups),
     ]
@@ -198,7 +210,11 @@ fn body(start: i32, end: i32) -> RbmModel {
     put(&mut rule, 0, &NIGHT.to_le_bytes());
     put(&mut rule, 8, &ptr(14, 0).to_le_bytes());
     let mut time = vec![0u8; 0x18];
-    put(&mut time, 0x10, &[start.to_le_bytes(), end.to_le_bytes()].concat());
+    put(
+        &mut time,
+        0x10,
+        &[start.to_le_bytes(), end.to_le_bytes()].concat(),
+    );
     let mut changes = vec![0u8; 2 * 0x38];
     array_at(&mut changes, 0x08, 1, ptr(17, 0));
     array_at(&mut changes, 0x38 + 0x18, 1, ptr(17, 0));

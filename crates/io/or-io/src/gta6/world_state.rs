@@ -94,9 +94,15 @@ pub struct Rule {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     /// From the start hour to the end hour, both inside, past midnight where the start is later.
-    TimeOfDay { start: i32, end: i32 },
+    TimeOfDay {
+        start: i32,
+        end: i32,
+    },
     /// The same to the minute: hour and minute of the start, then of the end.
-    TimeWithMinutes { start: (i32, i32), end: (i32, i32) },
+    TimeWithMinutes {
+        start: (i32, i32),
+        end: (i32, i32),
+    },
     Not(Box<Condition>),
     And(Vec<Condition>),
     Or(Vec<Condition>),
@@ -186,7 +192,11 @@ impl WorldState {
         for node in nodes.iter().filter_map(object) {
             let components: Vec<&MetaInstance> = match node.get(&name(COMPONENTS)) {
                 Some(Value::Array(items)) => items.iter().filter_map(object).collect(),
-                _ => return Err(WorldStateError::Broken("a node's components are not an array")),
+                _ => {
+                    return Err(WorldStateError::Broken(
+                        "a node's components are not an array",
+                    ))
+                }
             };
             let (rule_class, selector_class) = (name(RULE_COMPONENT), name(SELECTOR_COMPONENT));
             // The rule set of a selector names its key, in the same node; a later one stands.
@@ -207,7 +217,10 @@ impl WorldState {
                         .collect();
                     selectors.push(Selector {
                         key,
-                        default: selector.get(&name(DEFAULT_CONFIG)).and_then(key32).unwrap_or(0),
+                        default: selector
+                            .get(&name(DEFAULT_CONFIG))
+                            .and_then(key32)
+                            .unwrap_or(0),
                         configs,
                         rules: (rules.iter().find(|(k, _)| *k == key))
                             .map_or_else(Vec::new, |(_, r)| r.clone()),
@@ -305,18 +318,16 @@ fn rules_of(set: &MetaInstance) -> Vec<Rule> {
 }
 
 fn condition_of(c: &MetaInstance) -> Condition {
-    let class = [
-        TIME_OF_DAY,
-        TIME_WITH_MINUTES,
-        NOT,
-        AND,
-        OR,
-        TRUE,
-        RAINING,
-    ]
-    .into_iter()
-    .find(|class| c.type_name == name(*class));
-    let all = || array(c, CONDITIONS).iter().filter_map(object).map(condition_of).collect();
+    let class = [TIME_OF_DAY, TIME_WITH_MINUTES, NOT, AND, OR, TRUE, RAINING]
+        .into_iter()
+        .find(|class| c.type_name == name(*class));
+    let all = || {
+        array(c, CONDITIONS)
+            .iter()
+            .filter_map(object)
+            .map(condition_of)
+            .collect()
+    };
     match class {
         Some(TIME_OF_DAY) => Condition::TimeOfDay {
             start: number(c, START_HOUR),

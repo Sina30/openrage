@@ -275,10 +275,7 @@ fn a_mode_s_game_shapes_are_the_archives_its_pack_registers_under_that_folder() 
         .collect();
     found.sort_by_key(|(_, archive, _)| *archive);
     // One archive named twice is found once.
-    assert_eq!(
-        found,
-        [(Mode::Base, 0, 0x1000), (Mode::Story, 1, 0x3000)]
-    );
+    assert_eq!(found, [(Mode::Base, 0, 0x1000), (Mode::Story, 1, 0x3000)]);
     assert!(game_shapes(&registry.packs, &[]).is_empty());
 }
 
