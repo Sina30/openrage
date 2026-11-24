@@ -9,6 +9,7 @@ use super::antialias::AntiAliasPass;
 use super::bindings::Requirement;
 use super::bloom::BloomPass;
 use super::capsule_lights::{CapsuleLight, CapsuleLights};
+use super::distant_lights::{DistantLight, DistantLights, SpriteSize};
 use super::dome::SkyPass;
 use super::engine::EngineConstants;
 use super::fog_volumes::{FogSky, FogVolume, FogVolumes};
@@ -506,6 +507,8 @@ pub struct FramePasses {
     capsules: Option<CapsuleLights>,
     /// None where the pack has no pass for it: the particles then fill the air with nothing.
     fog: Option<FogVolumes>,
+    /// None where the pack has no pass for it: a light seen from afar then shows no glow.
+    distant: Option<DistantLights>,
     lighting: LightingPass,
     resolve: ResolvePass,
 }
@@ -542,6 +545,9 @@ impl FramePasses {
         let fog = FogVolumes::new(device, queue, pack, hdr, inputs)
             .map_err(|error| tracing::warn!(%error, "the fog of the particles is not drawn"))
             .ok();
+        let distant = DistantLights::new(device, queue, pack, hdr)
+            .map_err(|error| tracing::warn!(%error, "the distant lights are not drawn"))
+            .ok();
         let bloom = BloomPass::new(device, queue, pack, inputs)
             .map_err(|error| tracing::warn!(%error, "the game's bloom is not drawn"))
             .ok();
@@ -556,6 +562,7 @@ impl FramePasses {
             spots,
             capsules,
             fog,
+            distant,
             lighting: LightingPass::new(device, queue, pack, hdr, inputs)?,
             resolve,
         })
@@ -658,6 +665,26 @@ impl FramePasses {
     ) {
         if let Some(pass) = &self.capsules {
             pass.write(queue, engine, screen, lights);
+        }
+    }
+
+    /// Write the distant lights of this frame, sprites of `size`, which [`Self::record_distant_lights`] draws.
+    pub fn write_distant_lights(
+        &self,
+        queue: &wgpu::Queue,
+        engine: &EngineConstants,
+        screen: &Screen,
+        (size, lights): (SpriteSize, &[DistantLight]),
+    ) {
+        if let Some(pass) = &self.distant {
+            pass.write(queue, engine, screen, size, lights);
+        }
+    }
+
+    /// Draw the distant lights the frame was written with into `pass`: the lit frame, with the depth of the frame, which it only reads.
+    pub fn record_distant_lights(&self, pass: &mut wgpu::RenderPass<'_>) {
+        if let Some(distant) = &self.distant {
+            distant.record(pass);
         }
     }
 

@@ -584,6 +584,8 @@ impl ViewportRenderer {
         deferred
             .passes
             .write_capsule_lights(queue, &engine, &screen, &self.capsule_lights);
+        let (size, distant) = &self.distant_lights;
+        (deferred.passes).write_distant_lights(queue, &engine, &screen, (*size, distant));
         deferred.passes.write_fog(
             queue,
             &engine,
@@ -732,6 +734,7 @@ impl ViewportRenderer {
             );
             scene.record_blended(&mut pass);
             self.world.draw_lit(&mut pass, &self.bind_group);
+            deferred.passes.record_distant_lights(&mut pass);
         }
         self.gpu_mark(encoder, "blended");
         // The fog the particles fill the air with is laid over what blends, testing the depth and leaving the stencil be

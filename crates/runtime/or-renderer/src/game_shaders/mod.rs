@@ -7,6 +7,7 @@ pub mod bloom;
 pub mod capsule_lights;
 pub mod constants;
 pub mod deferred;
+pub mod distant_lights;
 pub mod dome;
 pub mod drawable;
 pub mod effect_pass;
