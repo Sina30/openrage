@@ -290,8 +290,10 @@ impl Shell {
         seconds: Duration,
     ) -> Result<(), String> {
         let (started, from) = (Instant::now(), viewer().camera.position);
+        // ⚠ The last frame is not cut short at `seconds`: a short last step would read as a camera
+        // slowing to a stop, and a dump after the flight is to see it still flying.
         loop {
-            let flown = started.elapsed().min(seconds);
+            let flown = started.elapsed();
             viewer().camera.position = from + velocity * flown.as_secs_f32();
             self.idle(state, 1)?;
             if flown >= seconds {
