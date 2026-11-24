@@ -415,8 +415,7 @@ impl Forest {
         (self.maps[slot].key, node as u32)
     }
 
-    /// The nodes that draw for the camera `view` and how opaque each is, and those waited for;
-    /// `state` says where the model of a node stands.
+    /// The nodes that draw for `view` and how opaque each is, and those waited for, by where `state` says each model stands.
     pub fn select(&mut self, view: &View, state: &dyn Fn(NodeId) -> NodeState) -> Selection {
         if self.stale {
             self.relink();
