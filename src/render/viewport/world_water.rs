@@ -1,5 +1,6 @@
-//! GTA VI's water as one blended mesh about the camera, tinted by the day and clear at its vertices
-//! by its depth, built again once the camera has gone far from where it was built or a part arrived.
+//! GTA VI's water as one mesh about the camera, built again once the camera has gone far from where
+//! it was built or a part arrived: drawn by the frame's water pass where the game's passes light
+//! the frame, else as a blended surface tinted by the day.
 
 use std::sync::Arc;
 
@@ -13,46 +14,54 @@ const REACH: f32 = 3_000.0;
 /// How far the camera goes before the mesh is built again, in metres.
 const REBUILD: f32 = 500.0;
 
-/// The mesh, what it was built of, where the camera stood and the tint it is drawn with.
-type Built = (Option<Arc<WorldMesh>>, SeenKey, Vec3, [f32; 3]);
+/// What the mesh was built of and for: the water's parts, whether the frame's water pass draws it, and where the camera stood.
+type Built = (SeenKey, bool, Vec3);
 
 #[derive(Default)]
 pub(super) struct Water {
     built: Option<Built>,
+    /// The blended surface and its tint, where the frame's water pass does not draw the water.
+    plain: Option<(Arc<WorldMesh>, [f32; 3])>,
 }
 
 impl Water {
-    /// Build the mesh again where a part of the water arrived or the camera left where it was built; whether it was.
+    /// Build the mesh again where a part of the water arrived, the frame changed how it is lit, or the camera left where it was built; whether it was.
     pub(super) fn refresh(
         &mut self,
-        renderer: &ViewportRenderer,
+        renderer: &mut ViewportRenderer,
         device: &wgpu::Device,
         water: Option<&Seen>,
         eye: Vec3,
     ) -> bool {
         let Some(water) = water else {
+            self.plain = None;
+            renderer.set_world_water(device, None);
             return self.built.take().is_some();
         };
-        let of = water.key();
-        if let Some((_, was, at, _)) = &self.built {
-            if *was == of && at.distance(eye) < REBUILD {
+        let (of, lit) = (water.key(), renderer.has_deferred());
+        if let Some((was, was_lit, at)) = &self.built {
+            if *was == of && *was_lit == lit && at.distance(eye) < REBUILD {
                 return false;
             }
         }
         let medium = water.medium();
         let ground = water.ground.as_deref();
-        let (vertices, indices) = mesh(&water.quads.quads, eye, REACH, ground, medium.as_ref());
-        let drawn = (!indices.is_empty()).then(|| {
+        let (vertices, indices) = mesh(&water.quads.quads, eye, REACH, ground);
+        // ⚠ The pass wants the day's medium: until the day is read it draws nothing.
+        let look = medium.as_ref().filter(|_| lit).map(|m| m.look());
+        renderer.set_world_water(device, look.map(|look| (&vertices[..], &indices[..], look)));
+        self.plain = (!lit && !indices.is_empty()).then(|| {
             let material = renderer.world_material(device, None, None, None, WorldBucket::Blend);
-            Arc::new(WorldMesh::new(device, &vertices, &indices, material))
+            let mesh = Arc::new(WorldMesh::new(device, &vertices, &indices, material));
+            (mesh, tint(medium.as_ref()))
         });
-        self.built = Some((drawn, of, eye, tint(medium.as_ref())));
+        self.built = Some((of, lit, eye));
         true
     }
 
-    /// Add the water to a frame's instances and draws, after the `laid` ones.
+    /// Add the blended surface to a frame's instances and draws, after the `laid` ones, where the frame's water pass does not draw the water.
     pub(super) fn draw(&self, laid: &mut Vec<WorldInstance>, draws: &mut Vec<WorldDraw>) {
-        let Some((Some(mesh), _, _, [r, g, b])) = &self.built else {
+        let Some((mesh, [r, g, b])) = &self.plain else {
             return;
         };
         let at = laid.len() as u32;

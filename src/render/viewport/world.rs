@@ -415,7 +415,7 @@ impl RenderBridge {
         // The GTA V day is worked out again once the world is left.
         self.day_key = None;
         let water = viewer.water(weather);
-        if (world.water).refresh(&self.renderer, &self.device, water.as_ref(), eye) {
+        if (world.water).refresh(&mut self.renderer, &self.device, water.as_ref(), eye) {
             world.changes += 1;
         }
 

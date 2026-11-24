@@ -268,6 +268,27 @@ impl ViewportRenderer {
             frame.reflection.write(queue, &map);
             frame.reflection_of = Some(revision);
         }
+        // The world's water reads a copy of the lit frame, which is made when the frame is
+        if self.world.water.drawn() {
+            let size = (self.width, self.height);
+            let behind = frame.refraction.get_or_insert_with(|| {
+                crate::game_shaders::targets::render_target(
+                    device,
+                    "refraction",
+                    size,
+                    crate::game_shaders::deferred::HDR_FORMAT,
+                    wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+                )
+            });
+            let water = &mut self.world.water;
+            water.give_ripples(device, queue, self.water_textures.bump2.as_ref());
+            water.bind(
+                device,
+                behind,
+                frame.passes.half_depth(),
+                frame.reflection.view(),
+            );
+        }
     }
 
     /// End the stage `label` for the GPU timer, where the device has one.
@@ -590,9 +611,13 @@ impl ViewportRenderer {
             self.gpu_mark(encoder, "shadows");
         }
         // Water reads how far the opaque surfaces lie, where the pass that works that out has no occlusion to give
-        deferred
-            .passes
-            .record_ambient(encoder, occlusion, self.refracts);
+        let refracts = self.refracts || self.world.water.drawn();
+        if self.world.water.drawn() {
+            self.world
+                .water
+                .write(queue, &engine, (self.width, self.height));
+        }
+        deferred.passes.record_ambient(encoder, occlusion, refracts);
         self.gpu_mark(encoder, "ambient occlusion");
         {
             let mut pass = over_the_frame(
@@ -661,7 +686,7 @@ impl ViewportRenderer {
             scene.record_water_fog(&mut pass);
         }
         // Water is drawn over a copy of the frame as it stands, since it cannot read what it writes
-        if let (true, Some(refraction)) = (self.refracts, &deferred.refraction) {
+        if let (true, Some(refraction)) = (refracts, &deferred.refraction) {
             encoder.copy_texture_to_texture(
                 deferred.hdr.texture().as_image_copy(),
                 refraction.texture().as_image_copy(),

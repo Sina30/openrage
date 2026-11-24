@@ -18,6 +18,8 @@ mod material;
 mod pipelines;
 mod shader;
 pub(crate) mod shadow;
+pub mod water;
+mod water_shader;
 
 pub use material::{
     colour1, coloured, slot, WorldConstants, WorldFamily, WorldSurface, WORLD_MAPS,
@@ -218,6 +220,8 @@ pub(crate) struct World {
     multi: bool,
     /// The far stand-ins, drawn where the cutouts draw.
     cards: cards::Cards,
+    /// GTA VI's water, drawn over a copy of the lit frame before what blends.
+    pub(crate) water: water::WaterPass,
     /// What a material's own light is multiplied by: the exposure the day's light is given at, 1 where the frame keeps its own day.
     exposure: f32,
 }
@@ -406,6 +410,7 @@ impl World {
         Self {
             pipelines: Pipelines::new(device, camera_bgl, &materials, &light_layout, colour_format),
             cards: cards::Cards::new(device, queue, camera_bgl, colour_format),
+            water: water::WaterPass::new(device, queue, camera_bgl, &light_layout),
             exposure: 1.0,
             materials,
             sampler,
@@ -595,6 +600,9 @@ impl World {
 
     /// Draw what blends into a pass over the frame the game's passes lit, which reads the depth of the frame and writes none: the faces that turn away, then those that face the camera.
     pub(crate) fn draw_lit(&self, pass: &mut wgpu::RenderPass<'_>, camera: &wgpu::BindGroup) {
+        if self.draws_anything() {
+            self.water.draw(pass, camera, &self.light_group);
+        }
         for faces in &self.pipelines.lit {
             self.draw(pass, camera, faces);
         }

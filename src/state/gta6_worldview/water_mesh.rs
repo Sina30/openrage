@@ -1,9 +1,10 @@
 //! The mesh of the water about the camera: each quad, or the triangle of it a cut leaves, cut along
-//! one grid of the world so that quads meet, its opacity at each vertex by the water's depth.
+//! one grid of the world so that quads meet, the depth of the ground under each vertex in its colour.
 
 use glam::Vec3;
 use or_io::gta6::water::height::WaterGround;
 use or_io::gta6::water::WaterQuad;
+use or_renderer::world::water::WaterLook;
 use or_renderer::MeshVertex;
 
 /// The side of a cell the quads are cut into, and of one within `NEAR` of the camera, in metres.
@@ -11,8 +12,10 @@ use or_renderer::MeshVertex;
 const COARSE: f32 = 64.0;
 const FINE: f32 = 16.0;
 const NEAR: f32 = 1_000.0;
-/// The depth over which a shore fades in, in metres.
+/// The depth over which a shore fades in where the frame's own water pass does not draw it, in metres.
 const SHORE: f32 = 1.0;
+/// The depth a vertex is given where the ground under it is not known: deeper than light goes.
+pub const DEEP: f32 = 1_000.0;
 /// What turns the day's extinction into one a metre: its unit is not known.
 // ponytail: chosen so that red is gone in about a metre and blue-green in about two.
 const PATH_SCALE: f32 = 0.1;
@@ -26,6 +29,8 @@ pub struct Medium {
     pub extinction: [f32; 3],
     /// The share of each channel taken out that comes back as the water's own colour.
     pub albedo: [f32; 3],
+    /// What the sky the water reflects is multiplied by.
+    pub reflection: f32,
 }
 
 impl Medium {
@@ -52,7 +57,17 @@ impl Medium {
         Some(Self {
             extinction,
             albedo: std::array::from_fn(|c| scattering[c] / extinction[c] * tint[c] * brightness),
+            reflection: scale("water_reflection_color_mult"),
         })
+    }
+
+    /// The medium as the frame's water pass takes it, its extinction a metre at a time.
+    pub fn look(&self) -> WaterLook {
+        WaterLook {
+            extinction: self.extinction.map(|e| e * PATH_SCALE),
+            albedo: self.albedo,
+            reflection: self.reflection,
+        }
     }
 }
 
@@ -66,24 +81,11 @@ pub fn tint(medium: Option<&Medium>) -> [f32; 3] {
     medium.map_or(TINT, |m| m.albedo)
 }
 
-/// The vertex colour of the water at a point, white with its opacity: `cover` the quad's own opacity there, `depth` the water over the ground where that is known.
-// ⚠ A world vertex's rgb is the palette column and the four-layer override, never the albedo, so the colour is the instance's tint.
-fn shade(cover: f32, depth: Option<f32>, medium: Option<&Medium>) -> [f32; 4] {
-    // Dry ground draws no water, and a shore fades in over its first metre.
+/// The vertex colour of the water where the ground lies `depth` under it: the depth in red for the frame's water pass, and in alpha the opacity a plain blended surface takes, which dry ground makes nought.
+// ⚠ A quad's alpha bytes are not its opacity: blended by them the surface does not show.
+fn shade(depth: Option<f32>) -> [f32; 4] {
     let shore = depth.map_or(1.0, |d| smoothstep(d / SHORE));
-    let Some(medium) = medium else {
-        return [1.0, 1.0, 1.0, cover * shore];
-    };
-    // What the water lets through of the ground under it, by channel.
-    let opaque: [f32; 3] = std::array::from_fn(|c| {
-        let through = depth.map_or(1.0, |d| {
-            (-PATH_SCALE * medium.extinction[c] * d.max(0.0)).exp()
-        });
-        1.0 - (1.0 - cover) * through
-    });
-    // ⚠ A blend has one opacity: the channels share their mean, and the hue by depth is not drawn.
-    let alpha = opaque.iter().sum::<f32>() / 3.0;
-    [1.0, 1.0, 1.0, alpha * shore]
+    [depth.unwrap_or(DEEP), 0.0, 0.0, shore]
 }
 
 /// Where a point at `u`, `v` across a quad of `kind` is on its water: at or above nought.
@@ -119,7 +121,6 @@ struct Quad<'a> {
     min: [f32; 2],
     max: [f32; 2],
     ground: Option<&'a WaterGround>,
-    medium: Option<&'a Medium>,
 }
 
 impl Quad<'_> {
@@ -131,20 +132,9 @@ impl Quad<'_> {
     }
 
     fn vertex(&self, x: f32, y: f32) -> MeshVertex {
-        let (u, v) = self.across(x, y);
-        let [sw, se, ne, nw] = self.quad.alpha.map(|a| f32::from(a) / 255.0);
-        // A cut quad's opacity is barycentric over the three corners it keeps.
-        let cover = match self.quad.kind {
-            1 => sw * (1.0 - u - v) + se * u + nw * v,
-            2 => sw * (1.0 - v) + ne * u + nw * (v - u),
-            3 => se * (1.0 - v) + ne * (u + v - 1.0) + nw * (1.0 - u),
-            4 => sw * (1.0 - u) + se * (u - v) + ne * v,
-            _ => sw * (1.0 - u) * (1.0 - v) + se * u * (1.0 - v) + ne * u * v + nw * (1.0 - u) * v,
-        };
         let z = self.quad.z;
         let depth = self.ground.and_then(|g| g.ground(x, y)).map(|h| z - h);
-        let colour = shade(cover, depth, self.medium);
-        MeshVertex::new_coloured([x, y, z], [0.0, 0.0, 1.0], [x, y], colour)
+        MeshVertex::new_coloured([x, y, z], [0.0, 0.0, 1.0], [x, y], shade(depth))
     }
 
     /// The cell `x0..x1` by `y0..y1` of the quad, less what its cut leaves out, as a fan of triangles counter-clockwise from above.
@@ -179,13 +169,12 @@ impl Quad<'_> {
     }
 }
 
-/// The mesh of the quads of `quads` that are drawn and lie within `reach` metres of `eye`, each cut into cells of one grid of the world: in the world, the surface up, the texture coordinate the place in metres, and in the colour's alpha the water's opacity, by its depth over `ground` and the day's `medium` where they are known.
+/// The mesh of the quads of `quads` that are drawn and lie within `reach` metres of `eye`, each cut into cells of one grid of the world: in the world, the surface up, the texture coordinate the place in metres, and in the colour the depth of `ground` under it where that is known.
 pub fn mesh(
     quads: &[WaterQuad],
     eye: Vec3,
     reach: f32,
     ground: Option<&WaterGround>,
-    medium: Option<&Medium>,
 ) -> (Vec<MeshVertex>, Vec<u32>) {
     let mut out = (Vec::new(), Vec::new());
     // A quad with no area is passed over before its bounds are clamped to, which a reversed pair panics.
@@ -203,7 +192,6 @@ pub fn mesh(
             min,
             max,
             ground,
-            medium,
         };
         // Only what lies within reach along each axis is cut into cells.
         let lo = [min[0].max(eye.x - reach), min[1].max(eye.y - reach)];

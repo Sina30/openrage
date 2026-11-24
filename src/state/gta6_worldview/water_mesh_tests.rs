@@ -19,7 +19,7 @@ fn quad(min: [i16; 2], max: [i16; 2], kind: u8) -> WaterQuad {
 type Mesh = (Vec<MeshVertex>, Vec<u32>);
 
 fn plain(quads: &[WaterQuad], eye: [f32; 2]) -> Mesh {
-    mesh(quads, Vec3::new(eye[0], eye[1], 0.0), 10_000.0, None, None)
+    mesh(quads, Vec3::new(eye[0], eye[1], 0.0), 10_000.0, None)
 }
 
 fn triangles(mesh: &Mesh) -> impl Iterator<Item = [Vec3; 3]> + '_ {
@@ -113,41 +113,18 @@ fn a_quad_is_cut_along_one_grid_so_its_neighbour_shares_the_points_of_their_edge
 }
 
 #[test]
-fn a_quads_opacity_is_its_corners_from_south_west_round_to_north_west() {
+fn a_vertex_is_the_surface_up_at_its_place_and_holds_no_opacity_of_its_corners() {
     let corners = WaterQuad {
         alpha: [0, 255, 255, 0],
         ..quad([0, 0], [10, 10], 0)
     };
     let (vertices, indices) = plain(&[corners], [5.0, 5.0]);
     assert_eq!((vertices.len(), indices), (4, vec![0, 1, 2, 0, 2, 3]));
-    let alpha = |x: f32, y: f32| {
-        let at = (vertices.iter()).find(|v| v.position[..2] == [x, y]);
-        at.expect("a corner").colour[3]
-    };
-    assert_eq!(
-        [
-            alpha(0.0, 0.0),
-            alpha(10.0, 0.0),
-            alpha(10.0, 10.0),
-            alpha(0.0, 10.0)
-        ],
-        [0.0, 1.0, 1.0, 0.0]
-    );
     assert!(vertices.iter().all(|v| v.normal == [0.0, 0.0, 1.0]));
     assert_eq!(vertices[2].uv, [10.0, 10.0]);
-    assert_eq!(vertices[0].colour[..3], [1.0; 3]);
+    // With no ground known the water is deep and whole, whatever its alpha bytes say.
+    assert!(vertices.iter().all(|v| v.colour == [DEEP, 0.0, 0.0, 1.0]));
     assert_eq!(tint(None), TINT);
-}
-
-#[test]
-fn a_cut_quad_takes_no_opacity_from_the_corner_it_leaves_out() {
-    let cut = WaterQuad {
-        alpha: [0, 0, 255, 0],
-        ..quad([0, 0], [10, 10], 1)
-    };
-    let (vertices, _) = plain(&[cut], [5.0, 5.0]);
-    assert!(!vertices.is_empty());
-    assert!(vertices.iter().all(|v| v.colour[3] == 0.0));
 }
 
 #[test]
@@ -160,42 +137,29 @@ fn a_quad_out_of_reach_a_hidden_one_a_deleted_one_and_one_of_no_area_are_left_ou
     let deleted = quad([0, 0], [1, 1], 5);
     let near = quad([50, 0], [60, 10], 0);
     let (eye, reach) = (Vec3::ZERO, 100.0);
-    let (vertices, indices) = mesh(&[far, hidden, deleted, near], eye, reach, None, None);
+    let (vertices, indices) = mesh(&[far, hidden, deleted, near], eye, reach, None);
     assert_eq!((vertices.len(), indices.len()), (4, 6));
     assert_eq!(vertices[0].position, [50.0, 0.0, 0.0]);
     // A camera over a quad is at no distance from it, however high the reach is counted from.
     let over = Vec3::new(1050.0, 1050.0, 0.0);
-    assert!(!mesh(&[far], over, 1.0, None, None).0.is_empty());
+    assert!(!mesh(&[far], over, 1.0, None).0.is_empty());
     let reversed = [quad([10, 0], [0, 10], 0), quad([0, 10], [10, 0], 0)];
-    assert!(mesh(&reversed, eye, reach, None, None).0.is_empty());
-}
-
-fn medium(extinction: [f32; 3], albedo: [f32; 3]) -> Medium {
-    Medium { extinction, albedo }
+    assert!(mesh(&reversed, eye, reach, None).0.is_empty());
 }
 
 #[test]
-fn water_over_dry_ground_is_not_drawn_and_deeper_water_hides_more_of_the_ground() {
-    let m = medium([1.0, 0.5, 0.25], [1.0; 3]);
-    assert_eq!(shade(0.1, Some(-1.0), Some(&m))[3], 0.0);
-    assert_eq!(shade(0.1, Some(0.0), Some(&m))[3], 0.0);
-    let (shallow, deep) = (
-        shade(0.1, Some(2.0), Some(&m)),
-        shade(0.1, Some(8.0), Some(&m)),
-    );
-    assert!(0.1 < shallow[3] && shallow[3] < deep[3] && deep[3] < 1.0);
-    // The vertex carries only the opacity: the instance's tint is the colour.
-    assert_eq!(shallow[..3], [1.0; 3]);
-    // Where the depth is not known only the quad's own opacity is drawn.
-    assert!((shade(0.1, None, Some(&m))[3] - 0.1).abs() < 1e-6);
-    let fading = shade(0.1, Some(0.5), Some(&m))[3];
-    assert!(0.0 < fading && fading < shade(0.1, Some(1.0), Some(&m))[3]);
-    assert_eq!(shade(0.3, None, None), [1.0, 1.0, 1.0, 0.3]);
+fn water_over_dry_ground_is_clear_and_its_depth_is_handed_on() {
+    assert_eq!(shade(Some(-1.0)), [-1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(shade(Some(0.0))[3], 0.0);
+    let fading = shade(Some(0.5))[3];
+    assert!(0.0 < fading && fading < 1.0);
+    assert_eq!(shade(Some(8.0)), [8.0, 0.0, 0.0, 1.0]);
+    assert_eq!(shade(None), [DEEP, 0.0, 0.0, 1.0]);
 }
 
 #[test]
 fn the_medium_is_the_days_extinction_and_its_scattering_over_it() {
-    let vars: [(&str, f32); 7] = [
+    let vars: [(&str, f32); 8] = [
         ("water_clip_extinction_r", 2.0),
         ("water_clip_extinction_g", 1.0),
         ("water_clip_extinction_b", 1.0),
@@ -203,12 +167,19 @@ fn the_medium_is_the_days_extinction_and_its_scattering_over_it() {
         ("water_clip_scattering_r", 1.0),
         ("water_clip_scattering_g", 1.0),
         ("water_clip_scattering_b", 0.5),
+        ("water_reflection_color_mult", 0.5),
     ];
     let get = |name: &str| vars.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
     let m = Medium::of(get).expect("a medium");
     assert_eq!(m.extinction, [4.0, 2.0, 2.0]);
     assert_eq!(m.albedo, [0.25, 0.5, 0.25]);
     assert_eq!(tint(Some(&m)), m.albedo);
+    assert_eq!(m.reflection, 0.5);
+    let look = m.look();
+    assert_eq!(
+        (look.extinction, look.albedo, look.reflection),
+        ([0.4, 0.2, 0.2], m.albedo, 0.5)
+    );
     assert_eq!(Medium::of(|_| None), None);
     assert_eq!(Medium::of(|_| Some(0.0)), None);
 }
@@ -223,21 +194,18 @@ fn the_ground_under_a_quad_dries_the_part_of_it_that_stands_over_land() {
     };
     let fallback = Heights::new(2, 1, vec![32358, 33178]).expect("2 by 1");
     let ground = WaterGround::new(&atlas, fallback).expect("fits");
-    let m = medium([1.0; 3], [0.1; 3]);
     let eye = Vec3::ZERO;
-    let (vertices, _) = mesh(
-        &[quad([-15, -7], [15, 7], 0)],
-        eye,
-        100.0,
-        Some(&ground),
-        Some(&m),
-    );
+    let (vertices, _) = mesh(&[quad([-15, -7], [15, 7], 0)], eye, 100.0, Some(&ground));
     assert!(!vertices.is_empty());
     for v in &vertices {
-        let (x, alpha) = (v.position[0], v.colour[3]);
+        let (x, depth, alpha) = (v.position[0], v.colour[0], v.colour[3]);
         assert!(
-            if x < 0.0 { alpha > 0.5 } else { alpha == 0.0 },
-            "at {x}: {alpha}"
+            if x < 0.0 {
+                depth > 0.5 && alpha > 0.5
+            } else {
+                depth < 0.0 && alpha == 0.0
+            },
+            "at {x}: {depth} {alpha}"
         );
     }
 }
