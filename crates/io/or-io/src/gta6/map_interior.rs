@@ -112,10 +112,32 @@ pub struct Interior {
 }
 
 impl Interior {
-    /// The entities an instance draws: the interior's own, then those of each entity set `on` names.
-    pub fn drawn<'a>(&'a self, on: &'a [u32]) -> impl Iterator<Item = &'a InteriorChild> {
+    /// Where each of the interior's own entities stands: the room or the portal that attaches it.
+    pub fn locations(&self) -> Vec<EntitySetLocation> {
+        // An entity nothing attaches stands in room 0, the room outside every other.
+        let mut at = vec![EntitySetLocation::Room(0); self.entities.len()];
+        let rooms = (self.rooms.iter().enumerate())
+            .map(|(k, r)| (EntitySetLocation::Room(k as u32), &r.room.attached_objects));
+        let portals = (self.portals.iter().enumerate())
+            .map(|(k, p)| (EntitySetLocation::Portal(k as u32), &p.attached_objects));
+        for (location, attached) in rooms.chain(portals) {
+            for entity in attached {
+                if let Some(slot) = at.get_mut(*entity as usize) {
+                    *slot = location;
+                }
+            }
+        }
+        at
+    }
+
+    /// The entities an instance draws, each with where it stands: the interior's own, then those of each entity set `on` names.
+    pub fn drawn<'a>(
+        &'a self,
+        on: &'a [u32],
+    ) -> impl Iterator<Item = (&'a InteriorChild, EntitySetLocation)> {
         let sets = (self.entity_sets.iter()).filter(move |set| on.contains(&set.name));
-        (self.entities.iter()).chain(sets.flat_map(|set| &set.entities))
+        (self.entities.iter().zip(self.locations()))
+            .chain(sets.flat_map(|set| set.entities.iter().zip(set.locations.iter().copied())))
     }
 }
 
@@ -182,13 +204,8 @@ fn read_interior(
     a: &[u8],
     what: &str,
 ) -> Result<Interior> {
-    let room_records = blocks.records(
-        a,
-        0xD0,
-        C_MLO_ROOM_DEF,
-        ROOM_SIZE,
-        &format!("{what}.rooms"),
-    )?;
+    let room_records =
+        blocks.records(a, 0xD0, C_MLO_ROOM_DEF, ROOM_SIZE, &format!("{what}.rooms"))?;
     let rooms = (linked.rooms.into_iter().zip(room_records))
         .map(|(room, r)| {
             Ok(InteriorRoom {
@@ -305,12 +322,7 @@ pub fn read_instances(model: &RbmModel) -> Result<Vec<InteriorInstance>> {
                 Some((_, names, count)) if names.len() >= 4 * count => (0..count)
                     .map(|n| u32_at(names, 4 * n))
                     .collect::<Result<_>>()?,
-                Some(_) => {
-                    return Err(broken(
-                        what,
-                        "its defaultEntitySets run past their block",
-                    ))
-                }
+                Some(_) => return Err(broken(what, "its defaultEntitySets run past their block")),
             };
             Ok(InteriorInstance {
                 entity: k,

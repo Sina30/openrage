@@ -161,11 +161,16 @@ fn an_interior_reads_what_places_its_entities_its_rooms_time_cycles_and_its_dist
 #[test]
 fn an_instance_draws_the_interior_s_own_entities_and_those_of_the_sets_it_names() {
     let interior = read(&types_model()).expect("it reads").remove(0);
-    let words = |on: &[u32]| -> Vec<u64> { interior.drawn(on).map(|e| e.archetype_word).collect() };
+    let words =
+        |on: &[u32]| -> Vec<u64> { (interior.drawn(on).map(|(e, _)| e.archetype_word)).collect() };
     let (one, two) = (0x1_0000_00B1, 0x2_0000_00B1);
     assert_eq!(words(&[]), [one, two]);
     assert_eq!(words(&[0xBAD]), [one, two]);
     assert_eq!(words(&[0xBAD, 0x05E7]), [one, two, two, one]);
+    // Room 1 attaches the first entity and the portal the second; the set states its own.
+    let (room, portal) = (EntitySetLocation::Room(1), EntitySetLocation::Portal(0));
+    let stand: Vec<_> = interior.drawn(&[0x05E7]).map(|(_, at)| at).collect();
+    assert_eq!(stand, [room, portal, room, portal]);
 }
 
 #[test]
