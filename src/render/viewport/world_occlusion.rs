@@ -211,19 +211,15 @@ impl Occlusion {
                 );
             }
         }
-        let modelled: Vec<[Vec3; 3]> = (models.par_iter())
-            .flat_map_iter(|(_, model)| {
-                let mut flat = Vec::new();
-                for triangle in &model.triangles {
-                    let point = |k: u8| model.vertices.get(usize::from(k)).copied().map(Vec3::from);
-                    if let [Some(a), Some(b), Some(c)] = triangle.map(point) {
-                        cut(view_proj, [a, b, c], &mut flat);
-                    }
+        // ⚠ On this core: tens of thousands of triangles cut in a millisecond, where cores the streaming workers keep busy made a parallel cut wait on the slowest.
+        for (_, model) in &models {
+            for triangle in &model.triangles {
+                let point = |k: u8| model.vertices.get(usize::from(k)).copied().map(Vec3::from);
+                if let [Some(a), Some(b), Some(c)] = triangle.map(point) {
+                    cut(view_proj, [a, b, c], &mut flat);
                 }
-                flat
-            })
-            .collect();
-        flat.extend(modelled);
+            }
+        }
         self.raster(&flat);
         self.reduce();
     }
