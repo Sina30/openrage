@@ -106,12 +106,14 @@ fn inside_the_sky_s_ambient_light_comes_in_through_the_openings_to_the_outside_a
 }
 
 #[test]
-fn a_sphere_is_in_the_smallest_room_that_holds_the_whole_of_it() {
+fn a_sphere_is_in_the_smallest_room_that_holds_its_middle_and_is_wider_than_it() {
     let (rooms, ..) = row();
     assert_eq!(room_around(&rooms, Vec3::new(2.0, 0.0, 1.0), 0.5), Some(1));
-    // A shell wider than its room, or a prop across a doorway, is in no room.
-    assert_eq!(room_around(&rooms, Vec3::new(2.0, 0.0, 1.5), 3.0), None);
-    assert_eq!(room_around(&rooms, Vec3::new(4.0, 0.0, 1.0), 0.5), None);
+    // A prop against the wall whose sphere passes the room's box is still in the room.
+    assert_eq!(room_around(&rooms, Vec3::new(2.0, 1.8, 1.0), 1.0), Some(1));
+    // A shell wider than its room is in no room, nor what stands outside every room.
+    assert_eq!(room_around(&rooms, Vec3::new(2.0, 0.0, 1.5), 3.5), None);
+    assert_eq!(room_around(&rooms, Vec3::new(2.0, 5.0, 1.0), 0.5), None);
 }
 
 #[test]

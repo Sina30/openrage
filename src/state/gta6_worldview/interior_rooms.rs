@@ -90,11 +90,14 @@ pub(super) fn room_of(rooms: &[RoomBox], eye: Vec3) -> Option<usize> {
         .map(|(k, _)| k)
 }
 
-/// The smallest room other than room 0 whose box holds the whole of the sphere of `radius` about `p`.
+/// The smallest room other than room 0 whose box holds `p`, the middle of a sphere of `radius`
+/// smaller than the box's half diagonal.
+// ⚠ Measured: a prop on a shelf or against a wall has a sphere that passes the room's box, and lit
+// as outdoors it stood four stops and more over the room. Inferred: a shell's piece is wider than
+// the room it walls.
 pub(super) fn room_around(rooms: &[RoomBox], p: Vec3, radius: f32) -> Option<usize> {
-    let r = Vec3::splat(radius);
     (rooms.iter().enumerate().skip(1))
-        .filter(|(_, room)| (p - r).cmpge(room.min).all() && (p + r).cmple(room.max).all())
+        .filter(|(_, room)| room.holds(p) && 2.0 * radius < (room.max - room.min).length())
         .min_by(|(_, a), (_, b)| a.volume().total_cmp(&b.volume()))
         .map(|(k, _)| k)
 }
