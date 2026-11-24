@@ -232,6 +232,7 @@ fn a_map_that_places_no_interior_has_no_instance() {
 
 type Patch = Box<dyn Fn(&mut RbmModel)>;
 type Read = fn(&RbmModel) -> Option<String>;
+type Case = (fn() -> RbmModel, Read, Patch, &'static str);
 
 fn set(block: usize, at: usize, bytes: Vec<u8>) -> Patch {
     Box::new(move |m: &mut RbmModel| put(&mut m.data_blocks[block - 1].data, at, &bytes))
@@ -247,7 +248,7 @@ fn instances_error(m: &RbmModel) -> Option<String> {
 
 #[test]
 fn what_breaks_a_measured_rule_is_refused_with_the_rule() {
-    let cases: Vec<(fn() -> RbmModel, Read, Patch, &str)> = vec![
+    let cases: Vec<Case> = vec![
         (
             types_model,
             interiors_error,
