@@ -148,7 +148,7 @@ impl Atmosphere {
     }
 
     /// How far a ray from radius `r` at cos-zenith `mu` runs to the top.
-    fn to_top(&self, r: f64, mu: f64) -> f64 {
+    fn distance_to_top(&self, r: f64, mu: f64) -> f64 {
         -r * mu
             + (r * r * (mu * mu - 1.0) + self.top * self.top)
                 .max(0.0)
@@ -164,7 +164,7 @@ impl Atmosphere {
         if self.hits_ground(r, mu) {
             return [0.0; 3];
         }
-        let step = self.to_top(r, mu) / f64::from(steps);
+        let step = self.distance_to_top(r, mu) / f64::from(steps);
         let mut depth = [0.0; 3];
         for i in 0..steps {
             let t = (f64::from(i) + 0.5) * step;
@@ -197,7 +197,7 @@ impl Atmosphere {
         if self.hits_ground(r0, view[2]) {
             return [0.0; 3];
         }
-        let step = self.to_top(r0, view[2]) / f64::from(steps);
+        let step = self.distance_to_top(r0, view[2]) / f64::from(steps);
         let cosine = dot(view, light);
         let (phase_r, phase_m) = (rayleigh_phase(cosine), mie_phase(cosine, self.mie_g));
         let mut depth = [0.0; 3];
