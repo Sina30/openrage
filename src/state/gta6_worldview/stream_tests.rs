@@ -609,3 +609,13 @@ fn a_fast_camera_still_wants_the_high_tier() {
     streamer.stream(&view);
     assert_eq!(wanted_by(&streamer), vec![1]);
 }
+
+#[test]
+fn each_level_s_fade_band_is_read_from_the_visual_settings() {
+    let settings = VisualSettings::parse("lod.fadedist.lod 12\nlod.fadedist.slod4 34\n");
+    let mut want = [FADE; Level::COUNT];
+    want[Level::Lod as usize] = 12.0;
+    want[Level::Slod4 as usize] = 34.0;
+    assert_eq!(fade_of(&settings), want);
+    assert_eq!(fade_of(&VisualSettings::parse("")), [FADE; Level::COUNT]);
+}

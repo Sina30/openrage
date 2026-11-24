@@ -9,7 +9,8 @@ use std::time::Instant;
 
 use glam::Vec3;
 use or_io::container::rpf::{read_rpf9_body, Rpf9BodyKind, Rpf9ZlibRun};
-use or_world::streaming::{Forest, NodeId, NodeState, View};
+use or_io::gta5::data::visual_settings::VisualSettings;
+use or_world::streaming::{Forest, Level, NodeId, NodeState, View, FADE};
 
 use super::index::{Enabled, ModelRef, WorldIndex};
 use super::pool::Pool;
@@ -35,6 +36,13 @@ const BODY_LIMIT: u64 = 256 << 20;
 const RESTREAM: f32 = 4.0;
 /// The hour the world starts at.
 const NOON: f32 = 12.0;
+
+/// The band past its distance each level fades out over, as the install's visual settings state
+/// it, by `Level as usize`, in metres; [`FADE`] where they do not.
+pub(super) fn fade_of(settings: &VisualSettings) -> [f32; Level::COUNT] {
+    ["hd", "lod", "slod1", "slod2", "slod3", "orphanhd", "slod4"]
+        .map(|level| settings.get_f32(&format!("lod.fadedist.{level}"), FADE))
+}
 
 /// One thing a selection draws: its model, where it stands, and its sphere in the world.
 #[derive(Clone, Copy)]
@@ -469,6 +477,8 @@ struct Told {
     eye: Vec3,
     scale: f32,
     hour: f32,
+    /// The band past its distance each level fades out over, by `Level as usize`, in metres.
+    fade: [f32; Level::COUNT],
     /// What of the game to switch on, where that was told since the thread last took it.
     enabled: Option<Enabled>,
     /// Models that came to or left the device since the last selection, with whether each is
@@ -498,6 +508,7 @@ impl World {
                 eye,
                 scale,
                 hour: NOON,
+                fade: [FADE; Level::COUNT],
                 ..Told::default()
             }),
             woken: Condvar::new(),
@@ -537,6 +548,16 @@ impl World {
         });
     }
 
+    /// Say the band past its distance each level fades out over, by `Level as usize`, in metres:
+    /// [`fade_of`] the install's visual settings.
+    pub(super) fn set_fade(&self, fade: [f32; Level::COUNT]) {
+        self.tell_of(|told| {
+            let changed = told.fade != fade;
+            told.fade = fade;
+            changed
+        });
+    }
+
     /// Say what of the game is switched on: a map it does not allow is not streamed in.
     pub(super) fn set_enabled(&self, enabled: Enabled) {
         self.tell_of(|told| {
@@ -570,16 +591,16 @@ impl Drop for World {
 }
 
 /// The world's thread: stream the maps around the camera, and select again whenever the camera
-/// moved, a map came or went, a model did, the hour or what is switched on changed, or a fade
-/// in time is under way.
+/// moved, a map came or went, a model did, the hour, the fade bands or what is switched on
+/// changed, or a fade in time is under way.
 fn run(index: Arc<WorldIndex>, shared: &Shared) {
     let mut streamer = Streamer::new(index);
     let mut ready: HashMap<ModelRef, Option<bool>> = HashMap::new();
-    let mut selected_at: Option<(Vec3, f32)> = None;
+    let mut selected_at: Option<(Vec3, f32, [f32; Level::COUNT])> = None;
     let mut passed_at: Option<(Vec3, Instant)> = None;
     let (mut velocity, mut fading, mut version) = (Vec3::ZERO, false, 0);
     loop {
-        let (eye, scale, hour, enabled, models) = {
+        let (eye, scale, hour, fade, enabled, models) = {
             let mut told = shared.told.lock().unwrap_or_else(|p| p.into_inner());
             // What was told while the last selection was made is taken at once.
             if !told.changed && !told.stopped {
@@ -591,7 +612,7 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
             }
             told.changed = false;
             let (enabled, models) = (told.enabled.take(), std::mem::take(&mut told.models));
-            (told.eye, told.scale, told.hour, enabled, models)
+            (told.eye, told.scale, told.hour, told.fade, enabled, models)
         };
         let now = Instant::now();
         // The camera's speed is what it moved by since the pass before; two passes too close
@@ -618,15 +639,18 @@ fn run(index: Arc<WorldIndex>, shared: &Shared) {
         stale |= streamer.set_hour(hour);
         let mut view = View::at(eye, scale);
         view.velocity = velocity;
+        view.fade = fade;
         stale |= streamer.stream(&view);
-        stale |= selected_at.is_none_or(|(at, by)| at.distance(eye) >= RESELECT || by != scale);
+        stale |= selected_at.is_none_or(|(at, by, faded)| {
+            at.distance(eye) >= RESELECT || by != scale || faded != fade
+        });
         if stale {
             let state = |model: ModelRef| ready.get(&model).copied().unwrap_or(Some(false));
             let mut selected = streamer.select(&view, &state);
             version += 1;
             selected.version = version;
             fading = selected.fading;
-            selected_at = Some((eye, scale));
+            selected_at = Some((eye, scale, fade));
             *shared.latest.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(selected);
         }
     }
