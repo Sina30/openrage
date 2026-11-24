@@ -135,8 +135,10 @@ pub(super) struct Streamer {
     wanted: HashMap<u32, f32>,
     /// A map that did not read is not asked for again.
     failed: HashSet<u32>,
-    /// A map that read and holds nothing the forest draws is not wanted again.
+    /// A script-managed map that read and holds nothing the forest draws is not wanted again.
     empty: HashSet<u32>,
+    /// The maps wanted only as the parents of others, which are wanted whatever they hold.
+    linked: HashSet<u32>,
     /// Where the wanted maps were last worked out.
     streamed_at: Option<Vec3>,
     /// What of the game is switched on: a map it does not allow is not wanted.
@@ -218,6 +220,7 @@ impl Streamer {
             wanted: HashMap::new(),
             failed: HashSet::new(),
             empty: HashSet::new(),
+            linked: HashSet::new(),
             streamed_at: None,
             enabled: Enabled::default(),
             hour: hour_of(NOON),
@@ -305,7 +308,7 @@ impl Streamer {
             }
         }
         // A wanted map's parents are wanted with it, and theirs.
-        let mut seen = HashSet::new();
+        self.linked.clear();
         while let Some((name, away)) = parents.pop() {
             let Some(at) = self.index.map_named(name) else {
                 continue;
@@ -314,12 +317,11 @@ impl Streamer {
             // ⚠ A parent that is not switched on is no part of the world, but one that holds
             // nothing (`held` 3) is still a link to its own parents.
             let off = !self.enabled.allows(map) && map.held != 3;
-            if off || self.wanted.contains_key(&name) || !seen.insert(name) {
+            if off || self.wanted.contains_key(&name) {
                 continue;
             }
-            if !self.empty.contains(&name) {
-                self.wanted.insert(name, away);
-            }
+            self.wanted.insert(name, away);
+            self.linked.insert(name);
             parents.extend(self.index.parents_of(map).iter().map(|p| (*p, away)));
         }
     }
@@ -329,7 +331,8 @@ impl Streamer {
         if !self.wanted.contains_key(&name) {
             return false;
         }
-        if read.nodes.is_empty() {
+        let managed = (self.index.map_named(name)).is_some_and(|at| self.index.maps[at].held == 2);
+        if read.nodes.is_empty() && managed && !self.linked.contains(&name) {
             self.empty.insert(name);
             self.wanted.remove(&name);
             return false;

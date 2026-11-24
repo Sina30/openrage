@@ -749,6 +749,10 @@ fn a_map_that_reads_with_nothing_to_draw_is_not_wanted_again_and_still_leads_to_
         vec![3],
         "worked out again, its parent alone"
     );
+    // A parent that holds nothing is still loaded, as the parent of a map that is wanted.
+    let parent = StreamMap { name: 3, ..empty };
+    assert!(streamer.insert(3, read_map(&index, &parent)));
+    assert_eq!(wanted_by(&streamer), vec![3]);
 }
 
 #[test]
