@@ -8,16 +8,11 @@ use glam::{Mat4, Quat, Vec3};
 use or_io::gta6::map::stream::{StreamGrassList, StreamLink, StreamMap};
 use or_world::streaming::{Extent, Level, Node, ParentRef};
 
-use super::super::index::{ModelRef, WorldIndex};
+use super::super::index::{ModelRef, WorldIndex, ALL_HOURS};
 use super::grass;
 
 /// The rows of a 3×4 matrix: the model's axes, with the translation in the fourth column.
 pub type Rows = [[f32; 4]; 3];
-
-/// The hours of an archetype that draws at every hour.
-const EVERY_HOUR: u32 = 0x00FF_FFFF;
-/// The level of a list that has neither parent nor children.
-const ORPHAN: u8 = 5;
 
 pub(super) fn rows_of(m: Mat4) -> Rows {
     let c = m.to_cols_array_2d();
@@ -191,7 +186,7 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         let archetype = index.archetype(word);
         let model = archetype.and_then(|a| index.model(a));
         let (centre, radius, lod_dist, hours) = archetype
-            .map_or((Vec3::ZERO, 0.0, 0.0, EVERY_HOUR), |a| {
+            .map_or((Vec3::ZERO, 0.0, 0.0, ALL_HOURS), |a| {
                 (Vec3::from(a.centre), a.radius, a.lod_dist, a.hours)
             });
         (
@@ -255,7 +250,9 @@ pub(in super::super) fn read_map(index: &WorldIndex, map: &StreamMap) -> ReadMap
         };
         // ⚠ Only a list that nothing stands in for draws by its instances' own distance: where
         // a parent draws a list's far instances, leaving them out one by one would leave holes.
-        let alone = parent.is_none() && list.lod_level == ORPHAN && list.instance_lod_dist > 0.0;
+        let alone = parent.is_none()
+            && Level::from_raw(list.lod_level) == Level::OrphanHd
+            && list.instance_lod_dist > 0.0;
         lists.push(List {
             instances: Instances::Placed(list.instances.iter().map(rows).collect()),
             reach: alone.then_some((list.instance_lod_dist, list.instance_lod_dist)),
