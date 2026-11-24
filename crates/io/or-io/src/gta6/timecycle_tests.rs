@@ -134,52 +134,198 @@ fn own(pairs: &[(&str, f32)]) -> Keyframe {
     frame
 }
 
-#[test]
-fn the_sun_at_its_stated_default_is_the_frames_default_and_its_fade_dims_everything_it_lights() {
-    let noon = frame_keyframe(&own(&[("light_dir_col_g", 0.5)]), true);
-    assert_eq!(noon.get("light_dir_mult"), Some(FRAME_SUN));
-    assert_eq!(noon.get("light_dir_col_g"), Some(0.5));
-    assert_eq!(
-        noon.get("light_natural_amb_down_intensity"),
-        Some(FRAME_AMBIENT_DOWN)
-    );
-    assert_eq!(noon.get("fog_hdr"), Some(1.0));
-
-    let dusk = frame_keyframe(
-        &own(&[
-            ("sky_scattering_sun_intensity_multiplier", 0.5),
-            ("sky_scattering_sun_col_b", 0.4),
-            ("light_dir_mult", 2.0),
-            ("sky_scattering_sun_illuminance", 50_000.0),
-        ]),
-        true,
-    );
-    assert_eq!(dusk.get("light_dir_mult"), Some(FRAME_SUN * 0.5));
-    assert_eq!(dusk.get("light_dir_col_b"), Some(0.4));
-    assert_eq!(
-        dusk.get("light_natural_amb_up_intensity"),
-        Some(FRAME_AMBIENT_UP * 0.5)
-    );
-    assert_eq!(
-        dusk.get("sky_zenith_col_inten"),
-        Some(FRAME_SUN * SKY_SHARE * 0.5)
-    );
+fn vars(pairs: &[(&str, [f32; 2])]) -> BTreeMap<String, [f32; 2]> {
+    (pairs.iter())
+        .map(|(name, values)| (name.to_string(), *values))
+        .collect()
 }
 
 #[test]
-fn the_moon_lights_by_its_own_values_and_a_share_of_the_sun() {
-    let night = frame_keyframe(
-        &own(&[
-            ("sky_scattering_sun_intensity_multiplier", 0.0),
-            ("sky_scattering_moon_intensity_multiplier", 0.5),
-            ("sky_scattering_moon_col_r", 0.25),
-            ("light_dir_mult", 2.0),
-        ]),
-        false,
+fn a_modifier_meets_each_variable_by_its_kind() {
+    assert_eq!(modifier_kind("lod_mult_hd"), ModifierKind::Leave);
+    assert_eq!(modifier_kind("light_dir_mult"), ModifierKind::InterpMult);
+    assert_eq!(modifier_kind("light_dir_col_g"), ModifierKind::InterpMult);
+    assert_eq!(
+        modifier_kind("local_atmosphere_fog_density"),
+        ModifierKind::Interp
     );
-    assert_eq!(night.get("light_dir_mult"), Some(FRAME_SUN * MOON_SHARE));
-    assert_eq!(night.get("light_dir_col_r"), Some(0.25));
-    assert_eq!(night.get("sky_sun_hdr"), Some(0.0), "the sun's disc is out");
+    let mut keyframe = own(&[
+        ("local_atmosphere_fog_density", 0.004),
+        ("light_dir_mult", 2.0),
+        ("lod_mult_hd", 1.0),
+    ]);
+    apply_modifier(
+        &mut keyframe,
+        &vars(&[
+            // Taken to the first value: the second is not read for this kind.
+            ("local_atmosphere_fog_density", [0.0, 0.5]),
+            // A quarter of the way towards the first value.
+            ("light_dir_mult", [6.0, 0.25]),
+            ("lod_mult_hd", [9.0, 1.0]),
+            ("sky_new_mie_phase_eccentricity", [0.7, 0.0]),
+        ]),
+    );
+    assert_eq!(keyframe.get("local_atmosphere_fog_density"), Some(0.0));
+    assert_eq!(keyframe.get("light_dir_mult"), Some(3.0));
+    assert_eq!(keyframe.get("lod_mult_hd"), Some(1.0), "a scale is left");
+    assert_eq!(
+        keyframe.get("sky_new_mie_phase_eccentricity"),
+        Some(0.7),
+        "a variable the cycle does not state is the modifier's"
+    );
+    // A tint the cycle does not state is not blended towards from nothing.
+    let mut bare = Keyframe::default();
+    apply_modifier(&mut bare, &vars(&[("light_dir_col_r", [0.5, 0.5])]));
+    assert_eq!(bare.get("light_dir_col_r"), None);
+}
+
+#[test]
+fn two_weathers_modifiers_blend_value_by_value_and_one_alone_stands() {
+    let a = vars(&[("fog", [1.0, 0.0]), ("only_a", [3.0, 1.0])]);
+    let b = vars(&[("fog", [3.0, 1.0]), ("only_b", [5.0, 0.5])]);
+    let blend = blend_modifiers(&a, &b, 0.25);
+    assert_eq!(blend["fog"], [1.5, 0.25]);
+    assert_eq!(blend["only_a"], [3.0, 1.0]);
+    assert_eq!(blend["only_b"], [5.0, 0.5]);
+    assert_eq!(blend_modifiers(&a, &b, 1.0)["fog"], [3.0, 1.0]);
+}
+
+/// A moment lit by a sun of 100,000 lux at the zenith, through clear air, exposed at -12 stops.
+fn noon() -> FrameLight {
+    let radiance = |r: f32, g: f32, b: f32| [r, g, b];
+    FrameLight {
+        exposure: (-12f32).exp2(),
+        fade: 1.0,
+        illuminance: 100_000.0,
+        sun_illuminance: 100_000.0,
+        body_transmittance: [0.9, 0.8, 0.6],
+        sun_transmittance: [0.9, 0.8, 0.6],
+        towards_up: 1.0,
+        sky: [4000.0, 8000.0, 16000.0],
+        dome: [
+            radiance(1000.0, 2000.0, 4000.0),
+            radiance(1500.0, 2500.0, 4000.0),
+            radiance(4000.0, 4000.0, 4000.0),
+            radiance(3000.0, 3000.0, 3500.0),
+            radiance(2000.0, 2500.0, 3000.0),
+        ],
+        fog: [[4000.0, 4000.0, 4000.0]; 4],
+    }
+}
+
+#[test]
+fn every_light_the_frame_takes_is_physical_times_the_exposure_and_the_frames_own_is_held_at_nought()
+{
+    let light = noon();
+    let lit = light.exposure * FRAME_DIFFUSE;
+    let frame = frame_keyframe(
+        &own(&[
+            ("light_dir_mult", 1.5),
+            ("light_dir_col_g", 0.5),
+            ("postfx_exposure", 2.0),
+            ("postfx_exposure_min", -12.0),
+            ("ambient_sky_intensity", 0.25),
+            ("ambient_bounce_intensity", 2.0),
+        ]),
+        &light,
+    );
+    for name in [
+        "postfx_exposure",
+        "postfx_exposure_min",
+        "postfx_exposure_max",
+    ] {
+        assert_eq!(frame.get(name), Some(0.0), "{name}");
+    }
+    assert_eq!(frame.get("postfx_tonemap_filmic_override_dark"), Some(0.0));
+    let strength = frame.get("light_dir_mult").expect("worked out");
+    assert!(
+        (strength - 1.5 * 100_000.0 * lit).abs() < 1e-3,
+        "{strength}"
+    );
+    // A sun of 100,000 lux at -12 stops is a few frame units, not thousands and not a tenth.
+    assert!((5.0..15.0).contains(&(strength / 1.5)), "{strength}");
+    assert_eq!(frame.get("light_dir_col_g"), Some(0.5 * 0.8));
+
+    // The sky lights from above at its irradiance by the cycle's intensity; the colour's largest part is one.
+    let down = frame
+        .get("light_natural_amb_down_intensity")
+        .expect("worked out");
+    assert!((down - 16000.0 * 0.25 * lit).abs() < 1e-4, "{down}");
+    assert_eq!(frame.get("light_natural_amb_down_col_b"), Some(1.0));
+    assert_eq!(frame.get("light_natural_amb_down_col_r"), Some(0.25));
+    // From below: a fifth of what reaches the ground, by the bounce's intensity.
+    let up = frame
+        .get("light_natural_amb_up_intensity")
+        .expect("worked out");
+    let reaching_b = 1.5 * 100_000.0 * 0.6 + 16000.0 * 0.25;
+    assert!((up - 0.2 * 2.0 * reaching_b * lit).abs() < 1e-3, "{up}");
+}
+
+#[test]
+fn the_dome_is_the_skys_radiance_exposed_and_given_as_a_root_the_frame_squares() {
+    let light = noon();
+    let frame = frame_keyframe(&Keyframe::default(), &light);
+    let inten = frame.get("sky_zenith_col_inten").expect("worked out");
+    assert!((inten - 4000.0 * light.exposure).abs() < 1e-5, "{inten}");
+    let r = frame.get("sky_zenith_col_r").expect("worked out");
+    assert!((r * r - 0.25).abs() < 1e-6, "{r}");
+    assert_eq!(frame.get("sky_hdr"), Some(1.0));
+    // The zenith is bluer than the eastern horizon the sun whitens.
+    let east_r = frame.get("sky_azimuth_east_col_r").expect("worked out");
+    assert!(east_r > r);
+    // The sun's disc is its tint through the air, given as a root; its strength its illuminance exposed.
+    let sun_b = frame.get("sky_sun_disc_col_b").expect("worked out");
+    assert!((sun_b * sun_b - 0.6).abs() < 1e-6);
+    let sun = frame.get("sky_sun_hdr").expect("worked out");
+    assert!((sun - 100_000.0 * light.exposure * FRAME_DIFFUSE).abs() < 1e-3);
+}
+
+#[test]
+fn a_night_without_its_body_is_dark_and_the_moon_and_stars_are_exposed_as_lights() {
+    let night = FrameLight {
+        exposure: 4f32.exp2(),
+        fade: 1.0,
+        illuminance: 0.25,
+        body_transmittance: [0.7, 0.6, 0.5],
+        towards_up: 0.6,
+        ..FrameLight::default()
+    };
+    let frame = frame_keyframe(
+        &own(&[
+            ("light_dir_mult", 0.5),
+            ("sky_moon_iten", 100.0),
+            ("sky_stars_iten", 0.02),
+        ]),
+        &night,
+    );
+    let strength = frame.get("light_dir_mult").expect("worked out");
+    assert!(strength > 0.0 && strength < 1.0, "{strength}");
+    assert_eq!(frame.get("sky_sun_hdr"), Some(0.0), "the sun's disc is out");
+    assert_eq!(frame.get("sky_sun_col_r"), Some(0.0));
+    let lit = night.exposure * FRAME_DIFFUSE;
+    assert_eq!(frame.get("sky_moon_iten"), Some(100.0 * lit));
+    assert_eq!(frame.get("sky_stars_iten"), Some(0.02 * lit));
+    assert_eq!(frame.get("light_natural_amb_down_intensity"), Some(0.0));
+}
+
+#[test]
+fn the_local_atmospheres_fog_is_given_in_the_frames_units() {
+    let frame = frame_keyframe(
+        &own(&[
+            ("local_atmosphere_fog_density", 0.003),
+            ("local_atmosphere_fog_height", 40.0),
+            ("local_atmosphere_fog_falloff", 250.0),
+        ]),
+        &noon(),
+    );
+    let density = frame.get("fog_density").expect("stated");
+    assert!((density - 30.0).abs() < 1e-4, "{density}");
+    assert_eq!(frame.get("fog_base_height"), Some(40.0));
+    assert_eq!(frame.get("fog_falloff"), Some(4.0));
+    let clear = frame_keyframe(&own(&[("local_atmosphere_fog_falloff", 0.0)]), &noon());
+    assert_eq!(clear.get("fog_falloff"), None);
+    assert_eq!(clear.get("fog_density"), None);
+    assert_eq!(clear.get("fog_hdr"), Some(1.0), "the colours are exposed");
 }
 
 #[test]
@@ -188,20 +334,24 @@ fn what_gta_vi_states_under_the_frames_name_passes_and_the_rest_is_left_to_the_f
         &own(&[
             ("postfx_tonemap_filmic_w", 11.2),
             ("far_clip", 7000.0),
-            ("postfx_exposure_min", -11.0),
-            ("sky_moon_iten", 1000.0),
+            ("sky_new_planet_radius", 6360.0),
         ]),
-        true,
+        &noon(),
     );
-    assert_eq!(frame.get("postfx_tonemap_filmic_w"), Some(11.2));
     assert_eq!(frame.get("far_clip"), Some(7000.0));
-    // Stated in another unit than the frame's: not passed.
-    assert_eq!(frame.get("postfx_exposure_min"), None);
-    assert_eq!(frame.get("sky_moon_iten"), None);
-    assert_eq!(frame.get("fog_density"), None);
+    // The tone curves are the visual settings', not a moment's.
+    assert_eq!(frame.get("postfx_tonemap_filmic_w"), None);
+    assert_eq!(frame.get("sky_new_planet_radius"), None);
 
-    let all: Vec<(&str, f32)> = SAME.iter().map(|name| (*name, 1.0)).collect();
-    let whole = frame_keyframe(&own(&all), true);
+    let mut all: Vec<(&str, f32)> = SAME.iter().map(|name| (*name, 1.0)).collect();
+    all.extend([
+        ("sky_moon_iten", 1.0),
+        ("sky_stars_iten", 1.0),
+        ("local_atmosphere_fog_density", 1.0),
+        ("local_atmosphere_fog_height", 1.0),
+        ("local_atmosphere_fog_falloff", 1.0),
+    ]);
+    let whole = frame_keyframe(&own(&all), &noon());
     assert_eq!(whole.len(), filled().count());
     for name in filled() {
         assert!(whole.get(name).is_some(), "{name}");

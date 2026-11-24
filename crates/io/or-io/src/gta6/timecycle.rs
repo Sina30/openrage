@@ -46,22 +46,15 @@ const FRAME_RISE: f32 = 6.0;
 const FRAME_SET: f32 = 20.0;
 const FRAME_HANDOVER: f32 = 1.75;
 
-/// The directional multiplier a frame holds where a day states none, which GTA VI's sun at its
-/// stated default illuminance is given.
-const FRAME_SUN: f32 = 14.75;
-/// The illuminance of the sun where a cycle states none, in lux.
-const SUN_ILLUMINANCE: f32 = 100_000.0;
-/// The natural ambient a frame holds where a day states none: from above, and from below.
-const FRAME_AMBIENT_DOWN: f32 = 6.25;
-const FRAME_AMBIENT_UP: f32 = 8.5;
-const FRAME_AMBIENT_DOWN_COLOUR: [f32; 3] = [0.541, 0.655, 1.0];
-// ponytail: three stand-in shares, none the game's. GTA VI states its moon in lux and meters its
-// exposure from the frame; a frame with no such meter is given the moon at a tenth of the sun,
-// a sky at three tenths of the light that makes it, and a horizon half way to white. Read the
-// game's exposure and atmosphere to replace them.
-const MOON_SHARE: f32 = 0.1;
-const SKY_SHARE: f32 = 0.3;
-const HORIZON_PALE: f32 = 0.5;
+/// What the frame's diffuse lacks beside a physical one, which every light it takes is multiplied by: it does not divide by pi.
+// ⚠ GTA V's frame, assumed: a grey card under the noon sun should show about 1.4 before the tone
+// curve. If it shows about 4.5, this is 1.
+pub const FRAME_DIFFUSE: f32 = std::f32::consts::FRAC_1_PI;
+// ponytail: a grey ground in place of the game's traced bounce light, which the frame has no pass for.
+const GROUND_ALBEDO: f32 = 0.2;
+/// The frame's units of fog: its density is per ten thousand metres and its falloff per thousand.
+const FRAME_FOG_DENSITY: f32 = 10_000.0;
+const FRAME_FOG_FALLOFF: f32 = 1_000.0;
 
 /// How the way from one sample to the next is bent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -268,6 +261,74 @@ pub fn modifiers(text: &str) -> Vec<Modifier> {
     out
 }
 
+/// How a modifier's two values meet a variable of the keyframe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModifierKind {
+    /// The first value replaces it.
+    Replace,
+    /// It is taken to the first value, wholly.
+    Interp,
+    /// It is taken towards the first value by the second.
+    InterpMult,
+    /// It is held between the two values.
+    Clamp,
+    /// It is at least the first value.
+    Max,
+    /// The modifier leaves it: a level-of-detail scale.
+    Leave,
+}
+
+/// How a modifier meets the variable `name`.
+// ⚠ Measured on the names both titles' variable tables hold: the level-of-detail scales are left,
+// the directional light's tint and strengths blend by the second value, and every other lighting,
+// sky, exposure and fog variable is taken to the first. Which variables clamp or take a maximum is not read.
+pub fn modifier_kind(name: &str) -> ModifierKind {
+    match name {
+        _ if name.starts_with("lod_mult") => ModifierKind::Leave,
+        "light_dir_col_r" | "light_dir_col_g" | "light_dir_col_b" | "light_dir_mult"
+        | "light_dir_sun_mult" => ModifierKind::InterpMult,
+        _ => ModifierKind::Interp,
+    }
+}
+
+/// The modifier `a` blended with `b` by `along` (0 to 1), value by value; a variable one of them does not state is the other's.
+pub fn blend_modifiers(
+    a: &BTreeMap<String, [f32; 2]>,
+    b: &BTreeMap<String, [f32; 2]>,
+    along: f32,
+) -> BTreeMap<String, [f32; 2]> {
+    let mut out = a.clone();
+    for (name, to) in b {
+        let value = match a.get(name) {
+            Some(from) => [0, 1].map(|i| from[i] + (to[i] - from[i]) * along),
+            None => *to,
+        };
+        out.insert(name.clone(), value);
+    }
+    out
+}
+
+/// Lay the modifier `vars` over `keyframe` at full strength, each variable by its [`modifier_kind`].
+pub fn apply_modifier(keyframe: &mut Keyframe, vars: &BTreeMap<String, [f32; 2]>) {
+    // ponytail: no strength is stated for a weather's modifiers, so it is taken as one.
+    const STRENGTH: f32 = 1.0;
+    for (name, &[a, b]) in vars {
+        let value = match (modifier_kind(name), keyframe.get(name)) {
+            (ModifierKind::Leave, _) => continue,
+            (ModifierKind::Replace, _) => a,
+            (ModifierKind::Interp, base) => {
+                let base = base.unwrap_or(a);
+                base + (a - base) * STRENGTH
+            }
+            (_, None) => continue,
+            (ModifierKind::InterpMult, Some(base)) => base + (a - base) * b * STRENGTH,
+            (ModifierKind::Clamp, Some(base)) => base.max(a.min(b)).min(a.max(b)),
+            (ModifierKind::Max, Some(base)) => ((1.0 - STRENGTH) * base).max(STRENGTH * a),
+        };
+        keyframe.set(name, value);
+    }
+}
+
 /// The variables GTA VI states under the name and in the unit a frame built for GTA V's day reads them by.
 const SAME: &[&str] = &[
     "far_clip",
@@ -297,26 +358,7 @@ const SAME: &[&str] = &[
     "postfx_shift_col_b",
     "postfx_shift_cutoff",
     "postfx_desaturation",
-    "postfx_exposure",
     "postfx_intensity_bloom",
-    "postfx_tonemap_filmic_override_dark",
-    "postfx_tonemap_filmic_exposure_dark",
-    "postfx_tonemap_filmic_a",
-    "postfx_tonemap_filmic_b",
-    "postfx_tonemap_filmic_c",
-    "postfx_tonemap_filmic_d",
-    "postfx_tonemap_filmic_e",
-    "postfx_tonemap_filmic_f",
-    "postfx_tonemap_filmic_w",
-    "postfx_tonemap_filmic_override_bright",
-    "postfx_tonemap_filmic_exposure_bright",
-    "postfx_tonemap_filmic_a_bright",
-    "postfx_tonemap_filmic_b_bright",
-    "postfx_tonemap_filmic_c_bright",
-    "postfx_tonemap_filmic_d_bright",
-    "postfx_tonemap_filmic_e_bright",
-    "postfx_tonemap_filmic_f_bright",
-    "postfx_tonemap_filmic_w_bright",
     "reflection_tweak_directional",
     "sky_moon_col_r",
     "sky_moon_col_g",
@@ -325,8 +367,13 @@ const SAME: &[&str] = &[
     "sky_sun_disc_size",
 ];
 
-/// The variables [`frame_keyframe`] works out from GTA VI's under other names.
+/// The variables [`frame_keyframe`] works out from GTA VI's under other names, whatever the keyframe states.
 const WORKED_OUT: &[&str] = &[
+    "postfx_exposure",
+    "postfx_exposure_min",
+    "postfx_exposure_max",
+    "postfx_tonemap_filmic_override_dark",
+    "postfx_tonemap_filmic_override_bright",
     "light_dir_col_r",
     "light_dir_col_g",
     "light_dir_col_b",
@@ -335,17 +382,11 @@ const WORKED_OUT: &[&str] = &[
     "light_natural_amb_down_col_g",
     "light_natural_amb_down_col_b",
     "light_natural_amb_down_intensity",
+    "light_natural_amb_up_col_r",
+    "light_natural_amb_up_col_g",
+    "light_natural_amb_up_col_b",
     "light_natural_amb_up_intensity",
-    "fog_hdr",
-    "fog_haze_hdr",
-    "sky_cloud_hdr",
-    "sky_sun_col_r",
-    "sky_sun_col_g",
-    "sky_sun_col_b",
-    "sky_sun_disc_col_r",
-    "sky_sun_disc_col_g",
-    "sky_sun_disc_col_b",
-    "sky_sun_hdr",
+    "light_natural_amb_up_intensity_mult",
     "sky_zenith_col_r",
     "sky_zenith_col_g",
     "sky_zenith_col_b",
@@ -366,35 +407,83 @@ const WORKED_OUT: &[&str] = &[
     "sky_azimuth_transition_col_g",
     "sky_azimuth_transition_col_b",
     "sky_azimuth_transition_col_inten",
+    "sky_hdr",
+    "sky_sun_col_r",
+    "sky_sun_col_g",
+    "sky_sun_col_b",
+    "sky_sun_disc_col_r",
+    "sky_sun_disc_col_g",
+    "sky_sun_disc_col_b",
+    "sky_sun_hdr",
+    "fog_col_r",
+    "fog_col_g",
+    "fog_col_b",
+    "fog_east_col_r",
+    "fog_east_col_g",
+    "fog_east_col_b",
+    "fog_near_col_r",
+    "fog_near_col_g",
+    "fog_near_col_b",
+    "fog_haze_col_r",
+    "fog_haze_col_g",
+    "fog_haze_col_b",
+    "fog_hdr",
+    "fog_haze_hdr",
+    "sky_cloud_hdr",
+];
+
+/// The variables [`frame_keyframe`] works out from GTA VI's where the keyframe states what they come from.
+const WHERE_STATED: &[&str] = &[
+    "sky_moon_iten",
+    "sky_stars_iten",
+    "fog_density",
+    "fog_base_height",
+    "fog_falloff",
 ];
 
 /// The names of a frame's variables [`frame_keyframe`] fills from a keyframe that states all it reads.
 pub fn filled() -> impl Iterator<Item = &'static str> {
-    SAME.iter().chain(WORKED_OUT).copied()
+    SAME.iter().chain(WORKED_OUT).chain(WHERE_STATED).copied()
 }
 
-/// How strong the body that lights the moment is beside the sun at its stated default: its illuminance, its fade at the moment and the cycle's multipliers.
-pub fn light_share(own: &Keyframe, sun_lit: bool) -> f32 {
-    let get = |name: &str, default: f32| own.get_or(name, default);
-    let body = match sun_lit {
-        true => {
-            get("light_dir_sun_mult", 1.0)
-                * get("sky_scattering_sun_intensity_multiplier", 1.0)
-                * get("sky_scattering_sun_illuminance", SUN_ILLUMINANCE)
-                / SUN_ILLUMINANCE
-        }
-        false => {
-            get("light_dir_moon_mult", 1.0)
-                * get("sky_scattering_moon_intensity_multiplier", 1.0)
-                * get("sky_scattering_moon_illuminance", 1.0)
-                * MOON_SHARE
-        }
-    };
-    get("light_dir_mult", 1.0) * body
+/// The sky colours of the frame's dome, in the order of [`FrameLight::dome`].
+const DOME: [&str; 5] = [
+    "sky_zenith_col",
+    "sky_zenith_transition_col",
+    "sky_azimuth_east_col",
+    "sky_azimuth_west_col",
+    "sky_azimuth_transition_col",
+];
+/// The frame's fog colours, in the order of [`FrameLight::fog`].
+const FOG: [&str; 4] = ["fog_col", "fog_east_col", "fog_near_col", "fog_haze_col"];
+
+/// What one moment's light is, worked out from GTA VI's keyframe, its atmosphere and its exposure: what [`frame_keyframe`] gives the frame.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct FrameLight {
+    /// What every light of the moment is multiplied by: two to the power of its stops.
+    pub exposure: f32,
+    /// The fade of the body that lights, times that body's own multiplier.
+    pub fade: f32,
+    /// The illuminance of the body that lights, in lux.
+    pub illuminance: f32,
+    /// The sun's illuminance, in lux, whichever body lights.
+    pub sun_illuminance: f32,
+    /// What the air lets through towards the body that lights.
+    pub body_transmittance: [f32; 3],
+    /// What the air lets through towards the sun.
+    pub sun_transmittance: [f32; 3],
+    /// The up part of the way towards the light, which the frame holds to at least 0.15.
+    pub towards_up: f32,
+    /// The sky's irradiance on the ground in lux, before the cycle's tints.
+    pub sky: [f32; 3],
+    /// The sky's radiance in cd/m² at the zenith, half way down, and on the horizon east, west and south.
+    pub dome: [[f32; 3]; 5],
+    /// The sky's radiance in cd/m² on the horizon under the light, east, opposite the light and south.
+    pub fog: [[f32; 3]; 4],
 }
 
-/// The variables of a frame built for GTA V's day, worked out from GTA VI's keyframe `own` for a moment lit by the sun (`sun_lit`) or the moon; what GTA VI does not state is left out, so the frame keeps its own default.
-pub fn frame_keyframe(own: &Keyframe, sun_lit: bool) -> Keyframe {
+/// The variables of a frame built for GTA V's day, worked out from GTA VI's keyframe `own` and the moment's `light`; the frame's own exposure is held at nought, since every light it takes is exposed already.
+pub fn frame_keyframe(own: &Keyframe, light: &FrameLight) -> Keyframe {
     let mut frame = Keyframe::default();
     for name in SAME {
         if let Some(value) = own.get(name) {
@@ -410,57 +499,85 @@ pub fn frame_keyframe(own: &Keyframe, sun_lit: bool) -> Keyframe {
         }
     };
     let times = |a: [f32; 3], b: [f32; 3]| [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
+    let scaled = |c: [f32; 3], by: f32| c.map(|c| c * by);
+    // A colour and the intensity it is multiplied by in the frame: the colour at most one.
+    let split = |c: [f32; 3]| {
+        let most = c.iter().copied().fold(0.0, f32::max);
+        match most > 0.0 {
+            true => (c.map(|c| c / most), most),
+            false => ([0.0; 3], 0.0),
+        }
+    };
+    let lit = light.exposure * FRAME_DIFFUSE;
 
-    let share = light_share(own, sun_lit);
-    let body = if sun_lit { "sun" } else { "moon" };
-    let body_tint = rgb(&format!("sky_scattering_{body}_col"), 1.0);
-    set_rgb(
-        &mut frame,
-        "light_dir_col",
-        times(rgb("light_dir_col", 1.0), body_tint),
-    );
-    frame.set("light_dir_mult", FRAME_SUN * share);
+    // `stops` of the frame is `clamp(x, min(least, most), most)`: nought whatever its meter says.
+    for name in [
+        "postfx_exposure",
+        "postfx_exposure_min",
+        "postfx_exposure_max",
+    ] {
+        frame.set(name, 0.0);
+    }
+    // The tone curves are the visual settings', which the frame takes where no moment overrides them.
+    frame.set("postfx_tonemap_filmic_override_dark", 0.0);
+    frame.set("postfx_tonemap_filmic_override_bright", 0.0);
 
-    // The sky's light follows the body that makes it, tinted as the cycle tints the sky.
+    let tint = times(rgb("light_dir_col", 1.0), light.body_transmittance);
+    set_rgb(&mut frame, "light_dir_col", tint);
+    let strength = get("light_dir_mult", 1.0) * light.fade * light.illuminance;
+    frame.set("light_dir_mult", strength * lit);
+
     let sky_tint = times(
         rgb("sky_scattering_sky_col", 1.0),
         rgb("ambient_sky_color_mult", 1.0),
     );
-    set_rgb(
-        &mut frame,
-        "light_natural_amb_down_col",
-        times(FRAME_AMBIENT_DOWN_COLOUR, sky_tint),
+    let sky = scaled(
+        times(light.sky, sky_tint),
+        get("ambient_sky_intensity", 1.0),
     );
-    frame.set(
-        "light_natural_amb_down_intensity",
-        FRAME_AMBIENT_DOWN * share,
-    );
-    frame.set("light_natural_amb_up_intensity", FRAME_AMBIENT_UP * share);
-    frame.set("fog_hdr", share);
-    frame.set("fog_haze_hdr", share);
-    frame.set("sky_cloud_hdr", 0.8 * share);
+    let (colour, intensity) = split(scaled(sky, lit));
+    set_rgb(&mut frame, "light_natural_amb_down_col", colour);
+    frame.set("light_natural_amb_down_intensity", intensity);
+    let direct = scaled(tint, strength);
+    let bounce = GROUND_ALBEDO * get("ambient_bounce_intensity", 1.0) * lit;
+    let ground = [0, 1, 2].map(|i| (direct[i] * light.towards_up + sky[i]) * bounce);
+    let (colour, intensity) = split(ground);
+    set_rgb(&mut frame, "light_natural_amb_up_col", colour);
+    frame.set("light_natural_amb_up_intensity", intensity);
+    frame.set("light_natural_amb_up_intensity_mult", 1.0);
 
-    let sun_tint = rgb("sky_scattering_sun_col", 1.0);
-    set_rgb(&mut frame, "sky_sun_col", sun_tint);
-    set_rgb(&mut frame, "sky_sun_disc_col", sun_tint);
-    frame.set("sky_sun_hdr", FRAME_SUN * light_share(own, true));
+    // The frame squares a sky colour, so the root of the colour is given.
+    for (stem, radiance) in DOME.iter().zip(light.dome) {
+        let (colour, intensity) = split(scaled(radiance, light.exposure));
+        set_rgb(&mut frame, stem, colour.map(f32::sqrt));
+        frame.set(&format!("{stem}_inten"), intensity);
+    }
+    frame.set("sky_hdr", 1.0);
+    let sun = times(rgb("sky_scattering_sun_col", 1.0), light.sun_transmittance).map(f32::sqrt);
+    set_rgb(&mut frame, "sky_sun_col", sun);
+    set_rgb(&mut frame, "sky_sun_disc_col", sun);
+    frame.set("sky_sun_hdr", light.sun_illuminance * lit);
+    for name in ["sky_moon_iten", "sky_stars_iten"] {
+        if let Some(value) = own.get(name) {
+            frame.set(name, value * lit);
+        }
+    }
 
-    // A stand-in sky: the colour the air scatters at the top, paler towards the horizon.
-    let air = rgb("sky_new_ray_scattering_col", 0.5);
-    let most = air.iter().copied().fold(1e-6, f32::max);
-    // The frame squares a sky colour, so the root is given.
-    let zenith = times(air.map(|c| (c / most).sqrt()), sky_tint.map(f32::sqrt));
-    let horizon = zenith.map(|c| c + (1.0 - c) * HORIZON_PALE);
-    let strength = FRAME_SUN * SKY_SHARE * share;
-    for (stem, colour) in [
-        ("sky_zenith_col", zenith),
-        ("sky_zenith_transition_col", zenith),
-        ("sky_azimuth_east_col", horizon),
-        ("sky_azimuth_west_col", horizon),
-        ("sky_azimuth_transition_col", horizon),
-    ] {
-        set_rgb(&mut frame, stem, colour);
-        frame.set(&format!("{stem}_inten"), strength);
+    // ⚠ GTA V's exponential height fog is assumed to read GTA VI's local atmosphere's fog.
+    if let Some(density) = own.get("local_atmosphere_fog_density") {
+        frame.set("fog_density", density * FRAME_FOG_DENSITY);
+    }
+    if let Some(height) = own.get("local_atmosphere_fog_height") {
+        frame.set("fog_base_height", height);
+    }
+    if let Some(falloff) = own.get("local_atmosphere_fog_falloff").filter(|f| *f > 0.0) {
+        frame.set("fog_falloff", FRAME_FOG_FALLOFF / falloff);
+    }
+    for (stem, radiance) in FOG.iter().zip(light.fog) {
+        set_rgb(&mut frame, stem, scaled(radiance, lit));
+    }
+    for name in ["fog_hdr", "fog_haze_hdr", "sky_cloud_hdr"] {
+        frame.set(name, 1.0);
     }
     frame
 }

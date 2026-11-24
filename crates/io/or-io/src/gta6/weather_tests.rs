@@ -78,7 +78,13 @@ fn a_weather_set_states_its_files_what_a_weather_is_made_of_and_the_named_weathe
         (weather.short_name.as_str(), weather.data.as_str()),
         ("One", "ONE")
     );
-    assert_eq!(weather.modifiers, ["W_MOD_atmos", "W_MOD_wind"]);
+    assert_eq!(
+        weather.modifiers,
+        [
+            ("ModAtmosphere".to_string(), "W_MOD_atmos".to_string()),
+            ("ModWind".to_string(), "W_MOD_wind".to_string())
+        ]
+    );
     assert_eq!(weather.app, "Clear");
     // A name an indirection names is the type it stands for.
     assert_eq!(set.weather("one").map(|w| w.name.as_str()), Some("AM_One"));

@@ -41,8 +41,8 @@ pub struct WeatherType {
     pub name: String,
     pub short_name: String,
     pub data: String,
-    /// The modifiers its `Mod...` elements name, in the file's order.
-    pub modifiers: Vec<String>,
+    /// The modifiers its `Mod...` elements name, in the file's order: the element, which is the modifier's slot, and the modifier's name.
+    pub modifiers: Vec<(String, String)>,
     pub app: String,
 }
 
@@ -153,7 +153,9 @@ impl WeatherSet {
                     "ShortName" => weather.short_name = text,
                     "DataName" => weather.data = text,
                     "WeatherAppDataName" => weather.app = text,
-                    field if field.starts_with("Mod") => weather.modifiers.push(text),
+                    field if field.starts_with("Mod") => {
+                        weather.modifiers.push((field.to_string(), text))
+                    }
                     _ => {}
                 }
             }
