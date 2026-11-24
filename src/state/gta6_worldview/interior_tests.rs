@@ -310,7 +310,16 @@ fn a_plane_through_the_camera_in_the_interior_s_space_is_turned_into_the_world_s
     let tilted = Vec3::new(1.0, 0.0, 1.0).normalize();
     let world = placed.to_world(&[vec![Vec3::X, tilted]]);
     assert!(world[0][0].abs_diff_eq(Vec3::Y, 1e-5), "{:?}", world[0][0]);
-    // A point on one side of the plane in its own space stands on the same side in the world.
+    // A tilted plane leans by the interior's heights over its widths.
     let expected = Vec3::new(0.0, 0.5, 1.0).normalize();
     assert!(world[0][1].abs_diff_eq(expected, 1e-5), "{:?}", world[0][1]);
+}
+
+#[test]
+fn a_sphere_reaches_into_a_room_where_it_touches_the_room_s_box() {
+    let placed = place(&index(), &instance(), &interior());
+    assert!(placed.reaches_a_room(placed.centre, 0.1));
+    let far = placed.centre + Vec3::new(0.0, 0.0, 1000.0);
+    assert!(!placed.reaches_a_room(far, 1.0));
+    assert!(placed.reaches_a_room(far, 1000.0));
 }

@@ -584,7 +584,7 @@ impl Streamer {
                 });
                 if let Some(seen) = seen {
                     if let (Some(_), None, Some(pyramids)) = (inside, &through, &seen.outside) {
-                        through = Some(interior.to_world(pyramids));
+                        through = Some((interior, interior.to_world(pyramids)));
                     }
                     (out.rooms_seen).insert((*name, interior.entity as u32), seen.rooms);
                 }
@@ -593,9 +593,12 @@ impl Streamer {
         }
         // ⚠ GTA V's rule: from a room the outside is seen through the portals to it alone; what stands
         // out of their sight still casts the sun's shadow in.
-        if let Some(through) = &through {
+        if let Some((interior, through)) = &through {
+            // ⚠ Measured: a map places a room's walls and roof, which reach into its box.
             let sees = |i: &Instance| {
-                (through.iter()).any(|p| super::interior_rooms::reaches(p, eye, i.centre, i.radius))
+                interior.reaches_a_room(i.centre, i.radius)
+                    || (through.iter())
+                        .any(|p| super::interior_rooms::reaches(p, eye, i.centre, i.radius))
             };
             for instance in &mut out.instances[..outdoors] {
                 if instance.ambient == or_renderer::OUTDOORS && !sees(instance) {
@@ -603,7 +606,7 @@ impl Streamer {
                 }
             }
         }
-        out.outside_through = through;
+        out.outside_through = through.map(|(_, through)| through);
         out.occluders = self.occluders.held();
         out.wanted = (waited.into_iter().map(|(model, away)| (away, model))).collect();
         out.species = Arc::clone(&self.species);

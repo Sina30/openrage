@@ -282,6 +282,13 @@ impl Placed {
         }
     }
 
+    /// Whether the sphere of `radius` about `p` in the world reaches into one of the interior's rooms.
+    pub(super) fn reaches_a_room(&self, p: Vec3, radius: f32) -> bool {
+        let (p, r) = (self.own.transform_point3(p), radius * stretch(self.own));
+        (self.rooms.iter().skip(1))
+            .any(|room| p.clamp(room.min, room.max).distance_squared(p) <= r * r)
+    }
+
     /// `pyramids`, planes through the camera in the interior's own space, as planes in the world.
     pub(super) fn to_world(
         &self,
