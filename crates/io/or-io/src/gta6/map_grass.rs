@@ -7,9 +7,8 @@
 use super::super::lights::{check_table, Layouts};
 use super::super::links::MapLinks;
 use super::super::{
-    aabb, broken, f32_at, field, floats, u16_at, u32_at, u64_at, Aabb, Blocks, MapData, Result,
-    ARRAY_MEMBER, ENUM8, FLOAT, GRASS_INSTANCE, GRASS_LIST, GRASS_LIST_SIZE, HASH64, LOD_LEVELS,
-    VEC3, VEC3V,
+    broken, f32_at, field, floats, u16_at, u64_at, Aabb, Blocks, MapData, Result, ARRAY_MEMBER,
+    ENUM8, FLOAT, GRASS_INSTANCE, GRASS_LIST, GRASS_LIST_SIZE, HASH64, LOD_LEVELS, VEC3, VEC3V,
 };
 use crate::hash::literal_string_hash as lit;
 use crate::meta::binary::rbm::schema::RbmModel;
@@ -187,7 +186,7 @@ pub(super) fn lists(
             ));
         }
         let scale_range: [f32; 2] = floats(record, 0xA0, &what)?;
-        if !(scale_range[0] > 0.0 && scale_range[0] <= scale_range[1]) {
+        if scale_range[0] <= 0.0 || scale_range[0] > scale_range[1] {
             return Err(broken(
                 what,
                 "its ScaleRange is no least and most scale above 0",
@@ -209,11 +208,11 @@ pub(super) fn lists(
             .collect::<Result<Vec<_>>>()?;
         Ok(StreamGrassList {
             archetype_word: u64_at(record, 0x20)?,
-            archetype_name: u32_at(record, 0x44)?,
+            archetype_name: list.archetype_name,
             position: floats(record, 0x38, &what)?,
             lod_dist: f32_at(record, 0x60, &what)?,
             lod_level,
-            batch_aabb: aabb(record, 0x80, &what)?,
+            batch_aabb: list.batch_aabb,
             scale_range,
             lod_fade_start_dist: f32_at(record, 0xB8, &what)?,
             instance_lod_dist: f32_at(record, 0xBC, &what)?,
