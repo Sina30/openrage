@@ -18,10 +18,14 @@ use crate::state::jobs::{JobKind, Outcome, RunningJob, Then};
 
 pub(crate) mod index;
 mod interior;
+pub(crate) mod lights;
+mod lights_lod;
 mod model;
 mod pool;
+pub(crate) mod sky;
 pub(crate) mod stream;
 mod texture;
+pub(crate) mod water;
 
 pub use model::{Bucket, CpuLod, CpuMesh, CpuModel, Maps};
 pub use texture::CpuTexture;
@@ -84,6 +88,8 @@ pub struct Viewer {
     pub hour: f32,
     /// Which of the game's modes and script-managed groups stream.
     pub enabled: Enabled,
+    /// The lights of the maps around the camera, once an index is held.
+    pub lights: Option<lights::Lights>,
     /// How many models wait to be read.
     pub models_waiting: usize,
     /// How many textures wait to be read.
@@ -117,6 +123,7 @@ impl Default for Viewer {
             lod_scale: 1.0,
             hour: NOON,
             enabled: Enabled::default(),
+            lights: None,
             models_waiting: 0,
             textures_waiting: 0,
         }
@@ -159,7 +166,7 @@ impl Viewer {
         };
         (self.index, self.world, self.models, self.failed) = (None, None, None, None);
         self.have.clear();
-        self.textures = None;
+        (self.textures, self.lights) = (None, None);
         // What the workers held goes with them, and a new world's thread is told everything again.
         (self.held, self.sent) = (Arc::default(), None);
         // ⚠ Where the packs' index is kept is found here, on this thread.
@@ -229,6 +236,7 @@ impl Viewer {
             self.camera.position = middle + Vec3::Z * START_HEIGHT;
         }
         let index = Arc::new(index);
+        self.lights = Some(lights::Lights::new(Arc::clone(&index)));
         let shared = Arc::clone(&index);
         let workers = std::thread::available_parallelism().map_or(4, usize::from) / 2;
         let held = Arc::clone(&self.held);
@@ -388,5 +396,31 @@ impl Viewer {
     /// The bytes of the models and textures the workers read that were not taken yet.
     pub fn held_bytes(&self) -> u64 {
         self.held.load(Ordering::Relaxed)
+    }
+
+    /// The day the frame is lit by and the lights around the camera, at the viewer's hour.
+    pub fn sky(
+        &mut self,
+        days: f32,
+        weather: crate::state::drivers::WeatherState,
+    ) -> (
+        Option<or_renderer::game_shaders::lighting::Day>,
+        Vec<or_renderer::PointLight>,
+    ) {
+        let (eye, hour) = (self.camera.position, self.hour);
+        let day = (self.root.as_deref())
+            .and_then(sky::tables)
+            .and_then(|tables| sky::day_of(&tables, hour, days, weather, eye.y));
+        let night = day.as_ref().map_or(0.0, |day| day.night_emissive);
+        let lights = self.lights.as_mut().map_or_else(Vec::new, |lights| {
+            lights.look(eye);
+            lights.point_lights(eye, hour, night, 256)
+        });
+        (day, lights)
+    }
+
+    /// The water of the install shown, once it is read.
+    pub fn water(&self) -> Option<Arc<or_io::gta6::water::WaterData>> {
+        self.root.as_deref().and_then(water::water)
     }
 }
