@@ -556,8 +556,13 @@ impl World {
         self.given.extend_from_slice(instances);
         self.spheres.clear();
         self.set += 1;
+        // ⚠ The meshes of a level draw the same run of instances: a cascade may cast an instance once for each.
+        let cast: usize = (self.draws.iter())
+            .filter(|draw| draw.mesh.material.bucket.casts())
+            .map(|draw| draw.instances.len())
+            .sum();
         let casting = self.casting.get_mut();
-        casting.room(device, instances.len(), self.draws.len());
+        casting.room(device, cast, self.draws.len());
     }
 
     fn draws_anything(&self) -> bool {
