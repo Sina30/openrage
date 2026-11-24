@@ -54,6 +54,8 @@ pub(crate) fn test_gpu(what: &str) -> Option<(wgpu::Instance, wgpu::Device, wgpu
     required_limits.max_bind_groups = required_limits.max_bind_groups.max(5);
     match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("openrage-test"),
+        required_features: adapter.features()
+            & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::INDIRECT_FIRST_INSTANCE),
         required_limits,
         ..Default::default()
     })) {

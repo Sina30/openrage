@@ -308,6 +308,14 @@ impl App {
         if adapter_features.contains(or_renderer::gpu_timer::FEATURES) {
             required_features |= or_renderer::gpu_timer::FEATURES;
         }
+        for wanted in [
+            wgpu::Features::TEXTURE_COMPRESSION_BC,
+            wgpu::Features::INDIRECT_FIRST_INSTANCE,
+        ] {
+            if adapter_features.contains(wanted) {
+                required_features |= wanted;
+            }
+        }
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("OpenRage device"),

@@ -1006,6 +1006,14 @@ fn headless_gpu() -> Result<(std::sync::Arc<wgpu::Device>, std::sync::Arc<wgpu::
     if adapter_features.contains(wgpu::Features::CLIP_DISTANCES) {
         required_features |= wgpu::Features::CLIP_DISTANCES;
     }
+    for wanted in [
+        wgpu::Features::TEXTURE_COMPRESSION_BC,
+        wgpu::Features::INDIRECT_FIRST_INSTANCE,
+    ] {
+        if adapter_features.contains(wanted) {
+            required_features |= wanted;
+        }
+    }
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("OpenRage self-check device"),
         required_features,
