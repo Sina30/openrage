@@ -646,16 +646,20 @@ fn fs_lit(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) 
         }
         return vec4<f32>(texel.rgb * emissive_strength() * m.opacity.x, alpha);
     }
-    if (dropped(in, s.coverage, BLEND_ALPHA)) {
-        discard;
-    }
     let towards = -light.sun_travel.xyz;
     let sun = light.sun_colour.rgb * max(dot(s.normal, towards), 0.0);
     let ambient = mix(light.ambient_down.rgb, light.ambient_up.rgb, s.normal.z * 0.5 + 0.5);
     let view_dir = normalize(camera.camera_pos_ws.xyz - in.world_pos);
     let highlight = light.sun_colour.rgb * shine(s, towards, view_dir);
-    let lit = diffuse_of(s) * (sun + ambient) + highlight + s.emissive;
-    return vec4<f32>(lit * s.coverage, s.coverage);
+    // ⚠ What it reflects is no part of its coverage: a clear pane still shows the sky, which the ambient light's colour above and below stands in for, by the share `reflected` gives, and lets through only what it does not reflect.
+    let mirrored = mix(light.ambient_down.rgb, light.ambient_up.rgb, reflect(-view_dir, s.normal).z * 0.5 + 0.5);
+    let share = reflected(s, max(dot(s.normal, view_dir), 1e-4));
+    let surface = highlight + mirrored * share;
+    if (dropped(in, max(s.coverage, max3(surface)), BLEND_ALPHA)) {
+        discard;
+    }
+    let lit = (diffuse_of(s) * (sun + ambient) + s.emissive) * s.coverage + surface;
+    return vec4<f32>(lit, s.coverage + share - s.coverage * share);
 }
 
 // What casts the sun's shadow whole: only the fade of its instance leaves a texel out.

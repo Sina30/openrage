@@ -642,6 +642,13 @@ fn specular_word(smoothness: f32, f0: f32) -> [u8; 4] {
     [255, unorm((stored / 512.0).sqrt()), unorm(1.0 - f0), 255]
 }
 
+/// Whether a specular word holds the exponent of `smoothness` and, as intensity times one less the fresnel word, the reflectance `f0`: what the view leaves of it whatever the intensity the view picks.
+fn same_lobe(word: [u8; 4], smoothness: f32, f0: f32) -> bool {
+    let intensity = (f32::from(word[0]) / 255.0).powi(2);
+    let reflectance = intensity * (1.0 - f32::from(word[2]) / 255.0);
+    word[1].abs_diff(specular_word(smoothness, f0)[1]) <= 2 && (reflectance - f0).abs() < 0.012
+}
+
 /// A square about the origin that reaches half a metre to each side, its vertices of the first colour `first` and the second `second`, drawn with `material`.
 fn coloured_square(
     device: &wgpu::Device,
@@ -1526,19 +1533,14 @@ fn a_terrain_lod_reads_its_material_green_as_a_smoothness_and_its_normal_map_who
     let green = 191.0 / 255.0;
     let terrain = drawn(terrain_lod);
     assert!(near(terrain[0], [255; 4], 2), "{terrain:?}");
-    assert!(
-        near(terrain[2], specular_word(green, 0.04), 2),
-        "{terrain:?}"
-    );
+    // Its normal leans most of the way off the view, so its intensity is the grazing one: only its lobe and its reflectance at normal incidence are its material's
+    assert!(same_lobe(terrain[2], green, 0.04), "{terrain:?}");
     // Its blue is the normal's own z, so the lean along u is nearly the whole of it
     assert!(terrain[1][0] > 245, "{terrain:?}");
     // The standard family reads the same maps as roughness, a lean rebuilt from two channels, and the palette
     let standard = drawn(standard);
     assert!(near(standard[0], [255, 0, 0, 255], 2), "{standard:?}");
-    assert!(
-        near(standard[2], specular_word(1.0 - green, 0.04), 2),
-        "{standard:?}"
-    );
+    assert!(same_lobe(standard[2], 1.0 - green, 0.04), "{standard:?}");
     assert!(near(standard[1], [204, 128, 230, 0], 2), "{standard:?}");
     assert!(accepted(scope), "the device accepted every pass");
 }
