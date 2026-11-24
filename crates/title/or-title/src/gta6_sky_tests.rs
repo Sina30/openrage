@@ -75,6 +75,22 @@ fn the_sky_is_blue_overhead_scales_with_its_light_and_is_dark_below_the_horizon(
 }
 
 #[test]
+fn a_camera_high_up_sees_a_darker_zenith_and_a_horizon_that_was_under_it_on_the_ground() {
+    let air = air();
+    let sun = [0.0, -0.6, 0.8];
+    let up = [0.0, 0.0, 1.0];
+    let ground = air.radiance(up, sun, 100_000.0);
+    assert_eq!(air.radiance_from(2.0, up, sun, 100_000.0), ground);
+    // Above the densest air there is less of it to scatter the light down to the camera.
+    let high = air.radiance_from(3000.0, up, sun, 100_000.0);
+    assert!((0..3).all(|c| high[c] < ground[c]), "{high:?} {ground:?}");
+    // Half a degree under the horizon meets the ground from the ground, and still sees sky from 300 m.
+    let under = [1.0, 0.0, -0.008];
+    assert_eq!(air.radiance(under, sun, 100_000.0), [0.0; 3]);
+    assert!(air.radiance_from(300.0, under, sun, 100_000.0)[2] > 0.0);
+}
+
+#[test]
 fn the_ground_takes_less_of_the_skys_light_as_the_sun_goes_down() {
     let air = air();
     let high = air.irradiance([0.0, 0.0, 1.0], 100_000.0);

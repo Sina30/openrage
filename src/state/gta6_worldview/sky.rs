@@ -31,6 +31,8 @@ const LOWEST_BODY: f32 = -0.35;
 const CUT: f32 = 200.0;
 /// How near, in stops, the exposure comes to what the curve wants before it counts as arrived: the meter's own noise from frame to frame is less.
 const REACHED: f32 = 0.1;
+/// How far, in metres, the camera climbs or falls before the sky's table is worked out again from its new height.
+const HEIGHT_STEP: f32 = 50.0;
 
 type Read = Arc<OnceLock<Arc<DayTables>>>;
 
@@ -177,16 +179,16 @@ pub fn day_of(
     y: f32,
 ) -> Option<Day> {
     let moment = moment(tables, hour, weather, y)?;
-    Some(day_of_moment(tables, moment, hour, days, weather))
+    Some(day_of_moment(tables, moment, (hour, days), weather, 0.0))
 }
 
-/// The day the frame is lit by from `moment`, at `hour` of the `days`th day in `weather`.
+/// The day the frame is lit by from `moment`, at `hour` of the `days`th day in `weather`, for a camera `height` metres above the sea.
 pub fn day_of_moment(
     tables: &DayTables,
     moment: Moment,
-    hour: f32,
-    days: f32,
+    (hour, days): (f32, f32),
     weather: WeatherState,
+    height: f32,
 ) -> Day {
     let visual = &tables.visual_settings;
     // The moment's light is stated whole, faded already by its own bodies.
@@ -199,7 +201,7 @@ pub fn day_of_moment(
         exposure: moment.light.exposure,
     };
     let sky_view = SkyView {
-        radiance: sky_radiance(&moment),
+        radiance: sky_radiance(&moment, height),
         exposure: moment.light.exposure,
     };
     Day {
@@ -245,14 +247,17 @@ struct SkyOf {
     moon: [f32; 3],
     illuminance: [f32; 2],
     tint: [f32; 3],
+    /// The camera's height above the sea, in steps of [`HEIGHT_STEP`].
+    height: i32,
 }
 
-/// The sky's radiance in every way of the table at `moment`: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour; worked out again only when one of those changes.
-fn sky_radiance(moment: &Moment) -> Radiance {
-    // ponytail: one table held, a few tenths of a second to work out; per moment it changes with the hour and the weather.
+/// The sky's radiance in every way of the table at `moment` for a camera `height` metres above the sea: what the air scatters of the sun and of the moon, each of its own illuminance, tinted by the moment's sky colour; worked out again only when one of those changes.
+fn sky_radiance(moment: &Moment, height: f32) -> Radiance {
+    // ponytail: one table held, a few tenths of a second to work out on the frame's thread; per moment it changes with the hour, the weather and a climb of a step.
     static HELD: Mutex<Option<(SkyOf, Radiance)>> = Mutex::new(None);
     let own = &moment.own;
     let of = SkyOf {
+        height: (height.max(0.0) / HEIGHT_STEP).round() as i32,
         air: Atmosphere::of(own),
         sun: moment.sun,
         moon: moment.moon,
@@ -273,11 +278,12 @@ fn sky_radiance(moment: &Moment) -> Radiance {
         .into_iter()
         .filter(|(body, lux)| lit(*body, *lux))
         .collect();
+    let metres = f64::from(of.height) * f64::from(HEIGHT_STEP);
     let table = SkyView::of(
         |view| {
             let mut sum = [0.0f32; 3];
             for (body, lux) in &bodies {
-                let seen = of.air.radiance(view.to_array(), *body, *lux);
+                let seen = of.air.radiance_from(metres, view.to_array(), *body, *lux);
                 sum = [0, 1, 2].map(|c| sum[c] + seen[c]);
             }
             [0, 1, 2].map(|c| sum[c] * of.tint[c])
@@ -377,7 +383,7 @@ mod tests {
                 (scale - exposed).abs() <= 1e-6 * exposed,
                 "{scale} {exposed}"
             );
-            let once = day_of_moment(&tables, moment, hour, 0.0, WeatherState::Clear);
+            let once = day_of_moment(&tables, moment, (hour, 0.0), WeatherState::Clear, 0.0);
             assert_eq!(once.hours, day.hours, "at {hour}");
         }
         let none = light_scale(None, 12.0, WeatherState::Clear, 0.0);

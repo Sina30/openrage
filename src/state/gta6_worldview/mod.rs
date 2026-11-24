@@ -474,9 +474,9 @@ impl Viewer {
             Some(sky::exposed(tables, moment, (hour, weather), eye, metered))
         });
         let scale = sky::scale_of(moment.as_ref());
-        let day = (tables.as_ref())
-            .zip(moment)
-            .map(|(tables, moment)| sky::day_of_moment(tables, moment, hour, days, weather));
+        let day = (tables.as_ref()).zip(moment).map(|(tables, moment)| {
+            sky::day_of_moment(tables, moment, (hour, days), weather, eye.z)
+        });
         if let (Some(tables), Some(world)) = (&tables, &self.world) {
             world.set_fade(stream::fade_of(&tables.visual_settings));
         }

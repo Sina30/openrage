@@ -312,8 +312,20 @@ impl Atmosphere {
 
     /// The sky's radiance seen from the camera along `view`, lit by a body towards `light` of `illuminance` lux: scattered once, and more than once as the multiple scattering table holds it.
     pub fn radiance(&self, view: [f32; 3], light: [f32; 3], illuminance: f32) -> [f32; 3] {
+        self.radiance_from(CAMERA * 1000.0, view, light, illuminance)
+    }
+
+    /// The sky's radiance as [`Self::radiance`] gives it, seen by a camera `height` metres above the ground; a view that meets the ground sees none.
+    pub fn radiance_from(
+        &self,
+        height: f64,
+        view: [f32; 3],
+        light: [f32; 3],
+        illuminance: f32,
+    ) -> [f32; 3] {
         let multiple = self.multiple_table();
-        let seen = self.radiance_in(unit(view), unit(light), VIEW_STEPS, &multiple);
+        let r0 = self.ground + (height / 1000.0).clamp(CAMERA, self.top - self.ground - CAMERA);
+        let seen = self.radiance_in(r0, unit(view), unit(light), VIEW_STEPS, &multiple);
         seen.map(|c| (c * f64::from(illuminance)) as f32)
     }
 
@@ -335,15 +347,15 @@ impl Atmosphere {
         })
     }
 
-    /// The radiance along `view` for a light of one lux, in `steps` steps.
+    /// The radiance along `view` from radius `r0` for a light of one lux, in `steps` steps.
     fn radiance_in(
         &self,
+        r0: f64,
         view: [f64; 3],
         light: [f64; 3],
         steps: u32,
         multiple: &Multiple,
     ) -> [f64; 3] {
-        let r0 = self.ground + CAMERA;
         if self.hits_ground(r0, view[2]) {
             return [0.0; 3];
         }
@@ -387,7 +399,8 @@ impl Atmosphere {
             for turn in 0..TURNS {
                 let angle = 2.0 * PI * (f64::from(turn) + 0.5) / f64::from(TURNS);
                 let view = [across * angle.cos(), across * angle.sin(), up];
-                let seen = self.radiance_in(view, light, LIGHT_STEPS, &multiple);
+                let seen =
+                    self.radiance_in(self.ground + CAMERA, view, light, LIGHT_STEPS, &multiple);
                 out = [0, 1, 2].map(|c| out[c] + seen[c] * up * solid);
             }
         }
