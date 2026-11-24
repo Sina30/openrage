@@ -25,6 +25,8 @@ use crate::state::gta6_world::worldview::{Bucket, CpuMaterial, CpuModel};
 
 #[path = "world_budget.rs"]
 mod budget;
+#[path = "world_cards.rs"]
+mod cards;
 #[path = "world_layout.rs"]
 mod layout;
 #[path = "world_material.rs"]
@@ -157,6 +159,8 @@ pub(super) struct WorldGpu {
     /// The day the renderer was last handed while the world was shown.
     day: Option<DayFor>,
     water: water::Water,
+    /// The far stand-ins the renderer holds.
+    cards: cards::Cards,
 }
 
 fn bucket_of(bucket: Bucket) -> WorldBucket {
@@ -392,7 +396,7 @@ impl RenderBridge {
         }
 
         // ⚠ Handing the renderer a day bumps its revision: only when what it was worked out for changed.
-        let (day, lights) = viewer.sky(days, weather);
+        let (day, (lights, spots), exposure) = viewer.sky(days, weather);
         let day_for = (
             viewer.hour.to_bits(),
             days.to_bits(),
@@ -405,9 +409,11 @@ impl RenderBridge {
             self.renderer.set_day(day);
         }
         self.renderer.set_point_lights(lights);
+        self.renderer.set_spot_lights(spots);
+        self.renderer.set_world_exposure(exposure);
         // The GTA V day is worked out again once the world is left.
         self.day_key = None;
-        let water = viewer.water();
+        let water = viewer.water(weather);
         if (world.water).refresh(&self.renderer, &self.device, water.as_ref(), eye) {
             world.changes += 1;
         }
@@ -417,6 +423,7 @@ impl RenderBridge {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let view_proj = viewer.camera.view_proj(aspect);
         let (lod_scale, fov_y) = (viewer.lod_scale, viewer.camera.fov_y);
+        let index = viewer.index.clone();
         drop(viewer);
         let Some(selected) = selected else {
             if self.renderer.has_world() {
@@ -424,6 +431,7 @@ impl RenderBridge {
             }
             world.laid_for = None;
             world.drawn = WorldDrawn::default();
+            world.hide_cards(&mut self.renderer);
             return;
         };
         // What casts a shadow into the view draws as well, where the sun's shadows are cast.
@@ -456,10 +464,12 @@ impl RenderBridge {
         }
         let view = View {
             frustum: Frustum::of(view_proj),
+            view_proj,
             eye,
             lod_scale,
             shadow_far: casts.then_some(or_renderer::world::SHADOW_FAR),
         };
+        world.layout.occlude(&selected.occluders, &view);
         world.layout.cull(&selected.chunks, instances, &view);
         world.layout.place(instances);
 
@@ -580,6 +590,18 @@ impl RenderBridge {
                 material.making += 1;
             }
         }
+        // The far stand-ins, and the colour maps a species waits for to be baked.
+        let model_of = |id: usize| {
+            let index = index.as_deref()?;
+            crate::state::gta6_world::worldview::stream::slod::model_of(index, id)
+        };
+        wanted.extend(world.refresh_cards(
+            &mut self.renderer,
+            (&self.device, &self.queue),
+            &selected,
+            (&Frustum::of(view_proj), eye),
+            &model_of,
+        ));
         let mut wanted = merged(wanted);
         world.textures.hold(&mut wanted);
         crate::state::gta6_world::worldview::viewer().want_textures(wanted);
@@ -653,6 +675,8 @@ impl RenderBridge {
         if !self.world.shown && self.renderer.has_world() {
             (self.renderer).set_world(&self.device, &self.queue, &[], Vec::new());
             self.renderer.set_point_lights(Vec::new());
+            self.renderer.set_spot_lights(Vec::new());
+            self.world.hide_cards(&mut self.renderer);
             (self.world.laid_for, self.world.day) = (None, None);
         }
     }
