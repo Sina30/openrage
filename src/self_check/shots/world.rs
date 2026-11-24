@@ -171,8 +171,7 @@ fn hex(names: &[u32]) -> Vec<String> {
     out
 }
 
-/// Write what the viewer wants and draws at its camera to `path` as JSON: the maps by name, the
-/// nodes and those drawn by kind and level, the lists' instances and the far cards.
+/// Write what the viewer wants and draws at its camera to `path` as JSON.
 fn dump(path: &Path) -> Result<(), String> {
     let mut viewer = viewer();
     let selected = (viewer.selected(&mut Vec::new()))
@@ -213,8 +212,7 @@ fn dump(path: &Path) -> Result<(), String> {
 }
 
 impl Shell {
-    /// Run a `world` step on the World screen, which the script has put up before it; a dump is
-    /// written into `out`.
+    /// Run a `world` step on the World screen, which the script has put up before it; a dump goes into `out`.
     pub(super) fn world(
         &mut self,
         state: &mut AppState,
