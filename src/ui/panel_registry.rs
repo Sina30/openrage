@@ -108,7 +108,13 @@ impl PanelRegistry {
 
 fn live() -> &'static RwLock<PanelRegistry> {
     static LIVE: OnceLock<RwLock<PanelRegistry>> = OnceLock::new();
-    LIVE.get_or_init(|| RwLock::new(crate::ui::panels::registry::builtin()))
+    LIVE.get_or_init(|| {
+        let mut registry = crate::ui::panels::registry::builtin();
+        // The GTA VI archive explorer is dynamic, not a builtin, so it stays out of the default
+        // layouts and their counts while still being offered through the View menu.
+        crate::ui::panels::gta6_archive_tree::register_into(&mut registry);
+        RwLock::new(registry)
+    })
 }
 
 // ⚠ Refuses an id already present rather than replacing it, unlike the other

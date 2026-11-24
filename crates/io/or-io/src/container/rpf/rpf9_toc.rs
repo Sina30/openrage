@@ -10,11 +10,13 @@
 //! path [`GTA6_SNAPSHOT_ENV`] names) is game-derived and never committed, and nothing here bundles it.
 
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use byteorder::{BigEndian, ByteOrder, LE};
 
+use super::gta6_keygate;
 use super::rpf9::Rpf9Header;
 use crate::error::{IoError, Result};
 
@@ -22,6 +24,10 @@ use crate::error::{IoError, Result};
 pub const GTA6_SNAPSHOT_ENV: &str = "OPENRAGE_GTA6_KEYS";
 /// The file a user's GTA VI snapshot is looked up under, beside the keys cache.
 pub const GTA6_SNAPSHOT_FILE_NAME: &str = "gtavi_magic.dat";
+/// The environment variable that names the GTA VI executable, which unmasks a masked snapshot
+/// (`ORGTAVIM`). A plaintext snapshot needs no executable; only a masked one, which may be committed
+/// because it is inert without the user's own executable (D18, [`gta6_keygate`]).
+pub const GTA6_EXE_ENV: &str = "OPENRAGE_GTA6_EXE";
 
 /// `ORGTAVIK`: the snapshot container's magic.
 const SNAPSHOT_MAGIC: &[u8; 8] = b"ORGTAVIK";
@@ -58,8 +64,10 @@ struct KeyBlob {
 
 /// A GTA VI key snapshot: the shared cipher tables, the bootstrap IV, and a key per registry id.
 ///
-/// The container is plaintext; unlike GTA V's `magic.dat` it carries no AES-masked layer, so it is
-/// parsed without the executable. The exe SHA-256 it records says which build it was taken from.
+/// The parsed container is the plaintext `ORGTAVIK` snapshot. A snapshot may also be committed masked
+/// (`ORGTAVIM`), inert until [`from_file`](Self::from_file) unmasks it with the executable
+/// [`GTA6_EXE_ENV`] names (D18, [`gta6_keygate`]). The exe SHA-256 it records says which build it was
+/// taken from.
 pub struct GtaViKeys {
     exe_sha256: [u8; 32],
     bootstrap_iv: [u8; 16],
@@ -107,6 +115,32 @@ fn snapshot_bad(why: impl Into<String>) -> IoError {
     }
 }
 
+/// The plaintext of `bytes` when it is a masked (`ORGTAVIM`) snapshot, decoded with the executable
+/// [`GTA6_EXE_ENV`] names; `None` when `bytes` is already plaintext, so the caller parses it as read.
+fn unmask_if_needed(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+    unmask_with(bytes, std::env::var_os(GTA6_EXE_ENV).as_deref())
+}
+
+/// The plaintext of `bytes` when it is a masked (`ORGTAVIM`) snapshot, decoded with the executable at
+/// `exe_path`; `None` when `bytes` is already plaintext. A masked snapshot with no executable to key
+/// it is refused rather than parsed as noise. Split out from [`unmask_if_needed`] so the masked path
+/// is testable without the environment.
+fn unmask_with(bytes: &[u8], exe_path: Option<&OsStr>) -> Result<Option<Vec<u8>>> {
+    if !gta6_keygate::is_masked(bytes) {
+        return Ok(None);
+    }
+    let exe_path = exe_path.ok_or_else(|| {
+        snapshot_bad(format!(
+            "it is masked and needs the GTA VI executable to open; set {GTA6_EXE_ENV} to its path"
+        ))
+    })?;
+    let exe = std::fs::read(exe_path).map_err(|source| IoError::FileReadFailed {
+        path: PathBuf::from(exe_path),
+        source,
+    })?;
+    gta6_keygate::decode_masked(bytes, &exe).map(Some)
+}
+
 impl GtaViKeys {
     /// Parse an `ORGTAVIK` snapshot container; refused, never panicking, on any malformed field.
     pub fn parse(snapshot: &[u8]) -> Result<Self> {
@@ -114,6 +148,12 @@ impl GtaViKeys {
             bytes: snapshot,
             at: 0,
         };
+        if gta6_keygate::is_masked(snapshot) {
+            return Err(snapshot_bad(
+                "it is a masked (`ORGTAVIM`) snapshot; open it with `from_file` and the GTA VI \
+                 executable, which parse does not have",
+            ));
+        }
         if c.take(8)? != SNAPSHOT_MAGIC {
             return Err(snapshot_bad("the magic is not `ORGTAVIK`"));
         }
@@ -189,14 +229,17 @@ impl GtaViKeys {
         })
     }
 
-    /// Parse the snapshot at `path`.
+    /// Parse the snapshot at `path`, unmasking it first when it is a masked (`ORGTAVIM`) container:
+    /// the executable [`GTA6_EXE_ENV`] names keys the unmasking, and a masked snapshot with no such
+    /// executable is refused, since nothing else can open it.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let bytes = std::fs::read(path).map_err(|source| IoError::FileReadFailed {
             path: path.to_path_buf(),
             source,
         })?;
-        let mut keys = Self::parse(&bytes)?;
+        let plain = unmask_if_needed(&bytes)?;
+        let mut keys = Self::parse(plain.as_deref().unwrap_or(&bytes))?;
         keys.snapshot_file = Some(path.to_path_buf());
         Ok(keys)
     }
@@ -643,5 +686,41 @@ mod tests {
             keys.cbc_decrypt(0xDEAD_BEEF_0000_0000, &[0; 16], &mut [0u8; 16]),
             Err(IoError::RpfEncryptionUnsupported { .. })
         ));
+    }
+
+    #[test]
+    fn a_plaintext_snapshot_passes_through_unmasking_untouched() {
+        // A plaintext `ORGTAVIK` container is not masked, so no executable is read and the bytes are
+        // used as read.
+        let (bytes, _) = snapshot();
+        assert!(matches!(unmask_with(&bytes, None), Ok(None)));
+    }
+
+    #[test]
+    fn a_masked_snapshot_opens_with_its_executable_and_refuses_otherwise() {
+        let (plain, _) = snapshot();
+        let masked = gta6_keygate::encode_masked(&plain, b"the-keying-executable");
+        assert!(gta6_keygate::is_masked(&masked));
+
+        // The executable is read from a path, so write the keying one and a wrong one to a temp dir.
+        let dir = std::env::temp_dir().join(format!("openrage-gta6-unmask-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create the temp dir");
+        let right = dir.join("right.exe");
+        let wrong = dir.join("wrong.exe");
+        std::fs::write(&right, b"the-keying-executable").expect("write the keying exe");
+        std::fs::write(&wrong, b"a-different-executable").expect("write the wrong exe");
+
+        // Masked with no executable is refused rather than parsed as noise.
+        assert!(unmask_with(&masked, None).is_err());
+        // A wrong executable is refused, not returned as garbage.
+        assert!(unmask_with(&masked, Some(wrong.as_os_str())).is_err());
+        // The keying executable recovers the exact plaintext, which then parses.
+        let recovered = unmask_with(&masked, Some(right.as_os_str()))
+            .expect("unmask succeeds")
+            .expect("a masked snapshot yields plaintext");
+        assert_eq!(recovered, plain);
+        assert!(GtaViKeys::parse(&recovered).is_ok());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
