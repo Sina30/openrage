@@ -135,6 +135,38 @@ pub fn stated_model_name(virtual_section: &[u8]) -> Result<String> {
     })
 }
 
+/// The draw bucket byte each shader states at +0x39: of the drawable a body of `signature` is, of
+/// the one a fragment holds, or of the entry of code `entry` of a dictionary.
+pub fn shader_buckets(
+    signature: crate::container::rpf::Rpf9Signature,
+    virtual_section: &[u8],
+    entry: Option<u32>,
+) -> Result<Vec<u8>> {
+    use crate::container::rpf::Rpf9Role;
+    sections(virtual_section, None, |v, _| {
+        let at = match (signature.role(), entry) {
+            (Some(Rpf9Role::Drawable), None) => 0,
+            (Some(Rpf9Role::DrawableWithBound), None) => v.to("drawable", 0x18)?,
+            (Some(Rpf9Role::Dictionary), Some(code)) => super::dictionary::entry_of(v, code)?
+                .ok_or(HeaderlessError::Null {
+                    what: "dictionary entry",
+                    at: 0x30,
+                })?,
+            _ => return Err(HeaderlessError::NoLayout(signature)),
+        };
+        let group = v.to("shader group", at + 0x10)?;
+        let count = usize::from(v.u16("shader count", group + 0x18)?);
+        let shaders = match count {
+            0 => 0,
+            _ => v.to("shaders", group + 0x10)?,
+        };
+        v.array("shaders", shaders, count, 8)?;
+        (0..count)
+            .map(|i| v.u8("shader's draw bucket", v.to("shader", shaders + 8 * i)? + 0x39))
+            .collect()
+    })
+}
+
 pub fn read_drawable_with_bound(
     virtual_section: &[u8],
     physical: Option<&[u8]>,
