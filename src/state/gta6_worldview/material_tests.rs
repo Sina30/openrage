@@ -450,3 +450,23 @@ fn a_materials_keys_are_each_named_once_and_equal_materials_are_one_key_of_a_map
     }
     assert_eq!(seen.len(), 2);
 }
+
+#[test]
+fn a_ground_decal_states_the_heights_its_blend_spans_and_whether_its_tint_multiplies() {
+    let ground = shader(
+        &one_layer(),
+        &[
+            (0x1BCE_EA11, &[0.25]),
+            (0xAED6_191D, &[0.75]),
+            (0x40D6_CCD6, &[1.0]),
+        ],
+    );
+    let c = of(&ground, 2).constants;
+    assert_eq!(
+        (c.ground_heights, c.tint_multiplies),
+        (Some([0.25, 0.75]), true)
+    );
+    // A decal that states neither height blends by its coverage alone
+    let plain = of(&shader(&one_layer(), &[]), 2).constants;
+    assert_eq!((plain.ground_heights, plain.tint_multiplies), (None, false));
+}

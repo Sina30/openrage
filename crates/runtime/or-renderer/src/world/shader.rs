@@ -88,6 +88,8 @@ const INVERT_CONTROL: u32 = 4u;
 const HARD_LIGHT: u32 = 8u;
 const MODEL_VERTEX: u32 = 16u;
 const INSTANCE_COLOUR: u32 = 32u;
+const GROUND_BLEND: u32 = 64u;
+const TINT_MULTIPLY: u32 = 128u;
 
 struct VsIn {
     @location(0) position: vec3<f32>,
@@ -339,6 +341,18 @@ fn two_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
     return mix(leaning(maps.n0, m.bumpiness.x), leaning(maps.n1, m.bumpiness.y), w1);
 }
 
+// How much of a ground decal shows: the height its material map states, taken between its low and high, against the vertex's share, the larger winning the more sharply the greater its softness.
+fn ground_share(height: f32, share: f32) -> f32 {
+    let h = clamp(m.height_scale.x * (height - m.height_bias.x), 1e-4, 0.9999);
+    let shown = h * share;
+    let hidden = (1.0 - h) * (1.0 - share);
+    let top = max(max(shown, hidden), 1e-6);
+    let p = 19.0 * m.blend_softness.x + 1.0;
+    let a = pow(shown / top, p);
+    let b = pow(hidden / top, p);
+    return clamp(a / max(a + b, 1e-6), 0.0, 1.0);
+}
+
 // The one-layer families: material A is metalness in red and roughness in green, material B's alpha masks the palette tint.
 fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) -> vec3<f32> {
     let family = m.family.x;
@@ -349,6 +363,10 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
         // The instance's colour, squared already, as far as the vertex's second colour lets it
         let own = 1.0 + in.colour1.r * (in.tint - 1.0);
         colour = colour * (1.0 + m.grass_tint * (own - 1.0));
+    } else if ((m.flags & GROUND_BLEND) != 0u) {
+        // The palette's colour at the luminance of the decal's own, or times it, as far as its tint blend says
+        let tinted = select(m.tint_intensity.x * tint * lum(colour), clamp(colour * tint * m.tint_intensity.x, vec3<f32>(0.0), vec3<f32>(1.0)), (m.flags & TINT_MULTIPLY) != 0u);
+        colour = mix(colour, tinted, m.tint_blend.x);
     } else if (family != TERRAIN_LOD) {
         let mask = 1.0 - m.translucency_as_tint_mask * (1.0 - maps.c3.a);
         colour = colour * (1.0 + mask * (tint - 1.0));
@@ -357,6 +375,9 @@ fn one_layer(s: ptr<function, Surface>, maps: Maps, in: VsOut, tint: vec3<f32>) 
     }
     (*s).albedo = colour;
     (*s).coverage = maps.c0.a * in.colour.a;
+    if ((m.flags & GROUND_BLEND) != 0u) {
+        (*s).coverage = maps.c0.a * ground_share(maps.a0.b, in.colour.a);
+    }
     if (family == TERRAIN_LOD) {
         // Its material map's green is a smoothness, and its normal map holds all three channels
         (*s).metal = 0.0;

@@ -101,6 +101,13 @@ pub(super) fn constants_of(material: &CpuMaterial) -> WorldConstants {
         grass_tint: c.gtintensity,
         ..WorldConstants::default()
     };
+    // A ground decal's height span reaches the shader as the first layer's scale and bias
+    if let Some([low, high]) = c.ground_heights {
+        constants.flags |=
+            WorldConstants::GROUND_BLEND | flag(c.tint_multiplies, WorldConstants::TINT_MULTIPLY);
+        constants.height_scale[0] = 1.0 / (high - low).max(1e-4);
+        constants.height_bias[0] = low;
+    }
     if let Some(emissive) = &material.emissive {
         let [r, g, b] = emissive.scale;
         let [pr, pg, pb] = emissive.power;
@@ -202,6 +209,29 @@ mod tests {
             | WorldConstants::HARD_LIGHT
             | WorldConstants::MODEL_VERTEX;
         assert_eq!(constants.flags, wanted);
+    }
+
+    #[test]
+    fn a_ground_decal_hands_the_shader_its_height_span_as_a_scale_and_bias_and_its_flags() {
+        let material = CpuMaterial {
+            family: Family::Decal,
+            constants: Constants {
+                ground_heights: Some([0.25, 0.75]),
+                tint_multiplies: true,
+                ..Constants::default()
+            },
+            ..CpuMaterial::default()
+        };
+        let constants = constants_of(&material);
+        assert_eq!(
+            (constants.height_scale[0], constants.height_bias[0]),
+            (2.0, 0.25)
+        );
+        let both = WorldConstants::GROUND_BLEND | WorldConstants::TINT_MULTIPLY;
+        assert_eq!(constants.flags & both, both);
+        // Any other material blends no ground
+        let plain = constants_of(&CpuMaterial::default());
+        assert_eq!(plain.flags & both, 0);
     }
 
     #[test]

@@ -92,6 +92,10 @@ pub struct Constants {
     pub lookup_uv_set: f32,
     /// A two-layer material's scale of its second layer's coordinate.
     pub layer1_uv_scale: [f32; 2],
+    /// A ground decal's heights of its material map's blue that span its blend into the ground, low then high; none for any other material.
+    pub ground_heights: Option<[f32; 2]>,
+    /// A ground decal's tint multiplies its colour rather than taking its luminance.
+    pub tint_multiplies: bool,
 }
 
 impl Default for Constants {
@@ -123,6 +127,8 @@ impl Default for Constants {
             uv_sets: [1.0; 4],
             lookup_uv_set: 1.0,
             layer1_uv_scale: [1.0; 2],
+            ground_heights: None,
+            tint_multiplies: false,
         }
     }
 }
@@ -291,6 +297,10 @@ const UV_SETS: u32 = name_hash32(b"uvSet");
 const LAYER_UV_SETS: [u32; 2] = [name_hash32(b"lyr0UVSet"), name_hash32(b"lyr1UVSet")];
 const LOOKUP_UV_SET: [u32; 2] = [name_hash32(b"lookupUVSet"), name_hash32(b"controlUVSet")];
 const LAYER1_UV_SCALE: u32 = name_hash32(b"lyr1UVScale");
+/// A ground decal's low and high heights of its blend, and whether its tint multiplies.
+const GROUND_LOW: u32 = 0x1BCE_EA11;
+const GROUND_HIGH: u32 = 0xAED6_191D;
+const TINT_MULTIPLIES: u32 = 0x40D6_CCD6;
 
 /// A shader's records and constants, by the hash its drawable states for each.
 struct Records<'a>(&'a Shader);
@@ -407,6 +417,9 @@ fn constants_of(r: &Records) -> Constants {
             r.sets(LOOKUP_UV_SET[0], [d.lookup_uv_set]),
         )[0],
         layer1_uv_scale: r.floats(LAYER1_UV_SCALE, d.layer1_uv_scale),
+        ground_heights: (r.words(GROUND_HIGH).is_some() || r.words(GROUND_LOW).is_some())
+            .then(|| [r.float(GROUND_LOW, 0.0), r.float(GROUND_HIGH, 1.0)]),
+        tint_multiplies: r.flag(TINT_MULTIPLIES, d.tint_multiplies),
     };
     for (set, hash) in c.uv_sets.iter_mut().zip(LAYER_UV_SETS) {
         *set = r.sets(hash, [*set])[0];
