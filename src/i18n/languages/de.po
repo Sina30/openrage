@@ -16652,11 +16652,26 @@ msgstr "Die Maps streamen, die die gemeinsamen Minispiele hinzufügen"
 msgid "The index holds no script-managed group"
 msgstr "Der Index enthält keine per Skript verwaltete Gruppe"
 
+msgid "{on} groups on: the game's own at this hour"
+msgstr "{on} Gruppen aktiv: die des Spiels zu dieser Stunde"
+
+msgid "{on} groups on, as you chose them"
+msgstr "{on} Gruppen aktiv, wie gewählt"
+
+msgid "The game's own groups"
+msgstr "Die Gruppen des Spiels"
+
+msgid "Switch on the groups the game's world state switches on at this hour, in place of the ones chosen"
+msgstr "Die Gruppen aktivieren, die der Weltzustand des Spiels zu dieser Stunde aktiviert, anstelle der gewählten"
+
 msgid "Script-managed groups: {on} of {groups} on"
 msgstr "Per Skript verwaltete Gruppen: {on} von {groups} aktiv"
 
 msgid "Nothing says which are on at rest: a group ticked streams its maps in"
 msgstr "Nichts gibt an, welche standardmäßig aktiv sind: Eine angehakte Gruppe streamt ihre Maps"
+
+msgid "A group ticked streams its maps in"
+msgstr "Eine angehakte Gruppe streamt ihre Maps"
 
 msgid "{name}, {maps} maps"
 msgstr "{name}, {maps} Maps"
