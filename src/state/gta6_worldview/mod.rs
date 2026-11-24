@@ -77,6 +77,9 @@ pub struct Viewer {
     have: HashSet<ModelRef>,
     /// The selection whose waited-for models the readers were last given.
     wanted_of: u64,
+    /// The models that selection waits for, and those the far stand-ins' atlas waits for.
+    wanted: Vec<(f32, ModelRef)>,
+    species_models: Vec<(f32, ModelRef)>,
     models: Option<Pool<ModelRef, Option<CpuModel>>>,
     /// A texture is asked for by its key and the screen size it is needed at.
     textures: Option<Pool<(u64, u32), Option<CpuTexture>>>,
@@ -114,6 +117,8 @@ impl Default for Viewer {
             world: None,
             have: HashSet::new(),
             wanted_of: 0,
+            wanted: Vec::new(),
+            species_models: Vec::new(),
             models: None,
             textures: None,
             held: Arc::default(),
@@ -373,16 +378,31 @@ impl Viewer {
         let latest = world.latest();
         if told || self.wanted_of != latest.version {
             self.wanted_of = latest.version;
-            // ⚠ A selection made before a model arrived still waits for it: it is not read twice.
-            let wanted: Vec<(f32, ModelRef)> = (latest.wanted.iter().copied())
-                .filter(|(_, model)| !self.have.contains(model))
-                .collect();
-            self.models_waiting = wanted.len();
-            if let Some(models) = &self.models {
-                models.want(wanted);
-            }
+            self.wanted.clone_from(&latest.wanted);
+            self.want_models();
         }
         Some(latest)
+    }
+
+    /// Ask for the models the far stand-ins' atlas waits for, after what the selection waits for.
+    pub fn want_species_models(&mut self, models: Vec<(f32, ModelRef)>) {
+        if models != self.species_models {
+            self.species_models = models;
+            self.want_models();
+        }
+    }
+
+    /// Give the readers every model waited for that is not on the device.
+    fn want_models(&mut self) {
+        // ⚠ A selection made before a model arrived still waits for it: it is not read twice.
+        let wanted: Vec<(f32, ModelRef)> = (self.wanted.iter().chain(&self.species_models))
+            .copied()
+            .filter(|(_, model)| !self.have.contains(model))
+            .collect();
+        self.models_waiting = wanted.len();
+        if let Some(models) = &self.models {
+            models.want(wanted);
+        }
     }
 
     /// Ask for `wanted` (how soon, key, longest side seen in pixels) in place of what was asked before.

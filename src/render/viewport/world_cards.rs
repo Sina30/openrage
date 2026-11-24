@@ -2,8 +2,8 @@
 //! renderer when the selection changes, those the camera sees within their distance shown, and a
 //! species baked into the atlas once its model and its colour maps are on the device.
 //!
-//! ⚠ A species is baked from the levels of its model that the world itself drew: a species whose
-//! model never comes near enough to be read has no slot, and its cards draw nothing.
+//! ⚠ A species whose model the world never drew near is read for its atlas alone, after
+//! everything that draws: until it is baked its cards draw nothing.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,9 +114,9 @@ impl WorldGpu {
     }
 
     /// Hand the renderer the selection's card lists when they change, show those whose sphere the
-    /// camera at `eye` sees within their distance, and bake one species whose model is on the
-    /// device; `model_of` is the model of the species of an id. Gives the colour maps a species
-    /// waits for, asked for as the frame's textures are: `(priority, key, pixels)`.
+    /// camera at `eye` sees within their distance, and bake the species whose model and colour
+    /// maps are on the device; `model_of` is the model of the species of an id. Gives what the
+    /// species of the shown lists wait for, asked for as the frame's models and textures are.
     pub(super) fn refresh_cards(
         &mut self,
         renderer: &mut ViewportRenderer,
@@ -124,7 +124,7 @@ impl WorldGpu {
         selected: &Selected,
         (frustum, eye): (&Frustum, Vec3),
         model_of: &dyn Fn(usize) -> Option<ModelRef>,
-    ) -> Vec<(f32, u64, u32)> {
+    ) -> CardAsks {
         let fresh = self.cards.version != Some(selected.version);
         if fresh {
             self.cards.version = Some(selected.version);
@@ -160,10 +160,27 @@ impl WorldGpu {
             self.cards.table = Some(Arc::clone(species));
             self.cards.slots.clear();
         }
-        // ponytail: one bake a layout, of the first species by id that can be baked; nearest first if the bakes are seen to lag.
-        let (mut settled, mut absent) = (Vec::new(), Vec::new());
+        // The model of each species a shown list names and no slot holds, by the nearest list that names it.
+        let mut waits: HashMap<usize, f32> = HashMap::new();
+        for list in self
+            .cards
+            .shown
+            .iter()
+            .filter_map(|at| selected.cards.get(*at as usize))
+        {
+            let away = (eye.distance(Vec3::from(list.centre)) - list.radius).max(0.0);
+            for id in list.ids.iter().map(|id| usize::from(*id)) {
+                if !self.cards.slots.contains_key(&id) {
+                    let nearest = waits.entry(id).or_insert(away);
+                    *nearest = nearest.min(away);
+                }
+            }
+        }
+        // ponytail: a few bakes a frame, by id; nearest first if the bakes are seen to lag.
+        let (mut settled, mut absent, mut models) = (Vec::new(), Vec::new(), Vec::new());
         let grey = self.textures.grey(device, queue);
-        let mut baking = true;
+        let mut bakes = BAKES_A_FRAME;
+        let mut more = false;
         for (id, kind) in species.iter().enumerate() {
             if kind.radius <= 0.0 || self.cards.slots.contains_key(&id) {
                 continue;
@@ -172,22 +189,38 @@ impl WorldGpu {
                 settled.push((id, None));
                 continue;
             };
+            match self.models.get(&model) {
+                // A model that will never come bakes nothing.
+                Some(Slot::Missing) => {
+                    settled.push((id, None));
+                    continue;
+                }
+                // A species never drawn near is read for its atlas alone, after what draws.
+                None => {
+                    if let Some(away) = waits.get(&id) {
+                        models.push((ASKED_LAST + away, model));
+                    }
+                    continue;
+                }
+                Some(Slot::Ready { .. }) => {}
+            }
             let Some(meshes) = self.card_meshes(&model, &grey, &mut absent) else {
                 continue;
             };
-            if !baking {
+            if bakes == 0 {
+                more = true;
                 continue;
             }
-            baking = false;
+            bakes -= 1;
             let slot = self.cards.next;
             let fits = slot < renderer.card_slots(device)
                 && renderer.bake_card_slot(device, queue, slot, kind.centre, kind.radius, &meshes);
+            if fits {
+                self.cards.next += 1;
+            }
             settled.push((id, fits.then_some(slot)));
         }
         for (id, slot) in settled {
-            if slot.is_some() {
-                self.cards.next += 1;
-            }
             self.cards.slots.insert(id, slot);
             changed = true;
         }
@@ -201,16 +234,28 @@ impl WorldGpu {
                 .collect();
             renderer.set_card_species(device, queue, &table);
         }
-        // Asked for after everything the camera sees, at the size a frame of the atlas needs.
-        absent
-            .into_iter()
-            .map(|key| (ASKED_LAST, key, BAKED_PIXELS))
-            .collect()
+        CardAsks {
+            // Asked for after everything the camera sees, at the size a frame of the atlas needs.
+            textures: (absent.into_iter())
+                .map(|key| (ASKED_LAST, key, BAKED_PIXELS))
+                .collect(),
+            models,
+            more,
+        }
     }
 }
 
-/// The priority a stand-in's colour map is asked for at, after every map of what draws.
+/// What the far stand-ins wait for: the colour maps and the models of species to bake, and whether a species ready to bake was left for the next frame.
+pub(super) struct CardAsks {
+    pub textures: Vec<(f32, u64, u32)>,
+    pub models: Vec<(f32, ModelRef)>,
+    pub more: bool,
+}
+
+/// The priority a stand-in's colour map and model are asked for at, after everything that draws.
 const ASKED_LAST: f32 = 1.0e9;
+/// The most species baked in one frame.
+const BAKES_A_FRAME: usize = 16;
 /// The longest side a stand-in's colour map is asked for at: a frame of the atlas is 32 texels, a model's map a few times its size.
 const BAKED_PIXELS: u32 = 128;
 

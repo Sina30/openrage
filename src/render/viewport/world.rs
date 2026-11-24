@@ -598,16 +598,24 @@ impl RenderBridge {
             let index = index.as_deref()?;
             crate::state::gta6_world::worldview::stream::slod::model_of(index, id)
         };
-        wanted.extend(world.refresh_cards(
+        let asks = world.refresh_cards(
             &mut self.renderer,
             (&self.device, &self.queue),
             &selected,
             (&Frustum::of(view_proj), eye),
             &model_of,
-        ));
+        );
+        // A species left for the next frame is baked then though nothing else changes.
+        if asks.more {
+            world.changes += 1;
+        }
+        wanted.extend(asks.textures);
         let mut wanted = merged(wanted);
         world.textures.hold(&mut wanted);
-        crate::state::gta6_world::worldview::viewer().want_textures(wanted);
+        let mut viewer = crate::state::gta6_world::worldview::viewer();
+        viewer.want_textures(wanted);
+        viewer.want_species_models(asks.models);
+        drop(viewer);
 
         // A draw for each mesh of each run, in the order the renderer sends most of them together.
         let mut keyed = Vec::with_capacity(runs.len());

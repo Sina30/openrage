@@ -112,6 +112,8 @@ fn a_card_list_keeps_the_box_the_scales_and_each_record_as_stored() {
         u16::from_le_bytes([cards.records[1][14], cards.records[1][15]]),
         2
     );
+    // Each species once, for the atlas to wait for.
+    assert_eq!(cards.ids[..], [1, 2]);
     // Seen through a view, it scales its distance and takes the list's fade, sharing the records.
     let seen = cards.seen(1.5, 0.25);
     assert_eq!((seen.distance, seen.fade), (1350.0, 0.25));

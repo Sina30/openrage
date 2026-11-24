@@ -27,6 +27,8 @@ pub struct CardList {
     pub fade: f32,
     /// Each instance as the body stores it: the u16 at +0x0E is the id of its species.
     pub records: Arc<[[u8; 16]]>,
+    /// The ids of the species its instances take, each once.
+    pub ids: Arc<[u16]>,
 }
 
 /// What a far stand-in id stands in for: an archetype's name and its model's sphere; a name of 0 for an id no list settles.
@@ -48,8 +50,8 @@ impl CardList {
         // A card stands off its place by its species' centre and its corner reaches past it by
         // the radius times √2, both at the instance's scale.
         let mut reach = 0.0f32;
-        let mut seen = std::collections::HashSet::new();
-        for instance in list.instances.iter().filter(|i| seen.insert(i.guid)) {
+        let mut ids = std::collections::BTreeSet::new();
+        for instance in list.instances.iter().filter(|i| ids.insert(i.guid)) {
             if let Some(a) = archetype_of(index, usize::from(instance.guid)) {
                 reach = reach.max(Vec3::from(a.centre).length() + a.radius * SQRT_2);
             }
@@ -64,6 +66,7 @@ impl CardList {
             distance: list.instance_lod_dist,
             fade: 1.0,
             records: list.instances.iter().map(|i| i.record()).collect(),
+            ids: ids.into_iter().collect(),
         }
     }
 
