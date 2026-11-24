@@ -5,7 +5,8 @@
 //! and an instance of a list is left out while the entity that stands in for it draws.
 //!
 //! ⚠ An entity that stands in for the whole of its parent is judged by the distance to its
-//! **parent's** position, never its own; a list is judged by its own box's centre.
+//! **parent's** position, never its own; a list is judged by its own box's centre. Under a parent
+//! that is an entity, a scale below 1 keeps the **parent's** radius.
 
 use std::collections::HashMap;
 
@@ -228,7 +229,8 @@ pub struct Node {
     pub kind: Kind,
     /// Its archetype's.
     pub category: Category,
-    /// What a scale below 1 leaves of its distance, in metres: a list's half diagonal, an entity's sphere.
+    /// What a scale below 1 leaves of its distance, in metres: a list's half diagonal, an entity's
+    /// sphere; under a parent that is an entity, the parent's is taken in its place.
     pub radius: f32,
     /// How many children it states, the entities that stand in for its instances among them: it
     /// fades out as they fade in only once that many are loaded.
@@ -335,6 +337,8 @@ struct Links {
     next_sibling: Vec<u32>,
     /// How far each node draws once its parent's `child_lod_dist` has taken the place of its own.
     range: Vec<f32>,
+    /// What a scale below 1 leaves of each node's distance: its parent's where that is an entity.
+    radius: Vec<f32>,
     roots: Vec<u32>,
 }
 
@@ -458,10 +462,12 @@ impl Forest {
         links.first_child = vec![NONE; count];
         links.next_sibling = vec![NONE; count];
         links.range = Vec::with_capacity(count);
+        links.radius = Vec::with_capacity(count);
         for (slot, map) in self.maps.iter().enumerate() {
             for node in &map.nodes {
                 links.slot.push(slot as u32);
                 links.range.push(node.lod_dist);
+                links.radius.push(node.radius);
             }
         }
         let mut at = 0usize;
@@ -489,7 +495,16 @@ impl Forest {
         // for the whole of it.
         for child in 0..count {
             let parent = links.parent[child];
-            if parent == NONE || self.node_at(&links, child).instance.is_some() {
+            if parent == NONE {
+                continue;
+            }
+            // ⚠ Under a parent that is an entity, a child's scale keeps the parent's radius, never
+            // its own: siblings that state one distance draw to one distance.
+            let of = self.node_at(&links, parent as usize);
+            if of.extent == Extent::Point {
+                links.radius[child] = of.radius;
+            }
+            if self.node_at(&links, child).instance.is_some() {
                 continue;
             }
             let stated = self.node_at(&links, parent as usize).child_lod_dist;
@@ -573,7 +588,12 @@ impl Pass<'_> {
 
     /// How far node `at` draws whole, by its scale.
     fn reach(&self, at: u32) -> f32 {
-        (self.node(at)).scaled(self.forest.links.range[at as usize], self.view)
+        let links = &self.forest.links;
+        let node = Node {
+            radius: links.radius[at as usize],
+            ..self.node(at)
+        };
+        node.scaled(links.range[at as usize], self.view)
     }
 
     /// The band past its distance over which node `at` fades out.

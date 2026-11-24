@@ -634,16 +634,18 @@ fn a_list_draws_by_its_box_s_centre_less_each_instance_whose_entity_draws() {
 }
 
 #[test]
-fn a_parent_gives_way_by_each_child_s_own_scale_and_the_most_opaque_of_them() {
+fn a_parent_gives_way_by_each_child_s_own_scale_on_the_parent_s_radius_and_the_most_opaque_of_them()
+{
     let mut forest = Forest::new();
-    forest.insert(
-        1,
-        vec![with_children(entity([0.0; 3], 1000.0, 100.0, None), 2)],
-    );
+    let parent = Node {
+        radius: 50.0,
+        ..with_children(entity([0.0; 3], 1000.0, 100.0, None), 2)
+    };
+    forest.insert(1, vec![parent]);
     // The same stated 100 m: a plain child draws whole to 100 m, an environment one of the second
-    // level with a sphere of 50 m to 50 + 0.6 × 50 = 80 m.
+    // level to 50 + 0.6 × 50 = 80 m on its parent's sphere of 50 m; its own 5 m would leave 62 m.
     let mut shorter = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
-    (shorter.category, shorter.radius) = (Category::Environment, 50.0);
+    (shorter.category, shorter.radius) = (Category::Environment, 5.0);
     let plain = leveled(entity([0.0; 3], 0.0, 0.0, Some((1, 0))), Level::Lod);
     forest.insert(2, vec![plain, shorter]);
     // 115 m off, inside the plain child's band and past the other's: the plain child draws at a
