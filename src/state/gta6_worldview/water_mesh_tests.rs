@@ -178,11 +178,26 @@ fn the_medium_is_the_days_extinction_and_its_scattering_over_it() {
     assert_eq!(m.albedo, [0.25, 0.5, 0.25]);
     assert_eq!(tint(Some(&m)), m.albedo);
     assert_eq!(m.reflection, 0.5);
-    let look = m.look();
+    let quads = [quad([-10, 5], [20, 30], 0), quad([40, -8], [50, 2], 0)];
+    let bordered = WaterData {
+        quads: quads.to_vec(),
+        border: Some(or_io::gta6::water::WaterBorders {
+            corners: [1.0, 2.0, 3.0, 2.0],
+            segments: Vec::new(),
+        }),
+    };
+    let look = m.look(&bordered);
     assert_eq!(
-        (look.extinction, look.albedo, look.reflection),
-        ([0.004, 0.002, 0.002], m.albedo, 0.5)
+        (look.extinction, look.albedo, look.reflection, look.phase),
+        ([0.004, 0.002, 0.002], m.albedo, 0.5, [0.0; 3])
     );
+    let sea = look.sea.expect("a border states the sea past the quads");
+    assert_eq!((sea.bounds, sea.height), ([-10.0, -8.0, 50.0, 30.0], 2.0));
+    let plain = WaterData {
+        quads: quads.to_vec(),
+        border: None,
+    };
+    assert_eq!(m.look(&plain).sea, None, "no border, no sea past the quads");
     assert_eq!(Medium::of(|_| None), None);
     assert_eq!(Medium::of(|_| Some(0.0)), None);
 }

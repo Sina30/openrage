@@ -25,6 +25,8 @@ pub(super) struct Water {
     plain: Option<(Arc<WorldMesh>, [f32; 3])>,
     /// Which fog atlas the frame's water pass was given, by where it is held.
     media: Option<usize>,
+    /// The same for the finer medium about the camera, and the tile it was laid about.
+    near: Option<(usize, Option<(u32, u32)>)>,
 }
 
 impl Water {
@@ -59,6 +61,24 @@ impl Water {
                 }),
             );
         }
+        let tile = fog.and_then(|f| f.tile_of(eye.x, eye.y));
+        let near = held.map(|h| (h, tile));
+        if self.near != near {
+            self.near = near;
+            let laid = fog.zip(tile).and_then(|(f, t)| f.near(t));
+            renderer.set_world_water_near(
+                device,
+                laid.as_ref().map(|n| WaterMedia {
+                    west: n.west,
+                    north: n.north,
+                    size: [n.size; 2],
+                    width: n.side,
+                    height: n.side,
+                    extinction: &n.extinction,
+                    scattering: &n.scattering,
+                }),
+            );
+        }
         let (of, lit) = (water.key(), renderer.has_deferred());
         if let Some((was, was_lit, at)) = &self.built {
             if *was == of && *was_lit == lit && at.distance(eye) < REBUILD {
@@ -70,7 +90,7 @@ impl Water {
         let (vertices, indices) = mesh(&water.quads.quads, eye, REACH, ground);
         // ⚠ The pass wants the day's medium: until the day is read it draws nothing.
         let look = medium.as_ref().filter(|_| lit).map(|m| {
-            let mut look = m.look();
+            let mut look = m.look(&water.quads);
             // Off the fog atlas's grid the water is the open sea the atlas holds most of.
             if let Some((extinction, scattering)) = fog.map(|f| f.commonest) {
                 look.extinction = extinction;

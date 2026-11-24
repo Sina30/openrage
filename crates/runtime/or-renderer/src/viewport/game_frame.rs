@@ -295,6 +295,7 @@ impl ViewportRenderer {
                 behind,
                 frame.passes.half_depth(),
                 frame.reflection.view(),
+                frame.passes.shadow_map().as_ref(),
             );
         }
     }
@@ -628,9 +629,12 @@ impl ViewportRenderer {
         // Water reads how far the opaque surfaces lie, where the pass that works that out has no occlusion to give
         let refracts = self.refracts || self.world.water.drawn();
         if self.world.water.drawn() {
-            self.world
-                .water
-                .write(queue, &engine, (self.width, self.height));
+            self.world.water.write(
+                queue,
+                &engine,
+                (self.width, self.height),
+                cascades.as_ref().map(|c| c.views()),
+            );
         }
         deferred.passes.record_ambient(encoder, occlusion, refracts);
         self.gpu_mark(encoder, "ambient occlusion");

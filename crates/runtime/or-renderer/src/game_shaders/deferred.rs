@@ -811,6 +811,11 @@ impl FramePasses {
         self.shadow.is_some()
     }
 
+    /// The map the sun's shadow is cast into, its tiles one above the other, where the pass for it is built.
+    pub fn shadow_map(&self) -> Option<wgpu::TextureView> {
+        (self.shadow.as_ref()).map(|s| s.texture().create_view(&Default::default()))
+    }
+
     /// Write the constants of the pass that receives the shadow, the shadow's own being `shadow`.
     pub fn write_shadow_with(
         &self,

@@ -4,8 +4,10 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+use super::shadow::CASCADES;
 use crate::game_shaders::deferred::{DEPTH_STENCIL_FORMAT, HDR_FORMAT};
 use crate::game_shaders::engine::EngineConstants;
+use crate::game_shaders::shadow::MAP_FORMAT;
 use crate::game_shaders::stand_in::{constant_view, row_view};
 use crate::viewport::{MeshVertex, ViewportRenderer};
 
@@ -27,6 +29,19 @@ pub struct WaterLook {
     pub albedo: [f32; 3],
     /// What the sky it reflects is multiplied by.
     pub reflection: f32,
+    /// How far each channel's scattering leans forward, Henyey and Greenstein's asymmetry: nought scatters evenly.
+    pub phase: [f32; 3],
+    /// The sea past the quads, where the level states it.
+    pub sea: Option<OpenSea>,
+}
+
+/// The sea past the level's quads, drawn as a plane out to the horizon.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OpenSea {
+    /// The quads' bounds: west, south, east and north, in metres.
+    pub bounds: [f32; 4],
+    /// The height the sea stands at past them.
+    pub height: f32,
 }
 
 /// The medium of the water by place: two grids of texels over the world, each row from the north edge, each west to east; off the grid the water is its `WaterLook`.
@@ -51,13 +66,23 @@ struct WaterUniform {
     extinction: [f32; 4],
     albedo: [f32; 4],
     light: [f32; 4],
+    sun: [f32; 4],
+    phase: [f32; 4],
     screen: [f32; 4],
     /// The medium's grid: its west and north edges and one over its extent; nought in `z` where there is none.
     grid: [f32; 4],
+    /// The finer medium's grid about the camera, the same way.
+    near: [f32; 4],
+    bounds: [f32; 4],
+    /// The height of the sea past the quads, and in `y` one where it is drawn.
+    sea: [f32; 4],
     fog: [[f32; 4]; 5],
     fog_colour: [[f32; 4]; 4],
     /// Each wave's number a metre along x and y, its height and its phase.
     waves: [[f32; 4]; WAVES],
+    /// The world to each cascade of the sun's shadow, and in `shadow_on.x` one where they are cast.
+    shadow: [[[f32; 4]; 4]; CASCADES],
+    shadow_on: [f32; 4],
 }
 
 /// A grid of the medium as half floats, four to a texel.
@@ -71,9 +96,14 @@ fn halves(texels: &[[f32; 3]]) -> Vec<u8> {
 /// The water's pipeline, what it reads, and the mesh of this frame.
 pub(crate) struct WaterPass {
     pipeline: wgpu::RenderPipeline,
+    /// The sea past the quads, over the whole frame.
+    sea: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
     clamped: wgpu::Sampler,
+    /// What the sun's shadow is read with, and the map read where none is cast.
+    comparing: wgpu::Sampler,
+    no_shadow: wgpu::TextureView,
     fresnel: wgpu::TextureView,
     far: wgpu::TextureView,
     flat: wgpu::TextureView,
@@ -83,6 +113,8 @@ pub(crate) struct WaterPass {
     inputs: Option<wgpu::BindGroup>,
     /// The medium by place: its extinction and scattering, the grid, and the texels still to upload.
     media: Option<Media>,
+    /// The same about the camera, finer.
+    near: Option<Media>,
 }
 
 struct Media {
@@ -135,6 +167,24 @@ impl WaterPass {
                 sampler(6),
                 texture(8),
                 texture(9),
+                texture(10),
+                texture(11),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 12,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -159,43 +209,54 @@ impl WaterPass {
                 shader_location: 3,
             },
         ];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("viewport-water-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_water"),
-                compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &attributes,
-                }],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            // The nearer a surface the greater its depth; the water writes none, so what blends after it still shows.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_STENCIL_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            // It replaces what it covers, which it read from a copy, and keeps the word the frame holds in its alpha.
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_water"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: HDR_FORMAT,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::COLOR,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let mesh = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &attributes,
+        }];
+        let pipeline_of = |label: &'static str,
+                           (vertex, fragment): (&'static str, &'static str),
+                           buffers: &[wgpu::VertexBufferLayout<'_>]| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(vertex),
+                    compilation_options: Default::default(),
+                    buffers,
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                // The nearer a surface the greater its depth; the water writes none, so what blends after it still shows.
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_STENCIL_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                // It replaces what it covers, which it read from a copy, and keeps the word the frame holds in its alpha.
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(fragment),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: HDR_FORMAT,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::COLOR,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let pipeline = pipeline_of(
+            "viewport-water-pipeline",
+            ("vs_water", "fs_water"),
+            &mesh[..],
+        );
+        let sea = pipeline_of("viewport-water-sea-pipeline", ("vs_sea", "fs_sea"), &[]);
         let sampler_of = |address_mode| {
             device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("viewport-water-sampler"),
@@ -210,6 +271,7 @@ impl WaterPass {
         };
         Self {
             pipeline,
+            sea,
             layout,
             uniform: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("viewport-water-uniform"),
@@ -218,6 +280,14 @@ impl WaterPass {
                 mapped_at_creation: false,
             }),
             clamped: sampler_of(wgpu::AddressMode::ClampToEdge),
+            comparing: crate::game_shaders::samplers::comparing(device),
+            no_shadow: crate::game_shaders::targets::render_target(
+                device,
+                "viewport-water-no-shadow",
+                (1, 1),
+                MAP_FORMAT,
+                wgpu::TextureUsages::empty(),
+            ),
             fresnel: row_view(device, queue, &crate::game_shaders::water::blend_row()),
             far: constant_view(device, queue, [FAR, 0.0, 0.0, 0.0]),
             flat: constant_view(device, queue, [0.5, 0.5, 1.0, 1.0]),
@@ -227,51 +297,67 @@ impl WaterPass {
                 extinction: [0.0; 3],
                 albedo: [0.0; 3],
                 reflection: 1.0,
+                phase: [0.0; 3],
+                sea: None,
             },
             inputs: None,
             media: None,
+            near: None,
         }
     }
 
     /// The medium by place, uploaded with the next frame's constants; `None` leaves the day's one medium everywhere.
     fn set_media(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
-        self.media = media
-            .filter(|m| {
-                let texels = m.width as usize * m.height as usize;
-                texels > 0 && m.extinction.len() == texels && m.scattering.len() == texels
-            })
-            .map(|m| {
-                let texture = || {
-                    let texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("viewport-water-medium"),
-                        size: wgpu::Extent3d {
-                            width: m.width,
-                            height: m.height,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba16Float,
-                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                        view_formats: &[],
-                    });
-                    let view = texture.create_view(&Default::default());
-                    (texture, view)
-                };
-                Media {
-                    extinction: texture(),
-                    scattering: texture(),
-                    grid: [m.west, m.north, 1.0 / m.size[0], 1.0 / m.size[1]],
-                    pending: Some((halves(m.extinction), halves(m.scattering))),
-                }
-            });
+        self.media = media_of(device, media);
     }
 
+    /// The medium about the camera at the atlas's own size, over the coarse one; `None` leaves the coarse one everywhere.
+    fn set_near(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
+        self.near = media_of(device, media);
+    }
+}
+
+/// The textures of `media`, its texels still to upload; `None` where it has none or they do not fill its grid.
+fn media_of(device: &wgpu::Device, media: Option<WaterMedia<'_>>) -> Option<Media> {
+    media
+        .filter(|m| {
+            let texels = m.width as usize * m.height as usize;
+            texels > 0 && m.extinction.len() == texels && m.scattering.len() == texels
+        })
+        .map(|m| {
+            let texture = || {
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("viewport-water-medium"),
+                    size: wgpu::Extent3d {
+                        width: m.width,
+                        height: m.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                let view = texture.create_view(&Default::default());
+                (texture, view)
+            };
+            Media {
+                extinction: texture(),
+                scattering: texture(),
+                grid: [m.west, m.north, 1.0 / m.size[0], 1.0 / m.size[1]],
+                pending: Some((halves(m.extinction), halves(m.scattering))),
+            }
+        })
+}
+
+impl WaterPass {
     /// The mesh to draw and what it is made of; `None` draws no water.
     fn set(&mut self, device: &wgpu::Device, water: Option<(&[MeshVertex], &[u32], WaterLook)>) {
-        if let Some((_, _, look)) = water {
-            self.look = look;
+        match water {
+            Some((_, _, look)) => self.look = look,
+            None => self.look.sea = None,
         }
         let mesh = water.map(|(vertices, indices, _)| (vertices, indices));
         self.mesh = mesh
@@ -302,16 +388,17 @@ impl WaterPass {
 
     /// Whether there is water to draw, which then reads a copy of the frame and its depth.
     pub(crate) fn drawn(&self) -> bool {
-        self.mesh.is_some()
+        self.mesh.is_some() || self.look.sea.is_some()
     }
 
-    /// Bind what the water reads this frame: the copy of the lit frame, its depth where the frame made one, and the map of the sky.
+    /// Bind what the water reads this frame: the copy of the lit frame, its depth where the frame made one, the map of the sky, and the map of the sun's shadow where one is cast.
     pub(crate) fn bind(
         &mut self,
         device: &wgpu::Device,
         behind: &wgpu::TextureView,
         depth: Option<&wgpu::TextureView>,
         sky: &wgpu::TextureView,
+        shadow: Option<&wgpu::TextureView>,
     ) {
         let views = [behind, depth.unwrap_or(&self.far), sky, &self.fresnel];
         let mut entries = vec![wgpu::BindGroupEntry {
@@ -331,16 +418,35 @@ impl WaterPass {
             resource: wgpu::BindingResource::Sampler(&self.clamped),
         });
         // Without a medium by place the program reads the day's one medium, and these are not read.
-        let (extinction, scattering) = match &self.media {
-            Some(m) => (&m.extinction.1, &m.scattering.1),
-            None => (&self.flat, &self.flat),
-        };
-        for (binding, view) in [(8, extinction), (9, scattering)] {
+        fn media_views<'a>(
+            media: Option<&'a Media>,
+            flat: &'a wgpu::TextureView,
+        ) -> (&'a wgpu::TextureView, &'a wgpu::TextureView) {
+            media.map_or((flat, flat), |m| (&m.extinction.1, &m.scattering.1))
+        }
+        let ((extinction, scattering), (near_extinction, near_scattering)) = (
+            media_views(self.media.as_ref(), &self.flat),
+            media_views(self.near.as_ref(), &self.flat),
+        );
+        for (binding, view) in [
+            (8, extinction),
+            (9, scattering),
+            (10, near_extinction),
+            (11, near_scattering),
+        ] {
             entries.push(wgpu::BindGroupEntry {
                 binding,
                 resource: wgpu::BindingResource::TextureView(view),
             });
         }
+        entries.push(wgpu::BindGroupEntry {
+            binding: 12,
+            resource: wgpu::BindingResource::TextureView(shadow.unwrap_or(&self.no_shadow)),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: 13,
+            resource: wgpu::BindingResource::Sampler(&self.comparing),
+        });
         self.inputs = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("viewport-water-bg"),
             layout: &self.layout,
@@ -350,7 +456,7 @@ impl WaterPass {
 
     /// Upload the medium by place where it is new.
     pub(crate) fn upload(&mut self, queue: &wgpu::Queue) {
-        if let Some(media) = &mut self.media {
+        for media in [&mut self.media, &mut self.near].into_iter().flatten() {
             if let Some((extinction, scattering)) = media.pending.take() {
                 for ((texture, _), bytes) in [
                     (&media.extinction, extinction),
@@ -372,12 +478,13 @@ impl WaterPass {
         }
     }
 
-    /// Write what the water is lit and fogged by this frame, for a frame `width` by `height`.
+    /// Write what the water is lit and fogged by this frame, for a frame `width` by `height`, with the world to each cascade of the sun's shadow where it is cast.
     pub(crate) fn write(
         &self,
         queue: &wgpu::Queue,
         engine: &EngineConstants,
         (width, height): (u32, u32),
+        shadow: Option<[glam::Mat4; CASCADES]>,
     ) {
         let rgb = |c: [f32; 3], w: f32| [c[0], c[1], c[2], w];
         // Without a moment of the day there is no fog: nothing hides the water.
@@ -388,10 +495,24 @@ impl WaterPass {
             ),
             None => ([[0.0; 4]; 5], [[0.0; 4]; 4]),
         };
+        // The sky's light and the sun's, apart: the sun's alone is turned by the phase.
+        let (sun, ambient) = match &engine.lighting {
+            Some(lighting) => (
+                lighting.directional_colour.truncate() * (-lighting.directional_light.z).max(0.0),
+                lighting.natural_ambient[1].truncate(),
+            ),
+            None => (
+                engine.sun_colour * engine.sun_direction.z.max(0.0),
+                engine.ambient,
+            ),
+        };
+        let sea = self.look.sea;
         let uniform = WaterUniform {
             extinction: rgb(self.look.extinction, 0.0),
             albedo: rgb(self.look.albedo, self.look.reflection),
-            light: rgb(engine.water_light().to_array(), SHORE),
+            light: rgb(ambient.to_array(), SHORE),
+            sun: rgb(sun.to_array(), 0.0),
+            phase: rgb(self.look.phase, 0.0),
             screen: [
                 1.0 / width.max(1) as f32,
                 1.0 / height.max(1) as f32,
@@ -399,9 +520,16 @@ impl WaterPass {
                 0.0,
             ],
             grid: self.media.as_ref().map_or([0.0; 4], |m| m.grid),
+            near: self.near.as_ref().map_or([0.0; 4], |m| m.grid),
+            bounds: sea.map_or([0.0; 4], |s| s.bounds),
+            sea: sea.map_or([0.0; 4], |s| [s.height, 1.0, 0.0, 0.0]),
             fog,
             fog_colour,
             waves: self.waves,
+            shadow: shadow.map_or([[[0.0; 4]; 4]; CASCADES], |views| {
+                views.map(|v| v.to_cols_array_2d())
+            }),
+            shadow_on: [f32::from(u8::from(shadow.is_some())), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
     }
@@ -413,16 +541,25 @@ impl WaterPass {
         camera: &wgpu::BindGroup,
         light: &wgpu::BindGroup,
     ) {
-        let (Some((vertices, indices, count)), Some(inputs)) = (&self.mesh, &self.inputs) else {
+        let Some(inputs) = &self.inputs else {
             return;
         };
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, camera, &[]);
-        pass.set_bind_group(1, inputs, &[]);
-        pass.set_bind_group(2, light, &[]);
-        pass.set_vertex_buffer(0, vertices.slice(..));
-        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        pass.draw_indexed(0..*count, 0, 0..1);
+        let bind = |pass: &mut wgpu::RenderPass<'_>, pipeline| {
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, camera, &[]);
+            pass.set_bind_group(1, inputs, &[]);
+            pass.set_bind_group(2, light, &[]);
+        };
+        if let Some((vertices, indices, count)) = &self.mesh {
+            bind(pass, &self.pipeline);
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..*count, 0, 0..1);
+        }
+        if self.look.sea.is_some() {
+            bind(pass, &self.sea);
+            pass.draw(0..3, 0..1);
+        }
     }
 }
 
@@ -444,5 +581,30 @@ impl ViewportRenderer {
     /// The water's medium by place; `None` leaves the day's one medium everywhere.
     pub fn set_world_water_media(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
         self.world.water.set_media(device, media);
+    }
+
+    /// The water's medium about the camera at the atlas's own size, over the coarse one; `None` leaves the coarse one everywhere.
+    pub fn set_world_water_near(&mut self, device: &wgpu::Device, media: Option<WaterMedia<'_>>) {
+        self.world.water.set_near(device, media);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_water_program_is_valid_and_its_uniform_is_the_size_the_renderer_writes() {
+        let module = naga::front::wgsl::parse_str(WATER_SHADER).expect("the WGSL parses");
+        let flags = naga::valid::ValidationFlags::all();
+        let mut validator = naga::valid::Validator::new(flags, naga::valid::Capabilities::all());
+        validator
+            .validate(&module)
+            .expect("the program is valid, its derivatives in uniform control flow");
+        let water = (module.types.iter())
+            .find(|(_, t)| t.name.as_deref() == Some("Water"))
+            .map(|(_, t)| t.inner.size(module.to_ctx()))
+            .expect("a Water uniform");
+        assert_eq!(water as usize, std::mem::size_of::<WaterUniform>());
     }
 }

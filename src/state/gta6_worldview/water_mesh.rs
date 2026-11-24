@@ -3,8 +3,8 @@
 
 use glam::Vec3;
 use or_io::gta6::water::height::WaterGround;
-use or_io::gta6::water::WaterQuad;
-use or_renderer::world::water::WaterLook;
+use or_io::gta6::water::{WaterData, WaterQuad};
+use or_renderer::world::water::{OpenSea, WaterLook};
 use or_renderer::MeshVertex;
 
 /// The side of a cell the quads are cut into past `MIDDLE` of the camera, within it, and within `NEAR` of it, in metres.
@@ -33,6 +33,8 @@ pub struct Medium {
     pub albedo: [f32; 3],
     /// What the sky the water reflects is multiplied by.
     pub reflection: f32,
+    /// How far each channel's scattering leans forward.
+    pub phase: [f32; 3],
 }
 
 impl Medium {
@@ -60,17 +62,43 @@ impl Medium {
             extinction,
             albedo: std::array::from_fn(|c| scattering[c] / extinction[c] * tint[c] * brightness),
             reflection: scale("water_reflection_color_mult"),
+            phase: rgb("water_clip_phase").unwrap_or_default(),
         })
     }
 
-    /// The medium as the frame's water pass takes it, its extinction a metre at a time.
-    pub fn look(&self) -> WaterLook {
+    /// The medium as the frame's water pass takes it, its extinction a metre at a time, and the sea past the quads of `water`.
+    pub fn look(&self, water: &WaterData) -> WaterLook {
         WaterLook {
             extinction: self.extinction.map(|e| e * PATH_SCALE),
             albedo: self.albedo,
             reflection: self.reflection,
+            phase: self.phase,
+            sea: open_sea(water),
         }
     }
+}
+
+/// The sea past the drawn quads of `water`, where it states its border: a plane at the border's height.
+// ponytail: one plane at the corners' mean, and the border's segments not laid; this build states every corner at 0 and no segment.
+pub fn open_sea(water: &WaterData) -> Option<OpenSea> {
+    let border = water.border.as_ref()?;
+    let drawn = (water.quads.iter())
+        .filter(|q| q.kind <= 4 && !q.invisible && q.min[0] < q.max[0] && q.min[1] < q.max[1]);
+    let bounds = drawn.fold(None, |b: Option<[f32; 4]>, q| {
+        let q = [q.min[0], q.min[1], q.max[0], q.max[1]].map(f32::from);
+        Some(b.map_or(q, |b| {
+            [
+                b[0].min(q[0]),
+                b[1].min(q[1]),
+                b[2].max(q[2]),
+                b[3].max(q[3]),
+            ]
+        }))
+    })?;
+    Some(OpenSea {
+        bounds,
+        height: border.corners.iter().sum::<f32>() / 4.0,
+    })
 }
 
 fn smoothstep(t: f32) -> f32 {

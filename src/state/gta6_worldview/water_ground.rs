@@ -106,7 +106,7 @@ pub(super) fn textures<T: Send>(
     root: &Path,
     keys: &GtaViKeys,
     (archive, nested): (&str, &str),
-    take: &(dyn Fn(&str, &Texture) -> Option<T> + Sync),
+    take: &(dyn Fn(u64, &str, &Texture) -> Option<T> + Sync),
 ) -> Result<Vec<T>, String> {
     let archive = root.join(archive);
     let table = Table::open(&archive, keys).map_err(|e| e.to_string())?;
@@ -153,7 +153,7 @@ pub(super) fn textures<T: Send>(
 fn textures_at<T>(
     archive: &Path,
     offsets: &[u64],
-    take: &(dyn Fn(&str, &Texture) -> Option<T> + Sync),
+    take: &(dyn Fn(u64, &str, &Texture) -> Option<T> + Sync),
 ) -> Vec<T> {
     let Ok(file) = File::open(archive) else {
         return Vec::new();
@@ -179,7 +179,7 @@ fn textures_at<T>(
                 continue;
             };
             if let Some(taken) =
-                (texture.texture.as_ref().ok()).and_then(|t| take(&texture.name, t))
+                (texture.texture.as_ref().ok()).and_then(|t| take(offset, &texture.name, t))
             {
                 out.push(taken);
             }
@@ -193,7 +193,7 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterGround, String> {
     let atlas = atlas(root, keys, ATLAS_ENTRY)?;
     let named = atlas.fallback.as_str();
     // A tile is held shrunk until it is laid.
-    let take = |name: &str, texture: &Texture| {
+    let take = |_: u64, name: &str, texture: &Texture| {
         let heights = Heights::of(texture)?;
         Some(match name == named {
             true => (true, heights),
