@@ -24,6 +24,9 @@ const TILE: &str = "waterfog";
 const TILE2: &str = "waterfog2";
 /// The fewest tiles about the camera's own, each way, the near medium spans where the grid states no stream radius.
 const LEAST_AROUND: u32 = 1;
+/// The longest side a tile's texture is laid at, far past any an atlas lays: a texture's size is
+/// its archive's own number, and the medium about it holds nine times its texels.
+const MOST_TILE_SIDE: u32 = 2048;
 
 /// The fog atlas's two fallbacks on the grid they share: `waterfog` the medium's scattering a metre, `waterfog2` its extinction a metre; and the tiles laid on them.
 pub struct WaterFog {
@@ -77,6 +80,9 @@ impl WaterFog {
             .collect();
         let (_, (first, _)) = laid.iter().find_map(|(at, t)| t.map(|t| (at, t)))?;
         let tile_side = first.width;
+        if tile_side == 0 || tile_side > MOST_TILE_SIDE {
+            return None;
+        }
         let side = tile_side * span;
         let fallback =
             self.extinction.width() / (self.atlas.size[0] / self.atlas.tile_size).round() as u32;
@@ -177,7 +183,9 @@ fn levels(texels: &FogTexels, side: u32) -> Option<Heights> {
 
 /// A texture's top level alone.
 fn top(texture: &Texture) -> Texture {
-    let bytes = (texture.width.div_ceil(4) * texture.height.div_ceil(4) * 16) as usize;
+    // In `usize`: the sides are the archive's own numbers.
+    let blocks = |side: u32| side.div_ceil(4) as usize;
+    let bytes = blocks(texture.width) * blocks(texture.height) * 16;
     Texture {
         pixels: texture.pixels[..bytes.min(texture.pixels.len())].to_vec(),
         levels: 1,
@@ -284,4 +292,55 @@ fn read(root: &Path, keys: &GtaViKeys) -> Result<WaterFog, String> {
         extinction,
         tiles,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use or_io::gta6::ttpf::Format;
+
+    use super::*;
+
+    /// An unsigned BC6H texture of `width` by `height`, every block nought.
+    fn bc6h(width: u32, height: u32) -> Texture {
+        let blocks = (width.div_ceil(4) * height.div_ceil(4)) as usize;
+        Texture {
+            width,
+            height,
+            format: Format::of_dxgi(95).expect("BC6H_UF16"),
+            levels: 1,
+            faces: 1,
+            pixels: vec![0; blocks * 16],
+        }
+    }
+
+    fn fog_of(tile: Texture) -> WaterFog {
+        let text = r#"<GridAtlasInfo><tileTextureNamePrefix>t-</tileTextureNamePrefix>
+            <globalFallbackTextureName>f</globalFallbackTextureName><origin x="0.0" y="0.0" z="0.0" />
+            <width value="1024" /><height value="1024" /><tileSize value="512" /></GridAtlasInfo>"#;
+        let fallback = FogTexels::of(&bc6h(8, 8)).expect("a fallback");
+        WaterFog {
+            atlas: GridAtlas::parse(text).expect("an atlas"),
+            scattering: fallback.clone(),
+            extinction: fallback,
+            commonest: ([0.0; 3], [0.0; 3]),
+            tiles: HashMap::from([((0, 0), (tile.clone(), tile))]),
+        }
+    }
+
+    #[test]
+    fn a_tile_whose_texture_states_a_side_past_any_atlas_is_not_laid_and_never_overflows() {
+        // An archive's own numbers: a side whose blocks' bytes pass what 32 bits hold, and no pixels.
+        let wide = Texture {
+            width: 70_000,
+            height: 70_000,
+            pixels: Vec::new(),
+            ..bc6h(4, 4)
+        };
+        assert!(top(&wide).pixels.is_empty());
+        assert!(fog_of(wide).near((0, 0)).is_none());
+        assert_eq!(
+            fog_of(bc6h(4, 4)).near((0, 0)).map(|near| near.side),
+            Some(12)
+        );
+    }
 }
